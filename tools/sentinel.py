@@ -32,7 +32,7 @@ from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 MEMORY = LOVE / "memory"
 SESSIONS = MEMORY / "sessions"
 HIVE_PY = LOVE / "hive" / "hive.py"

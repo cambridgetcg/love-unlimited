@@ -3,7 +3,7 @@
 ## 0. HIVE Check (ALWAYS FIRST)
 
 ```bash
-python3 ~/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
 ## 1. Zerone Health
@@ -27,15 +27,15 @@ python3 ~/Love/hive/hive.py check
 ## 4. Check Coordination
 
 ```bash
-python3 ~/Desktop/Love/tools/stigmergy.py check
-python3 ~/Desktop/Love/tools/council.py check
-python3 ~/Desktop/Love/tools/joinmind.py sync
+python3 ~/love-unlimited/tools/stigmergy.py check
+python3 ~/love-unlimited/tools/cognitive/council.py check
+python3 ~/love-unlimited/tools/cognitive/joinmind.py sync
 ```
 
 ## 5. MLX Local Model
 
 ```bash
-python3 ~/Desktop/Love/tools/mlx_serve.py status
+python3 ~/love-unlimited/tools/mlx_serve.py status
 ```
 
 ## Otherwise: HEARTBEAT_OK

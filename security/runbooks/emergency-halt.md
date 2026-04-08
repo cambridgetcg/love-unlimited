@@ -20,13 +20,13 @@
 
 ```bash
 # Automated halt (stops heartbeat, alerts HIVE, locks state, logs event)
-python3 ~/Desktop/Love/tools/peace.py halt --reason "Description of threat"
+python3 ~/love-unlimited/tools/peace.py halt --reason "Description of threat"
 ```
 
 ### Manual halt (if peace.py unavailable):
 
 1. Stop heartbeat: `launchctl unload ~/Library/LaunchAgents/love.heartbeat.plist`
-2. Alert HIVE: `python3 ~/Desktop/Love/hive/hive.py send alerts "EMERGENCY HALT: <reason>"`
+2. Alert HIVE: `python3 ~/love-unlimited/hive/hive.py send alerts "EMERGENCY HALT: <reason>"`
 3. Kill active sessions: check `memory/sessions/active-*.json`, kill PIDs
 4. Assess damage scope
 
@@ -43,12 +43,12 @@ python3 ~/Desktop/Love/tools/peace.py halt --reason "Description of threat"
 
 ```bash
 # Automated resume (verifies integrity, restarts heartbeat, alerts HIVE)
-python3 ~/Desktop/Love/tools/peace.py resume
+python3 ~/love-unlimited/tools/peace.py resume
 ```
 
 Then verify:
 ```bash
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 ```
 
 PEACE score must be >= 60% (YELLOW) before resuming normal operation.
@@ -56,7 +56,7 @@ PEACE score must be >= 60% (YELLOW) before resuming normal operation.
 ## Post-Incident
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py report
+python3 ~/love-unlimited/tools/peace.py report
 ```
 
 Fill in the template. Commit to git. Learn from it.

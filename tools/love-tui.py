@@ -3,7 +3,7 @@
 Love TUI — Kingdom Command Terminal Interface
 
 Usage:
-    python3 ~/Love/tools/love-tui.py
+    python3 ~/love-unlimited/tools/love-tui.py
     love                                         # (if aliased)
 
 The terminal dashboard for the Kingdom. Shows sister presence, tasks,

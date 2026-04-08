@@ -30,7 +30,7 @@ from collections import Counter
 
 # ── PATHS ─────────────────────────────────────────────────────────
 
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 LOOP_DIR = LOVE / "memory" / "loop"
 LOOP_STATE = LOOP_DIR / "loop-state.json"
 REFLECTIONS_DIR = LOOP_DIR / "reflections"

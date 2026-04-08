@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 LOVE_JSON="$LOVE_DIR/love.json"
 HIVE="$LOVE_DIR/hive/hive.py"
 ADAPTIVE_CLI="$LOVE_DIR/adaptive/cli.py"
@@ -265,12 +265,12 @@ if [ -f "$CLAUDE_MD" ]; then
             # Find the TUI line and add after it
             if ! grep -q "focus.py" "$CLAUDE_MD"; then
                 sed -i '' '/love-tui.py/a\
-| Focus | `python3 ~/Love/nerve/stem/focus.py <cmd>` | Dynamic heartbeat focus (what to work on NOW) |
+| Focus | `python3 ~/love-unlimited/nerve/stem/focus.py <cmd>` | Dynamic heartbeat focus (what to work on NOW) |
 ' "$CLAUDE_MD" 2>/dev/null && installed "Added Focus to CLAUDE.md" || warn "Could not update CLAUDE.md"
             fi
             if ! grep -q "adaptive/cli.py" "$CLAUDE_MD"; then
                 sed -i '' '/focus.py/a\
-| Adaptive | `python3 ~/Love/adaptive/cli.py <args>` | Provider-agnostic LLM inference |
+| Adaptive | `python3 ~/love-unlimited/adaptive/cli.py <args>` | Provider-agnostic LLM inference |
 ' "$CLAUDE_MD" 2>/dev/null && installed "Added Adaptive to CLAUDE.md" || warn "Could not update CLAUDE.md"
             fi
         fi

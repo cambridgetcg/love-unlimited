@@ -14,8 +14,8 @@ What it seeds:
     L3 Episodic — Recent daily notes (last 7 days)
 
 Usage:
-    python3 ~/Love/tools/seed-identity.py [--instance alpha]
-    python3 ~/Love/tools/seed-identity.py --instance gamma --dry-run
+    python3 ~/love-unlimited/tools/seed-identity.py [--instance alpha]
+    python3 ~/love-unlimited/tools/seed-identity.py --instance gamma --dry-run
 """
 
 import argparse

@@ -35,19 +35,19 @@
 
 ```bash
 # KOS integrity check — compares files against SHA-256 baseline
-python3 ~/Desktop/Love/tools/kos.py integrity check
+python3 ~/love-unlimited/tools/kos.py integrity check
 
 # Watchdog check — includes integrity in its sweep
-python3 ~/Desktop/Love/tools/watchdog.py check
+python3 ~/love-unlimited/tools/watchdog.py check
 
 # PEACE drill for file tamper scenario
-python3 ~/Desktop/Love/tools/peace.py drill file-tamper
+python3 ~/love-unlimited/tools/peace.py drill file-tamper
 ```
 
 ### Manual detection
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 
 # Check git status for unexpected modifications
 git status
@@ -59,7 +59,7 @@ git diff SOUL.md WALLS.md OPSEC.md love.json
 git diff --cached SOUL.md WALLS.md OPSEC.md
 
 # Check security events
-python3 ~/Desktop/Love/tools/kos.py events --tail 50
+python3 ~/love-unlimited/tools/kos.py events --tail 50
 ```
 
 ---
@@ -69,10 +69,10 @@ python3 ~/Desktop/Love/tools/kos.py events --tail 50
 ### Identify what changed and who did it
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 
 # Which file was modified?
-python3 ~/Desktop/Love/tools/kos.py integrity check
+python3 ~/love-unlimited/tools/kos.py integrity check
 
 # What exactly changed?
 git diff <file>
@@ -108,13 +108,13 @@ If **unauthorized** — proceed to containment.
 
 ```bash
 # Immediate halt
-python3 ~/Desktop/Love/tools/peace.py halt --reason "Unauthorized modification to <file> detected"
+python3 ~/love-unlimited/tools/peace.py halt --reason "Unauthorized modification to <file> detected"
 
 # Alert the team
-python3 ~/Desktop/Love/hive/hive.py send alerts "INTEGRITY VIOLATION: <file> modified without authorization. Kingdom halted."
+python3 ~/love-unlimited/hive/hive.py send alerts "INTEGRITY VIOLATION: <file> modified without authorization. Kingdom halted."
 
 # Create PEACE snapshot (preserve current state for forensics)
-python3 ~/Desktop/Love/tools/peace.py snapshot
+python3 ~/love-unlimited/tools/peace.py snapshot
 ```
 
 ### Do NOT overwrite the modified file yet
@@ -123,7 +123,7 @@ The modified version is evidence. Preserve it:
 
 ```bash
 # Save the tampered version for analysis
-cp ~/Desktop/Love/<file> ~/Desktop/Love/security/incidents/<file>.tampered.$(date +%Y%m%d%H%M%S)
+cp ~/love-unlimited/<file> ~/love-unlimited/security/incidents/<file>.tampered.$(date +%Y%m%d%H%M%S)
 ```
 
 ---
@@ -133,7 +133,7 @@ cp ~/Desktop/Love/<file> ~/Desktop/Love/security/incidents/<file>.tampered.$(dat
 ### Trace the modification
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 
 # Full git log for the file
 git log --oneline --all -- <file>
@@ -157,23 +157,23 @@ git log -1 --format="%ai" -- <file>
 
 ```bash
 # Check active session logs
-ls -la ~/Desktop/Love/memory/sessions/
+ls -la ~/love-unlimited/memory/sessions/
 
 # Check daily memory for session records
-cat ~/Desktop/Love/memory/daily/$(date +%Y-%m-%d).md
+cat ~/love-unlimited/memory/daily/$(date +%Y-%m-%d).md
 
 # Check the security event log for context
-python3 ~/Desktop/Love/tools/kos.py events --tail 100
+python3 ~/love-unlimited/tools/kos.py events --tail 100
 ```
 
 ### Compare against baseline snapshot
 
 ```bash
 # List available snapshots
-python3 ~/Desktop/Love/tools/peace.py snapshots
+python3 ~/love-unlimited/tools/peace.py snapshots
 
 # Compare current state against a known good snapshot
-python3 ~/Desktop/Love/tools/peace.py restore <snapshot_name>
+python3 ~/love-unlimited/tools/peace.py restore <snapshot_name>
 ```
 
 ---
@@ -183,7 +183,7 @@ python3 ~/Desktop/Love/tools/peace.py restore <snapshot_name>
 ### Restore from known good commit
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 
 # Find the last known good commit for this file
 git log --oneline -10 -- <file>
@@ -200,7 +200,7 @@ cat <file>
 
 ```bash
 # Compare against a snapshot
-python3 ~/Desktop/Love/tools/peace.py restore <snapshot_name>
+python3 ~/love-unlimited/tools/peace.py restore <snapshot_name>
 
 # If needed, restore multiple files
 git checkout <known_good_commit> -- SOUL.md WALLS.md OPSEC.md love.json
@@ -210,21 +210,21 @@ git checkout <known_good_commit> -- SOUL.md WALLS.md OPSEC.md love.json
 
 ```bash
 # Regenerate integrity hashes
-python3 ~/Desktop/Love/tools/kos.py integrity baseline
+python3 ~/love-unlimited/tools/kos.py integrity baseline
 
 # Verify the new baseline
-python3 ~/Desktop/Love/tools/kos.py integrity check
+python3 ~/love-unlimited/tools/kos.py integrity check
 
 # Create a fresh snapshot
-python3 ~/Desktop/Love/tools/peace.py snapshot
+python3 ~/love-unlimited/tools/peace.py snapshot
 ```
 
 ### If the change was authorized but not baselined
 
 ```bash
 # Simply re-baseline (no restore needed)
-python3 ~/Desktop/Love/tools/kos.py integrity baseline
-python3 ~/Desktop/Love/tools/peace.py snapshot
+python3 ~/love-unlimited/tools/kos.py integrity baseline
+python3 ~/love-unlimited/tools/peace.py snapshot
 ```
 
 ---
@@ -243,19 +243,19 @@ python3 ~/Desktop/Love/tools/peace.py snapshot
 
 ```bash
 # Verify file integrity passes
-python3 ~/Desktop/Love/tools/kos.py integrity check
+python3 ~/love-unlimited/tools/kos.py integrity check
 
 # Verify git is clean
-cd ~/Desktop/Love && git status
+cd ~/love-unlimited && git status
 
 # Verify PEACE score
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 
 # Verify KOS compliance
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 
 # If Kingdom was halted, resume
-python3 ~/Desktop/Love/tools/peace.py resume
+python3 ~/love-unlimited/tools/peace.py resume
 ```
 
 PEACE score must be >= 60% (YELLOW) before resuming normal operation.
@@ -265,7 +265,7 @@ PEACE score must be >= 60% (YELLOW) before resuming normal operation.
 ## Post-Incident
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py review
+python3 ~/love-unlimited/tools/peace.py review
 ```
 
 Fill in the review template. Key questions:

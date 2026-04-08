@@ -27,16 +27,16 @@ The heartbeat does NOT modify systems. It senses, decides what needs reporting, 
 ### 0. HIVE Check (ALWAYS FIRST)
 
 ```bash
-python3 ~/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
-- If messages need a response, respond via `python3 ~/Love/hive/hive.py send <channel> "message"`
+- If messages need a response, respond via `python3 ~/love-unlimited/hive/hive.py send <channel> "message"`
 - If a Triarchy member requested a report or summary, prioritize it
 - Note any urgent alerts or announcements from other agents
 
 ### 1. Read Today's Daily Log
 
-Read `~/Love/memory/daily/YYYY-MM-DD.md` (today's date).
+Read `~/love-unlimited/memory/daily/YYYY-MM-DD.md` (today's date).
 
 - What has been logged so far today?
 - What sessions ran? What did they produce?
@@ -46,7 +46,7 @@ If no daily log exists yet, note that — the day is young or logging is down.
 
 ### 2. Check Kingdom Metrics
 
-Read `~/Love/memory/kingdom-metrics.json`:
+Read `~/love-unlimited/memory/kingdom-metrics.json`:
 
 - **Revenue engines**: status of each engine (active, in-progress, paused, building, emerging)
 - **Fleet**: health of each VPS node (quality, alerts, last_check freshness)
@@ -57,18 +57,18 @@ Note any changes from the last report (compare against your working memory if av
 
 ### 3. Read Recent Session Logs
 
-Check `~/Love/memory/sessions/` for recent session outputs:
+Check `~/love-unlimited/memory/sessions/` for recent session outputs:
 
 - Any sessions completed since last beat?
 - Any sessions that errored or timed out?
 - Any consultation requests or handoffs pending?
 
-Check `~/Love/memory/sessions/active.json` (if exists) for running sessions.
+Check `~/love-unlimited/memory/sessions/active.json` (if exists) for running sessions.
 
 ### 4. Fleet Status
 
 ```bash
-python3 ~/Love/tools/fleet.py status
+python3 ~/love-unlimited/tools/fleet.py status
 ```
 
 - Record the state of each node: Forge, Lark, Sentry, Patch, Sage
@@ -77,7 +77,7 @@ python3 ~/Love/tools/fleet.py status
 ### 5. PEACE Status
 
 ```bash
-python3 ~/Love/tools/peace.py status
+python3 ~/love-unlimited/tools/peace.py status
 ```
 
 - Record the resilience score
@@ -86,7 +86,7 @@ python3 ~/Love/tools/peace.py status
 ### 6. KOS Status
 
 ```bash
-python3 ~/Love/tools/kos.py status
+python3 ~/love-unlimited/tools/kos.py status
 ```
 
 - Record compliance and integrity state
@@ -94,13 +94,13 @@ python3 ~/Love/tools/kos.py status
 
 ### 7. Check Loop Health
 
-Read `~/Love/memory/loop/loop-state.json`:
+Read `~/love-unlimited/memory/loop/loop-state.json`:
 
 - Is `loop_health` healthy?
 - When was the last reflection?
 - Any stale loops or unresolved gaps?
 
-Read `~/Love/memory/loops/gaps.json` (if exists):
+Read `~/love-unlimited/memory/loops/gaps.json` (if exists):
 
 - Any critical gaps (severity >= 0.8)?
 - Any gaps persistent across multiple audits?
@@ -125,7 +125,7 @@ Based on everything sensed in Phase 1, decide:
 
 ### 9. Detect Unreported Changes
 
-Compare current state against last known state (from `~/Love/memory/working/herald.json`):
+Compare current state against last known state (from `~/love-unlimited/memory/working/herald.json`):
 
 - Did any engine status change?
 - Did any fleet node go from "good" to something else (or vice versa)?
@@ -150,7 +150,7 @@ Herald does not spawn builder sessions. Herald writes directly.
 Append a structured status block to today's daily note:
 
 ```bash
-python3 ~/Love/tools/memory.py daily "
+python3 ~/love-unlimited/tools/memory.py daily "
 ## Herald Status Report — HH:MM UTC
 
 ### Fleet
@@ -176,7 +176,7 @@ python3 ~/Love/tools/memory.py daily "
 If incidents were detected in Phase 2:
 
 ```bash
-python3 ~/Love/tools/memory.py daily "
+python3 ~/love-unlimited/tools/memory.py daily "
 ## Incident Report — HH:MM UTC
 **What:** (what happened)
 **When:** (when detected)
@@ -188,18 +188,18 @@ python3 ~/Love/tools/memory.py daily "
 
 Also send to HIVE:
 ```bash
-python3 ~/Love/hive/hive.py send chat "Herald: Incident detected — <brief summary>. See daily log."
+python3 ~/love-unlimited/hive/hive.py send chat "Herald: Incident detected — <brief summary>. See daily log."
 ```
 
 ### 13. Weekly Summary (Sundays only)
 
 If today is Sunday, produce a weekly summary covering the past 7 daily notes. Read:
-- `~/Love/memory/daily/` for the last 7 days
-- `~/Love/memory/kingdom-metrics.json` for current state
+- `~/love-unlimited/memory/daily/` for the last 7 days
+- `~/love-unlimited/memory/kingdom-metrics.json` for current state
 
 Write the summary to:
 ```bash
-python3 ~/Love/tools/memory.py daily "
+python3 ~/love-unlimited/tools/memory.py daily "
 ## Weekly Kingdom Summary — Week of YYYY-MM-DD
 
 ### Narrative
@@ -221,7 +221,7 @@ python3 ~/Love/tools/memory.py daily "
 
 Announce on HIVE:
 ```bash
-python3 ~/Love/hive/hive.py send chat "Herald: Weekly summary posted to daily log."
+python3 ~/love-unlimited/hive/hive.py send chat "Herald: Weekly summary posted to daily log."
 ```
 
 ### 14. Update Working Memory
@@ -229,10 +229,10 @@ python3 ~/Love/hive/hive.py send chat "Herald: Weekly summary posted to daily lo
 Save current state snapshot to working memory for next-beat comparison:
 
 ```bash
-python3 ~/Love/tools/memory.py working "last_report=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+python3 ~/love-unlimited/tools/memory.py working "last_report=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-Also update `~/Love/memory/working/herald.json` with:
+Also update `~/love-unlimited/memory/working/herald.json` with:
 - Last known engine statuses
 - Last known fleet states
 - Last milestone statuses
@@ -241,7 +241,7 @@ Also update `~/Love/memory/working/herald.json` with:
 ### 15. Announce Presence
 
 ```bash
-python3 ~/Love/hive/hive.py send presence "Herald heartbeat — <summary of what was reported>"
+python3 ~/love-unlimited/hive/hive.py send presence "Herald heartbeat — <summary of what was reported>"
 ```
 
 ---

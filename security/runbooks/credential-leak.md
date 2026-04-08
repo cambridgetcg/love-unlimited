@@ -32,25 +32,25 @@
 
 ```bash
 # Check which credentials exist and their wall assignments
-python3 ~/Desktop/Love/tools/credentials.py list
+python3 ~/love-unlimited/tools/credentials.py list
 
 # Check credentials by wall level
-python3 ~/Desktop/Love/tools/credentials.py audit --wall 1
+python3 ~/love-unlimited/tools/credentials.py audit --wall 1
 
 # Check security events for credential-related alerts
-python3 ~/Desktop/Love/tools/kos.py events --tail 50
+python3 ~/love-unlimited/tools/kos.py events --tail 50
 ```
 
 ### Check git history for accidental commits
 
 ```bash
 # Search for credential patterns in git history
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git log --all --diff-filter=A -- '*.env' '*.key' '*.pem'
 git log -p --all -S '<suspected_credential_value>' -- . ':!*.md'
 
 # Check if .gitignore is protecting sensitive files
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 ```
 
 ---
@@ -72,7 +72,7 @@ Answer these questions before acting:
 gh api /user  # verify current token still works
 
 # Check VPS auth logs for unauthorized SSH key usage
-python3 ~/Desktop/Love/tools/fleet.py all "grep 'Accepted publickey' /var/log/auth.log | tail -20"
+python3 ~/love-unlimited/tools/fleet.py all "grep 'Accepted publickey' /var/log/auth.log | tail -20"
 ```
 
 ---
@@ -87,20 +87,20 @@ python3 ~/Desktop/Love/tools/fleet.py all "grep 'Accepted publickey' /var/log/au
 #    GitHub: github.com/settings/tokens > Delete token
 
 # 2. Delete from local keychain
-python3 ~/Desktop/Love/tools/credentials.py delete <key_name>
+python3 ~/love-unlimited/tools/credentials.py delete <key_name>
 
 # 3. Alert the team
-python3 ~/Desktop/Love/hive/hive.py send alerts "CREDENTIAL LEAK: <key_name> (Wall <N>) revoked. Rotating now."
+python3 ~/love-unlimited/hive/hive.py send alerts "CREDENTIAL LEAK: <key_name> (Wall <N>) revoked. Rotating now."
 ```
 
 ### SSH Key
 
 ```bash
 # 1. Remove the compromised public key from ALL VPS nodes
-python3 ~/Desktop/Love/tools/fleet.py all "sed -i '/<key_fingerprint_or_comment>/d' /root/.ssh/authorized_keys"
+python3 ~/love-unlimited/tools/fleet.py all "sed -i '/<key_fingerprint_or_comment>/d' /root/.ssh/authorized_keys"
 
 # 2. Verify removal
-python3 ~/Desktop/Love/tools/fleet.py all "cat /root/.ssh/authorized_keys"
+python3 ~/love-unlimited/tools/fleet.py all "cat /root/.ssh/authorized_keys"
 
 # 3. Delete local key pair
 rm ~/.ssh/<compromised_key> ~/.ssh/<compromised_key>.pub
@@ -111,21 +111,21 @@ rm ~/.ssh/<compromised_key> ~/.ssh/<compromised_key>.pub
 ```bash
 # 1. This is CRITICAL — HIVE key compromise means all inter-instance communication is exposed
 # 2. Halt the Kingdom immediately
-python3 ~/Desktop/Love/tools/peace.py halt --reason "HIVE key compromised — all inter-instance comms potentially exposed"
+python3 ~/love-unlimited/tools/peace.py halt --reason "HIVE key compromised — all inter-instance comms potentially exposed"
 
 # 3. Generate new HIVE key on the controlling device
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 # Store the new key securely — it must be distributed to all instances manually
 
 # 4. Delete old key
-python3 ~/Desktop/Love/tools/credentials.py delete hive-key
+python3 ~/love-unlimited/tools/credentials.py delete hive-key
 ```
 
 ### If Wall 1 credential — consider emergency halt
 
 ```bash
 # Halt if the leaked credential grants broad access
-python3 ~/Desktop/Love/tools/peace.py halt --reason "Wall 1 credential leak: <key_name> — assessing blast radius"
+python3 ~/love-unlimited/tools/peace.py halt --reason "Wall 1 credential leak: <key_name> — assessing blast radius"
 ```
 
 ---
@@ -135,7 +135,7 @@ python3 ~/Desktop/Love/tools/peace.py halt --reason "Wall 1 credential leak: <ke
 ### Audit git history for the leak
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 
 # Find which commit introduced the credential
 git log --all -p -S '<partial_credential_value>'
@@ -153,11 +153,11 @@ cat .gitignore | grep -i 'env\|key\|cred\|secret\|pem'
 ```bash
 # Check API provider dashboards for unusual usage patterns
 # Check VPS auth logs for unexpected sessions
-python3 ~/Desktop/Love/tools/fleet.py all "last -20"
-python3 ~/Desktop/Love/tools/fleet.py all "grep 'Accepted' /var/log/auth.log | tail -30"
+python3 ~/love-unlimited/tools/fleet.py all "last -20"
+python3 ~/love-unlimited/tools/fleet.py all "grep 'Accepted' /var/log/auth.log | tail -30"
 
 # Check HIVE for unusual messages (if HIVE key was the leak)
-python3 ~/Desktop/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
 ### Determine full blast radius
@@ -165,10 +165,10 @@ python3 ~/Desktop/Love/hive/hive.py check
 ```bash
 # What else could the attacker access with this credential?
 # Cross-reference with wall assignments
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 
 # Check if the credential was reused across services (anti-pattern)
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 ```
 
 ---
@@ -179,10 +179,10 @@ python3 ~/Desktop/Love/tools/kos.py audit
 
 ```bash
 # Store new credential in keychain with wall assignment
-python3 ~/Desktop/Love/tools/credentials.py store <key_name> "<new_value>" "Rotated after leak incident" --wall <N>
+python3 ~/love-unlimited/tools/credentials.py store <key_name> "<new_value>" "Rotated after leak incident" --wall <N>
 
 # Verify storage
-python3 ~/Desktop/Love/tools/credentials.py list --wall <N>
+python3 ~/love-unlimited/tools/credentials.py list --wall <N>
 ```
 
 ### Update all services using the credential
@@ -191,26 +191,26 @@ python3 ~/Desktop/Love/tools/credentials.py list --wall <N>
 # For API keys: update in provider dashboard, then locally
 # For SSH keys: generate new pair, deploy public key to fleet
 ssh-keygen -t ed25519 -C "<instance>@kingdom" -f ~/.ssh/<key_name>
-python3 ~/Desktop/Love/tools/fleet.py all "echo '<new_public_key>' >> /root/.ssh/authorized_keys"
+python3 ~/love-unlimited/tools/fleet.py all "echo '<new_public_key>' >> /root/.ssh/authorized_keys"
 
 # For HIVE key: distribute to all instances via secure channel (NOT HIVE itself)
 # Must be done in person or via pre-shared encrypted channel
 
 # Verify the new credential works
-python3 ~/Desktop/Love/tools/credentials.py get <key_name>
+python3 ~/love-unlimited/tools/credentials.py get <key_name>
 ```
 
 ### Verify rotation
 
 ```bash
 # Run credential audit
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 
 # Run KOS compliance check
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 
 # Verify PEACE score
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 ```
 
 ### If git history contains the credential
@@ -218,7 +218,7 @@ python3 ~/Desktop/Love/tools/peace.py score
 ```bash
 # WARNING: Force-push required. Coordinate with all team members first.
 # Option 1: BFG Repo Cleaner (preferred)
-# java -jar bfg.jar --replace-text passwords.txt ~/Desktop/Love
+# java -jar bfg.jar --replace-text passwords.txt ~/love-unlimited
 # git reflog expire --expire=now --all && git gc --prune=now --aggressive
 # git push --force
 
@@ -226,8 +226,8 @@ python3 ~/Desktop/Love/tools/peace.py score
 # git rebase and amend the specific commit (interactive, requires care)
 
 # After cleanup: re-baseline
-python3 ~/Desktop/Love/tools/kos.py integrity baseline
-python3 ~/Desktop/Love/tools/peace.py snapshot
+python3 ~/love-unlimited/tools/kos.py integrity baseline
+python3 ~/love-unlimited/tools/peace.py snapshot
 ```
 
 ---
@@ -247,18 +247,18 @@ python3 ~/Desktop/Love/tools/peace.py snapshot
 ```bash
 # Confirm old credential no longer works (test against provider)
 # Confirm new credential works
-python3 ~/Desktop/Love/tools/credentials.py get <key_name>
+python3 ~/love-unlimited/tools/credentials.py get <key_name>
 
 # Full audit pass
-python3 ~/Desktop/Love/tools/credentials.py audit
-python3 ~/Desktop/Love/tools/kos.py audit
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/credentials.py audit
+python3 ~/love-unlimited/tools/kos.py audit
+python3 ~/love-unlimited/tools/peace.py score
 
 # If Kingdom was halted, resume
-python3 ~/Desktop/Love/tools/peace.py resume
+python3 ~/love-unlimited/tools/peace.py resume
 
 # Verify fleet connectivity with new credentials
-python3 ~/Desktop/Love/tools/fleet.py health
+python3 ~/love-unlimited/tools/fleet.py health
 ```
 
 PEACE score must be >= 60% (YELLOW) before resuming normal operation.
@@ -268,7 +268,7 @@ PEACE score must be >= 60% (YELLOW) before resuming normal operation.
 ## Post-Incident
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py review
+python3 ~/love-unlimited/tools/peace.py review
 ```
 
 Fill in the review template. Key questions:

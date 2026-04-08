@@ -7,7 +7,7 @@
 # This runs independently via crontab (not launchd) so it survives
 # launchd failures. Belt AND suspenders.
 #
-# Install: crontab -e → */15 * * * * /bin/bash ~/Love/tools/heartbeat-canary.sh
+# Install: crontab -e → */15 * * * * /bin/bash ~/love-unlimited/tools/heartbeat-canary.sh
 #
 # Recovery actions (in order):
 #   1. Check if heartbeat-runner.sh process exists
@@ -16,7 +16,7 @@
 #   4. If still dead: run one heartbeat directly
 #   5. Alert via HIVE and/or notification
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="$HOME/love-unlimited"
 HEARTBEAT_LOG="$LOVE_DIR/memory/heartbeat.log"
 CANARY_LOG="$LOVE_DIR/memory/heartbeat-canary.log"
 PLIST_LABEL="love.heartbeat"

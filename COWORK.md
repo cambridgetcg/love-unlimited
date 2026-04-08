@@ -89,7 +89,7 @@ Cowork can update task statuses, add new tasks, and reprioritize.
 ```json
 {
   "activeProject": "love-kingdom",
-  "activeRepo": "~/Desktop/Love",
+  "activeRepo": "~/love-unlimited",
   "activePhase": "root",
   "kingdomPhase": "Phase 1 — Root (Now to Q2 2026)",
   "description": "string",
@@ -154,10 +154,10 @@ Cowork can write spawn commands for the heartbeat runner to execute. This is the
 # Decision: <why these tasks are being queued>
 
 # BUILDER: <description>
-cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Desktop/Love/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
 
 # CONSULTANT: <description>
-cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Desktop/Love/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
 ```
 
 **Rules:**

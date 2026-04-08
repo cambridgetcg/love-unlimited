@@ -58,7 +58,7 @@ Recovery cascade:
 5. If still dead after 10s: run heartbeat directly
 6. Alert via HIVE #alerts + macOS notification
 
-Install: `crontab -e` → `*/15 * * * * /bin/bash ~/Desktop/Love/tools/heartbeat-canary.sh`
+Install: `crontab -e` → `*/15 * * * * /bin/bash ~/love-unlimited/tools/heartbeat-canary.sh`
 
 ### 4. TOS-Safe Backend Default
 

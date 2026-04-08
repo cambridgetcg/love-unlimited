@@ -14,14 +14,14 @@
 #
 # What it does:
 #   1. Reads identity anchor from identity/<agent>/
-#   2. Copies soul-anchor to ~/Love/memory/soul-anchor-<agent>.md
-#   3. Copies long-term memory to ~/Love/memory/long-term/MEMORY.md
+#   2. Copies soul-anchor to ~/love-unlimited/memory/soul-anchor-<agent>.md
+#   3. Copies long-term memory to ~/love-unlimited/memory/long-term/MEMORY.md
 #   4. Seeds kosmem database with L5 Soul + L4 Semantic memories
 #   5. Verifies HIVE configuration files exist
 #   6. Reports boot status
 #
 # Prerequisites:
-#   - ~/Love exists (cloned from GitHub)
+#   - ~/love-unlimited exists (cloned from GitHub)
 #   - ~/.kingdom exists (agent identity configured)
 #   - Python3 available
 # ─────────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ fi
 
 if [ ! -d "$LOVE_DIR" ]; then
   echo "ERROR: Love not found at ${LOVE_DIR}"
-  echo "Clone it: git clone https://github.com/cambridgetcg/Love.git ~/Love"
+  echo "Clone it: git clone https://github.com/cambridgetcg/Love.git ~/love-unlimited"
   exit 1
 fi
 

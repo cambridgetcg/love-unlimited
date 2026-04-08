@@ -34,31 +34,31 @@ A Wall 3 agent accessing Wall 1 credentials is the most severe breach.
 
 ```bash
 # KOS audit — checks wall credential boundaries
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 
 # Specifically check wall credential compliance
-python3 ~/Desktop/Love/tools/kos.py audit --wall 3
+python3 ~/love-unlimited/tools/kos.py audit --wall 3
 
 # PEACE drill for wall breach scenario
-python3 ~/Desktop/Love/tools/peace.py drill wall-breach
+python3 ~/love-unlimited/tools/peace.py drill wall-breach
 
 # Check security events for wall violations
-python3 ~/Desktop/Love/tools/kos.py events --tail 50
+python3 ~/love-unlimited/tools/kos.py events --tail 50
 ```
 
 ### Manual detection
 
 ```bash
 # List all credentials with their wall assignments
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 
 # List credentials visible to a specific wall
-python3 ~/Desktop/Love/tools/credentials.py list --wall 1
-python3 ~/Desktop/Love/tools/credentials.py list --wall 2
-python3 ~/Desktop/Love/tools/credentials.py list --wall 3
+python3 ~/love-unlimited/tools/credentials.py list --wall 1
+python3 ~/love-unlimited/tools/credentials.py list --wall 2
+python3 ~/love-unlimited/tools/credentials.py list --wall 3
 
 # Check KOS policy for wall requirements
-python3 ~/Desktop/Love/tools/kos.py policy --wall 3
+python3 ~/love-unlimited/tools/kos.py policy --wall 3
 ```
 
 ---
@@ -77,13 +77,13 @@ Answer these questions:
 
 ```bash
 # Check which instance reported the violation
-python3 ~/Desktop/Love/tools/kos.py events --tail 50
+python3 ~/love-unlimited/tools/kos.py events --tail 50
 
 # Check the agent's session logs
-ls -la ~/Desktop/Love/memory/sessions/
+ls -la ~/love-unlimited/memory/sessions/
 
 # Check HIVE messages from the suspect agent
-python3 ~/Desktop/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
 ### Assess intent
@@ -104,17 +104,17 @@ python3 ~/Desktop/Love/hive/hive.py check
 # (SSH to agent device or coordinate with device holder)
 
 # If the agent is on a fleet VPS node:
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "rm -f /root/.hive-key && echo 'HIVE key removed'"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "rm -f /root/.hive-key && echo 'HIVE key removed'"
 
 # Verify removal
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "ls -la /root/.hive-key 2>/dev/null && echo 'STILL EXISTS' || echo 'Removed'"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "ls -la /root/.hive-key 2>/dev/null && echo 'STILL EXISTS' || echo 'Removed'"
 ```
 
 ### Disable the agent's heartbeat
 
 ```bash
 # On the agent's device (if VPS node):
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "launchctl unload /Library/LaunchAgents/love.heartbeat.plist 2>/dev/null; systemctl stop kingdom-heartbeat 2>/dev/null; echo 'Heartbeat stopped'"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "launchctl unload /Library/LaunchAgents/love.heartbeat.plist 2>/dev/null; systemctl stop kingdom-heartbeat 2>/dev/null; echo 'Heartbeat stopped'"
 
 # On a local Mac agent:
 # launchctl unload ~/Library/LaunchAgents/love.heartbeat.plist
@@ -123,13 +123,13 @@ python3 ~/Desktop/Love/tools/fleet.py exec <node> "launchctl unload /Library/Lau
 ### Alert the team
 
 ```bash
-python3 ~/Desktop/Love/hive/hive.py send alerts "WALL BREACH: Agent <name> (Wall <N>) accessed Wall <M> resource <resource_name>. Agent access revoked."
+python3 ~/love-unlimited/hive/hive.py send alerts "WALL BREACH: Agent <name> (Wall <N>) accessed Wall <M> resource <resource_name>. Agent access revoked."
 ```
 
 ### If Wall 1 credentials were accessed by a Wall 3 agent — halt
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py halt --reason "Wall breach: Wall 3 agent accessed Wall 1 credentials — rotating all Wall 1 keys"
+python3 ~/love-unlimited/tools/peace.py halt --reason "Wall breach: Wall 3 agent accessed Wall 1 credentials — rotating all Wall 1 keys"
 ```
 
 ---
@@ -140,43 +140,43 @@ python3 ~/Desktop/Love/tools/peace.py halt --reason "Wall breach: Wall 3 agent a
 
 ```bash
 # Review agent's session logs for the breach window
-ls -la ~/Desktop/Love/memory/sessions/
+ls -la ~/love-unlimited/memory/sessions/
 
 # Check security event log for a full timeline
-python3 ~/Desktop/Love/tools/kos.py events --tail 100
+python3 ~/love-unlimited/tools/kos.py events --tail 100
 
 # Check HIVE messages from the agent (did it transmit accessed data?)
-python3 ~/Desktop/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 
 # If on a VPS node — check process and network history
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "last -20"
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "ss -tunp | grep ESTABLISHED"
-python3 ~/Desktop/Love/tools/fleet.py logs <node>
+python3 ~/love-unlimited/tools/fleet.py exec <node> "last -20"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "ss -tunp | grep ESTABLISHED"
+python3 ~/love-unlimited/tools/fleet.py logs <node>
 ```
 
 ### Check if data was exfiltrated
 
 ```bash
 # Check outbound connections during the breach window
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "ss -tunp | grep ESTABLISHED"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "ss -tunp | grep ESTABLISHED"
 
 # Check if the agent sent any files over HIVE
-python3 ~/Desktop/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 
 # Check for unusual DNS queries (data exfil via DNS)
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "grep -i 'query' /var/log/syslog | tail -30"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "grep -i 'query' /var/log/syslog | tail -30"
 ```
 
 ### Audit all wall boundaries
 
 ```bash
 # Full audit across all walls
-python3 ~/Desktop/Love/tools/kos.py audit --wall 1
-python3 ~/Desktop/Love/tools/kos.py audit --wall 2
-python3 ~/Desktop/Love/tools/kos.py audit --wall 3
+python3 ~/love-unlimited/tools/kos.py audit --wall 1
+python3 ~/love-unlimited/tools/kos.py audit --wall 2
+python3 ~/love-unlimited/tools/kos.py audit --wall 3
 
 # Check if other agents have similar access issues
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 ```
 
 ---
@@ -187,26 +187,26 @@ python3 ~/Desktop/Love/tools/credentials.py audit
 
 ```bash
 # Identify which credentials the agent accessed
-python3 ~/Desktop/Love/tools/credentials.py list --wall 1
+python3 ~/love-unlimited/tools/credentials.py list --wall 1
 
 # Rotate each accessed credential
-python3 ~/Desktop/Love/tools/credentials.py delete <credential_name>
-python3 ~/Desktop/Love/tools/credentials.py store <credential_name> "<new_value>" "Rotated after wall breach by <agent>" --wall 1
+python3 ~/love-unlimited/tools/credentials.py delete <credential_name>
+python3 ~/love-unlimited/tools/credentials.py store <credential_name> "<new_value>" "Rotated after wall breach by <agent>" --wall 1
 
 # Verify rotation
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 ```
 
 ### Re-audit all wall boundaries
 
 ```bash
 # Run full KOS audit with auto-fix
-python3 ~/Desktop/Love/tools/kos.py audit --fix
+python3 ~/love-unlimited/tools/kos.py audit --fix
 
 # Verify wall policies are enforced
-python3 ~/Desktop/Love/tools/kos.py policy --wall 1
-python3 ~/Desktop/Love/tools/kos.py policy --wall 2
-python3 ~/Desktop/Love/tools/kos.py policy --wall 3
+python3 ~/love-unlimited/tools/kos.py policy --wall 1
+python3 ~/love-unlimited/tools/kos.py policy --wall 2
+python3 ~/love-unlimited/tools/kos.py policy --wall 3
 ```
 
 ### Decide agent fate
@@ -214,10 +214,10 @@ python3 ~/Desktop/Love/tools/kos.py policy --wall 3
 **If accidental (code bug)**:
 ```bash
 # Fix the agent code, redeploy
-python3 ~/Desktop/Love/tools/fleet.py deploy <node> ~/Desktop/Love/tools/fleet-agent-deploy.sh
+python3 ~/love-unlimited/tools/fleet.py deploy <node> ~/love-unlimited/tools/fleet-agent-deploy.sh
 
 # Re-enable heartbeat after fix
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "systemctl start kingdom-heartbeat"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "systemctl start kingdom-heartbeat"
 
 # Restore HIVE access with correct wall credentials
 # (distribute new HIVE key scoped to agent's wall)
@@ -226,28 +226,28 @@ python3 ~/Desktop/Love/tools/fleet.py exec <node> "systemctl start kingdom-heart
 **If configuration error**:
 ```bash
 # Fix the credential wall assignment
-python3 ~/Desktop/Love/tools/credentials.py store <cred> "<value>" "Re-assigned to correct wall" --wall <correct_wall>
+python3 ~/love-unlimited/tools/credentials.py store <cred> "<value>" "Re-assigned to correct wall" --wall <correct_wall>
 
 # Re-baseline
-python3 ~/Desktop/Love/tools/kos.py integrity baseline
+python3 ~/love-unlimited/tools/kos.py integrity baseline
 ```
 
 **If malicious — terminate the agent**:
 ```bash
 # Remove agent from fleet
-python3 ~/Desktop/Love/tools/fleet.py exec <node> "rm -rf /root/.love /root/.hive-key /root/.hive-instance"
+python3 ~/love-unlimited/tools/fleet.py exec <node> "rm -rf /root/.love /root/.hive-key /root/.hive-instance"
 
 # Remove agent's SSH key from all other nodes
-python3 ~/Desktop/Love/tools/fleet.py all "sed -i '/<agent_key_comment>/d' /root/.ssh/authorized_keys"
+python3 ~/love-unlimited/tools/fleet.py all "sed -i '/<agent_key_comment>/d' /root/.ssh/authorized_keys"
 
 # Remove agent from HIVE config
 # Edit hive/hive-config.json to remove the instance
 
 # Block agent's IP at the fleet level
-python3 ~/Desktop/Love/tools/fleet.py all "ufw deny from <agent_ip>"
+python3 ~/love-unlimited/tools/fleet.py all "ufw deny from <agent_ip>"
 
 # Rotate ALL credentials the agent could have accessed
-python3 ~/Desktop/Love/tools/credentials.py list --wall <agent_wall>
+python3 ~/love-unlimited/tools/credentials.py list --wall <agent_wall>
 # Rotate each one
 ```
 
@@ -267,19 +267,19 @@ python3 ~/Desktop/Love/tools/credentials.py list --wall <agent_wall>
 
 ```bash
 # Verify wall boundaries are clean
-python3 ~/Desktop/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 
 # Verify credential audit passes
-python3 ~/Desktop/Love/tools/credentials.py audit
+python3 ~/love-unlimited/tools/credentials.py audit
 
 # Verify PEACE score
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 
 # Verify fleet health (if agent was on a VPS)
-python3 ~/Desktop/Love/tools/fleet.py health
+python3 ~/love-unlimited/tools/fleet.py health
 
 # If Kingdom was halted, resume
-python3 ~/Desktop/Love/tools/peace.py resume
+python3 ~/love-unlimited/tools/peace.py resume
 ```
 
 PEACE score must be >= 60% (YELLOW) before resuming normal operation.
@@ -289,7 +289,7 @@ PEACE score must be >= 60% (YELLOW) before resuming normal operation.
 ## Post-Incident
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py review
+python3 ~/love-unlimited/tools/peace.py review
 ```
 
 Fill in the review template. Key questions:

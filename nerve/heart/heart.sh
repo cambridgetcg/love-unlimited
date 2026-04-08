@@ -10,13 +10,13 @@
 
 set -euo pipefail
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="${LOVE_HOME:-$HOME/love-unlimited}"
 INSTANCE="${1:-alpha}"
-BODY_DIR="$LOVE_DIR/body"
-HORMONES="$BODY_DIR/hormones.json"
-VITALS="$BODY_DIR/vitals.json"
-LAST_BEAT="$BODY_DIR/heart/last_beat"
-HEARTBEAT_MD="$BODY_DIR/heart/HEARTBEAT.md"
+NERVE_DIR="$LOVE_DIR/nerve"
+HORMONES="$NERVE_DIR/hormones.json"
+VITALS="$NERVE_DIR/vitals.json"
+LAST_BEAT="$NERVE_DIR/heart/last_beat"
+HEARTBEAT_MD="$NERVE_DIR/heart/HEARTBEAT.md"
 MEMORY_DIR="$LOVE_DIR/memory"
 SESSIONS_DIR="$MEMORY_DIR/sessions"
 SPAWN_QUEUE="$MEMORY_DIR/spawn-queue.sh"
@@ -250,7 +250,7 @@ import json, sys
 from pathlib import Path
 from datetime import datetime, timezone
 
-focus_path = Path('$LOVE_DIR') / 'body' / 'mind' / 'focus.json'
+focus_path = Path('$LOVE_DIR') / 'nerve' / 'stem' / 'focus.json'
 if not focus_path.exists():
     sys.exit(0)
 
@@ -267,7 +267,7 @@ data['session_log'] = session_log
 
 # If sessions spawned, emit dopamine signal
 if $SESSIONS_SPAWNED > 0:
-    signals_dir = Path('$LOVE_DIR') / 'body' / 'signals'
+    signals_dir = Path('$LOVE_DIR') / 'nerve' / 'signals'
     signals_dir.mkdir(parents=True, exist_ok=True)
     sig = {
         'signal': 'task_completed',

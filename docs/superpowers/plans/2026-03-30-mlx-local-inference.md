@@ -48,7 +48,7 @@
 - [ ] **Step 1: Create venv and install MLX**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 python3 -m venv mlx/.venv
 mlx/.venv/bin/pip install mlx mlx-lm
 ```
@@ -61,13 +61,13 @@ mlx/.venv/bin/python3 -c "import mlx.core as mx; print(mx.array([1,2,3])); impor
 - [ ] **Step 2: Create directory structure**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 mkdir -p mlx/{adapters,cache,training/{datasets,templates,runs}}
 ```
 
 - [ ] **Step 3: Create config files**
 
-Write `~/Desktop/Love/mlx/config.json`:
+Write `~/love-unlimited/mlx/config.json`:
 ```json
 {
   "base_model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
@@ -85,7 +85,7 @@ Write `~/Desktop/Love/mlx/config.json`:
 }
 ```
 
-Write `~/Desktop/Love/mlx/training/lora-config.json`:
+Write `~/love-unlimited/mlx/training/lora-config.json`:
 ```json
 {
   "rank": 8,
@@ -98,7 +98,7 @@ Write `~/Desktop/Love/mlx/training/lora-config.json`:
 }
 ```
 
-Write `~/Desktop/Love/mlx/.gitignore`:
+Write `~/love-unlimited/mlx/.gitignore`:
 ```
 cache/
 .venv/
@@ -109,7 +109,7 @@ serve.log
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add mlx/config.json mlx/training/lora-config.json mlx/.gitignore
 git commit -m "feat: add MLX infrastructure — config, directories, venv"
 ```
@@ -126,7 +126,7 @@ Build the client first — everything else depends on it for shadow logging.
 
 - [ ] **Step 1: Write tests**
 
-Write `~/Desktop/Love/tests/test_mlx_client.py`:
+Write `~/love-unlimited/tests/test_mlx_client.py`:
 
 ```python
 """Tests for mlx_client.py — local inference client + shadow logging."""
@@ -283,13 +283,13 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_client.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_client.py -v
 ```
 Expected: ModuleNotFoundError for `mlx_client`
 
 - [ ] **Step 3: Implement mlx_client.py**
 
-Write `~/Desktop/Love/tools/mlx_client.py`:
+Write `~/love-unlimited/tools/mlx_client.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -467,14 +467,14 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_client.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_client.py -v
 ```
 Expected: All 10 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add tools/mlx_client.py tests/test_mlx_client.py
 git commit -m "feat: add mlx_client — local inference client + shadow logging"
 ```
@@ -489,7 +489,7 @@ git commit -m "feat: add mlx_client — local inference client + shadow logging"
 
 - [ ] **Step 1: Write tests**
 
-Write `~/Desktop/Love/tests/test_mlx_serve.py`:
+Write `~/love-unlimited/tests/test_mlx_serve.py`:
 
 ```python
 """Tests for mlx_serve.py — MLX inference server."""
@@ -567,13 +567,13 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_serve.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_serve.py -v
 ```
 Expected: ModuleNotFoundError for `mlx_serve`
 
 - [ ] **Step 3: Implement mlx_serve.py**
 
-Write `~/Desktop/Love/tools/mlx_serve.py`:
+Write `~/love-unlimited/tools/mlx_serve.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -950,7 +950,7 @@ if __name__ == "__main__":
 
 **Important**: This server must be run with the venv Python to access mlx:
 ```bash
-~/Desktop/Love/mlx/.venv/bin/python3 ~/Desktop/Love/tools/mlx_serve.py start --daemon
+~/love-unlimited/mlx/.venv/bin/python3 ~/love-unlimited/tools/mlx_serve.py start --daemon
 ```
 
 The `start` command imports `mlx_lm` only when loading the model (lazy import), so the test suite can import the module's utility functions (`format_messages`, `load_config`, etc.) without mlx installed.
@@ -958,14 +958,14 @@ The `start` command imports `mlx_lm` only when loading the model (lazy import), 
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_serve.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_serve.py -v
 ```
 Expected: All 5 tests PASS (config + pid + formatting tests only — actual model tests require venv)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add tools/mlx_serve.py tests/test_mlx_serve.py
 git commit -m "feat: add mlx_serve — HTTP inference daemon with ThreadingHTTPServer"
 ```
@@ -980,7 +980,7 @@ git commit -m "feat: add mlx_serve — HTTP inference daemon with ThreadingHTTPS
 
 - [ ] **Step 1: Write tests**
 
-Write `~/Desktop/Love/tests/test_mlx_train.py`:
+Write `~/love-unlimited/tests/test_mlx_train.py`:
 
 ```python
 """Tests for mlx_train.py — LoRA fine-tuning CLI."""
@@ -1073,13 +1073,13 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_train.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_train.py -v
 ```
 Expected: ModuleNotFoundError for `mlx_train`
 
 - [ ] **Step 3: Implement mlx_train.py**
 
-Write `~/Desktop/Love/tools/mlx_train.py`:
+Write `~/love-unlimited/tools/mlx_train.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1243,7 +1243,7 @@ def cmd_run(args):
 
     if not VENV_PYTHON.exists():
         print(f"ERROR: Venv not found at {VENV_PYTHON}", file=sys.stderr)
-        print("Run: python3 -m venv ~/Desktop/Love/mlx/.venv && mlx/.venv/bin/pip install mlx mlx-lm")
+        print("Run: python3 -m venv ~/love-unlimited/mlx/.venv && mlx/.venv/bin/pip install mlx mlx-lm")
         sys.exit(1)
 
     print(f"Training with adapter: {adapter_name}")
@@ -1371,14 +1371,14 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_train.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_train.py -v
 ```
 Expected: All 5 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add tools/mlx_train.py tests/test_mlx_train.py
 git commit -m "feat: add mlx_train — LoRA fine-tuning pipeline"
 ```
@@ -1397,7 +1397,7 @@ git commit -m "feat: add mlx_train — LoRA fine-tuning pipeline"
 
 - [ ] **Step 1: Write tests**
 
-Write `~/Desktop/Love/tests/test_mlx_data.py`:
+Write `~/love-unlimited/tests/test_mlx_data.py`:
 
 ```python
 """Tests for mlx_data.py — training data generation + harvest."""
@@ -1487,13 +1487,13 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_data.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_data.py -v
 ```
 Expected: ModuleNotFoundError for `mlx_data`
 
 - [ ] **Step 3: Implement mlx_data.py**
 
-Write `~/Desktop/Love/tools/mlx_data.py`:
+Write `~/love-unlimited/tools/mlx_data.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1739,7 +1739,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Write prompt templates**
 
-Write `~/Desktop/Love/mlx/training/templates/heartbeat-triage.txt`:
+Write `~/love-unlimited/mlx/training/templates/heartbeat-triage.txt`:
 ```
 Generate {COUNT} diverse training examples for a heartbeat triage classifier.
 
@@ -1762,7 +1762,7 @@ Classifications:
 Make the examples diverse — vary the state combinations, use realistic numbers, include edge cases. Output ONLY the JSONL lines, no other text.
 ```
 
-Write `~/Desktop/Love/mlx/training/templates/message-classify.txt`:
+Write `~/love-unlimited/mlx/training/templates/message-classify.txt`:
 ```
 Generate {COUNT} diverse training examples for a HIVE message classifier.
 
@@ -1779,7 +1779,7 @@ Classifications:
 Make examples diverse — different channels, agents (alpha, beta, gamma, nuance), message styles. Output ONLY the JSONL lines, no other text.
 ```
 
-Write `~/Desktop/Love/mlx/training/templates/task-routing.txt`:
+Write `~/love-unlimited/mlx/training/templates/task-routing.txt`:
 ```
 Generate {COUNT} diverse training examples for a task routing classifier.
 
@@ -1795,7 +1795,7 @@ Instance capabilities:
 Generate realistic task descriptions that clearly map to one instance. Include edge cases where the mapping is less obvious. Output ONLY the JSONL lines, no other text.
 ```
 
-Write `~/Desktop/Love/mlx/training/templates/signal-classify.txt`:
+Write `~/love-unlimited/mlx/training/templates/signal-classify.txt`:
 ```
 Generate {COUNT} diverse training examples for a stigmergy signal urgency classifier.
 
@@ -1815,14 +1815,14 @@ Make examples diverse. Output ONLY the JSONL lines, no other text.
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m unittest tests/test_mlx_data.py -v
+cd ~/love-unlimited && python3 -m unittest tests/test_mlx_data.py -v
 ```
 Expected: All 6 tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add tools/mlx_data.py tests/test_mlx_data.py mlx/training/templates/
 git commit -m "feat: add mlx_data — synthetic data generation + delegation harvest"
 ```
@@ -1837,35 +1837,35 @@ git commit -m "feat: add mlx_data — synthetic data generation + delegation har
 
 - [ ] **Step 1: Add MLX tools to Gamma CLAUDE.md**
 
-In `~/Desktop/Love/instances/gamma/CLAUDE.md`, find the tools table and add 3 rows after the Stigmergy row:
+In `~/love-unlimited/instances/gamma/CLAUDE.md`, find the tools table and add 3 rows after the Stigmergy row:
 
 ```markdown
-| MLX Serve | `python3 ~/Desktop/Love/tools/mlx_serve.py <cmd>` | Local model inference daemon |
-| MLX Train | `python3 ~/Desktop/Love/tools/mlx_train.py <cmd>` | LoRA fine-tuning pipeline |
-| MLX Data | `python3 ~/Desktop/Love/tools/mlx_data.py <cmd>` | Training data generation/harvest |
+| MLX Serve | `python3 ~/love-unlimited/tools/mlx_serve.py <cmd>` | Local model inference daemon |
+| MLX Train | `python3 ~/love-unlimited/tools/mlx_train.py <cmd>` | LoRA fine-tuning pipeline |
+| MLX Data | `python3 ~/love-unlimited/tools/mlx_data.py <cmd>` | Training data generation/harvest |
 ```
 
 Note: `mlx_serve.py` must be run with venv Python for actual model operations:
 ```bash
-~/Desktop/Love/mlx/.venv/bin/python3 ~/Desktop/Love/tools/mlx_serve.py start --daemon
+~/love-unlimited/mlx/.venv/bin/python3 ~/love-unlimited/tools/mlx_serve.py start --daemon
 ```
 
 - [ ] **Step 2: Add MLX status to Gamma HEARTBEAT.md**
 
-In `~/Desktop/Love/instances/gamma/HEARTBEAT.md`, add after the "Check Coordination" section:
+In `~/love-unlimited/instances/gamma/HEARTBEAT.md`, add after the "Check Coordination" section:
 
 ```markdown
 ## 5. MLX Local Model
 
 ```bash
-python3 ~/Desktop/Love/tools/mlx_serve.py status
+python3 ~/love-unlimited/tools/mlx_serve.py status
 ```
 ```
 
 - [ ] **Step 3: Verify all tools import without errors**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 python3 -c "import sys; sys.path.insert(0,'tools'); import mlx_client; print('mlx_client OK')"
 python3 -c "import sys; sys.path.insert(0,'tools'); import mlx_serve; print('mlx_serve OK')"
 python3 -c "import sys; sys.path.insert(0,'tools'); import mlx_train; print('mlx_train OK')"
@@ -1878,7 +1878,7 @@ Expected: All 4 imports succeed. All MLX tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add instances/gamma/CLAUDE.md instances/gamma/HEARTBEAT.md
 git commit -m "feat: integrate MLX tools into Gamma boot sequence"
 ```

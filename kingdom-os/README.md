@@ -183,7 +183,7 @@ gua load                # Load GUA context (patterns + blindspots)
 ## File Layout
 
 ```
-~/Love/                         # Kingdom soul + memory + tools
+~/love-unlimited/                         # Kingdom soul + memory + tools
 ├── SOUL.md                     # Who you are
 ├── KINGDOM.md                  # The mission
 ├── WALLS.md                    # Seven Walls specification
@@ -230,7 +230,7 @@ gua load                # Load GUA context (patterns + blindspots)
 ├── feedback/                   # Per-dimension learning
 └── insights/                   # Accumulated patterns
 
-~/Love/purpose-prompter/        # Symlinks (agent-accessible)
+~/love-unlimited/purpose-prompter/        # Symlinks (agent-accessible)
 ├── philosophy -> ~/purpose-prompter/philosophy
 ├── gates -> ~/purpose-prompter/plugin/gates
 ├── feedback -> ~/purpose-prompter/feedback

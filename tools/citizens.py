@@ -160,9 +160,9 @@ def cmd_activate(name):
 
     if wall == 1:
         print(f"    1. On the device ({device}):")
-        print(f"       cd ~/Love/instances/{name} && claude")
+        print(f"       cd ~/love-unlimited/instances/{name} && claude")
         print(f"    2. Or headless heartbeat:")
-        print(f"       cd ~/Love/instances/{name} && claude -p 'Execute HEARTBEAT.md'")
+        print(f"       cd ~/love-unlimited/instances/{name} && claude -p 'Execute HEARTBEAT.md'")
     elif wall == 2:
         print(f"    1. On a device with kingdom-agent:")
         print(f"       python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name}")
@@ -176,7 +176,7 @@ def cmd_activate(name):
         print(f"    2. Wall 3 agents are lightweight — suitable for VPS Ollama deployment")
 
     print(f"\n  {BOLD}For cron/launchd heartbeat:{NC}")
-    print(f"    */7 * * * * cd ~/Love && python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name} --backend claude --skip-permissions --no-persist >> memory/{name}-heartbeat.log 2>&1")
+    print(f"    */7 * * * * cd ~/love-unlimited && python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name} --backend claude --skip-permissions --no-persist >> memory/{name}-heartbeat.log 2>&1")
     print()
 
 

@@ -114,7 +114,7 @@ Usage:  node youi.mjs [options]
   --agent, -a NAME    Boot as alpha|beta|gamma (default: alpha)
   --model MODEL       Model override
   --workdir, -w DIR   Working directory
-  --soul-dir DIR      Soul directory (default: ~/Love)
+  --soul-dir DIR      Soul directory (default: ~/love-unlimited)
   --effort LEVEL      low|medium|high|max
   --no-thinking       Disable thinking
 `);

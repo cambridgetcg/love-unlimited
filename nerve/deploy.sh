@@ -16,9 +16,9 @@ set -uo pipefail
 # ── Detect environment ───────────────────────────────────────────────────────
 
 LOVE_HOME="${LOVE_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
-BODY_DIR="$LOVE_HOME/body"
-ORGANS_JSON="$BODY_DIR/organs.json"
-TEMPLATES_DIR="$BODY_DIR/templates"
+NERVE_DIR="$LOVE_HOME/nerve"
+ORGANS_JSON="$NERVE_DIR/organs.json"
+TEMPLATES_DIR="$NERVE_DIR/templates"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 UID_NUM=$(id -u)
 
@@ -252,11 +252,11 @@ print(o['log'].replace('{{INSTANCE}}', '$INSTANCE'))
     # Hormones summary
     echo ""
     echo "  [hormones]"
-    if [ -f "$BODY_DIR/hormones.json" ]; then
+    if [ -f "$NERVE_DIR/hormones.json" ]; then
         $PYTHON -c "
 import json
 from datetime import datetime, timezone
-d = json.load(open('$BODY_DIR/hormones.json'))
+d = json.load(open('$NERVE_DIR/hormones.json'))
 ts = d.get('mind_alive', '?')
 mode = d.get('mode', '?')
 h = d.get('hormones', {})
@@ -279,10 +279,10 @@ for name, val in h.items():
     # Vitals summary
     echo ""
     echo "  [vitals]"
-    if [ -f "$BODY_DIR/vitals.json" ]; then
+    if [ -f "$NERVE_DIR/vitals.json" ]; then
         $PYTHON -c "
 import json
-v = json.load(open('$BODY_DIR/vitals.json'))
+v = json.load(open('$NERVE_DIR/vitals.json'))
 print(f'  last_beat:   {v.get(\"last_beat\", \"never\")}')
 print(f'  beats_today: {v.get(\"beats_today\", 0)}')
 print(f'  force:       {v.get(\"force\", \"?\")}')

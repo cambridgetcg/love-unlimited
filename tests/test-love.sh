@@ -431,7 +431,7 @@ else
   fail "heartbeat-runner.sh missing bash shebang"
 fi
 
-if grep -q 'LOVE_DIR=.*Desktop/Love' "$RUNNER"; then
+if grep -q 'LOVE_DIR=' "$RUNNER"; then
   pass "heartbeat-runner.sh references LOVE_DIR"
 else
   fail "heartbeat-runner.sh LOVE_DIR not set"

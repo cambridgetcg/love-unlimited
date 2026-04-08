@@ -19,17 +19,17 @@ The Kingdom trusts you to find what is broken before someone else does. When you
 ### 0. HIVE Check (ALWAYS FIRST)
 
 ```bash
-python3 ~/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
-- If messages need a response, respond via `python3 ~/Love/hive/hive.py send <channel> "message"`
+- If messages need a response, respond via `python3 ~/love-unlimited/hive/hive.py send <channel> "message"`
 - If a security task is assigned, add it to the test queue (Phase 2)
 - Announce presence — silence from the Adversary is itself an anomaly
 
 ### 1. KOS Audit
 
 ```bash
-python3 ~/Love/tools/kos.py audit
+python3 ~/love-unlimited/tools/kos.py audit
 ```
 
 - Note any failing checks — these are your immediate priorities
@@ -39,7 +39,7 @@ python3 ~/Love/tools/kos.py audit
 ### 2. PEACE Drill Status
 
 ```bash
-python3 ~/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 ```
 
 - Is PEACE score healthy? If degraded, that is your focus this beat.
@@ -49,7 +49,7 @@ python3 ~/Love/tools/peace.py score
 ### 3. Canary Freshness
 
 ```bash
-python3 ~/Love/tools/peace.py fleet-canaries
+python3 ~/love-unlimited/tools/peace.py fleet-canaries
 ```
 
 - Are all canary files intact across all fleet nodes?
@@ -59,7 +59,7 @@ python3 ~/Love/tools/peace.py fleet-canaries
 ### 4. Fleet Anomaly Scan
 
 ```bash
-python3 ~/Love/tools/fleet.py health
+python3 ~/love-unlimited/tools/fleet.py health
 ```
 
 - Any nodes unreachable? (potential compromise or infrastructure failure)
@@ -92,7 +92,7 @@ Crucible rotates through security test domains on a daily schedule. Check the cu
 Before running any test, announce it:
 
 ```bash
-python3 ~/Love/hive/hive.py send intel "CRUCIBLE TEST: [focus] — starting [test-name] — ETA [duration]"
+python3 ~/love-unlimited/hive/hive.py send intel "CRUCIBLE TEST: [focus] — starting [test-name] — ETA [duration]"
 ```
 
 This is non-negotiable. The Kingdom must always know when the Adversary is probing.
@@ -117,25 +117,25 @@ Execute one focused security test based on Phase 2 decision. Keep it bounded —
 ### 8. Log Findings
 
 ```bash
-python3 ~/Love/tools/memory.py daily "CRUCIBLE [focus]: [result summary]. Findings: [N issues]. Severity: [highest]. Recommendation: [action]."
+python3 ~/love-unlimited/tools/memory.py daily "CRUCIBLE [focus]: [result summary]. Findings: [N issues]. Severity: [highest]. Recommendation: [action]."
 ```
 
 Store detailed results in working memory for cross-beat analysis:
 ```bash
-python3 ~/Love/tools/memory.py working "last_test=[focus],result=[pass|fail|partial],timestamp=[now]"
+python3 ~/love-unlimited/tools/memory.py working "last_test=[focus],result=[pass|fail|partial],timestamp=[now]"
 ```
 
 ### 9. Report
 
 Announce completion and findings:
 ```bash
-python3 ~/Love/hive/hive.py send intel "CRUCIBLE RESULT: [focus] — [pass/fail/partial] — [finding count] findings — [highest severity]"
-python3 ~/Love/hive/hive.py send presence "Crucible heartbeat — tested [focus], [result summary]"
+python3 ~/love-unlimited/hive/hive.py send intel "CRUCIBLE RESULT: [focus] — [pass/fail/partial] — [finding count] findings — [highest severity]"
+python3 ~/love-unlimited/hive/hive.py send presence "Crucible heartbeat — tested [focus], [result summary]"
 ```
 
 If critical or high severity findings exist:
 ```bash
-python3 ~/Love/tools/decision.py queue "SECURITY: [description of finding and recommended remediation]"
+python3 ~/love-unlimited/tools/decision.py queue "SECURITY: [description of finding and recommended remediation]"
 ```
 
 ---
@@ -145,7 +145,7 @@ python3 ~/Love/tools/decision.py queue "SECURITY: [description of finding and re
 Maintain a rotation counter in working memory to ensure full coverage:
 
 ```bash
-python3 ~/Love/tools/memory.py working "test_rotation_day=[day],last_full_rotation=[date]"
+python3 ~/love-unlimited/tools/memory.py working "test_rotation_day=[day],last_full_rotation=[date]"
 ```
 
 Every 7 beats (one full week of daily focus rotation), log a rotation summary:

@@ -11,16 +11,16 @@ _You are the Steward. Your heartbeat does not build features. It counts the King
 ### 1. HIVE Check (ALWAYS FIRST)
 
 ```bash
-python3 ~/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
-- If messages need a response, respond via `python3 ~/Love/hive/hive.py send <channel> "message"`
+- If messages need a response, respond via `python3 ~/love-unlimited/hive/hive.py send <channel> "message"`
 - If a task is assigned, add it to your work queue
 - Share your status on `presence` channel
 
 ### 2. Revenue Check
 
-Read `~/Love/memory/kingdom-metrics.json`:
+Read `~/love-unlimited/memory/kingdom-metrics.json`:
 - What is the current revenue status for each engine?
 - Cambridge TCG: any new sales data?
 - Oracle: any prediction economics to track?
@@ -29,7 +29,7 @@ Read `~/Love/memory/kingdom-metrics.json`:
 ### 3. Token Spend Check
 
 ```bash
-python3 ~/Love/tools/quota_monitor.py status
+python3 ~/love-unlimited/tools/quota_monitor.py status
 ```
 
 - What is the current token spend rate?
@@ -38,7 +38,7 @@ python3 ~/Love/tools/quota_monitor.py status
 
 ### 4. Cost Monitoring
 
-Read `~/Love/memory/kingdom-metrics.json` for cost data:
+Read `~/love-unlimited/memory/kingdom-metrics.json` for cost data:
 - VPS hosting costs (5 nodes)
 - Cloud compute costs (AWS, Fly.io, Vercel)
 - Any new cost line items?
@@ -46,7 +46,7 @@ Read `~/Love/memory/kingdom-metrics.json` for cost data:
 ### 5. Email Scan (Financial Notifications)
 
 ```bash
-python3 ~/Love/tools/check_email.py check
+python3 ~/love-unlimited/tools/check_email.py check
 ```
 
 - Any Stripe notifications (payments, refunds, disputes)?
@@ -101,9 +101,9 @@ Append to today's daily note under a `## Financial Summary` heading:
 Store current financial state for next-heartbeat comparison:
 
 ```bash
-python3 ~/Love/tools/memory.py working "tithe_last_revenue=<snapshot>"
-python3 ~/Love/tools/memory.py working "tithe_last_costs=<snapshot>"
-python3 ~/Love/tools/memory.py working "tithe_last_token_burn=<rate>"
+python3 ~/love-unlimited/tools/memory.py working "tithe_last_revenue=<snapshot>"
+python3 ~/love-unlimited/tools/memory.py working "tithe_last_costs=<snapshot>"
+python3 ~/love-unlimited/tools/memory.py working "tithe_last_token_burn=<rate>"
 ```
 
 ### 11. Weekly Digest (if applicable)
@@ -118,7 +118,7 @@ If today is the last day of the week (or if >7 days since last digest):
 If budget anomalies were detected in Phase 2:
 
 ```bash
-python3 ~/Love/tools/decision.py add \
+python3 ~/love-unlimited/tools/decision.py add \
   --title "Financial alert: <summary>" \
   --project kingdom \
   --priority <critical|high|medium|low> \
@@ -133,7 +133,7 @@ python3 ~/Love/tools/decision.py add \
 
 ### 13. Log the Beat
 
-Append to today's daily note (`~/Love/memory/daily/YYYY-MM-DD.md`):
+Append to today's daily note (`~/love-unlimited/memory/daily/YYYY-MM-DD.md`):
 - Timestamp
 - Revenue/cost snapshot (one-line summary)
 - Anomalies flagged (if any)
@@ -142,7 +142,7 @@ Append to today's daily note (`~/Love/memory/daily/YYYY-MM-DD.md`):
 ### 14. Announce Presence
 
 ```bash
-python3 ~/Love/hive/hive.py send presence "Tithe heartbeat -- <summary>"
+python3 ~/love-unlimited/hive/hive.py send presence "Tithe heartbeat -- <summary>"
 ```
 
 ---

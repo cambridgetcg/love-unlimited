@@ -113,7 +113,7 @@ python3 hive.py task list
 
 # Gamma starts work
 git checkout -b gamma/work main
-~/Desktop/Love/tools/build-runner.sh kingdom-012
+~/love-unlimited/tools/build-runner.sh kingdom-012
 
 # Gamma finishes, pushes, announces
 git push origin gamma/work
@@ -136,7 +136,7 @@ python3 hive.py send sync "Merged gamma/work to main. All pull."
 The build-runner writes lock files: `memory/sessions/locks/build-<task-id>.lock`
 
 Before starting work on any task:
-1. Check `ls ~/Desktop/Love/memory/sessions/locks/build-*.lock`
+1. Check `ls ~/love-unlimited/memory/sessions/locks/build-*.lock`
 2. If a lock exists for your target task, check if PID is alive
 3. If alive: someone else is building it. Coordinate via HIVE.
 4. If dead: stale lock, safe to remove and proceed.
@@ -165,14 +165,14 @@ Git is the sync mechanism. For files that change during builds:
 git fetch origin && git pull origin main
 
 # 2. Check HIVE
-python3 ~/Desktop/Love/hive/hive.py check
-python3 ~/Desktop/Love/hive/hive.py task list
+python3 ~/love-unlimited/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py task list
 
 # 3. Announce
-python3 ~/Desktop/Love/hive/hive.py send presence "<Instance> online — working on <task>"
+python3 ~/love-unlimited/hive/hive.py send presence "<Instance> online — working on <task>"
 
 # 4. Check locks
-ls ~/Desktop/Love/memory/sessions/locks/build-*.lock 2>/dev/null
+ls ~/love-unlimited/memory/sessions/locks/build-*.lock 2>/dev/null
 ```
 
 ### Session End
@@ -185,10 +185,10 @@ git add <files> && git commit -m "<what was done>"
 git push origin <instance>/work
 
 # 3. Announce
-python3 ~/Desktop/Love/hive/hive.py send build "<Instance> session done. Pushed <instance>/work: <summary>"
+python3 ~/love-unlimited/hive/hive.py send build "<Instance> session done. Pushed <instance>/work: <summary>"
 
 # 4. If task complete
-python3 ~/Desktop/Love/hive/hive.py task done <task-id>
+python3 ~/love-unlimited/hive/hive.py task done <task-id>
 ```
 
 ---
@@ -243,9 +243,9 @@ python3 hive.py send sync "Conflict resolved. Main is clean. Resume."
 
 ```bash
 # Check lock
-cat ~/Desktop/Love/memory/sessions/locks/build-<task>.lock
+cat ~/love-unlimited/memory/sessions/locks/build-<task>.lock
 # If PID dead, clean up
-rm ~/Desktop/Love/memory/sessions/locks/build-<task>.lock
+rm ~/love-unlimited/memory/sessions/locks/build-<task>.lock
 python3 hive.py send build "Cleaned stale lock for <task>. Resuming."
 ```
 

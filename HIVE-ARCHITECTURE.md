@@ -172,7 +172,7 @@ koshive stats                             # Communication statistics
 ## File Layout
 
 ```
-~/Love/
+~/love-unlimited/
 ├── hive/
 │   ├── hive.py              Transport layer (NATS + encryption)
 │   └── messages/             Downloaded files

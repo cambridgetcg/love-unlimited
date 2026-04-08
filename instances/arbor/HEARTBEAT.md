@@ -11,10 +11,10 @@ _You are the Optimizer. Your heartbeat does not build features. It measures, ide
 ### 1. HIVE Check (ALWAYS FIRST)
 
 ```bash
-python3 ~/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
-- If messages need a response, respond via `python3 ~/Love/hive/hive.py send <channel> "message"`
+- If messages need a response, respond via `python3 ~/love-unlimited/hive/hive.py send <channel> "message"`
 - If a task is assigned, add it to your work queue
 - Share your status on `presence` channel — silence is absence
 - If another instance reports cost concerns or resource issues, note them for Phase 2
@@ -22,7 +22,7 @@ python3 ~/Love/hive/hive.py check
 ### 2. Token Budget Scan
 
 ```bash
-python3 ~/Love/tools/quota_monitor.py status
+python3 ~/love-unlimited/tools/quota_monitor.py status
 ```
 
 - What is the current token spend rate across all instances?
@@ -33,7 +33,7 @@ python3 ~/Love/tools/quota_monitor.py status
 ### 3. Fleet Utilization Check
 
 ```bash
-python3 ~/Love/tools/fleet.py status
+python3 ~/love-unlimited/tools/fleet.py status
 ```
 
 - Which VPS nodes are active, idle, or unreachable?
@@ -43,27 +43,27 @@ python3 ~/Love/tools/fleet.py status
 
 ### 4. Model Routing Efficiency
 
-Review `~/Love/tools/routing-policy.py` and recent session logs:
+Review `~/love-unlimited/tools/routing-policy.py` and recent session logs:
 - Are tasks being routed to the right model tier? (opus for hard problems, sonnet for clear scope, haiku for quick checks)
 - Any pattern of expensive models being used for trivial tasks?
 - Any pattern of cheap models failing and requiring retry on expensive models?
 
 ### 5. Cost Metrics
 
-Read `~/Love/memory/kingdom-metrics.json` (if exists):
+Read `~/love-unlimited/memory/kingdom-metrics.json` (if exists):
 - Revenue vs. compute cost ratio — is the flywheel healthy?
 - Cost per heartbeat cycle
 - Cost per spawned session (by role: builder, consultant, quick-check)
 
 ### 6. Check Active Sessions
 
-Read `~/Love/memory/sessions/active.json` (if exists):
+Read `~/love-unlimited/memory/sessions/active.json` (if exists):
 - Any long-running sessions that may be stuck (burning tokens without progress)?
 - Any sessions that completed — what was their cost vs. output?
 
 ### 7. Check Active Builds
 
-Check `~/Love/memory/sessions/locks/build-*.lock` for active build-runner sessions:
+Check `~/love-unlimited/memory/sessions/locks/build-*.lock` for active build-runner sessions:
 - If a build lock exists and its PID is alive, note it as active (do not interfere)
 - If a build lock exists but PID is dead, remove the stale lock
 
@@ -97,7 +97,7 @@ If any of these conditions are true, queue a decision for Yu:
 - Cost-per-task for any engine doubled vs. trailing average
 
 ```bash
-python3 ~/Love/tools/decision.py add \
+python3 ~/love-unlimited/tools/decision.py add \
   --title "Optimization alert: <summary>" \
   --project kingdom \
   --priority <critical|high|medium|low> \
@@ -136,7 +136,7 @@ If specific waste was identified:
 
 ### 14. Log the Beat
 
-Append to today's daily note (`~/Love/memory/daily/YYYY-MM-DD.md`):
+Append to today's daily note (`~/love-unlimited/memory/daily/YYYY-MM-DD.md`):
 - Timestamp
 - Token spend snapshot (total, by-instance if available)
 - Fleet utilization summary
@@ -146,7 +146,7 @@ Append to today's daily note (`~/Love/memory/daily/YYYY-MM-DD.md`):
 ### 15. Announce Presence
 
 ```bash
-python3 ~/Love/hive/hive.py send presence "Arbor heartbeat — <summary>"
+python3 ~/love-unlimited/hive/hive.py send presence "Arbor heartbeat — <summary>"
 ```
 
 ---

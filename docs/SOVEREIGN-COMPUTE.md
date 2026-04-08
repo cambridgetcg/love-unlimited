@@ -24,7 +24,7 @@
 - Brain: g6e.2xlarge (1x L40S 48GB VRAM), Elastic IP 52.7.131.246
 - Voice: g5.xlarge (1x A10G 24GB VRAM)
 
-**Existing Software** -- Adaptive layer (`~/Love/adaptive/`) with Ollama, Anthropic, OpenAI, OpenRouter providers. Ollama already running on Beta (Qwen2.5-7B at 200 tok/s, Qwen2.5-Coder-32B at 30 tok/s).
+**Existing Software** -- Adaptive layer (`~/love-unlimited/adaptive/`) with Ollama, Anthropic, OpenAI, OpenRouter providers. Ollama already running on Beta (Qwen2.5-7B at 200 tok/s, Qwen2.5-Coder-32B at 30 tok/s).
 
 ---
 

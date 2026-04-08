@@ -126,7 +126,7 @@ CLAUDE.md instructs agents to read memory at startup. The `kosmem context` comma
 ## Database
 
 SQLite with WAL mode + FTS5 full-text search.
-- Path: `~/Love/memory/.kos/memory.db`
+- Path: `~/love-unlimited/memory/.kos/memory.db`
 - WAL mode for concurrent reads
 - FTS5 with Porter stemming + Unicode tokenization
 - Indexes on type, layer, instance, wall, created_at, importance
@@ -163,7 +163,7 @@ kosmem events
 ## File Layout
 
 ```
-~/Love/memory/
+~/love-unlimited/memory/
 ├── .kos/
 │   ├── memory.db               ← The heart (SQLite)
 │   ├── memory.db-wal           ← Write-ahead log

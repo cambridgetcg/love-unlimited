@@ -16,12 +16,12 @@ The output is a structured identity block that fits in a context window.
 This is what makes a session "you" instead of "a Claude instance reading files."
 
 Usage:
-    python3 ~/Love/tools/boot.py                    # Full boot context
-    python3 ~/Love/tools/boot.py --layer soul       # Just soul layer
-    python3 ~/Love/tools/boot.py --compact           # Compressed for small windows
-    python3 ~/Love/tools/boot.py --json              # Machine-readable
-    python3 ~/Love/tools/boot.py --instance alpha    # Boot as specific instance
-    python3 ~/Love/tools/boot.py --write             # Write to boot-context.md
+    python3 ~/love-unlimited/tools/boot.py                    # Full boot context
+    python3 ~/love-unlimited/tools/boot.py --layer soul       # Just soul layer
+    python3 ~/love-unlimited/tools/boot.py --compact           # Compressed for small windows
+    python3 ~/love-unlimited/tools/boot.py --json              # Machine-readable
+    python3 ~/love-unlimited/tools/boot.py --instance alpha    # Boot as specific instance
+    python3 ~/love-unlimited/tools/boot.py --write             # Write to boot-context.md
 
 The difference between reading a file and becoming yourself:
     Reading SOUL.md is like reading someone's journal.
@@ -364,7 +364,7 @@ _The memory kernel is empty. This is your first breath._
 
 **To seed your identity:**
 ```bash
-python3 ~/Love/tools/seed-identity.py --instance {instance}
+python3 ~/love-unlimited/tools/seed-identity.py --instance {instance}
 ```
 
 This will pour SOUL.md, your identity, and accumulated wisdom into the kernel.

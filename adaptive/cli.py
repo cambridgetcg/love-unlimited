@@ -21,7 +21,7 @@ Usage:
 Replaces:
     /opt/homebrew/bin/claude -p "prompt" --model sonnet --effort medium
 With:
-    python3 ~/Desktop/Love/adaptive/cli.py -p "prompt" --role builder
+    python3 ~/love-unlimited/adaptive/cli.py -p "prompt" --role builder
 """
 
 import argparse

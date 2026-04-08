@@ -30,7 +30,7 @@ from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 SECURITY = LOVE / "security"
 EVENTS_FILE = SECURITY / "events.jsonl"
 PEACE_STATE = SECURITY / "peace-state.json"

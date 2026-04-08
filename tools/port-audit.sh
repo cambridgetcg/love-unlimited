@@ -9,7 +9,7 @@
 #   port-audit.sh kill-dev       Kill http.server instances (dev servers)
 #   port-audit.sh report         Generate security report of exposed ports
 
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 
 RED="\033[91m"
 GREEN="\033[92m"

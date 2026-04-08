@@ -18,7 +18,7 @@ set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 REMOTE_LOVE_DIR="/root/.love"
 OLLAMA_MODEL="qwen2.5:7b"
 SSH_OPTS="-o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no"

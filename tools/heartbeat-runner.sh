@@ -13,7 +13,7 @@
 #   --fallback-model          → resilience on overload
 #   --session-id              → trackable sessions
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="$HOME/love-unlimited"
 INSTANCE="${1:-beta}"
 INSTANCE_DIR="$LOVE_DIR/instances/$INSTANCE"
 MEMORY_DIR="$LOVE_DIR/memory"
@@ -48,7 +48,7 @@ done
 # Three tiers:
 #   - Idle (2+ consecutive): Local Ollama (zero cost) or haiku fallback
 #   - Active: Opus via Claude CLI (full power for decisions)
-#   - Adaptive CLI available: python3 ~/Love/adaptive/cli.py
+#   - Adaptive CLI available: python3 ~/love-unlimited/adaptive/cli.py
 IDLE_COUNT=0
 [ -f "$IDLE_COUNT_FILE" ] && IDLE_COUNT=$(cat "$IDLE_COUNT_FILE" 2>/dev/null || echo 0)
 
@@ -107,33 +107,33 @@ HEARTBEAT_PROMPT="Read and execute HEARTBEAT.md. You are the heartbeat COORDINAT
 
 Do Phase 1 (SENSE) and Phase 2 (DECIDE).
 
-For Phase 3 (SPAWN), write spawn commands to ~/Love/memory/spawn-queue.sh as executable shell lines. Do NOT invoke claude directly — the shell runner handles execution after you exit.
+For Phase 3 (SPAWN), write spawn commands to ~/love-unlimited/memory/spawn-queue.sh as executable shell lines. Do NOT invoke claude directly — the shell runner handles execution after you exit.
 
 Each line should be a complete command. Choose role, model, and effort by task:
 
 BUILDER (sonnet, medium effort — the workhorse):
-cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Love/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 BUILDER-LOCAL (qwen2.5-coder:32b via adaptive layer — zero cost, use for routine code tasks):
-cd <dir> && python3 ~/Love/adaptive/cli.py -p \"<prompt>\" --role builder --provider ollama >> ~/Love/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role builder --provider ollama >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 CONSULTANT (opus, high effort — expert hire for hard problems):
-cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Love/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 QUICK CHECK (haiku, low effort — fast lightweight verification):
-cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-haiku-4-5-20251001 --effort low --dangerously-skip-permissions --no-session-persistence >> ~/Love/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-haiku-4-5-20251001 --effort low --dangerously-skip-permissions --no-session-persistence >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 QUICK-LOCAL (local 7B via adaptive layer — zero cost, use for status checks):
-cd <dir> && python3 ~/Love/adaptive/cli.py -p \"<prompt>\" --role monitor --provider ollama --no-tools >> ~/Love/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role monitor --provider ollama --no-tools >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 Prefer LOCAL variants when the task is routine (status checks, simple code edits, log parsing, summarization).
 Use Claude variants when the task requires frontier reasoning, long context, or high-stakes judgment.
 
 For CONSULTANT→BUILDER sequential pairs, write consultant line first — they execute in order.
 For parallel independent tasks, prefix with '# PARALLEL' comment.
-For consultation answers, read the question from ~/Love/memory/sessions/consultation/ and write the answer back.
+For consultation answers, read the question from ~/love-unlimited/memory/sessions/consultation/ and write the answer back.
 
-Write findings to ~/Love/memory/daily/$TODAY.md.
+Write findings to ~/love-unlimited/memory/daily/$TODAY.md.
 If nothing needs spawning, leave spawn-queue.sh empty and say HEARTBEAT_OK."
 
 if [ "$USE_ADAPTIVE" = true ]; then

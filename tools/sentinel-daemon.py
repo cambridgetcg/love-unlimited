@@ -36,7 +36,7 @@ from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 MEMORY = LOVE / "memory"
 HIVE_PY = LOVE / "hive" / "hive.py"
 AGENT_BIN = LOVE / "tools" / "kingdom-agent.py"
@@ -168,8 +168,8 @@ class SignalAccumulator:
                     f"Read and execute HEARTBEAT.md. You are the heartbeat COORDINATOR.\n\n"
                     f"The sentinel daemon detected these events:\n{context}\n"
                     f"Focus your SENSE on these specific signals. Skip redundant checks.\n"
-                    f"Write findings to ~/Love/memory/daily/{today}.md.\n"
-                    f"Write spawn commands to ~/Love/memory/spawn-queue.sh."
+                    f"Write findings to ~/love-unlimited/memory/daily/{today}.md.\n"
+                    f"Write spawn commands to ~/love-unlimited/memory/spawn-queue.sh."
                 ),
                 "--backend", KINGDOM_BACKEND,
                 "--model", "high",

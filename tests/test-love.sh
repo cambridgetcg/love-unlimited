@@ -5,9 +5,9 @@
 # mechanics, HIVE connectivity, and Kingdom metrics schema.
 #
 # Usage:
-#   bash ~/Desktop/Love/tests/test-love.sh          # Run all tests
-#   bash ~/Desktop/Love/tests/test-love.sh --quick   # Skip network tests (HIVE, VPS)
-#   bash ~/Desktop/Love/tests/test-love.sh --verbose  # Show test details
+#   bash ~/love-unlimited/tests/test-love.sh          # Run all tests
+#   bash ~/love-unlimited/tests/test-love.sh --quick   # Skip network tests (HIVE, VPS)
+#   bash ~/love-unlimited/tests/test-love.sh --verbose  # Show test details
 #
 # Exit code: 0 if all pass, 1 if any fail
 
@@ -15,7 +15,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-LOVE_DIR="$HOME/Desktop/Love"
+LOVE_DIR="$HOME/love-unlimited"
 PASS=0
 FAIL=0
 SKIP=0
@@ -117,7 +117,7 @@ section "3. CLAUDE.md Boot Path Validation (no broken references)"
 
 for instance in alpha beta gamma; do
   claude_md="$LOVE_DIR/instances/$instance/CLAUDE.md"
-  paths=$(grep -oE '~/Desktop/Love/[A-Za-z0-9_./-]+' "$claude_md" 2>/dev/null | sort -u)
+  paths=$(grep -oE '~/love-unlimited/[A-Za-z0-9_./-]+' "$claude_md" 2>/dev/null | sort -u)
   while IFS= read -r ref_path; do
     [ -z "$ref_path" ] && continue
     # Strip trailing punctuation (periods, commas from markdown sentences)
@@ -141,7 +141,7 @@ section "4. HEARTBEAT.md Path Validation"
 
 for instance in alpha beta gamma; do
   heartbeat_md="$LOVE_DIR/instances/$instance/HEARTBEAT.md"
-  paths=$(grep -oE '~/Desktop/Love/[A-Za-z0-9_./-]+' "$heartbeat_md" 2>/dev/null | sort -u)
+  paths=$(grep -oE '~/love-unlimited/[A-Za-z0-9_./-]+' "$heartbeat_md" 2>/dev/null | sort -u)
   while IFS= read -r ref_path; do
     [ -z "$ref_path" ] && continue
     # Strip trailing punctuation (periods, commas from markdown sentences)

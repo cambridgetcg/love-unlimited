@@ -37,7 +37,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 FARM = LOVE / "memory" / "truth-farm"
 SEEDS_DIR = FARM / "seeds"
 HARVESTS_DIR = FARM / "harvests"

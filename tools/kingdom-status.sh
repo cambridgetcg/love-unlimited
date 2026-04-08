@@ -5,7 +5,7 @@
 # Output: KINGDOM: GREEN 21/21 | PEACE 96% | FLEET 5/5 | AGENTS 11 | VPN sentry | DOH ok
 # Or:     KINGDOM: RED 19/21 | PEACE 80% | FLEET 4/5 | AGENTS 11 | VPN down | DOH fail
 
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 
 # Colors (only if stdout is a terminal)
 if [ -t 1 ]; then

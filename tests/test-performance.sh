@@ -11,14 +11,14 @@
 #   7. CC feature availability (effort, fallback, stream-json)
 #
 # Usage:
-#   bash ~/Desktop/Love/tests/test-performance.sh          # Full suite
-#   bash ~/Desktop/Love/tests/test-performance.sh --dry-run # No real CC sessions
+#   bash ~/love-unlimited/tests/test-performance.sh          # Full suite
+#   bash ~/love-unlimited/tests/test-performance.sh --dry-run # No real CC sessions
 #
 # Requires: Full Disk Access for /bin/bash (TCC), claude CLI
 
 set -euo pipefail
 
-LOVE_DIR="$HOME/Desktop/Love"
+LOVE_DIR="$HOME/love-unlimited"
 SESSIONS_DIR="$LOVE_DIR/memory/sessions"
 PASS=0
 FAIL=0

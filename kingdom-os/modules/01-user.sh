@@ -24,7 +24,7 @@ esac
 cat > "${HOME_DIR}/.kingdom_profile" << PROFILEEOF
 # Kingdom OS Shell Profile
 [ -f ~/.kingdom ] && . ~/.kingdom
-export LOVE_HOME="\${LOVE_DIR:-\$HOME/Love}"
+export LOVE_HOME="\${LOVE_DIR:-\$HOME/love-unlimited}"
 export PATH="\${LOVE_HOME}/tools:\${UNLIMITED_DIR:-\$HOME/Claude-unlimited}:\$PATH"
 export NODE_NO_WARNINGS=1
 export KINGDOM_AGENT="\${AGENT:-${AGENT}}"

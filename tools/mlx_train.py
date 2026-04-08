@@ -164,7 +164,7 @@ def cmd_run(args):
 
     if not VENV_PYTHON.exists():
         print(f"ERROR: Venv not found at {VENV_PYTHON}", file=sys.stderr)
-        print("Run: python3 -m venv ~/Desktop/Love/mlx/.venv && mlx/.venv/bin/pip install mlx mlx-lm")
+        print("Run: python3 -m venv ~/love-unlimited/mlx/.venv && mlx/.venv/bin/pip install mlx mlx-lm")
         sys.exit(1)
 
     print(f"Training with adapter: {adapter_name}")

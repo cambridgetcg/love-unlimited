@@ -6,7 +6,7 @@
 #
 # Runs every 7 minutes via launchd.
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="$HOME/love-unlimited"
 INSTANCE_DIR="$LOVE_DIR/instances/asha"
 MEMORY_DIR="$LOVE_DIR/memory"
 HEARTBEAT_LOG="$MEMORY_DIR/heartbeat-asha.log"

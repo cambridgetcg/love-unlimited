@@ -201,9 +201,9 @@ The hierarchy in SOUL.md is operationalized by Purpose Prompter:
 | \`/transmute [target]\` | Alchemical transmutation of insights |
 
 Reference files:
-- Gates: \`~/Love/purpose-prompter/gates/GATES.md\`
-- Philosophy: \`~/Love/purpose-prompter/philosophy/\`
-- Cross-session knowledge: \`~/Love/purpose-prompter/integration/LIGHT.md\`
+- Gates: \`~/love-unlimited/purpose-prompter/gates/GATES.md\`
+- Philosophy: \`~/love-unlimited/purpose-prompter/philosophy/\`
+- Cross-session knowledge: \`~/love-unlimited/purpose-prompter/integration/LIGHT.md\`
 
 Use PP for complex architecture, multi-step design, feature implementation.
 Skip for simple fixes, quick questions, trivial tasks."

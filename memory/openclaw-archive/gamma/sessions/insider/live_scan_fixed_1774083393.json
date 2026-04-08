@@ -1,0 +1,610 @@
+{
+  "will-the-iranian-regime-fall-by-march-31": {
+    "question": "Will the Iranian regime fall by March 31?",
+    "traders": 366,
+    "distribution": {
+      ">0.7": 25,
+      "0.5-0.7": 71,
+      "0.3-0.5": 244,
+      "<0.3": 26
+    },
+    "top10": [
+      {
+        "p": "Cuddly-Clutch",
+        "a": "0x0d2d49f21a4831bb802e9efce63406167177dff7",
+        "s": 1.0,
+        "usd": 9108.64,
+        "rv": 9108.64,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Proper-Paintwork",
+        "a": "0xd45cf8e5c678dde3c2581c450ac1484c1586c6c1",
+        "s": 1.0,
+        "usd": 9000.0,
+        "rv": 9000.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Thin-Tiara",
+        "a": "0xc757850237e266d3b08d16b8455777a88590ccfc",
+        "s": 1.0,
+        "usd": 15589.94,
+        "rv": 15589.94,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Decisive-Ephyra",
+        "a": "0x9efda3d6354152901fc4706c3b1a9ce50b45ad00",
+        "s": 1.0,
+        "usd": 17332.06,
+        "rv": 17332.06,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Realistic-Prelude",
+        "a": "0x1de6e3644c7a75857243f8440d58e2cb8cddb047",
+        "s": 1.0,
+        "usd": 8155.0,
+        "rv": 8155.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Measly-Harbor",
+        "a": "0x15fdd6a159788bd7d382f5669a047ad0fcb2cc95",
+        "s": 1.0,
+        "usd": 29678.69,
+        "rv": 29678.69,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Dental-Liquid",
+        "a": "0x7f9e2d1df78614564a70becc7fa14aa9a6623a0e",
+        "s": 1.0,
+        "usd": 6294.72,
+        "rv": 6294.72,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Joint-Transition",
+        "a": "0x8c075ea9b2ad7b3f4cfcbc3638cfac3675b8d4f8",
+        "s": 0.961,
+        "usd": 2941.18,
+        "rv": 2941.176469,
+        "sigs": {
+          "outsized_position": 0.844,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Obedient-Dimension",
+        "a": "0x2ce36bb42acf2e728934d3af049176f1ae6f966b",
+        "s": 0.922,
+        "usd": 2400.0,
+        "rv": 2400.0,
+        "sigs": {
+          "outsized_position": 0.689,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Infinite-Ingredient",
+        "a": "0xfc228a04ac831821c612901365374feab502155f",
+        "s": 0.918,
+        "usd": 2341.55,
+        "rv": 2341.55,
+        "sigs": {
+          "outsized_position": 0.672,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "us-x-iran-ceasefire-by": {
+    "question": "US x Iran ceasefire by March 31?",
+    "traders": 270,
+    "distribution": {
+      ">0.7": 8,
+      "0.5-0.7": 12,
+      "0.3-0.5": 229,
+      "<0.3": 21
+    },
+    "top10": [
+      {
+        "p": "Compassionate-Invention",
+        "a": "0x340b374046d3e8d97da8d6c9b7fd6e4bf74d797b",
+        "s": 0.75,
+        "usd": 90000.0,
+        "rv": 90000.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Icky-Norm",
+        "a": "0x129a74a461309a9e4ebba1fa1403668c45cf9fb6",
+        "s": 0.75,
+        "usd": 15762.19,
+        "rv": 15762.19,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Single-Adulthood",
+        "a": "0x7d2299a379eb0b1c6077c7c419a383da6fb7f0cf",
+        "s": 0.75,
+        "usd": 18090.36,
+        "rv": 18090.36,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "This-Measurement",
+        "a": "0x74c06efef60c97e470a85586b350bca0b97862fa",
+        "s": 0.75,
+        "usd": 9837.5,
+        "rv": 9837.5,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Pastel-Resource",
+        "a": "0x2e4ead1dd053538976d1b9f61d5abad4793be29d",
+        "s": 0.75,
+        "usd": 29208.23,
+        "rv": 29208.233635,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Evil-Chalk",
+        "a": "0x44de2a52d8d2d3ddcf39d58e315a10df53ba9c08",
+        "s": 0.75,
+        "usd": 18000.0,
+        "rv": 18000.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Scaly-Clarinet",
+        "a": "0x57115d0ab27d2624ef87922dce73669e97e32f81",
+        "s": 0.705,
+        "usd": 6775.0,
+        "rv": 6775.0,
+        "sigs": {
+          "outsized_position": 0.82,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Grim-Planter",
+        "a": "0x3deab84fa3c5cbfed1db0764a88810efee08e49f",
+        "s": 0.702,
+        "usd": 6666.67,
+        "rv": 6666.666665,
+        "sigs": {
+          "outsized_position": 0.807,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Noxious-Recall",
+        "a": "0xe1194d05876b71b05572c1b59bd49a157f21e30f",
+        "s": 0.682,
+        "usd": 6025.15,
+        "rv": 6025.152172,
+        "sigs": {
+          "outsized_position": 0.729,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Impish-Revenge",
+        "a": "0x744c072005bde6ddab8764a7477f61d3d22ae37f",
+        "s": 0.681,
+        "usd": 5999.99,
+        "rv": 5999.99,
+        "sigs": {
+          "outsized_position": 0.726,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "russia-x-ukraine-ceasefire-by-march-31-2026": {
+    "question": "Russia x Ukraine ceasefire by March 31, 2026?",
+    "traders": 200,
+    "distribution": {
+      ">0.7": 20,
+      "0.5-0.7": 75,
+      "0.3-0.5": 88,
+      "<0.3": 17
+    },
+    "top10": [
+      {
+        "p": "Legitimate-Invoice",
+        "a": "0x248a27f29b96633b6f5f53c7e526791cf6674b4a",
+        "s": 1.0,
+        "usd": 3200.0,
+        "rv": 3200.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Slushy-Moth",
+        "a": "0xc360b7771fe7c63139076a6f9e8c34b773badbb2",
+        "s": 1.0,
+        "usd": 4943.83,
+        "rv": 4943.83,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Flustered-Improvement",
+        "a": "0xdfe3fedc5c7679be42c3d393e99d4b55247b73c4",
+        "s": 1.0,
+        "usd": 16179.03,
+        "rv": 16179.029999999999,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Flawless-Senior",
+        "a": "0x3095b3fce220bdb172884f8aa75437249ad31069",
+        "s": 1.0,
+        "usd": 7422.61,
+        "rv": 7422.61,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Mysterious-Leopard",
+        "a": "0x87724cfa410a75a0552c3f1ab6d3b6fb5d710129",
+        "s": 1.0,
+        "usd": 14265.04,
+        "rv": 14265.04,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Handy-Disconnection",
+        "a": "0xa52b785a5510117ac3ae03d75d029f89a36c9480",
+        "s": 1.0,
+        "usd": 5275.62,
+        "rv": 5275.62,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Sticky-Tugboat",
+        "a": "0x7fd9e8dbf171757fb1db81f8031797f820041fd8",
+        "s": 1.0,
+        "usd": 7870.81,
+        "rv": 7870.81,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Dark-Foreigner",
+        "a": "0xfd4263b3ad08226034fe1b1ea678a46d80b58895",
+        "s": 1.0,
+        "usd": 3870.0,
+        "rv": 3870.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Cuddly-Ozone",
+        "a": "0x36da5ca5d1d4b79f1c2ebbb09be8c13834568218",
+        "s": 0.989,
+        "usd": 2500.01,
+        "rv": 2500.01,
+        "sigs": {
+          "outsized_position": 0.956,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Ajar-Sportsman",
+        "a": "0xf797d4d1c038d1eb0593edae0e66bf8e4b2e0bf2",
+        "s": 0.941,
+        "usd": 2000.0,
+        "rv": 2000.0,
+        "sigs": {
+          "outsized_position": 0.765,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "what-price-will-bitcoin-hit-in-march-2026": {
+    "question": "Will Bitcoin reach $150,000 in March?",
+    "traders": 398,
+    "distribution": {
+      ">0.7": 23,
+      "0.5-0.7": 37,
+      "0.3-0.5": 293,
+      "<0.3": 45
+    },
+    "top10": [
+      {
+        "p": "Dark-Monotheism",
+        "a": "0x793c610ef1d6edf2aedda366c41bcce715446c5d",
+        "s": 1.0,
+        "usd": 31915.0,
+        "rv": 31915.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Far-Carbon",
+        "a": "0x886f7e2516710ad04b458012636b3766e13795aa",
+        "s": 1.0,
+        "usd": 40000.0,
+        "rv": 40000.0,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Idealistic-Leek",
+        "a": "0x3b8de6b527425e9c19fb2634f9c3d2e7dfaf2ce6",
+        "s": 1.0,
+        "usd": 154625.03,
+        "rv": 154625.03,
+        "sigs": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Ample-Invader",
+        "a": "0x7f4219ac2477e0ec3422db67da45e4306f00a572",
+        "s": 0.937,
+        "usd": 9782.44,
+        "rv": 9782.44,
+        "sigs": {
+          "outsized_position": 0.746,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Tired-Signet",
+        "a": "0xa831dadb662326965cbbe64c4d95e3ffa3b286a6",
+        "s": 0.931,
+        "usd": 9515.81,
+        "rv": 9515.81,
+        "sigs": {
+          "outsized_position": 0.726,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Doting-Mouton",
+        "a": "0x8e6c1eb9899d3973a39c59bb7253de55c5f753ed",
+        "s": 0.93,
+        "usd": 9434.59,
+        "rv": 9434.59,
+        "sigs": {
+          "outsized_position": 0.72,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Buzzing-Pressure",
+        "a": "0xdc9a67aa4fe4c9372405755bdb39dfcb8d9b86ac",
+        "s": 0.93,
+        "usd": 9424.59,
+        "rv": 9424.59,
+        "sigs": {
+          "outsized_position": 0.719,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Scarce-Boom",
+        "a": "0xc5044837d97e0d9815141b4fd891f5ca9c0f7bd8",
+        "s": 0.927,
+        "usd": 9264.72,
+        "rv": 9264.72,
+        "sigs": {
+          "outsized_position": 0.707,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Upbeat-Trial",
+        "a": "0xc73c1252ae14c790671d3e9bc63d316ff2f86000",
+        "s": 0.927,
+        "usd": 9270.66,
+        "rv": 9270.66,
+        "sigs": {
+          "outsized_position": 0.707,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "p": "Insidious-Ski",
+        "a": "0x49eace1f3536b16d4103426252321d96f011e2f6",
+        "s": 0.925,
+        "usd": 9171.78,
+        "rv": 9171.78,
+        "sigs": {
+          "outsized_position": 0.7,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  }
+}

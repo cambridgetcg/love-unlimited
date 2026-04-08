@@ -1,0 +1,202 @@
+{
+  "daily": [
+    {
+      "date": "2026-03-29",
+      "entries": 36,
+      "words": 7632,
+      "headers_sample": [
+        "Beat 00:03 UTC \u2014 First Beat (Opus Coordinator, beat-20260329-000338)",
+        "Beat 00:14 UTC \u2014 Second Beat (Opus Coordinator, beat-20260329-001401)",
+        "Beat 00:22 UTC \u2014 Third Beat (Opus Coordinator, beat-20260329-002233)",
+        "Beat 00:31 UTC \u2014 Fourth Beat (Opus Coordinator, beat-20260329-003104)",
+        "Beat 00:40 UTC \u2014 Fifth Beat (Opus Coordinator, beat-20260329-003937)"
+      ],
+      "spawns_mentioned": 45,
+      "errors_mentioned": 0,
+      "greens_mentioned": 0,
+      "blocks_mentioned": 58
+    },
+    {
+      "date": "2026-04-01",
+      "entries": 60,
+      "words": 12659,
+      "headers_sample": [
+        "10:18 UTC -- beta",
+        "18:56 UTC -- beta",
+        "11:49 UTC -- beta",
+        "13:07 UTC -- beta",
+        "16:35 UTC -- beta heartbeat (beat-20260401-135648)"
+      ],
+      "spawns_mentioned": 112,
+      "errors_mentioned": 21,
+      "greens_mentioned": 149,
+      "blocks_mentioned": 46
+    },
+    {
+      "date": "2026-04-02",
+      "entries": 38,
+      "words": 12001,
+      "headers_sample": [
+        "00:01 UTC -- beta heartbeat (beat-20260402-000159)",
+        "00:12 UTC -- beta heartbeat (beat-20260402-001127)",
+        "00:20 UTC -- beta heartbeat (beat-20260402-002047)",
+        "00:29 UTC -- beta heartbeat (beat-20260402-002946)",
+        "00:38 UTC -- beta heartbeat (beat-20260402-003841)"
+      ],
+      "spawns_mentioned": 76,
+      "errors_mentioned": 15,
+      "greens_mentioned": 143,
+      "blocks_mentioned": 41
+    }
+  ],
+  "security": {
+    "total": 50,
+    "severities": {
+      "low": 50
+    },
+    "types": {
+      "audit": 47,
+      "snapshot": 1,
+      "backup_created": 1,
+      "backup_pushed": 1
+    },
+    "latest_high": null,
+    "time_range": {
+      "earliest": "2026-04-02T15:19:45+00:00",
+      "latest": "2026-04-02T20:44:15Z"
+    }
+  },
+  "metrics": {
+    "phase": "Phase 1 \u2014 Root",
+    "engines": {
+      "cambridge_tcg": {
+        "status": "active",
+        "notes": "Foundation that keeps lights on"
+      },
+      "oracle": {
+        "status": "in-progress",
+        "notes": "2026-04-01: Resolution scorer fully automated. Cron installed: daily 06:00 UTC (resolution-scorer.py). 4/4 resolved pred..."
+      },
+      "shopify_apps": {
+        "status": "paused",
+        "notes": "RewardsPro \u2014 resume when bandwidth allows"
+      },
+      "zerone": {
+        "status": "building",
+        "notes": "246k+ LOC, identity bridge built"
+      },
+      "ai_services": {
+        "status": "emerging",
+        "notes": "Three-mind capability as a service"
+      },
+      "seigei": {
+        "status": "beta-live",
+        "notes": "Private beta LIVE at seigei.ai-love.cc. Audio pipeline fixed, beta auth with invite codes + 18+ consent gate. 222 tests ..."
+      }
+    },
+    "fleet": "5/5 healthy",
+    "fleet_details": {
+      "forge": {
+        "quality": "good",
+        "summary": "up 23 days, disk 34%, load 0.02, mem 42%",
+        "alerts": []
+      },
+      "lark": {
+        "quality": "good",
+        "summary": "up 25 days, disk 20%, load 0, mem 34%",
+        "alerts": []
+      },
+      "sentry": {
+        "quality": "good",
+        "summary": "up 24 days, disk 22%, load 0.14, mem 23%",
+        "alerts": []
+      },
+      "patch": {
+        "quality": "good",
+        "summary": "up 24 days, disk 11%, load 0, mem 20%",
+        "alerts": []
+      },
+      "sage": {
+        "quality": "good",
+        "summary": "up 24 days, disk 14%, load 0.06, mem 22%",
+        "alerts": []
+      }
+    },
+    "milestones": "4/8 complete",
+    "capital": {
+      "budget_card": "\u00a31K available",
+      "target_30d": "\u00a35K available",
+      "soma_pending": [
+        "remaining BOM ~\u00a335",
+        "ESP32-S3 + BNO055 ~\u00a380"
+      ]
+    }
+  },
+  "lcm": {
+    "active_gaps": 1,
+    "closed_gaps": 13,
+    "system_health": 0.862,
+    "top_gaps": [
+      {
+        "loop": "Lead Coupling Loop",
+        "component": "sensor",
+        "priority": 0.9
+      }
+    ],
+    "last_audit": "2026-04-02T13:57:12+00:00"
+  },
+  "sessions": {
+    "recent_count": 19,
+    "total_files": 51,
+    "recent_sessions": [
+      {
+        "file": "peace-drill-fix-20260402-150114.log",
+        "size_kb": 0.7
+      },
+      {
+        "file": "git-commit-k010-retry-20260402-111629.log",
+        "size_kb": 12.7
+      },
+      {
+        "file": "git-commit-k010-20260402-110703.log",
+        "size_kb": 0.1
+      },
+      {
+        "file": "k010-builder-20260402-105310.log",
+        "size_kb": 196.2
+      },
+      {
+        "file": "k010-consultant-20260402-105310.log",
+        "size_kb": 164.5
+      },
+      {
+        "file": "k010-design.md",
+        "size_kb": 9.5
+      },
+      {
+        "file": "git-commit-20260402-105310.log",
+        "size_kb": 11.6
+      },
+      {
+        "file": "routing-update-20260401-195524.log",
+        "size_kb": 135.0
+      },
+      {
+        "file": "routing-update-20260401-194403.log",
+        "size_kb": 0.1
+      },
+      {
+        "file": "routing-benchmarks.json",
+        "size_kb": 3.2
+      }
+    ]
+  },
+  "hive": {
+    "status": "HIVE present but no message files found",
+    "hive_path": "/Users/yu/Desktop/Love/hive/hive.py"
+  },
+  "leads": {
+    "status": "no leads file"
+  },
+  "sensed_at": "2026-04-02T20:46:43+00:00"
+}

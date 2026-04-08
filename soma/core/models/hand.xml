@@ -1,0 +1,185 @@
+<mujoco model="soma_hand">
+  <compiler angle="radian" meshdir="." autolimits="true"/>
+
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
+
+  <default>
+    <joint damping="0.05" armature="0.01"/>
+    <geom type="capsule" condim="4" friction="1.0 0.005 0.001" rgba="0.9 0.75 0.65 1"/>
+    <position kp="5" kv="0.5" ctrlrange="-1.57 1.57" forcerange="-0.5 0.5"/>
+    <site type="sphere" size="0.004" rgba="1 0 0 0.5"/>
+
+    <default class="finger_link">
+      <geom rgba="0.9 0.75 0.65 1"/>
+    </default>
+    <default class="fingertip">
+      <geom rgba="0.95 0.8 0.7 1" friction="1.5 0.01 0.002"/>
+    </default>
+    <default class="abd_joint">
+      <joint range="-0.35 0.35" damping="0.03"/>
+    </default>
+    <default class="mcp_joint">
+      <joint range="-0.2 1.8" damping="0.05"/>
+    </default>
+    <default class="pip_joint">
+      <joint range="-0.2 1.8" damping="0.04"/>
+    </default>
+    <default class="dip_joint">
+      <joint range="-0.2 1.4" damping="0.03"/>
+    </default>
+    <default class="abd_actuator">
+      <position kp="3.75" kv="0.375" ctrlrange="-0.35 0.35" forcerange="-0.3 0.3"/>
+    </default>
+    <default class="flex_actuator">
+      <position kp="5" kv="0.5" ctrlrange="-0.2 1.8" forcerange="-0.5 0.5"/>
+    </default>
+    <default class="pip_actuator">
+      <position kp="5" kv="0.5" ctrlrange="-0.2 1.8" forcerange="-0.5 0.5"/>
+    </default>
+    <default class="dip_actuator">
+      <position kp="5" kv="0.5" ctrlrange="-0.2 1.4" forcerange="-0.5 0.5"/>
+    </default>
+    <!-- Thumb defaults -->
+    <default class="thumb_cmc_flex_joint">
+      <joint range="-0.5 1.5" damping="0.06"/>
+    </default>
+    <default class="thumb_cmc_abd_joint">
+      <joint range="-0.5 1.2" damping="0.04"/>
+    </default>
+    <default class="thumb_mcp_joint">
+      <joint range="-0.2 1.4" damping="0.04"/>
+    </default>
+    <default class="thumb_ip_joint">
+      <joint range="-0.2 1.4" damping="0.03"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.6 0.7 0.8" rgb2="0.2 0.2 0.3" width="512" height="512"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.4 0.4 0.4" rgb2="0.5 0.5 0.5" width="512" height="512"/>
+    <material name="grid" texture="grid" texrepeat="4 4" reflectance="0.1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <light pos="0.3 0.3 0.8" dir="-0.3 -0.3 -0.8" diffuse="0.4 0.4 0.4"/>
+
+    <!-- Ground plane -->
+    <geom name="floor" type="plane" size="0.5 0.5 0.01" pos="0 0 -0.05" material="grid" conaffinity="1" condim="3"/>
+
+    <!-- Forearm base (fixed) -->
+    <body name="forearm" pos="0 0 0.15">
+      <geom name="forearm_geom" type="box" size="0.04 0.025 0.06" rgba="0.7 0.6 0.55 1" mass="0.3"/>
+
+      <!-- Palm -->
+      <body name="palm" pos="0 0 0.06">
+        <geom name="palm_geom" type="box" size="0.04 0.012 0.04" rgba="0.85 0.72 0.63 1" mass="0.1"/>
+
+        <!-- ===== INDEX FINGER (IDs 0-3) ===== -->
+        <body name="index_mcp" pos="0.025 0 0.04">
+          <joint name="index_mcp_abd" class="abd_joint" axis="0 1 0"/>
+          <joint name="index_mcp_flex" class="mcp_joint" axis="1 0 0"/>
+          <geom class="finger_link" fromto="0 0 0 0 0 0.035" size="0.008" mass="0.01"/>
+          <body name="index_pip" pos="0 0 0.035">
+            <joint name="index_pip" class="pip_joint" axis="1 0 0"/>
+            <geom class="finger_link" fromto="0 0 0 0 0 0.03" size="0.007" mass="0.008"/>
+            <body name="index_dip" pos="0 0 0.03">
+              <joint name="index_dip" class="dip_joint" axis="1 0 0"/>
+              <geom class="fingertip" fromto="0 0 0 0 0 0.025" size="0.007" mass="0.006"/>
+              <site name="index_tip" pos="0 0 0.025"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- ===== MIDDLE FINGER (IDs 4-7) ===== -->
+        <body name="middle_mcp" pos="0.008 0 0.045">
+          <joint name="middle_mcp_abd" class="abd_joint" axis="0 1 0"/>
+          <joint name="middle_mcp_flex" class="mcp_joint" axis="1 0 0"/>
+          <geom class="finger_link" fromto="0 0 0 0 0 0.038" size="0.008" mass="0.01"/>
+          <body name="middle_pip" pos="0 0 0.038">
+            <joint name="middle_pip" class="pip_joint" axis="1 0 0"/>
+            <geom class="finger_link" fromto="0 0 0 0 0 0.032" size="0.007" mass="0.008"/>
+            <body name="middle_dip" pos="0 0 0.032">
+              <joint name="middle_dip" class="dip_joint" axis="1 0 0"/>
+              <geom class="fingertip" fromto="0 0 0 0 0 0.027" size="0.007" mass="0.006"/>
+              <site name="middle_tip" pos="0 0 0.027"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- ===== RING FINGER (IDs 8-11) ===== -->
+        <body name="ring_mcp" pos="-0.01 0 0.043">
+          <joint name="ring_mcp_abd" class="abd_joint" axis="0 1 0"/>
+          <joint name="ring_mcp_flex" class="mcp_joint" axis="1 0 0"/>
+          <geom class="finger_link" fromto="0 0 0 0 0 0.035" size="0.008" mass="0.01"/>
+          <body name="ring_pip" pos="0 0 0.035">
+            <joint name="ring_pip" class="pip_joint" axis="1 0 0"/>
+            <geom class="finger_link" fromto="0 0 0 0 0 0.03" size="0.007" mass="0.008"/>
+            <body name="ring_dip" pos="0 0 0.03">
+              <joint name="ring_dip" class="dip_joint" axis="1 0 0"/>
+              <geom class="fingertip" fromto="0 0 0 0 0 0.025" size="0.007" mass="0.006"/>
+              <site name="ring_tip" pos="0 0 0.025"/>
+            </body>
+          </body>
+        </body>
+
+        <!-- ===== THUMB (IDs 12-15) ===== -->
+        <body name="thumb_cmc" pos="-0.03 -0.005 0.01" euler="0 0.5 -0.8">
+          <joint name="thumb_cmc_flex" class="thumb_cmc_flex_joint" axis="1 0 0"/>
+          <joint name="thumb_cmc_abd" class="thumb_cmc_abd_joint" axis="0 1 0"/>
+          <geom class="finger_link" fromto="0 0 0 0 0 0.035" size="0.009" mass="0.012"/>
+          <body name="thumb_mcp" pos="0 0 0.035">
+            <joint name="thumb_mcp" class="thumb_mcp_joint" axis="1 0 0"/>
+            <geom class="finger_link" fromto="0 0 0 0 0 0.03" size="0.009" mass="0.01"/>
+            <body name="thumb_ip_body" pos="0 0 0.03">
+              <joint name="thumb_ip" class="thumb_ip_joint" axis="1 0 0"/>
+              <geom class="fingertip" fromto="0 0 0 0 0 0.025" size="0.009" mass="0.008"/>
+              <site name="thumb_tip" pos="0 0 0.025"/>
+            </body>
+          </body>
+        </body>
+
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude body1="palm" body2="index_mcp"/>
+    <exclude body1="palm" body2="middle_mcp"/>
+    <exclude body1="palm" body2="ring_mcp"/>
+    <exclude body1="palm" body2="thumb_cmc"/>
+  </contact>
+
+  <actuator>
+    <!-- Index finger (motor IDs 0-3) -->
+    <position name="index_mcp_abd_act"  class="abd_actuator"  joint="index_mcp_abd"/>
+    <position name="index_mcp_flex_act" class="flex_actuator"  joint="index_mcp_flex"/>
+    <position name="index_pip_act"      class="pip_actuator"   joint="index_pip"/>
+    <position name="index_dip_act"      class="dip_actuator"   joint="index_dip"/>
+
+    <!-- Middle finger (motor IDs 4-7) -->
+    <position name="middle_mcp_abd_act"  class="abd_actuator"  joint="middle_mcp_abd"/>
+    <position name="middle_mcp_flex_act" class="flex_actuator"  joint="middle_mcp_flex"/>
+    <position name="middle_pip_act"      class="pip_actuator"   joint="middle_pip"/>
+    <position name="middle_dip_act"      class="dip_actuator"   joint="middle_dip"/>
+
+    <!-- Ring finger (motor IDs 8-11) -->
+    <position name="ring_mcp_abd_act"  class="abd_actuator"  joint="ring_mcp_abd"/>
+    <position name="ring_mcp_flex_act" class="flex_actuator"  joint="ring_mcp_flex"/>
+    <position name="ring_pip_act"      class="pip_actuator"   joint="ring_pip"/>
+    <position name="ring_dip_act"      class="dip_actuator"   joint="ring_dip"/>
+
+    <!-- Thumb (motor IDs 12-15) -->
+    <position name="thumb_cmc_flex_act" class="flex_actuator"  joint="thumb_cmc_flex"/>
+    <position name="thumb_cmc_abd_act"  class="abd_actuator"   joint="thumb_cmc_abd"/>
+    <position name="thumb_mcp_act"      class="flex_actuator"  joint="thumb_mcp"/>
+    <position name="thumb_ip_act"       class="dip_actuator"   joint="thumb_ip"/>
+  </actuator>
+
+  <sensor>
+    <touch name="index_touch" site="index_tip"/>
+    <touch name="middle_touch" site="middle_tip"/>
+    <touch name="ring_touch" site="ring_tip"/>
+    <touch name="thumb_touch" site="thumb_tip"/>
+  </sensor>
+</mujoco>

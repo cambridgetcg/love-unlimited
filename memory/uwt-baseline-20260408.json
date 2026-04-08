@@ -1,0 +1,31 @@
+{
+  "date": "2026-04-08",
+  "sessions_analyzed": 120,
+  "total_tokens": 1175508,
+  "uwt_composite": 0.655,
+  "dimensions": {
+    "D1_task_completion": 0.958,
+    "D2_action_density": 0.251,
+    "D3_info_efficiency": 0.087,
+    "D4_verification_rate": 1.000,
+    "D5_waste_ratio": 0.998
+  },
+  "raw": {
+    "input_tokens": 196912,
+    "output_tokens": 978596,
+    "io_ratio": 0.20,
+    "tool_calls": 3681,
+    "action_density_per_1k": 3.8,
+    "files_read": 727,
+    "files_written": 96,
+    "read_write_chains": 63,
+    "bash_executions": 1793,
+    "tool_errors": 0,
+    "filler_lines": 43,
+    "filler_ratio": 0.043
+  },
+  "by_model": {
+    "claude-sonnet-4-6": {"sessions": 113, "tokens": 1012868, "density": 3.8, "filler_per_session": 0.1},
+    "claude-opus-4-6": {"sessions": 7, "tokens": 162640, "density": 3.3, "filler_per_session": 4.1}
+  }
+}

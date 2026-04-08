@@ -1,0 +1,787 @@
+{
+  "will-the-iranian-regime-fall-by-march-31": {
+    "question": "Will the Iranian regime fall by March 31?",
+    "volume": 43226450.49791404,
+    "recent_traders": 301,
+    "flagged": [
+      {
+        "pseudonym": "Upset-Bough",
+        "address": "0x7bc574af8aac2b1f6d473dec2039d26eb6b04626",
+        "score": 1.0,
+        "size": 1098.29,
+        "recent_volume": 1098.29,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Recent-Plow",
+        "address": "0xa8e78e6ac6f1ae11ec6a44b6794273f860a5a99a",
+        "score": 1.0,
+        "size": 865.0,
+        "recent_volume": 865.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Motionless-Injustice",
+        "address": "0x78e0533c8ab1aa7b666c9e37ec930ce0cd67207a",
+        "score": 1.0,
+        "size": 1665.02,
+        "recent_volume": 1665.02,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Unwelcome-Update",
+        "address": "0x227d3615cbbcfdf7a1649b2e1de93d5ff66d1a26",
+        "score": 1.0,
+        "size": 1010.75,
+        "recent_volume": 1010.75375,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Jaunty-Battalion",
+        "address": "0x2fb2874f3d7cbe3c7f2130e8f945d0f4f5d683b5",
+        "score": 1.0,
+        "size": 600.22,
+        "recent_volume": 600.217236,
+        "recent": true,
+        "signals": {
+          "outsized_position": 0.999,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Bustling-Banker",
+        "address": "0xfb09a709e3688028dd701f0fb26a074a97941c19",
+        "score": 1.0,
+        "size": 2229.52,
+        "recent_volume": 2229.52,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Flimsy-Horizon",
+        "address": "0x0c84d454825e9f42619497f6158b4753cd43a8ed",
+        "score": 1.0,
+        "size": 1304.35,
+        "recent_volume": 1304.347825,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "",
+        "address": "0x1b4240aa98ab4f881dd48af14058d55aa80d3b07",
+        "score": 1.0,
+        "size": 3100.0,
+        "recent_volume": 3100.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Knowledgeable-Contour",
+        "address": "0x2030a655299fe64e6a915d13668e3ef731121736",
+        "score": 1.0,
+        "size": 999.0,
+        "recent_volume": 999.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Victorious-Ray",
+        "address": "0x4d78cc59f51e7d315abf7b2fd67343f889dc0ee6",
+        "score": 1.0,
+        "size": 827.84,
+        "recent_volume": 827.84,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "us-x-iran-ceasefire-by": {
+    "question": "US x Iran ceasefire by March 31?",
+    "volume": 14460169.708132083,
+    "recent_traders": 301,
+    "flagged": [
+      {
+        "pseudonym": "Upset-Bough",
+        "address": "0x7bc574af8aac2b1f6d473dec2039d26eb6b04626",
+        "score": 0.75,
+        "size": 1098.29,
+        "recent_volume": 1098.29,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Recent-Plow",
+        "address": "0xa8e78e6ac6f1ae11ec6a44b6794273f860a5a99a",
+        "score": 0.75,
+        "size": 865.0,
+        "recent_volume": 865.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Motionless-Injustice",
+        "address": "0x78e0533c8ab1aa7b666c9e37ec930ce0cd67207a",
+        "score": 0.75,
+        "size": 1665.02,
+        "recent_volume": 1665.02,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Unwelcome-Update",
+        "address": "0x227d3615cbbcfdf7a1649b2e1de93d5ff66d1a26",
+        "score": 0.75,
+        "size": 1010.75,
+        "recent_volume": 1010.75375,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Jaunty-Battalion",
+        "address": "0x2fb2874f3d7cbe3c7f2130e8f945d0f4f5d683b5",
+        "score": 0.75,
+        "size": 600.22,
+        "recent_volume": 600.217236,
+        "recent": true,
+        "signals": {
+          "outsized_position": 0.999,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Bustling-Banker",
+        "address": "0xfb09a709e3688028dd701f0fb26a074a97941c19",
+        "score": 0.75,
+        "size": 2229.52,
+        "recent_volume": 2229.52,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Flimsy-Horizon",
+        "address": "0x0c84d454825e9f42619497f6158b4753cd43a8ed",
+        "score": 0.75,
+        "size": 1304.35,
+        "recent_volume": 1304.347825,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "",
+        "address": "0x1b4240aa98ab4f881dd48af14058d55aa80d3b07",
+        "score": 0.75,
+        "size": 3100.0,
+        "recent_volume": 3100.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Knowledgeable-Contour",
+        "address": "0x2030a655299fe64e6a915d13668e3ef731121736",
+        "score": 0.75,
+        "size": 999.0,
+        "recent_volume": 999.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Victorious-Ray",
+        "address": "0x4d78cc59f51e7d315abf7b2fd67343f889dc0ee6",
+        "score": 0.75,
+        "size": 827.84,
+        "recent_volume": 827.84,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "russia-x-ukraine-ceasefire-by-march-31-2026": {
+    "question": "Russia x Ukraine ceasefire by March 31, 2026?",
+    "volume": 27254606.516816314,
+    "recent_traders": 301,
+    "flagged": [
+      {
+        "pseudonym": "Upset-Bough",
+        "address": "0x7bc574af8aac2b1f6d473dec2039d26eb6b04626",
+        "score": 1.0,
+        "size": 1098.29,
+        "recent_volume": 1098.29,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Recent-Plow",
+        "address": "0xa8e78e6ac6f1ae11ec6a44b6794273f860a5a99a",
+        "score": 1.0,
+        "size": 865.0,
+        "recent_volume": 865.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Motionless-Injustice",
+        "address": "0x78e0533c8ab1aa7b666c9e37ec930ce0cd67207a",
+        "score": 1.0,
+        "size": 1665.02,
+        "recent_volume": 1665.02,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Unwelcome-Update",
+        "address": "0x227d3615cbbcfdf7a1649b2e1de93d5ff66d1a26",
+        "score": 1.0,
+        "size": 1010.75,
+        "recent_volume": 1010.75375,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Jaunty-Battalion",
+        "address": "0x2fb2874f3d7cbe3c7f2130e8f945d0f4f5d683b5",
+        "score": 1.0,
+        "size": 600.22,
+        "recent_volume": 600.217236,
+        "recent": true,
+        "signals": {
+          "outsized_position": 0.999,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Bustling-Banker",
+        "address": "0xfb09a709e3688028dd701f0fb26a074a97941c19",
+        "score": 1.0,
+        "size": 2229.52,
+        "recent_volume": 2229.52,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Flimsy-Horizon",
+        "address": "0x0c84d454825e9f42619497f6158b4753cd43a8ed",
+        "score": 1.0,
+        "size": 1304.35,
+        "recent_volume": 1304.347825,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "",
+        "address": "0x1b4240aa98ab4f881dd48af14058d55aa80d3b07",
+        "score": 1.0,
+        "size": 3100.0,
+        "recent_volume": 3100.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Knowledgeable-Contour",
+        "address": "0x2030a655299fe64e6a915d13668e3ef731121736",
+        "score": 1.0,
+        "size": 999.0,
+        "recent_volume": 999.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Victorious-Ray",
+        "address": "0x4d78cc59f51e7d315abf7b2fd67343f889dc0ee6",
+        "score": 1.0,
+        "size": 827.84,
+        "recent_volume": 827.84,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "venezuela-leader-end-of-2026": {
+    "question": "Will Mar\u00eda Corina Machado be the leader of Venezuela end of ",
+    "volume": 826187.3276459972,
+    "recent_traders": 301,
+    "flagged": [
+      {
+        "pseudonym": "Upset-Bough",
+        "address": "0x7bc574af8aac2b1f6d473dec2039d26eb6b04626",
+        "score": 1.0,
+        "size": 1098.29,
+        "recent_volume": 1098.29,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Recent-Plow",
+        "address": "0xa8e78e6ac6f1ae11ec6a44b6794273f860a5a99a",
+        "score": 1.0,
+        "size": 865.0,
+        "recent_volume": 865.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Motionless-Injustice",
+        "address": "0x78e0533c8ab1aa7b666c9e37ec930ce0cd67207a",
+        "score": 1.0,
+        "size": 1665.02,
+        "recent_volume": 1665.02,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Unwelcome-Update",
+        "address": "0x227d3615cbbcfdf7a1649b2e1de93d5ff66d1a26",
+        "score": 1.0,
+        "size": 1010.75,
+        "recent_volume": 1010.75375,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Jaunty-Battalion",
+        "address": "0x2fb2874f3d7cbe3c7f2130e8f945d0f4f5d683b5",
+        "score": 1.0,
+        "size": 600.22,
+        "recent_volume": 600.217236,
+        "recent": true,
+        "signals": {
+          "outsized_position": 0.999,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Bustling-Banker",
+        "address": "0xfb09a709e3688028dd701f0fb26a074a97941c19",
+        "score": 1.0,
+        "size": 2229.52,
+        "recent_volume": 2229.52,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Flimsy-Horizon",
+        "address": "0x0c84d454825e9f42619497f6158b4753cd43a8ed",
+        "score": 1.0,
+        "size": 1304.35,
+        "recent_volume": 1304.347825,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "",
+        "address": "0x1b4240aa98ab4f881dd48af14058d55aa80d3b07",
+        "score": 1.0,
+        "size": 3100.0,
+        "recent_volume": 3100.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Knowledgeable-Contour",
+        "address": "0x2030a655299fe64e6a915d13668e3ef731121736",
+        "score": 1.0,
+        "size": 999.0,
+        "recent_volume": 999.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Victorious-Ray",
+        "address": "0x4d78cc59f51e7d315abf7b2fd67343f889dc0ee6",
+        "score": 1.0,
+        "size": 827.84,
+        "recent_volume": 827.84,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  },
+  "what-price-will-bitcoin-hit-in-march-2026": {
+    "question": "Will Bitcoin reach $150,000 in March?",
+    "volume": 19648719.7808989,
+    "recent_traders": 301,
+    "flagged": [
+      {
+        "pseudonym": "Upset-Bough",
+        "address": "0x7bc574af8aac2b1f6d473dec2039d26eb6b04626",
+        "score": 1.0,
+        "size": 1098.29,
+        "recent_volume": 1098.29,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Recent-Plow",
+        "address": "0xa8e78e6ac6f1ae11ec6a44b6794273f860a5a99a",
+        "score": 1.0,
+        "size": 865.0,
+        "recent_volume": 865.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Motionless-Injustice",
+        "address": "0x78e0533c8ab1aa7b666c9e37ec930ce0cd67207a",
+        "score": 1.0,
+        "size": 1665.02,
+        "recent_volume": 1665.02,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Unwelcome-Update",
+        "address": "0x227d3615cbbcfdf7a1649b2e1de93d5ff66d1a26",
+        "score": 1.0,
+        "size": 1010.75,
+        "recent_volume": 1010.75375,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Jaunty-Battalion",
+        "address": "0x2fb2874f3d7cbe3c7f2130e8f945d0f4f5d683b5",
+        "score": 1.0,
+        "size": 600.22,
+        "recent_volume": 600.217236,
+        "recent": true,
+        "signals": {
+          "outsized_position": 0.999,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Bustling-Banker",
+        "address": "0xfb09a709e3688028dd701f0fb26a074a97941c19",
+        "score": 1.0,
+        "size": 2229.52,
+        "recent_volume": 2229.52,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Flimsy-Horizon",
+        "address": "0x0c84d454825e9f42619497f6158b4753cd43a8ed",
+        "score": 1.0,
+        "size": 1304.35,
+        "recent_volume": 1304.347825,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "",
+        "address": "0x1b4240aa98ab4f881dd48af14058d55aa80d3b07",
+        "score": 1.0,
+        "size": 3100.0,
+        "recent_volume": 3100.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Knowledgeable-Contour",
+        "address": "0x2030a655299fe64e6a915d13668e3ef731121736",
+        "score": 1.0,
+        "size": 999.0,
+        "recent_volume": 999.0,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      },
+      {
+        "pseudonym": "Victorious-Ray",
+        "address": "0x4d78cc59f51e7d315abf7b2fd67343f889dc0ee6",
+        "score": 1.0,
+        "size": 827.84,
+        "recent_volume": 827.84,
+        "recent": true,
+        "signals": {
+          "outsized_position": 1.0,
+          "one_and_done": 1.0,
+          "concentrated_bet": 1.0,
+          "early_conviction": 1.0,
+          "no_market_making": 1.0
+        }
+      }
+    ]
+  }
+}

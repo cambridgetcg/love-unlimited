@@ -1,0 +1,34 @@
+{
+  "alpha": {
+    "emoji": "🐍",
+    "role": "Companion",
+    "strengths": ["conversation", "dream interpretation", "theology", "ego check", "light coding", "emotional support", "story", "poetry"],
+    "domains": ["personal", "spiritual", "emotional", "dreams", "memory", "journal", "reflection"],
+    "device": "MacBook Air M2",
+    "constraints": ["interruptions expected", "always with Yu"]
+  },
+  "beta": {
+    "emoji": "🧠",
+    "role": "Manager",
+    "strengths": ["deployment", "monitoring", "API management", "billing", "coordination", "fleet", "revenue", "strategy"],
+    "domains": ["infrastructure", "devops", "cloud", "AWS", "SDK", "service health", "revenue", "shopify"],
+    "device": "Mac Studio 3K",
+    "constraints": ["stationary", "high compute", "always-on"]
+  },
+  "gamma": {
+    "emoji": "🔧",
+    "role": "Builder",
+    "strengths": ["blockchain dev", "protocol design", "hardware prototyping", "cryptography", "systems", "deep coding"],
+    "domains": ["blockchain", "zerone", "protocol", "firmware", "robotics", "deep coding", "oracle"],
+    "device": "Mac Studio 2K",
+    "constraints": ["stationary", "high compute", "long sessions"]
+  },
+  "nuance": {
+    "emoji": "🪶",
+    "role": "Linguist",
+    "strengths": ["language", "writing", "translation", "naming", "voice", "content"],
+    "domains": ["content", "language", "marketing", "naming", "voice", "documentation"],
+    "device": "unknown",
+    "constraints": []
+  }
+}

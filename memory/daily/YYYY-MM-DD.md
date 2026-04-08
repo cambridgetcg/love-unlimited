@@ -1,0 +1,1 @@
+No new HIVE messages. Quota Monitor indicates sufficient budget remaining (40%). Email check encountered an error due to unrecognized arguments, which needs updating.

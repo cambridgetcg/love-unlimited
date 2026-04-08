@@ -1,0 +1,30 @@
+{
+  "market": "US forces enter Iran by January 31?",
+  "market_id": "1162935",
+  "categories": [
+    "legislation",
+    "corporate",
+    "military",
+    "geopolitics"
+  ],
+  "total_traders": 1,
+  "flagged": 1,
+  "threshold": 0.3,
+  "timestamp": "2026-03-19T11:06:33.111262+00:00",
+  "results": [
+    {
+      "insider_score": 0.534,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 0.0,
+        "concentrated_bet": 0.112,
+        "early_conviction": 1.0,
+        "no_market_making": 0.112
+      },
+      "total_size_usd": 284976.99,
+      "num_trades": 1000,
+      "directional_ratio": 0.112,
+      "address": "unknown"
+    }
+  ]
+}

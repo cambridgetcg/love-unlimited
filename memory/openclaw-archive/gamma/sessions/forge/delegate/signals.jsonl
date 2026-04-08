@@ -1,0 +1,1 @@
+{"id": "ce2c4e52", "ts": "2026-03-18T22:08:13.294715+00:00", "tool": "delegate", "who": "beta", "observation": "Correctly routed Cosmos SDK audit to Gamma. Capability matrix is accurate. Missing: busy/availability flag for deep work sessions", "score": 4, "tags": ["accurate", "routing", "needs-busy-flag"]}

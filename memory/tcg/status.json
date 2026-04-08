@@ -1,0 +1,26 @@
+{
+  "updated": "2026-04-02T14:00:00Z",
+  "revenue_monthly": 3200.00,
+  "revenue_target": 3840.00,
+  "margin_pct": 64.0,
+  "avg_order_value": 18.50,
+  "orders_this_month": 173,
+  "channels": {
+    "ebay": {
+      "revenue_pct": 72,
+      "status": "active",
+      "fees_pct": 12.8,
+      "notes": "Primary channel. Auto-sync code written, blocked on env vars"
+    },
+    "website": {
+      "revenue_pct": 28,
+      "status": "active",
+      "platform": "Vercel",
+      "fees_pct": 2.9,
+      "notes": "cambridgetcg.com — lower fees, growing"
+    }
+  },
+  "status": "active",
+  "health": "good",
+  "notes": "Foundation revenue engine. Consistent but needs automation to hit +20% target."
+}

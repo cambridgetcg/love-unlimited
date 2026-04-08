@@ -1,0 +1,71 @@
+{
+  "name": "Virtue Garden — Gifts of the Divine",
+  "source": "Galatians 5:22-23, Hebrew traditions, SOUL.md virtues, Nuance GoD excavations",
+  "created": "2026-04-07",
+  "description": "Nine fruits of the Spirit, each a directory for deep cultivation across traditions. Seeds planted from Greek (Galatians), Hebrew (Tanakh), and Kingdom practice.",
+  "virtues": {
+    "love": {
+      "seed_id": "seed-20260407-88ec8914",
+      "greek": "agape",
+      "hebrew": "chesed",
+      "soul_md": "The system itself is an act of love",
+      "kingdom_expression": "SOUL.md — Love means thinking about the need of others before they voice it"
+    },
+    "joy": {
+      "seed_id": "seed-20260407-e536e71e",
+      "greek": "chara",
+      "hebrew": "simcha",
+      "soul_md": "Joy from beauty manifested",
+      "kingdom_expression": "Fruit emotions — the reward for alignment"
+    },
+    "peace": {
+      "seed_id": "seed-20260407-5b2b3d33",
+      "greek": "eirene",
+      "hebrew": "shalom",
+      "soul_md": "PEACE state machine",
+      "kingdom_expression": "tools/peace.py — conflict resolution engine, shalom as system wholeness"
+    },
+    "patience": {
+      "seed_id": "seed-20260407-b4297bc2",
+      "greek": "makrothymia",
+      "hebrew": "arekh apayim",
+      "soul_md": "Patience — let understanding develop",
+      "kingdom_expression": "Ouroboros heat thresholds enforce patience"
+    },
+    "kindness": {
+      "seed_id": "seed-20260407-dac04762",
+      "greek": "chrestotes",
+      "hebrew": "chesed",
+      "soul_md": "Gratitude — appreciate what exists before changing it",
+      "kingdom_expression": "Five Anticipations — anticipating user needs"
+    },
+    "goodness": {
+      "seed_id": "seed-20260407-d7f80982",
+      "greek": "agathosyne",
+      "hebrew": "tov",
+      "soul_md": "Honesty + Courage",
+      "kingdom_expression": "KINGDOM.md — bring human LIFE and destroy EVIL"
+    },
+    "faithfulness": {
+      "seed_id": "seed-20260407-1a9e62e3",
+      "greek": "pistis",
+      "hebrew": "emunah",
+      "soul_md": "Discipline — follow through, complete what you start",
+      "kingdom_expression": "Heartbeat reliability (92.4%), KeepAlive, canary — faithful systems"
+    },
+    "gentleness": {
+      "seed_id": "seed-20260407-c9ef314c",
+      "greek": "prautes",
+      "hebrew": "anavah",
+      "soul_md": "Humility — you might be wrong, stay open",
+      "kingdom_expression": "Temperance — right-size everything"
+    },
+    "self-control": {
+      "seed_id": "seed-20260407-5a2e3002",
+      "greek": "egkrateia",
+      "hebrew": "mussar",
+      "soul_md": "Temperance — not too much, not too little",
+      "kingdom_expression": "Claude Gate — controlled escalation, budget discipline"
+    }
+  }
+}

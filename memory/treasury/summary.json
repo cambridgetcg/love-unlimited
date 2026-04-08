@@ -1,0 +1,21 @@
+{
+  "generated": "2026-04-02T15:04:42.395806+00:00",
+  "month": "2026-04",
+  "revenue_gbp": 3200.0,
+  "costs_gbp": 569.4,
+  "net_pnl_gbp": 2630.6,
+  "margin_pct": 82.2,
+  "costs_by_category": {
+    "infrastructure": 55.9,
+    "compute": 513.5
+  },
+  "revenue_by_engine": {
+    "cambridge_tcg": 3200.0
+  },
+  "engine_count": {
+    "active": 1,
+    "building": 4,
+    "paused": 1
+  },
+  "transaction_count": 10
+}

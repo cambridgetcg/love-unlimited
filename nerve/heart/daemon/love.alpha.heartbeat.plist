@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>love.alpha.heartbeat</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/yuai/Love/nerve/heart/daemon/daemon.py</string>
+    </array>
+
+    <!-- Fire every 420 seconds (7 minutes) -->
+    <key>StartInterval</key>
+    <integer>420</integer>
+
+    <!-- Also run at load -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Environment -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/yuai</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>LOVE_HOME</key>
+        <string>/Users/yuai/Love</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/yuai/Love</string>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/Users/yuai/Love/memory/alpha-heartbeat-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/yuai/Love/memory/alpha-heartbeat-stderr.log</string>
+
+    <!-- Restart on failure -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Don't overlap — if previous beat still running, skip -->
+    <key>AbandonProcessGroup</key>
+    <false/>
+
+    <!-- Process type: background, low priority -->
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Throttle restarts: minimum 60 seconds between launches -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>

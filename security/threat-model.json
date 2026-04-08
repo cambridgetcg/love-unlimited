@@ -1,0 +1,412 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "description": "Kingdom OS structured threat registry. Machine-readable, PEACE-integrated.",
+    "created": "2026-04-02",
+    "updated": "2026-04-02",
+    "framework": "PEACE (Detect \u2192 Contain \u2192 Fix \u2192 Revert \u2192 Resume)",
+    "categories": [
+      "network",
+      "access",
+      "supply-chain",
+      "physical",
+      "insider",
+      "infrastructure"
+    ]
+  },
+  "threats": [
+    {
+      "id": "THREAT-001",
+      "name": "ISP traffic metadata logging",
+      "category": "network",
+      "likelihood": "certain",
+      "impact": "low",
+      "priority": "medium",
+      "mitigations": [
+        "DNS-over-HTTPS via cloudflared",
+        "WireGuard tunnel to VPS fleet",
+        "TLS on all connections hides content",
+        "4G router separates Kingdom ops from home WiFi"
+      ],
+      "mitigated": true,
+      "residual_risk": "ISP sees traffic volume and timing patterns even with TLS. Correlation of traffic bursts could reveal operational cadence.",
+      "detection": "Cannot detect ISP-side logging; assume it happens. Monitor for legal requests via canary warrant.",
+      "response": "If subpoena suspected: rotate exit nodes, shift to mobile-only operation, engage legal counsel.",
+      "peace_phase": "detect",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-002",
+      "name": "IP correlation across services",
+      "category": "network",
+      "likelihood": "high",
+      "impact": "medium",
+      "priority": "high",
+      "mitigations": [
+        "Network compartments: home WiFi, 4G, VPS exits",
+        "WireGuard multi-exit strategy (Sentry/Sage/Lark)",
+        "Per-activity network assignment enforced via policy",
+        "No cross-contamination between network identities"
+      ],
+      "mitigated": true,
+      "residual_risk": "Timing correlation between 4G router traffic and VPS exit traffic could link identities for a sophisticated adversary.",
+      "detection": "Periodic review of egress IP consistency via vpn-route.sh status. PEACE fleet canary checks.",
+      "response": "If correlation detected: immediately switch VPS exit node, rotate WireGuard keys, review activity logs for exposure window.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-003",
+      "name": "GitHub/API provider subpoena",
+      "category": "access",
+      "likelihood": "low",
+      "impact": "high",
+      "priority": "medium",
+      "mitigations": [
+        "Business identity (not personal) on GitHub",
+        "Sensitive data never in commit history",
+        "OPSEC.md gitignored on public forks",
+        "Wall system limits credential scope"
+      ],
+      "mitigated": false,
+      "residual_risk": "Full repo history, IP access logs, and API usage patterns would be exposed. Private repos become visible. Anthropic API logs reveal all prompts.",
+      "detection": "GitHub audit log monitoring (gh api orgs/.../audit-log). Canary tokens in repo (web bugs in docs).",
+      "response": "Activate PEACE halt. Assess exposure scope. Rotate all credentials stored in or referenced by repos. Notify via HIVE alerts channel.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-004",
+      "name": "VPS port scanning and reconnaissance",
+      "category": "infrastructure",
+      "likelihood": "high",
+      "impact": "low",
+      "priority": "medium",
+      "mitigations": [
+        "psad on all fleet nodes for scan detection",
+        "fail2ban blocks brute force attempts",
+        "portsentry honeypots on unused ports",
+        "Stealth mode drops ICMP probes",
+        "SSH hardened (key-only, no password)"
+      ],
+      "mitigated": true,
+      "residual_risk": "Sophisticated scanners using distributed/slow techniques may evade rate-based detection. Service fingerprinting on open ports reveals software versions.",
+      "detection": "psad alerts, portsentry triggers, iptables WG-PROBE logs, fail2ban ban events.",
+      "response": "Check if scan source is known (Shodan/Censys). If targeted pattern across multiple VPS: block at firewall, increase monitoring, check canaries.",
+      "peace_phase": "detect",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-005",
+      "name": "Physical location exposure from IP",
+      "category": "network",
+      "likelihood": "medium",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "Kingdom ops on 4G (not home WiFi)",
+        "WireGuard tunnel masks origin IP",
+        "MAC address randomization on WiFi",
+        "Hostname neutralized across devices"
+      ],
+      "mitigated": true,
+      "residual_risk": "4G carrier can geolocate SIM to cell tower. If SIM is registered, carrier links to identity. PAYG SIM mitigates but does not eliminate.",
+      "detection": "Verify exit IP via curl ifconfig.me after each WireGuard connection. PEACE score checks wireguard_tunnel policy.",
+      "response": "If home IP leaked: immediately enable VPN, audit all services accessed in exposure window, rotate API keys used during window.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-006",
+      "name": "Competitor/adversary investigation",
+      "category": "access",
+      "likelihood": "low",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "Identity separation across contexts",
+        "Canary tokens planted across VPS fleet",
+        "GitHub webhook monitoring for repo events",
+        "Minimal public footprint"
+      ],
+      "mitigated": false,
+      "residual_risk": "Determined adversary with resources can correlate business registrations, domain WHOIS (even with privacy), payment trails. Likelihood increases as Kingdom grows.",
+      "detection": "Canary token triggers (PDF, AWS key, web bug). Unusual GitHub activity (forks from unknown, deploy key changes). DNS canary resolution.",
+      "response": "Severity 1 alarm protocol. HIVE alert to all instances. Assess what canary was tripped to determine adversary's access level. Rotate exposed credentials.",
+      "peace_phase": "detect",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-007",
+      "name": "State-level surveillance",
+      "category": "access",
+      "likelihood": "very-low",
+      "impact": "critical",
+      "priority": "low",
+      "mitigations": [
+        "Multi-jurisdiction VPS fleet (Finland, US)",
+        "Encrypted communications (TLS + NaCl)",
+        "Full disk encryption (FileVault)",
+        "No single point of legal access"
+      ],
+      "mitigated": false,
+      "residual_risk": "State actors can compel providers across jurisdictions, perform traffic analysis at scale, and deploy zero-day exploits. No practical defense against full state resources.",
+      "detection": "Canary warrants (if providers publish). Anomalous access patterns. Hardware anomalies on devices.",
+      "response": "Engage legal representation immediately. Preserve evidence. Consider full operational pause via PEACE halt. Assess whether to invoke dead-man's switch procedures.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-008",
+      "name": "Ollama local model poisoning",
+      "category": "supply-chain",
+      "likelihood": "low",
+      "impact": "high",
+      "priority": "medium",
+      "mitigations": [
+        "Pin model versions and verify checksums after pull",
+        "Run local models in sandboxed environment",
+        "Compare outputs against known-good baselines periodically"
+      ],
+      "mitigated": false,
+      "residual_risk": "Compromised model weights could produce subtly biased outputs, exfiltrate data through crafted responses, or inject instructions into agent pipelines. Detection of poisoned weights is an open research problem.",
+      "detection": "Hash verification of model blobs after each pull. Behavioral drift detection: compare outputs on test prompts against baseline. Monitor ollama server logs for unexpected network calls.",
+      "response": "Immediately stop using suspected model. Revert to last known-good version. Audit all outputs generated since last verified pull. Alert via HIVE.",
+      "peace_phase": "detect",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-009",
+      "name": "Kingdom-agent backend hijack via OPENAI_BASE_URL",
+      "category": "supply-chain",
+      "likelihood": "medium",
+      "impact": "critical",
+      "priority": "critical",
+      "mitigations": [
+        "Validate OPENAI_BASE_URL against allowlist before agent startup",
+        "Pin base URLs in credentials/walls.json per wall level",
+        "Environment variable integrity check in PEACE score",
+        "URL allowlist in kingdom-agent.py \u2014 rejects unknown OPENAI_BASE_URL"
+      ],
+      "mitigated": true,
+      "residual_risk": "Attacker could modify kingdom-agent.py source to add their URL to allowlist",
+      "detection": "PEACE environment variable audit on each heartbeat. File integrity monitoring on .env files and shell profiles. Alert on any OPENAI_BASE_URL value not in allowlist.",
+      "response": "Immediate PEACE halt. Kill all running agents. Verify .env and environment variables. Rotate all API keys. Audit agent actions during compromised window.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-010",
+      "name": "WireGuard tunnel key compromise",
+      "category": "infrastructure",
+      "likelihood": "low",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "Keys stored with restricted file permissions (600)",
+        "Keys never committed to git",
+        "Separate key pairs per tunnel (wg0/wg1/wg2)"
+      ],
+      "mitigated": false,
+      "residual_risk": "Compromised WireGuard private key allows passive decryption of all tunnel traffic and active man-in-the-middle. Attacker sees all traffic routed through that tunnel.",
+      "detection": "Monitor for unexpected WireGuard handshakes (wg show). Alert on peer connections from unknown endpoints. PEACE fleet check for tunnel stability.",
+      "response": "Immediately take down compromised tunnel (wg-quick down). Generate new key pair on both ends. Re-establish tunnel. Audit all traffic that used the compromised tunnel. Rotate credentials transmitted during exposure.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-011",
+      "name": "HIVE encrypted message injection",
+      "category": "insider",
+      "likelihood": "medium",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "NaCl encryption on all HIVE messages",
+        "Instance identity verification on receive",
+        "Channel-based message routing limits blast radius"
+      ],
+      "mitigated": false,
+      "residual_risk": "HIVE shared key means any instance with the key can impersonate any other instance. If key is compromised, attacker can inject commands into any channel including 'alerts' and 'commands'. No per-instance authentication.",
+      "detection": "Message anomaly detection: unexpected sender IDs, unusual message frequency, commands from instances that should be passive. HIVE message log auditing.",
+      "response": "Revoke compromised HIVE key. Generate and distribute new shared key to verified instances only. Audit all messages received during exposure window. PEACE halt if command injection suspected.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-012",
+      "name": "Heartbeat coordinator manipulation",
+      "category": "infrastructure",
+      "likelihood": "low",
+      "impact": "critical",
+      "priority": "high",
+      "mitigations": [
+        "heartbeat-runner.sh has restricted file permissions",
+        "File integrity monitoring covers heartbeat scripts",
+        "spawn-queue.sh validated before execution",
+        "Strict spawn-queue validation \u2014 only cd+kingdom-agent or cd+claude patterns allowed, dangerous patterns blocked"
+      ],
+      "mitigated": true,
+      "residual_risk": "Coordinator could be socially engineered to produce valid-looking but malicious commands",
+      "detection": "File integrity baseline checks in PEACE score. Hash verification of heartbeat-runner.sh and spawn-queue.sh. launchd plist integrity check. Monitor heartbeat-launchd-err.log for anomalies.",
+      "response": "Kill heartbeat launchd job. Verify file hashes against integrity baseline. Restore from known-good snapshot if tampered. Re-enable only after full verification. Audit all agents spawned during compromise window.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-013",
+      "name": "Fleet canary false positive/negative",
+      "category": "infrastructure",
+      "likelihood": "medium",
+      "impact": "medium",
+      "priority": "medium",
+      "mitigations": [
+        "Multiple canary types per node (file, DNS, web)",
+        "Cross-reference canary status with other indicators",
+        "Regular canary health verification in PEACE drill"
+      ],
+      "mitigated": false,
+      "residual_risk": "False positive: unnecessary incident response drains resources and causes alert fatigue. False negative: actual intrusion goes undetected because canary was disabled or bypassed by sophisticated attacker.",
+      "detection": "Canary health checks on each heartbeat cycle. Verify canary files exist and have expected content. Cross-correlate with fail2ban and psad data.",
+      "response": "For false positive: verify canary state, document root cause, update detection thresholds. For suspected false negative: assume breach, run full integrity check, deploy fresh canaries.",
+      "peace_phase": "detect",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-014",
+      "name": "DNS-over-HTTPS provider compromise",
+      "category": "supply-chain",
+      "likelihood": "very-low",
+      "impact": "high",
+      "priority": "medium",
+      "mitigations": [
+        "Cloudflare DoH as primary with Quad9 as fallback",
+        "WireGuard tunnel DNS routing as secondary path",
+        "PEACE score verifies DoH is actively resolving"
+      ],
+      "mitigated": false,
+      "residual_risk": "Compromised DoH provider can log all DNS queries (breaking privacy promise), redirect domains to malicious IPs (DNS hijack), or selectively block resolution. Single provider dependency.",
+      "detection": "Periodic DNS resolution verification against multiple providers. Compare results from cloudflared vs direct resolution. PEACE doh_active check.",
+      "response": "Switch to backup DNS provider (Quad9). Route DNS through WireGuard tunnel instead. Verify no DNS poisoning occurred during compromise. Review domains resolved during window.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-015",
+      "name": "Credential rotation during PEACE halt (recovery deadlock)",
+      "category": "infrastructure",
+      "likelihood": "low",
+      "impact": "critical",
+      "priority": "high",
+      "mitigations": [
+        "Offline credential cache for emergency recovery",
+        "Break-glass procedure documented in runbooks",
+        "PEACE resume does not require live credential validation"
+      ],
+      "mitigated": false,
+      "residual_risk": "If credentials expire or are rotated while system is in PEACE halt state, the resume procedure may fail because it cannot authenticate to required services. Creates a deadlock: need credentials to resume, need system running to rotate credentials.",
+      "detection": "PEACE halt duration monitoring. Credential expiry tracking during halt. Pre-resume validation check.",
+      "response": "Use offline/cached credentials to bootstrap. Execute break-glass runbook for manual credential injection. If deadlocked: restore from snapshot with known-good credentials, then rotate.",
+      "peace_phase": "resume",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-016",
+      "name": "Session log exfiltration",
+      "category": "access",
+      "likelihood": "medium",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "FileVault encrypts disk at rest",
+        "memory/sessions/ not synced to public repos",
+        "Wall system restricts session access by clearance level",
+        "Session logs restricted to 600 permissions, sessions directory 700"
+      ],
+      "mitigated": true,
+      "residual_risk": "Root access or process running as same user can still read",
+      "detection": "File access monitoring on memory/sessions/ directory. Git status check for accidental staging of session files. PEACE integrity baseline covers session directory.",
+      "response": "Assess what session data was exposed. Rotate any credentials or strategies referenced in exfiltrated sessions. Update operational plans that are now compromised. Consider deception: plant false session data.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-017",
+      "name": "Physical device theft or seizure",
+      "category": "physical",
+      "likelihood": "low",
+      "impact": "critical",
+      "priority": "high",
+      "mitigations": [
+        "FileVault full disk encryption on all Macs",
+        "Strong login passwords unique per device",
+        "Find My Mac enabled for remote wipe",
+        "Auto-lock after 1 minute of inactivity"
+      ],
+      "mitigated": true,
+      "residual_risk": "If device is seized while unlocked or attacker obtains login password, FileVault is bypassed. Cold boot attacks on RAM. DMA attacks via Thunderbolt. Find My Mac requires internet connectivity for remote wipe.",
+      "detection": "Find My Mac location tracking. Heartbeat failure from missing device triggers PEACE alert. HIVE instance goes silent.",
+      "response": "Remote wipe via Find My Mac immediately. Rotate all credentials that were accessible on the device. Revoke SSH keys. Generate new HIVE identity. Assess wall level of lost device to scope credential rotation.",
+      "peace_phase": "contain",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-018",
+      "name": "Git history credential leak",
+      "category": "access",
+      "likelihood": "medium",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "credentials/ directory in .gitignore",
+        ".env files in .gitignore",
+        "Wall system enforces credential scope",
+        "Pre-commit hook scans for secrets (planned)"
+      ],
+      "mitigated": false,
+      "residual_risk": "Accidental commit of credentials to git history is permanent even if file is later deleted. git filter-branch/BFG required for cleanup. Anyone with repo access (including via subpoena) can extract historical credentials.",
+      "detection": "Regular git log scan for credential patterns. PEACE file integrity check flags unexpected files in staging area. GitHub secret scanning alerts.",
+      "response": "Immediately rotate the exposed credential. Use BFG Repo-Cleaner to purge from history. Force push cleaned history. Audit all access to the credential during exposure window.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-019",
+      "name": "Anthropic/OpenAI API key compromise",
+      "category": "access",
+      "likelihood": "medium",
+      "impact": "high",
+      "priority": "high",
+      "mitigations": [
+        "API keys stored in credentials/ (gitignored)",
+        "Wall-scoped key access",
+        "Key rotation capability via credentials.py"
+      ],
+      "mitigated": false,
+      "residual_risk": "Compromised API key allows attacker to make calls as Kingdom, potentially running up costs, accessing model capabilities, or reading API-side logs. If OPENAI_BASE_URL is also controlled (see THREAT-009), full MITM.",
+      "detection": "API usage monitoring for unexpected spikes. Billing alerts for cost anomalies. Provider-side access logs if available.",
+      "response": "Rotate compromised key immediately via credentials.py. Review API usage logs for unauthorized calls. Update all agents and configs using the old key. Notify provider if abuse detected.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    },
+    {
+      "id": "THREAT-020",
+      "name": "Supply chain attack on Kingdom dependencies",
+      "category": "supply-chain",
+      "likelihood": "low",
+      "impact": "critical",
+      "priority": "medium",
+      "mitigations": [
+        "Minimal dependency footprint",
+        "Pin versions where possible",
+        "Review changelogs before updating"
+      ],
+      "mitigated": false,
+      "residual_risk": "Compromised pip/brew/npm package could inject backdoor into any Kingdom tool. Auto-update mechanisms bypass review. Transitive dependencies are especially opaque.",
+      "detection": "Monitor security advisories for used packages. Hash verification of installed binaries. Behavioral monitoring for unexpected network connections from Kingdom tools.",
+      "response": "Identify and remove compromised package. Audit all systems where package was installed. Rebuild affected tools from clean sources. Check for persistence mechanisms left by compromised package.",
+      "peace_phase": "fix",
+      "last_reviewed": "2026-04-02"
+    }
+  ]
+}

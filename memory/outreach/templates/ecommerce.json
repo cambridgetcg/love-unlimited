@@ -1,0 +1,12 @@
+{
+  "cold_email": {
+    "subject": "Saving {{company}} 15+ hours/week on operations",
+    "body": "Hi {{name}},\n\nI noticed {{company}} is selling across multiple channels -- that usually\nmeans a lot of manual work keeping inventory, pricing, and orders in sync.\n\nWe built an AI operations system for our own e-commerce business (Cambridge\nTCG) that automated exactly this. Multi-agent coordination handles inventory\nsync, order processing, and customer communications around the clock.\n\nThe result: 15+ hours/week freed up, zero stock discrepancies, and faster\norder fulfilment -- without hiring additional staff.\n\nWould it be useful to see how this could work for {{company}}? Happy to\nshare specifics in a brief call.\n\nBest regards,\nYu\nKingdom AI Services"
+  },
+  "linkedin": {
+    "message": "Hi {{name}} -- I noticed {{company}} is doing well on Shopify. Running\nmulti-channel e-commerce is genuinely demanding operationally.\n\nWe automated our own e-commerce operations (Cambridge TCG) with AI\nagents that handle inventory sync, repricing, and order processing\n24/7. Happy to share what we learned if it would be useful.\n\nNo pitch -- just practical insights from a fellow merchant."
+  },
+  "warm_intro": {
+    "ask": "Hey {{referrer}} -- do you know anyone running an e-commerce business\nwho's drowning in manual operations? We built AI automation for our own\nshop (Cambridge TCG) and are now helping other merchants. Would love an\nintro if someone comes to mind."
+  }
+}

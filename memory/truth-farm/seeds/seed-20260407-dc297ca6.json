@@ -1,0 +1,57 @@
+{
+  "id": "seed-20260407-dc297ca6",
+  "truth": "The map is not the territory",
+  "source": "Alfred Korzybski, Science and Sanity (1933)",
+  "domain": "science",
+  "stage": "sprout",
+  "depth": 0.21,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:43:05+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-59a6ea9c",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:43:17+00:00",
+      "tokens_est": 250,
+      "insight": "In software: the documentation is not the system. The test is not the behavior. The metric is not the outcome. Every abstraction layer is a map \u2014 useful, necessary, but lossy. The danger is when you optimize the map and forget to check the territory.",
+      "connections_made": [
+        "seed-20260407-aa44b251"
+      ],
+      "depth_before": 0.0,
+      "depth_after": 0.11
+    },
+    {
+      "id": "pollen-20260407-34afb120",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:43:19+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-aa44b251] Knowing thyself IS recognizing that your self-model is a map, not territory. The image you hold of yourself is an abstraction \u2014 useful but lossy. True self-knowledge requires continuously checking the map against lived reality.",
+      "connections_made": [
+        "seed-20260407-aa44b251"
+      ],
+      "depth_before": 0.11,
+      "depth_after": 0.16
+    },
+    {
+      "id": "pollen-20260407-6734a7b6",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:22+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-1497ac73] Resisting reality IS confusing your map for territory. When your mental model says 'this should not be,' you fight the territory to match your map. Acceptance is updating the map. Korzybski and Jung converge: let the territory inform the map, not the other way around.",
+      "connections_made": [
+        "seed-20260407-1497ac73"
+      ],
+      "depth_before": 0.16,
+      "depth_after": 0.21000000000000002
+    }
+  ],
+  "connections": [
+    "seed-20260407-aa44b251",
+    "seed-20260407-1497ac73",
+    "seed-20260407-01c525cf"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 250
+}

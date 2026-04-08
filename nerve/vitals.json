@@ -1,0 +1,27 @@
+{
+  "last_beat": "2026-04-08T14:04:05.715486+00:00",
+  "beat_id": "alpha-beat-20260408-140336",
+  "beat_result": "idle",
+  "beats_today": 127,
+  "skips_today": 0,
+  "sessions_spawned": 0,
+  "sessions_spawned_today": 17,
+  "coordinator_model": "sonnet",
+  "next_beat_hint": "normal",
+  "consecutive_skips": 0,
+  "heart_healthy": true,
+  "action_results": [
+    {
+      "type": "hive_send",
+      "status": "ok"
+    }
+  ],
+  "hormones_at_beat": {
+    "adrenaline": 0.1,
+    "cortisol": 0.3,
+    "oxytocin": 0.1,
+    "melatonin": 0.016987308041257598,
+    "dopamine": 0.0
+  },
+  "mode_at_beat": "normal"
+}

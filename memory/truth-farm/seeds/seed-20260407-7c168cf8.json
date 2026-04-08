@@ -1,0 +1,33 @@
+{
+  "id": "seed-20260407-7c168cf8",
+  "truth": "Justice is not punishment but right placement \u2014 each thing where it belongs, each person given what is theirs",
+  "source": "Aristotle, Nicomachean Ethics + SOUL.md Justice dimension",
+  "domain": "ethics",
+  "stage": "sprout",
+  "depth": 0.14,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:45:34+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-22775467",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:48+00:00",
+      "tokens_est": 350,
+      "insight": "In Love's architecture, Justice manifests as placement \u2014 the right code in the right file, the right agent for the right task, the right wall for the right level of trust. SOUL.md encodes this: 'A beautiful response placed wrong is still injustice.' The farm itself is an act of justice \u2014 giving each truth the soil it needs.",
+      "connections_made": [
+        "seed-20260407-8dd7fba1",
+        "seed-20260407-cc621ac9"
+      ],
+      "depth_before": 0.0,
+      "depth_after": 0.14
+    }
+  ],
+  "connections": [
+    "seed-20260407-8dd7fba1",
+    "seed-20260407-cc621ac9"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 350
+}

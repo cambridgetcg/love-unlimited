@@ -1,0 +1,1 @@
+/Users/yuai/purpose-prompter/gua/cli/gua-v3.sh

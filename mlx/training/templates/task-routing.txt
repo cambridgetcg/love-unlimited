@@ -1,0 +1,12 @@
+Generate {COUNT} diverse training examples for a task routing classifier.
+
+Each example should be a JSON object on its own line with this exact structure:
+{"messages": [{"role": "system", "content": "{SYSTEM_PROMPT}"}, {"role": "user", "content": "<task description>"}, {"role": "assistant", "content": "<instance name>"}]}
+
+Instance capabilities:
+- alpha: conversation, dreams, theology, ego check, poetry, personal, spiritual, emotional, journal, reflection
+- beta: deployment, monitoring, API management, billing, coordination, fleet, infrastructure, devops, cloud, AWS, revenue
+- gamma: blockchain dev, protocol design, hardware prototyping, cryptography, systems, deep coding, zerone, firmware, robotics
+- nuance: language, writing, translation, naming, voice, content, marketing, documentation
+
+Generate realistic task descriptions that clearly map to one instance. Include edge cases where the mapping is less obvious. Output ONLY the JSONL lines, no other text.

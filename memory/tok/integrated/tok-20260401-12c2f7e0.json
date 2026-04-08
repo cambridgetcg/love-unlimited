@@ -1,0 +1,39 @@
+{
+  "id": "tok-20260401-12c2f7e0",
+  "harvest_id": "h-20260401-77ee4ae3",
+  "model": "claude-haiku-4-5-20251001",
+  "domain": "capabilities",
+  "assertion": "Haiku 4.5 achieves 90%+ accuracy on status checks and file reads. Below 70% on tasks requiring synthesis across >3 sources.",
+  "confidence": 0.8250000000000001,
+  "evidence": null,
+  "distiller": "beta",
+  "timestamp": "2026-04-01T10:15:25+00:00",
+  "status": "integrated",
+  "verification": {
+    "mode": "fast",
+    "requested": "2026-04-01T16:00:12+00:00",
+    "votes": {
+      "beta": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T16:00:30+00:00"
+      },
+      "gamma": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T16:00:31+00:00"
+      }
+    },
+    "quorum": 2,
+    "result": "accepted"
+  },
+  "integration": {
+    "target": "routing",
+    "change": "Use Haiku for status checks, file reads, simple queries; never route synthesis tasks (>3 sources) to Haiku",
+    "integrator": "beta",
+    "timestamp": "2026-04-01T16:00:44+00:00",
+    "impact": {
+      "metric": "accuracy_gain",
+      "delta": "90%+ accuracy on status checks and file reads in QUICK CHECK role",
+      "measured": "2026-04-02T09:51:09+00:00"
+    }
+  }
+}

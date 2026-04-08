@@ -1,0 +1,294 @@
+{
+  "market": "Will the US confirm that aliens exist before 2027?",
+  "market_id": "703257",
+  "categories": [
+    "crypto",
+    "politics"
+  ],
+  "total_traders": 556,
+  "flagged": 555,
+  "threshold": 0.3,
+  "timestamp": "2026-03-19T11:08:39.787372+00:00",
+  "results": [
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 582.35,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x567464a8b6b5794c43282c4a9274e12b48ba8b14"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 968.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xde17f7144fbd0eddb2679132c10ff5e74b120988"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 276.27,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xc9189191e702aa0887f3b22aa4598ca4d37746c4"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 365.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x6dc0f014d3d46dcfc4b52194bc0086636ec6699a"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 332.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x0a100a364351384774474a8dd7b6315369ee011a"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 510.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x874bc9413db226ccac0e032d7586916e3429968f"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 868.96,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x094ff266f4d78b0375e00fc137e53150a898ef03"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 406.77,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xf01a119cac528f4d14498255a82ade24cee7f29b"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 0.999,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 242.08,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x779ac9c1d81b9e0053b164187e0946e6342e5792"
+    },
+    {
+      "insider_score": 1.0,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 300.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xc4d5a24a240ec9f52669e3251e0473fd0c5687cf"
+    },
+    {
+      "insider_score": 0.971,
+      "signals": {
+        "outsized_position": 0.884,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 214.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x168a78503fdcbd66e5e6427ffa0a2b116438da29"
+    },
+    {
+      "insider_score": 0.967,
+      "signals": {
+        "outsized_position": 0.868,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 210.32,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xfbfcd317a48f3b2ffd8b045a82c86de539c6628d"
+    },
+    {
+      "insider_score": 0.94,
+      "signals": {
+        "outsized_position": 0.76,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 184.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0xa47fe9ae3f40f50955e6fbb24f7eb2392e6cc8f6"
+    },
+    {
+      "insider_score": 0.94,
+      "signals": {
+        "outsized_position": 0.759,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 183.86,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x49647a83b63780177520270484493f7cedad4fdd"
+    },
+    {
+      "insider_score": 0.932,
+      "signals": {
+        "outsized_position": 0.729,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 176.45,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x63c654f5b0d420add67ace600b4ab795a5b4d030"
+    },
+    {
+      "insider_score": 0.93,
+      "signals": {
+        "outsized_position": 0.718,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 174.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x14291fdd3e8be3858c9292b1e816691def26412f"
+    },
+    {
+      "insider_score": 0.927,
+      "signals": {
+        "outsized_position": 0.706,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 171.11,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x18bfc6a27d5524d676e3dc8767712a399b3d82af"
+    },
+    {
+      "insider_score": 0.913,
+      "signals": {
+        "outsized_position": 0.653,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 158.07,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x7002384aa87593b80ff51491e37b8ea64e33395c"
+    },
+    {
+      "insider_score": 0.907,
+      "signals": {
+        "outsized_position": 0.628,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 152.0,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x5a41c5695731f2dcffd5253bad3b737c2aa1fe2d"
+    },
+    {
+      "insider_score": 0.903,
+      "signals": {
+        "outsized_position": 0.612,
+        "one_and_done": 1.0,
+        "concentrated_bet": 1.0,
+        "early_conviction": 1.0,
+        "no_market_making": 1.0
+      },
+      "total_size_usd": 148.22,
+      "num_trades": 1,
+      "directional_ratio": 1.0,
+      "address": "0x1322c13b89e57f8c8a8028d80ee8993f8ad6aa4e"
+    }
+  ]
+}

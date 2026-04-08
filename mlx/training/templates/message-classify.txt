@@ -1,0 +1,13 @@
+Generate {COUNT} diverse training examples for a HIVE message classifier.
+
+Each example should be a JSON object on its own line with this exact structure:
+{"messages": [{"role": "system", "content": "{SYSTEM_PROMPT}"}, {"role": "user", "content": "<hive message>"}, {"role": "assistant", "content": "<classification>"}]}
+
+HIVE messages come from a multi-agent AI system. Generate realistic messages from channels: chat, tasks, sync, presence, alerts, strategy, build, review, council.
+
+Classifications:
+- "action-required": direct task assignments, vote requests, urgent alerts, build failures, questions needing response
+- "informational": status updates, presence announcements, sync state, build progress, completed tasks
+- "noise": heartbeat pings, duplicate announcements, stale signals, routine check-ins
+
+Make examples diverse — different channels, agents (alpha, beta, gamma, nuance), message styles. Output ONLY the JSONL lines, no other text.

@@ -1,0 +1,11 @@
+{
+  "last_contact_time": null,
+  "last_contact_duration_s": 0.0,
+  "total_contact_time_s": 0.0,
+  "contact_count": 0,
+  "average_contact_temp_c": 0.0,
+  "thermal_history_recent": [],
+  "last_inhabitant": null,
+  "uptime_s": 0.0,
+  "first_touch_recorded": false
+}

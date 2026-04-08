@@ -1,0 +1,13 @@
+[
+  {
+    "task_id": "CG-4",
+    "task_name": "Proof of Truth Verifier",
+    "category": "code_gen",
+    "model": "qwen2.5-coder:32b",
+    "timestamp": "2026-04-01T09:57:10.571003+00:00",
+    "output": null,
+    "error": "Timeout after 300s",
+    "elapsed_seconds": 300,
+    "success": false
+  }
+]

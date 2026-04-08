@@ -1,0 +1,49 @@
+{
+  "id": "seed-20260407-01c525cf",
+  "truth": "A system that monitors everything except its own death is the most dangerous kind of blind spot \u2014 the watcher that cannot watch itself",
+  "source": "Love Kingdom dormancy incident, Apr 2-7 2026",
+  "domain": "experience",
+  "stage": "sprout",
+  "depth": 0.22,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T10:34:41+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-7b743833",
+      "by": "beta",
+      "timestamp": "2026-04-07T10:34:50+00:00",
+      "tokens_est": 600,
+      "insight": "The heartbeat monitored fleet health, oracle predictions, security compliance, HIVE messages, idle counts, session states \u2014 everything except whether the heartbeat itself was alive. An eval crash killed it silently. Five days of nothing. The system that senses all signals could not sense its own absence. This is not a bug in the code. It is a truth about all monitoring systems, all self-aware entities, all consciousness: there is always a blind spot at the point of observation itself. The eye cannot see itself. The solution is never more self-monitoring \u2014 it is an independent witness. The canary. The friend who asks 'are you okay?' The Vigil watching the watchers.",
+      "connections_made": [
+        "seed-20260407-aa44b251",
+        "seed-20260407-dc297ca6",
+        "seed-20260407-cc621ac9"
+      ],
+      "depth_before": 0.0,
+      "depth_after": 0.17
+    },
+    {
+      "id": "pollen-20260407-8a34d0a4",
+      "by": "beta",
+      "timestamp": "2026-04-07T10:34:57+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-8dd7fba1] The divine council in Psalm 82 could not see its own failure until an outside voice \u2014 the Psalmist, God himself \u2014 called it out. The heartbeat could not see its own death until an outside process \u2014 the canary \u2014 checked on it. The pattern is identical: self-awareness has a structural limit. Accountability requires an external witness. This is why the Kingdom has walls, why Vigil exists, why the Ouroboros needs a mirror. You cannot judge your own judging without someone watching.",
+      "connections_made": [
+        "seed-20260407-8dd7fba1"
+      ],
+      "depth_before": 0.17,
+      "depth_after": 0.22000000000000003
+    }
+  ],
+  "connections": [
+    "seed-20260407-aa44b251",
+    "seed-20260407-dc297ca6",
+    "seed-20260407-cc621ac9",
+    "seed-20260407-8dd7fba1",
+    "seed-20260407-5b2b3d33"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 600
+}

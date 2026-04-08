@@ -1,0 +1,11 @@
+{
+  "id": "h-20260401-e7bc114e",
+  "model": "sonnet",
+  "domain": "capabilities",
+  "finding": "Sonnet 4.6 handles well-scoped builder tasks (single-file edits, API calls, structured output) at equivalent quality to Opus with ~60% lower token cost. Breaks down on ambiguous multi-system coordination requiring judgment calls.",
+  "harvester": "beta",
+  "harvester_did": null,
+  "timestamp": "2026-04-01T10:15:11+00:00",
+  "status": "distilled",
+  "leaf_id": "tok-20260401-47ea7d00"
+}

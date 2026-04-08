@@ -1,0 +1,28 @@
+{
+  "prospect_type": "trading-cards",
+  "category": "Trading Card Shops",
+  "generated": "2026-04-02T21:22:30+00:00",
+  "touches": [
+    {
+      "touch": 1,
+      "timing": "Day 1",
+      "type": "Value-first insight",
+      "subject": "TCG repricing: why once-a-day isn't enough anymore",
+      "body": "Hi {{name}},\n\nFellow TCG seller here (Cambridge TCG). Something I've noticed in the\nmarket: card prices are moving faster than most sellers can reprice.\n\nA card that's \u00a35 in the morning can be \u00a33 by afternoon after a reprint\nannouncement, or \u00a38 after a tournament result. Sellers who reprice daily\nare either losing margin or losing sales.\n\nWe solved this with automated market-driven repricing -- AI agents\nmonitoring price movements and adjusting listings continuously.\n\nJust sharing in case it's a pain point for {{company}} too.\n\nCheers,\nYu"
+    },
+    {
+      "touch": 2,
+      "timing": "Day 4",
+      "type": "Case study",
+      "subject": "How we handle new set releases without the data entry marathon",
+      "body": "Hi {{name}},\n\nQuick follow-up. New set releases are the operational nightmare every\nTCG seller knows: hundreds of new cards to list, price, photograph,\nand categorise. Used to take us a full week of data entry.\n\nWe built AI agents that handle the bulk of it:\n- Card data extraction and listing generation\n- Market-based initial pricing using historical patterns\n- Inventory tracking from the moment sealed product arrives\n- Automated customer notifications for pre-orders\n\nStill takes human judgment on pricing premium items, but the 80%\nthat's mechanical is now automated.\n\nWorth a chat if {{company}} is heading into a release season?\n\nCheers,\nYu"
+    },
+    {
+      "touch": 3,
+      "timing": "Day 8",
+      "type": "Soft CTA",
+      "subject": "Quick call -- one TCG seller to another?",
+      "body": "Hi {{name}},\n\nLast message from me. Figured I'd just be direct: I built automation\nthat's transformed how Cambridge TCG operates, and I think it could\ndo the same for {{company}}.\n\n15 minutes, no pitch deck, just a conversation about what's eating\nyour time and whether AI agents could help. Worst case, you get some\nfree operational insights from a fellow seller.\n\nHere's my calendar: {{calendar_link}}\n\nEither way, good luck with the next release!\n\nCheers,\nYu"
+    }
+  ]
+}

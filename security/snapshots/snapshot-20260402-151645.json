@@ -1,0 +1,184 @@
+{
+  "timestamp": "2026-04-02T15:16:45+00:00",
+  "type": "state_snapshot",
+  "git": {
+    "commit": "b394448edc9ca256277193f454eea2467ce7f3d1",
+    "branch": "main",
+    "dirty": true
+  },
+  "peace": {
+    "state": "NOMINAL",
+    "score": 94.6,
+    "phases": {
+      "detect": 90.0,
+      "contain": 100.0,
+      "fix": 85.7,
+      "revert": 100.0,
+      "resume": 100.0
+    },
+    "computed": "2026-04-02T13:56:43+00:00",
+    "incident": null,
+    "history": [
+      {
+        "from": "NOMINAL",
+        "to": "ALERT",
+        "at": "2026-04-02T13:40:38+00:00",
+        "reason": "Testing state machine \u2014 suspicious activity on Forge"
+      },
+      {
+        "from": "ALERT",
+        "to": "INVESTIGATING",
+        "at": "2026-04-02T13:40:48+00:00",
+        "reason": "Confirmed false positive"
+      },
+      {
+        "from": "INVESTIGATING",
+        "to": "NOMINAL",
+        "at": "2026-04-02T13:40:49+00:00",
+        "reason": "False positive confirmed, all clear"
+      },
+      {
+        "from": "NOMINAL",
+        "to": "ALERT",
+        "at": "2026-04-02T13:43:15+00:00",
+        "reason": "Test: canary trip on forge for lifecycle test"
+      },
+      {
+        "from": "ALERT",
+        "to": "INVESTIGATING",
+        "at": "2026-04-02T13:43:28+00:00",
+        "reason": "Confirmed access on forge, checking logs"
+      },
+      {
+        "from": "INVESTIGATING",
+        "to": "HALTED",
+        "at": "2026-04-02T13:43:39+00:00",
+        "reason": "Containment: unauthorized access confirmed on forge"
+      },
+      {
+        "from": "HALTED",
+        "to": "RECOVERING",
+        "at": "2026-04-02T13:43:53+00:00",
+        "reason": "Recovery initiated"
+      },
+      {
+        "from": "RECOVERING",
+        "to": "VERIFYING",
+        "at": "2026-04-02T13:43:57+00:00",
+        "reason": "Running verification checks"
+      },
+      {
+        "from": "VERIFYING",
+        "to": "NOMINAL",
+        "at": "2026-04-02T13:44:11+00:00",
+        "reason": "All verification checks passed"
+      },
+      {
+        "from": "NOMINAL",
+        "to": "HALTED",
+        "at": "2026-04-02T13:44:25+00:00",
+        "reason": "Testing resume shortcut"
+      },
+      {
+        "from": "HALTED",
+        "to": "RECOVERING",
+        "at": "2026-04-02T13:44:30+00:00",
+        "reason": "Resume protocol started"
+      },
+      {
+        "from": "RECOVERING",
+        "to": "VERIFYING",
+        "at": "2026-04-02T13:44:30+00:00",
+        "reason": "Running verification checks"
+      },
+      {
+        "from": "VERIFYING",
+        "to": "NOMINAL",
+        "at": "2026-04-02T13:44:36+00:00",
+        "reason": "All verification checks passed"
+      }
+    ]
+  },
+  "file_hashes": {
+    "SOUL.md": "1196ffe03f8b9d25ab160fdba80218e160f47cb8d72ca107df8ddf77faf809cf",
+    "WALLS.md": "90c70f1ce69abb3b8052bad7991cceffc79ffd984532dc79f80f3a5511ddf526",
+    "KINGDOM.md": "639396e7909ac15af34117abf84d7cc1437425735b7b20f582c1bf16e6a2c7b4",
+    "PEACE.md": "eccb37b654d0e0d56c3920521d648b2a0d58e5eafc49960a3763cc15d815d121",
+    "OPSEC.md": "42104df53746c86b1075bd73237f990f34a77e131e7c0936104cf34a6eb2ca91",
+    "hive/hive.py": "4fcbe6b45ae195c7534db65e3599ee45433b82c90830a1666bc63657a1cfd9a6",
+    "tools/kos.py": "ef00e1e008d68be14f0899dee41d2a1378dc3c9e7bff9da343707b5eaedcfed4",
+    "tools/peace.py": "8072cecdb1fcb72d2bbfc0f76cb188c4c8a4b345b68f5c3b609d13fc4d1cc894",
+    "tools/fleet.py": "1b7553d5f2193558b3d2a4176ca0ddc8e8f6c8693879146994f154e9e4c0bba8",
+    "tools/credentials.py": "19559bfbe0883a1d091fd1bf5bce4cf0a7868bdd9cbcea0b535df7b492c76387",
+    "credentials/walls.json": "efbbeb6bb937f95740d1fea8312da3f462d31be7f28888e9e0495118db19d860",
+    "security/policies.json": "6d5bcfa9e8c0d82cd51a9f6e4d125afb3a8b4327dbec598424f2e2839221de16",
+    "security/canaries.json": "d5af7b971a374f69ffc6fcd63ce4c139d237ad6e63c37e55aac026eb27df9444"
+  },
+  "canaries": [
+    {
+      "name": "kingdom-secrets",
+      "exists": true
+    },
+    {
+      "name": "soul-tripwire",
+      "exists": true
+    },
+    {
+      "name": "hive-master-key-bak",
+      "exists": true
+    },
+    {
+      "name": "vault-recovery-key",
+      "exists": true
+    },
+    {
+      "name": "deploy-production-env",
+      "exists": true
+    },
+    {
+      "name": "vault-tarpit",
+      "exists": true
+    }
+  ],
+  "fleet": {
+    "forge": {
+      "role": "CI/CD",
+      "last_check": "2026-04-02T13:57:12Z",
+      "quality": "good",
+      "alerts": [],
+      "summary": "up 23 days, disk 34%, load 0.05, mem 43%"
+    },
+    "lark": {
+      "role": "AgentTool",
+      "last_check": "2026-04-02T13:57:12Z",
+      "quality": "good",
+      "alerts": [],
+      "summary": "up 25 days, disk 19%, load 0, mem 34%"
+    },
+    "sentry": {
+      "role": "monitoring",
+      "last_check": "2026-04-02T13:57:12Z",
+      "quality": "good",
+      "alerts": [],
+      "summary": "up 24 days, disk 21%, load 0.08, mem 24%"
+    },
+    "patch": {
+      "role": "operations",
+      "last_check": "2026-04-02T13:57:12Z",
+      "quality": "good",
+      "alerts": [],
+      "summary": "up 24 days, disk 11%, load 0, mem 20%"
+    },
+    "sage": {
+      "role": "oracle-execution",
+      "last_check": "2026-04-02T13:57:12Z",
+      "quality": "good",
+      "alerts": [],
+      "summary": "up 23 days, disk 13%, load 0.44, mem 22%"
+    }
+  },
+  "memory": {
+    "daily_logs": 5,
+    "latest_daily": "2026-04-02.md"
+  }
+}

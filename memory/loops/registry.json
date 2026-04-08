@@ -1,0 +1,482 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-04-01",
+    "methodology": "Loop Closure Methodology (LCM)",
+    "principle": "Every gap is an open loop. Every open loop has 5 components: sensor, signal, controller, actuator, measure. Close the loop, close the gap.",
+    "audit_interval_beats": 12,
+    "last_audit": "2026-04-07T21:18:42+00:00",
+    "audit_count": 76
+  },
+  "loops": [
+    {
+      "id": "tok-harvest",
+      "name": "Model Harvest Loop",
+      "description": "Systematic extraction of knowledge from new AI model releases",
+      "criticality": 0.9,
+      "components": {
+        "sensor": {
+          "description": "Monitor model releases (RSS, HuggingFace, announcements)",
+          "check": "func_exists:tools/tok.py:cmd_harvest",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function cmd_harvest exists",
+          "closure_detected": "2026-04-01T10:14:50+00:00"
+        },
+        "signal": {
+          "description": "Structured harvest reports in memory/tok/harvests/",
+          "check": "dir_has_recent:memory/tok/harvests:7",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in last 7d",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        },
+        "controller": {
+          "description": "Triarchy prioritizes which models to harvest via HIVE strategy",
+          "check": "hive_channel_active:strategy:30",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "HIVE #strategy \u2014 verify manually"
+        },
+        "actuator": {
+          "description": "Run benchmarks against Kingdom-specific tasks",
+          "check": "dir_has_entries:memory/tok/baselines",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "2 entries in memory/tok/baselines",
+          "closure_detected": "2026-04-01T10:16:58+00:00"
+        },
+        "measure": {
+          "description": "Compare harvest findings against baseline model profiles",
+          "check": "file_exists:memory/tok/baselines/baseline.json",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "File exists: baseline.json",
+          "closure_detected": "2026-04-01T10:16:58+00:00"
+        }
+      },
+      "health": 0.9,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "tok-verify",
+      "name": "Knowledge Verification Loop",
+      "description": "Verify harvested knowledge through PoT consensus or fast-track HIVE agreement",
+      "criticality": 0.85,
+      "components": {
+        "sensor": {
+          "description": "Pending ToK leaves awaiting verification",
+          "check": "dir_has_entries:memory/tok/leaves",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in memory/tok/leaves",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        },
+        "signal": {
+          "description": "Verification request routed to validators or triarchy",
+          "check": "func_exists:tools/tok.py:cmd_verify",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function cmd_verify exists",
+          "closure_detected": "2026-04-01T10:14:50+00:00"
+        },
+        "controller": {
+          "description": "PoT evaluation pipeline (10-stage) or HIVE consensus",
+          "check": "code_exists:legible_money/x/knowledge/evaluation/engine.go",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Code exists: engine.go"
+        },
+        "actuator": {
+          "description": "Commit-reveal consensus rounds or triarchy vote",
+          "check": "code_exists:legible_money/x/knowledge/keeper/rounds.go",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Code exists: rounds.go"
+        },
+        "measure": {
+          "description": "Verified leaf count and recency",
+          "check": "dir_has_recent:memory/tok/verified:30",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in last 30d",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        }
+      },
+      "health": 1.0,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "tok-integrate",
+      "name": "Integration Loop",
+      "description": "Merge verified knowledge into Kingdom infrastructure (routing, configs, prompts)",
+      "criticality": 0.95,
+      "components": {
+        "sensor": {
+          "description": "Verified ToK leaves ready for integration",
+          "check": "dir_has_entries:memory/tok/verified",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in memory/tok/verified",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        },
+        "signal": {
+          "description": "Integration recommendation (which config, what change)",
+          "check": "func_exists:tools/tok.py:cmd_integrate",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function cmd_integrate exists",
+          "closure_detected": "2026-04-01T10:14:50+00:00"
+        },
+        "controller": {
+          "description": "Integrator reviews and approves change",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification"
+        },
+        "actuator": {
+          "description": "Automated config update (love.json, CLAUDE.md, heartbeat-runner.sh)",
+          "check": "func_exists:tools/tok.py:apply_integration",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function apply_integration exists",
+          "closure_detected": "2026-04-01T10:16:58+00:00"
+        },
+        "measure": {
+          "description": "Impact measurement (cost delta, quality delta) post-integration",
+          "check": "dir_has_recent:memory/tok/impact:30",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in last 30d",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        }
+      },
+      "health": 0.9,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "tok-incentive",
+      "name": "Economic Incentive Loop",
+      "description": "ZRN rewards for verification work, creating self-sustaining extraction economy",
+      "criticality": 0.5,
+      "components": {
+        "sensor": {
+          "description": "Work performed by participant (on-chain tx)",
+          "check": "code_exists:legible_money/x/knowledge/keeper/msg_server.go",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Code exists: msg_server.go"
+        },
+        "signal": {
+          "description": "Reward calculation engine",
+          "check": "code_exists:legible_money/x/vesting_rewards/keeper/vesting.go",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Code exists: vesting.go"
+        },
+        "controller": {
+          "description": "Vesting schedule by epistemic category",
+          "check": "code_exists:legible_money/x/vesting_rewards/types/types.go",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Code exists: types.go"
+        },
+        "actuator": {
+          "description": "ZRN distribution to participant accounts",
+          "check": "devnet_active",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Devnet marked as live in kingdom-metrics"
+        },
+        "measure": {
+          "description": "Participant retention and engagement metrics",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification",
+          "closure_detected": "2026-04-01T10:14:50+00:00"
+        }
+      },
+      "health": 0.9,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "tok-routing",
+      "name": "Routing Optimization Loop",
+      "description": "ToK findings drive model selection for Kingdom tasks (close the feedback loop)",
+      "criticality": 0.85,
+      "components": {
+        "sensor": {
+          "description": "Task outcome data (success, cost, latency) from session logs",
+          "check": "dir_has_recent:memory/sessions:1",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "17 entries in last 1d"
+        },
+        "signal": {
+          "description": "Aggregated model performance profiles",
+          "check": "file_exists:memory/tok/baselines/model-profiles.json",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "File exists: model-profiles.json",
+          "closure_detected": "2026-04-01T10:16:58+00:00"
+        },
+        "controller": {
+          "description": "Routing policy engine (data-driven model selection)",
+          "check": "func_exists:tools/routing-policy.py:cmd_recommend",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function cmd_recommend exists",
+          "closure_detected": "2026-04-01T17:45:00+00:00"
+        },
+        "actuator": {
+          "description": "Dynamic model selection based on task type and ToK data",
+          "check": "func_exists:tools/tok.py:get_routing_recommendation",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "Function get_routing_recommendation exists",
+          "closure_detected": "2026-04-01T10:16:58+00:00"
+        },
+        "measure": {
+          "description": "A/B comparison of routing policies (cost and quality deltas)",
+          "check": "dir_has_entries:memory/tok/impact",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "3 entries in memory/tok/impact",
+          "closure_detected": "2026-04-01T10:15:45+00:00"
+        }
+      },
+      "health": 1.0,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "lead-coupling",
+      "name": "Lead Coupling Loop",
+      "description": "Couples interactive sessions to autonomous heartbeat via directional lead \u2014 the bridge between human intent and autonomous execution",
+      "criticality": 0.9,
+      "components": {
+        "sensor": {
+          "description": "Read current lead file at heartbeat start",
+          "check": "file_exists:memory/leads/current.json",
+          "status": "red",
+          "health": 0.0,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "File missing: memory/leads/current.json",
+          "closure_detected": "2026-04-01T11:48:26+00:00"
+        },
+        "signal": {
+          "description": "Lead parsed and injected into coordinator prompt via --append-system-prompt",
+          "check": "file_exists:tools/heartbeat-runner.sh",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-02T11:48:05+00:00",
+          "notes": "File exists: heartbeat-runner.sh"
+        },
+        "controller": {
+          "description": "Heartbeat DECIDE phase filters by lead direction and next_actions",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification",
+          "closure_detected": "2026-04-01T17:35:25+00:00"
+        },
+        "actuator": {
+          "description": "Spawn sessions aligned with lead, update progress",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification",
+          "closure_detected": "2026-04-01T17:35:25+00:00"
+        },
+        "measure": {
+          "description": "Progress entries tracked in lead file, lead completion detected",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification"
+        }
+      },
+      "health": 0.5,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "truth-plant",
+      "name": "Truth Planting Loop",
+      "description": "Extract seeds of truth from humanity's wisdom traditions and plant them in the farm for cultivation",
+      "criticality": 0.7,
+      "components": {
+        "sensor": {
+          "description": "Monitor wisdom sources: reading, conversation, insight capture, cross-tradition study",
+          "check": "dir_has_entries:memory/truth-farm/seeds",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "8 seeds planted at launch"
+        },
+        "signal": {
+          "description": "Seed proposal: domain + truth + source identified for planting",
+          "check": "func_exists:tools/truth-farm.py:cmd_plant",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Function cmd_plant exists"
+        },
+        "controller": {
+          "description": "Domain diversity check \u2014 ensure seeds span traditions, not cluster in one",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification"
+        },
+        "actuator": {
+          "description": "Plant seed via truth-farm.py plant",
+          "check": "func_exists:tools/truth-farm.py:cmd_plant",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Function cmd_plant exists"
+        },
+        "measure": {
+          "description": "Seed count and domain diversity tracked in seasons.json",
+          "check": "file_exists:memory/truth-farm/seasons.json",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "File exists: seasons.json"
+        }
+      },
+      "health": 0.9,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "truth-nourish",
+      "name": "Truth Nourishment Loop",
+      "description": "Invest tokens to deepen understanding of planted seeds \u2014 water, pollinate, grow",
+      "criticality": 0.75,
+      "components": {
+        "sensor": {
+          "description": "Identify seeds that need watering (low depth, few connections, long since last watering)",
+          "check": "dir_has_entries:memory/truth-farm/seeds",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Seeds directory populated"
+        },
+        "signal": {
+          "description": "Priority queue: seeds sorted by need (depth, recency, connection count)",
+          "check": "func_exists:tools/truth-farm.py:cmd_garden",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Garden view shows priority by depth"
+        },
+        "controller": {
+          "description": "Token budget allocation \u2014 balance between watering existing and planting new",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification"
+        },
+        "actuator": {
+          "description": "Water and pollinate via truth-farm.py water/pollinate",
+          "check": "func_exists:tools/truth-farm.py:cmd_water",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Functions cmd_water and cmd_pollinate exist"
+        },
+        "measure": {
+          "description": "Token investment and depth growth tracked in seasons.json",
+          "check": "file_exists:memory/truth-farm/seasons.json",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Seasons tracks total_tokens and water_count"
+        }
+      },
+      "health": 0.9,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    },
+    {
+      "id": "truth-harvest",
+      "name": "Truth Harvest Loop",
+      "description": "Harvest mature seeds into actionable wisdom and integrate into Kingdom operations",
+      "criticality": 0.8,
+      "components": {
+        "sensor": {
+          "description": "Detect seeds at tree or fruit stage ready for harvest",
+          "check": "func_exists:tools/truth-farm.py:cmd_garden",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Garden view shows stage progression"
+        },
+        "signal": {
+          "description": "Harvest candidate identified (depth >= 0.6, connections >= 2)",
+          "check": "func_exists:tools/truth-farm.py:cmd_harvest",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Function cmd_harvest exists"
+        },
+        "controller": {
+          "description": "Wisdom extraction \u2014 distill truth + waterings into actionable insight",
+          "check": "manual",
+          "status": "yellow",
+          "health": 0.5,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Requires manual verification"
+        },
+        "actuator": {
+          "description": "Harvest via truth-farm.py harvest, apply to Kingdom ops",
+          "check": "dir_has_entries:memory/truth-farm/harvests",
+          "status": "red",
+          "health": 0.0,
+          "last_verified": "2026-04-07T21:18:42+00:00",
+          "notes": "Directory empty: memory/truth-farm/harvests"
+        },
+        "measure": {
+          "description": "Harvest count and application impact tracked in seasons.json",
+          "check": "file_exists:memory/truth-farm/seasons.json",
+          "status": "green",
+          "health": 1.0,
+          "last_verified": "2026-04-07T12:00:00+00:00",
+          "notes": "Seasons tracks harvest_count"
+        }
+      },
+      "health": 0.7,
+      "last_audit": "2026-04-07T21:18:42+00:00"
+    }
+  ]
+}

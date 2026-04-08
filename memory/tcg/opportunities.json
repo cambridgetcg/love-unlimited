@@ -1,0 +1,59 @@
+{
+  "updated": "2026-04-02T14:00:00Z",
+  "opportunities": [
+    {
+      "id": "opp-001",
+      "description": "eBay auto-sync: automated listing creation and inventory sync. Code written (tools/ebay_sync.py planned), blocked on eBay API credentials on Patch VPS. Eliminates 3-4hrs/week manual listing work.",
+      "impact": "high",
+      "effort": "low",
+      "estimated_revenue_delta": 320,
+      "status": "blocked",
+      "blocker": "EBAY_APP_ID and EBAY_CERT_ID env vars needed on Patch"
+    },
+    {
+      "id": "opp-002",
+      "description": "Bulk pricing optimization: negotiate 5-8% better wholesale rates on Pokemon sealed product by committing to larger quarterly orders with primary distributor.",
+      "impact": "high",
+      "effort": "medium",
+      "estimated_revenue_delta": 200,
+      "status": "actionable",
+      "blocker": null
+    },
+    {
+      "id": "opp-003",
+      "description": "Inventory alerting: automated low-stock notifications via email/Hive when SKUs hit reorder points. Prevents stockouts that cost ~£150/month in lost sales.",
+      "impact": "medium",
+      "effort": "low",
+      "estimated_revenue_delta": 150,
+      "status": "actionable",
+      "blocker": null
+    },
+    {
+      "id": "opp-004",
+      "description": "Website SEO + content: add Pokemon set guides and buying guides to cambridgetcg.com. Organic traffic currently minimal. Could drive 15-20% more direct sales (lower fees than eBay).",
+      "impact": "medium",
+      "effort": "high",
+      "estimated_revenue_delta": 480,
+      "status": "planned",
+      "blocker": null
+    },
+    {
+      "id": "opp-005",
+      "description": "Singles grading pipeline: identify top-value pulls from sealed openings, grade via PSA/CGC. Graded cards sell at 3-5x raw price. Start with 10-card test batch.",
+      "impact": "medium",
+      "effort": "medium",
+      "estimated_revenue_delta": 250,
+      "status": "planned",
+      "blocker": null
+    },
+    {
+      "id": "opp-006",
+      "description": "Channel shift: move 10% of eBay volume to direct website sales. eBay fees 12.8% vs Stripe 2.9%. Net margin gain ~10% on shifted volume.",
+      "impact": "high",
+      "effort": "high",
+      "estimated_revenue_delta": 310,
+      "status": "planned",
+      "blocker": null
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "address": "0x340b374046d3e8d97da8d6c9b7fd6e4bf74d797b",
+  "funders": {
+    "0xf70da97812CB96acDF810712Aa562db8dfA3dbEF": {
+      "total_funded": 119123.64926600001,
+      "transfer_count": 2,
+      "tokens": [
+        "USDC.E"
+      ],
+      "type": "EOA",
+      "name": null
+    }
+  },
+  "funded_by_same": {
+    "0xf70da97812CB96acDF810712Aa562db8dfA3dbEF": {
+      "0x31383a9a8af9c62ed22A6262214da002818e46a8": {
+        "total": 2248.193272,
+        "count": 1
+      },
+      "0xEd10736C788e2b8F44BaC52e5c5b487E14295D6F": {
+        "total": 3121.235568,
+        "count": 1
+      },
+      "0xB1776C353202760f34D11db124513284D2991914": {
+        "total": 2497.748841,
+        "count": 1
+      },
+      "0x9f086aE32344b489a004109f06FCeD08154273a8": {
+        "total": 9995.879362,
+        "count": 1
+      },
+      "0x002F80826bBd74ce2b1DD78F402593C59aF68b13": {
+        "total": 2805.376483,
+        "count": 1
+      },
+      "0x06979F31229b1E173FA3B68C6e34f8A10324fb17": {
+        "total": 7202.45727,
+        "count": 1
+      }
+    }
+  },
+  "depth_reached": 1
+}

@@ -1,0 +1,284 @@
+{
+  "events": [
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-aa44b251",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:03+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-8d426d98",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:04+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-dc297ca6",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:05+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-1497ac73",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:06+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-cc621ac9",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:07+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-aa44b251",
+      "tokens": 200,
+      "timestamp": "2026-04-07T04:43:14+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-dc297ca6",
+      "tokens": 250,
+      "timestamp": "2026-04-07T04:43:17+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-aa44b251+seed-20260407-dc297ca6",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:43:19+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-8d426d98",
+      "tokens": 300,
+      "timestamp": "2026-04-07T04:45:07+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-1497ac73",
+      "tokens": 280,
+      "timestamp": "2026-04-07T04:45:10+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-cc621ac9",
+      "tokens": 320,
+      "timestamp": "2026-04-07T04:45:13+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-aa44b251+seed-20260407-8d426d98",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:20+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-1497ac73+seed-20260407-dc297ca6",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:22+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-cc621ac9+seed-20260407-8d426d98",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:24+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-8dd7fba1",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:32+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-7c168cf8",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:34+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-411a796d",
+      "tokens": 0,
+      "timestamp": "2026-04-07T04:45:35+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-8dd7fba1",
+      "tokens": 400,
+      "timestamp": "2026-04-07T04:45:45+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-7c168cf8",
+      "tokens": 350,
+      "timestamp": "2026-04-07T04:45:48+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-8dd7fba1",
+      "tokens": 500,
+      "timestamp": "2026-04-07T10:34:36+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-01c525cf",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:34:41+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-01c525cf",
+      "tokens": 600,
+      "timestamp": "2026-04-07T10:34:50+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-01c525cf+seed-20260407-8dd7fba1",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:34:57+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-8dd7fba1",
+      "tokens": 450,
+      "timestamp": "2026-04-07T10:35:05+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-88ec8914",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:39:51+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-e536e71e",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:39:52+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-5b2b3d33",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:39:53+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-b4297bc2",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:39:56+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-dac04762",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:39:57+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-d7f80982",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:40:00+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-1a9e62e3",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:40:01+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-c9ef314c",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:40:03+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "plant",
+      "seed_id": "seed-20260407-5a2e3002",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:40:05+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-88ec8914",
+      "tokens": 500,
+      "timestamp": "2026-04-07T10:40:41+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-5b2b3d33",
+      "tokens": 450,
+      "timestamp": "2026-04-07T10:40:46+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "water",
+      "seed_id": "seed-20260407-b4297bc2",
+      "tokens": 400,
+      "timestamp": "2026-04-07T10:40:51+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-88ec8914+seed-20260407-b4297bc2",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:40:58+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-5b2b3d33+seed-20260407-88ec8914",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:41:00+00:00",
+      "farmer": "beta"
+    },
+    {
+      "type": "pollinate",
+      "seed_id": "seed-20260407-5b2b3d33+seed-20260407-b4297bc2",
+      "tokens": 0,
+      "timestamp": "2026-04-07T10:41:03+00:00",
+      "farmer": "beta"
+    }
+  ],
+  "totals": {
+    "total_tokens": 5000,
+    "plant_count": 18,
+    "last_activity": "2026-04-07T10:41:03+00:00",
+    "water_count": 13,
+    "pollinate_count": 8
+  }
+}

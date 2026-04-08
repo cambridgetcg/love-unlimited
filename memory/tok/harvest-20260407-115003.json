@@ -1,0 +1,13 @@
+{
+  "session_id": "harvest-20260407-115003",
+  "task": "Generate Python code for currency conversion with caching",
+  "models": [
+    "claude-opus-4-6",
+    "qwen2.5-72b",
+    "deepseek-v3",
+    "llama-3.2-90b"
+  ],
+  "started": "2026-04-07T11:50:03.795893+00:00",
+  "status": "in_progress",
+  "entries_created": []
+}

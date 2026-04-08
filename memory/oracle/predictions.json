@@ -1,0 +1,307 @@
+[
+  {
+    "id": "pred-0001",
+    "statement": "Prediction 0001 (legacy -- details on Sage VPS oracle repo)",
+    "confidence": 0.63,
+    "created": "2026-03-22T00:00:00+00:00",
+    "resolution_date": "2026-03-31T00:00:00+00:00",
+    "resolved": true,
+    "resolved_at": "2026-04-01T17:12:00+00:00",
+    "outcome": true,
+    "brier_score": 0.1369,
+    "source": "oracle-run.py",
+    "tags": [
+      "legacy",
+      "macro"
+    ],
+    "notes": "Migrated from kingdom-metrics. Brier 0.1369. Scored by resolution-scorer.py on 2026-04-01."
+  },
+  {
+    "id": "pred-0003",
+    "statement": "US strikes Iran by Mar 31",
+    "confidence": 0.52,
+    "created": "2026-03-22T00:00:00+00:00",
+    "resolution_date": "2026-03-31T00:00:00+00:00",
+    "resolved": true,
+    "resolved_at": "2026-04-01T17:12:00+00:00",
+    "outcome": true,
+    "brier_score": 0.2304,
+    "source": "oracle-run.py",
+    "tags": [
+      "legacy",
+      "geopolitical"
+    ],
+    "notes": "Migrated from kingdom-metrics. Brier 0.2304. US strikes Iran confirmed."
+  },
+  {
+    "id": "pred-0004",
+    "statement": "Prediction 0004 (legacy -- details on Sage VPS oracle repo)",
+    "confidence": 0.95,
+    "created": "2026-03-22T00:00:00+00:00",
+    "resolution_date": "2026-03-31T00:00:00+00:00",
+    "resolved": true,
+    "resolved_at": "2026-04-01T17:12:00+00:00",
+    "outcome": true,
+    "brier_score": 0.0025,
+    "source": "oracle-run.py",
+    "tags": [
+      "legacy"
+    ],
+    "notes": "Migrated from kingdom-metrics. Brier 0.0025 (excellent). Scored by resolution-scorer.py on 2026-04-01."
+  },
+  {
+    "id": "pred-0005",
+    "statement": "US or Israel strikes Iran by Mar 31",
+    "confidence": 0.55,
+    "created": "2026-03-22T00:00:00+00:00",
+    "resolution_date": "2026-03-31T00:00:00+00:00",
+    "resolved": true,
+    "resolved_at": "2026-04-01T17:12:00+00:00",
+    "outcome": true,
+    "brier_score": 0.2025,
+    "source": "oracle-run.py",
+    "tags": [
+      "legacy",
+      "geopolitical"
+    ],
+    "notes": "Migrated from kingdom-metrics. Brier 0.2025. US/Israel strikes Iran confirmed."
+  },
+  {
+    "id": "pred-0009",
+    "statement": "Fed holds rates at April 30 FOMC meeting",
+    "confidence": 0.85,
+    "created": "2026-03-28T00:00:00+00:00",
+    "resolution_date": "2026-04-30T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "oracle-run.py / kalshi-scanner.py",
+    "tags": [
+      "legacy",
+      "fed",
+      "macro"
+    ],
+    "notes": "Migrated from kingdom-metrics. Pending resolution Apr 30."
+  },
+  {
+    "id": "pred-0010",
+    "statement": "Fed holds rates at May 6 FOMC meeting",
+    "confidence": 0.8,
+    "created": "2026-03-28T00:00:00+00:00",
+    "resolution_date": "2026-05-06T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "oracle-run.py / kalshi-scanner.py",
+    "tags": [
+      "legacy",
+      "fed",
+      "macro"
+    ],
+    "notes": "Migrated from kingdom-metrics. Pending resolution May 6."
+  },
+  {
+    "id": "pred-0011",
+    "statement": "Bitcoin will be above 100K on May 1",
+    "confidence": 0.7,
+    "created": "2026-04-02T15:03:05+00:00",
+    "resolution_date": "2026-05-01T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "CoinGecko",
+    "tags": [
+      "crypto",
+      "macro"
+    ],
+    "notes": "Tracking BTC spot price"
+  },
+  {
+    "id": "pred-0012",
+    "statement": "Pokemon SV8 (Surging Sparks successor) set release will increase Cambridge TCG monthly revenue by >15% in its release month vs the prior month",
+    "confidence": 0.78,
+    "created": "2026-04-02T21:13:59+00:00",
+    "resolution_date": "2026-08-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Historical pattern: every major Pokemon set release (SV6 Twilight Masquerade, SV7 Stellar Crown, SV8) has driven 15-30% revenue spikes for TCG retailers. Cambridge TCG current baseline GBP3200/mo. SV8 expected Q3 2026. High confidence based on repeatable seasonal pattern.",
+    "tags": [
+      "tcg",
+      "revenue",
+      "cambridge-tcg"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0013",
+    "statement": "UK trading card market total value will grow >10% YoY in 2026 vs 2025",
+    "confidence": 0.65,
+    "created": "2026-04-02T21:14:03+00:00",
+    "resolution_date": "2026-12-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "UK TCG market has grown 12-18% YoY since 2020 driven by Pokemon, One Piece, and Lorcana. Some deceleration expected as post-COVID boom normalizes, but new IP entries (Dragon Ball Fusion World, Star Wars Unlimited) sustain growth. 65% confidence accounts for possible macro headwinds (UK consumer spending, inflation).",
+    "tags": [
+      "tcg",
+      "market",
+      "uk"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0014",
+    "statement": "eBay will announce an increase in seller fees (final value fee or insertion fee) for Trading Cards category before end of 2026",
+    "confidence": 0.6,
+    "created": "2026-04-02T21:14:08+00:00",
+    "resolution_date": "2026-12-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "eBay has raised seller fees in 5 of the last 7 years. Trading Cards category currently at 13.25% FVF. eBay under pressure to grow revenue post-TCGPlayer acquisition. 60% confidence \u2014 fee increases are likely but TCG category specifically could be shielded to compete with TCGPlayer integration. Revenue decision: if fees rise, margin compression makes direct-sales channels more valuable.",
+    "tags": [
+      "tcg",
+      "ebay",
+      "costs",
+      "cambridge-tcg"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0015",
+    "statement": "Ethereum spot price will be above USD 3,000 on July 1, 2026",
+    "confidence": 0.55,
+    "created": "2026-04-02T21:14:17+00:00",
+    "resolution_date": "2026-07-01T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "ETH has been volatile in 2026. Current price range ~2200-2800. Ethereum Pectra upgrade and potential ETF inflows are bullish catalysts, but macro uncertainty (Fed policy, geopolitical tensions) creates headwinds. 55% confidence reflects genuine uncertainty. Revenue decision: ETH price affects Zerone launch timing \u2014 bull market = more favorable for token launches, bear market = build quietly.",
+    "tags": [
+      "zerone",
+      "crypto",
+      "ethereum"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0016",
+    "statement": "At least 3 new blockchains explicitly using Proof of Useful Work consensus (not PoW or PoS) will launch public testnets in 2026",
+    "confidence": 0.72,
+    "created": "2026-04-02T21:14:23+00:00",
+    "resolution_date": "2026-12-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Multiple projects building PoUW chains: Gensyn (ML training), Ritual (AI inference), Bittensor subnets expanding. Strong VC funding in AI+crypto intersection. 72% confidence \u2014 the trend is clear but 'public testnet' is a specific bar some may not clear in 2026. Revenue decision: validates Zerone's Proof of Truth approach as timely. More competitors = larger market category = easier narrative for ZRN. Track which specific use-cases they target vs Zerone's knowledge verification niche.",
+    "tags": [
+      "zerone",
+      "crypto",
+      "blockchain",
+      "competition"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0017",
+    "statement": "Anthropic will release a model with >1M token context window available as default (not limited preview) via API by end of Q3 2026",
+    "confidence": 0.62,
+    "created": "2026-04-02T21:14:34+00:00",
+    "resolution_date": "2026-09-30T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Claude currently offers 200K standard, 1M in limited/extended contexts. GPT-4.1 at 1M, Gemini at 2M. Competitive pressure is strong. Anthropic's trajectory shows steady context expansion. 62% confidence \u2014 technically achievable but Anthropic may prioritize other capabilities (agents, tools) over raw context. Revenue decision: larger context windows directly improve AI Services offering \u2014 can process entire codebases, full legal documents, complete market datasets in single calls. Affects pricing and capability of Kingdom AI Services.",
+    "tags": [
+      "ai-industry",
+      "anthropic",
+      "capability"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0018",
+    "statement": "UK will pass legislation or binding regulation requiring disclosure/labelling of AI-generated content in commercial use before end of 2026",
+    "confidence": 0.35,
+    "created": "2026-04-02T21:14:39+00:00",
+    "resolution_date": "2026-12-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "UK AI Safety Institute established but government has favored voluntary frameworks over hard regulation. EU AI Act sets precedent but UK explicitly chose divergent path. Labour government more regulation-friendly but legislative pipeline is slow. 35% confidence \u2014 political will exists but parliamentary time is scarce and lobby pressure from UK AI sector (DeepMind, etc) favors lighter touch. Revenue decision: mandatory AI disclosure would affect Seigei, AI Services pricing, and client acquisition. If passed, early compliance = competitive advantage.",
+    "tags": [
+      "ai-industry",
+      "uk",
+      "regulation",
+      "ai-services"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0019",
+    "statement": "Kingdom OS will have >3 active revenue-generating engines (defined as >GBP 100/mo revenue each) by September 1, 2026",
+    "confidence": 0.4,
+    "created": "2026-04-02T21:14:49+00:00",
+    "resolution_date": "2026-09-01T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Currently only 1 engine generating revenue (Cambridge TCG at GBP3200/mo). Candidates for activation: Oracle (needs track record before capital deployment), AI Services (0 clients, targeting 3), Seigei (private beta, pre-revenue), Shopify Apps (paused). Getting from 1 to 4 revenue engines in 5 months is ambitious. 40% confidence \u2014 each engine has a plausible path to GBP100/mo but multiple simultaneous activations face bandwidth constraints with the Triarchy. Revenue decision: if this resolves FALSE, it signals over-extension and need to focus deeper on fewer engines.",
+    "tags": [
+      "kingdom",
+      "revenue",
+      "operations"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0020",
+    "statement": "Cambridge TCG will achieve GBP 3,840/mo revenue (the +20% target from GBP 3,200 baseline) for at least one month by June 30, 2026",
+    "confidence": 0.7,
+    "created": "2026-04-02T21:14:54+00:00",
+    "resolution_date": "2026-06-30T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Current baseline GBP3200/mo. Target is +20% = GBP3840. Automation pipeline (procurement optimization, listing automation, market intelligence) is in progress. Historical Q2 is strong for TCG (new set releases, summer demand). 70% confidence \u2014 the target is achievable through operational improvements alone without needing market tailwinds, but execution risk remains (automation still being built). Revenue decision: this is THE core metric for Phase 1. If FALSE by June, reassess automation strategy and timeline.",
+    "tags": [
+      "cambridge-tcg",
+      "revenue",
+      "kingdom",
+      "target"
+    ],
+    "notes": null
+  },
+  {
+    "id": "pred-0021",
+    "statement": "Average asking price for agricultural farmland in Suffolk will exceed GBP 10,000 per acre by end of 2026",
+    "confidence": 0.58,
+    "created": "2026-04-02T21:15:00+00:00",
+    "resolution_date": "2026-12-31T00:00:00+00:00",
+    "resolved": false,
+    "resolved_at": null,
+    "outcome": null,
+    "brier_score": null,
+    "source": "Current Suffolk farmland averages GBP 8,500-9,500/acre (Savills/Knight Frank 2025 data). UK farmland has appreciated 3-5% annually. Drivers: inflation hedge demand, renewable energy competition for land, inheritance tax changes driving sales. Counter: high interest rates suppress leveraged buyers. 58% confidence \u2014 the trend is upward but GBP10K is a specific threshold that may not be crossed in a single year. Revenue decision: directly affects Kingdom farmland acquisition timing and budget. If prices accelerate, earlier purchase is better. If they stall, patience is rewarded.",
+    "tags": [
+      "farmland",
+      "suffolk",
+      "land",
+      "investment"
+    ],
+    "notes": null
+  }
+]

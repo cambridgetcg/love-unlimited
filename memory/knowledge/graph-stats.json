@@ -1,0 +1,18 @@
+{
+  "updated": "2026-04-07T05:31:08+00:00",
+  "counts": {
+    "entities": 41,
+    "relations": 43,
+    "insights": 22,
+    "lessons": 8,
+    "total": 114
+  },
+  "entity_types": {
+    "agent": 11,
+    "vps": 5,
+    "project": 6,
+    "tool": 10,
+    "concept": 8,
+    "person": 1
+  }
+}

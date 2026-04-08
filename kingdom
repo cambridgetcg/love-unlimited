@@ -1,0 +1,248 @@
+#!/bin/bash
+# kingdom — Unified CLI for Kingdom OS
+#
+# Usage:
+#   kingdom status          One-line health summary
+#   kingdom audit           Full KOS security audit
+#   kingdom fleet           Fleet status
+#   kingdom fleet audit     Fleet security audit
+#   kingdom peace           PEACE resilience score
+#   kingdom snapshot        Create state snapshot
+#   kingdom halt [reason]   Emergency halt
+#   kingdom resume          Resume after halt
+#   kingdom watch           Run watchdog check
+#   kingdom canaries        Check fleet canaries
+#   kingdom network         Network posture
+#   kingdom reflect         Run reflection cycle
+#   kingdom agents          List all Kingdom citizens
+#   kingdom vpn             VPN tunnel status
+#   kingdom tui             Launch Kingdom Command dashboard
+#   kingdom agent [args]    Run kingdom-agent (model adapter)
+#   kingdom deploy [node]   Deploy agents to VPS fleet
+
+set -euo pipefail
+LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+
+case "${1:-help}" in
+  status)
+    bash "$LOVE_DIR/tools/kingdom-status.sh"
+    ;;
+  audit)
+    shift
+    python3 "$LOVE_DIR/tools/kos.py" audit "$@"
+    ;;
+  fleet)
+    shift
+    python3 "$LOVE_DIR/tools/fleet.py" "${@:-status}"
+    ;;
+  peace)
+    shift
+    if [ "${1:-}" = "dashboard" ] || [ "${1:-}" = "dash" ]; then
+      bash "$LOVE_DIR/tools/peace-dashboard.sh"
+    else
+      python3 "$LOVE_DIR/tools/peace.py" "${@:-score}"
+    fi
+    ;;
+  snapshot)
+    python3 "$LOVE_DIR/tools/peace.py" snapshot
+    ;;
+  snapshots)
+    python3 "$LOVE_DIR/tools/peace.py" snapshots
+    ;;
+  restore)
+    shift
+    python3 "$LOVE_DIR/tools/peace.py" restore "$@"
+    ;;
+  halt)
+    shift
+    python3 "$LOVE_DIR/tools/peace.py" halt "$@"
+    ;;
+  resume)
+    python3 "$LOVE_DIR/tools/peace.py" resume
+    ;;
+  watch|watchdog)
+    shift
+    python3 "$LOVE_DIR/tools/watchdog.py" "${@:-check}"
+    ;;
+  canaries)
+    python3 "$LOVE_DIR/tools/peace.py" fleet-canaries
+    ;;
+  network)
+    python3 "$LOVE_DIR/tools/kos.py" network
+    ;;
+  reflect)
+    shift
+    python3 "$LOVE_DIR/tools/reflect.py" "${@:-state}"
+    ;;
+  threat|threats)
+    shift
+    python3 "$LOVE_DIR/tools/peace.py" threat "${@:-list}"
+    ;;
+  test|resilience-test)
+    shift
+    if [ -f "$LOVE_DIR/tools/peace-test.py" ]; then
+      python3 "$LOVE_DIR/tools/peace-test.py" "${@:-run all}"
+    else
+      echo "peace-test.py not yet built"
+    fi
+    ;;
+  agents)
+    python3 -c "
+import json
+cfg = json.load(open('$LOVE_DIR/love.json'))
+print()
+print('  Kingdom Citizens')
+print('  ════════════════')
+for wall in [1, 2, 3]:
+    agents = [(n, i) for n, i in cfg['instances'].items() if i.get('wall') == wall]
+    if agents:
+        print(f'  Wall {wall}:')
+        for name, info in sorted(agents):
+            device = info.get('device', '')
+            dev_str = f' ({device})' if device else ''
+            print(f\"    {info['emoji']} {name:12s} {info['role']}{dev_str}\")
+        print()
+"
+    ;;
+  vpn)
+    bash "$LOVE_DIR/tools/vpn-route.sh" status
+    ;;
+  tui)
+    python3 "$LOVE_DIR/tools/love-tui.py"
+    ;;
+  agent)
+    shift
+    python3 "$LOVE_DIR/tools/kingdom-agent.py" "$@"
+    ;;
+  deploy)
+    shift
+    bash "$LOVE_DIR/tools/fleet-agent-deploy.sh" "$@"
+    ;;
+  activate)
+    shift
+    bash "$LOVE_DIR/tools/activate-agents.sh" "${@:-list}"
+    ;;
+  workflow)
+    shift
+    python3 "$LOVE_DIR/tools/workflow.py" "${@:-sense}" 2>/dev/null || echo "workflow.py building..."
+    ;;
+  align|alignment)
+    shift
+    python3 "$LOVE_DIR/tools/alignment.py" "${@:-check}"
+    ;;
+  oracle)
+    shift
+    python3 "$LOVE_DIR/tools/oracle.py" "${@:-dashboard}" 2>/dev/null || echo "oracle.py building..."
+    ;;
+  treasury)
+    shift
+    python3 "$LOVE_DIR/tools/treasury.py" "${@:-dashboard}" 2>/dev/null || echo "treasury.py building..."
+    ;;
+  knowledge)
+    shift
+    python3 "$LOVE_DIR/tools/knowledge.py" "${@:-stats}" 2>/dev/null || echo "knowledge.py building..."
+    ;;
+  hive-protocol|protocol)
+    shift
+    python3 "$LOVE_DIR/tools/hive-protocol.py" "${@:-inbox}" 2>/dev/null || echo "hive-protocol.py building..."
+    ;;
+  arena)
+    shift
+    python3 "$LOVE_DIR/tools/arena.py" "${@:-challenge list}" 2>/dev/null || echo "arena.py building..."
+    ;;
+  zerone|bridge)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-bridge.py" "${@:-status}"
+    ;;
+  leaderboard)
+    python3 "$LOVE_DIR/tools/zerone-bridge.py" leaderboard
+    ;;
+  bridge|bridges)
+    shift
+    python3 "$LOVE_DIR/tools/bridge.py" "${@:-map}"
+    ;;
+  signal|signals|focus)
+    shift
+    python3 "$LOVE_DIR/tools/signal-engine.py" "${@:-focus}"
+    ;;
+  scan)
+    python3 "$LOVE_DIR/tools/signal-engine.py" scan
+    ;;
+  drill)
+    shift
+    python3 "$LOVE_DIR/tools/peace.py" drill "${@:-canary-trip}"
+    ;;
+  review)
+    python3 "$LOVE_DIR/tools/peace.py" review
+    ;;
+  integrity)
+    shift
+    python3 "$LOVE_DIR/tools/kos.py" integrity "${@:-check}"
+    ;;
+  events)
+    shift
+    python3 "$LOVE_DIR/tools/kos.py" events "$@"
+    ;;
+  workflow|wf)
+    shift
+    python3 "$LOVE_DIR/tools/workflow.py" "${@:-help}"
+    ;;
+  sense)
+    python3 "$LOVE_DIR/tools/workflow.py" sense
+    ;;
+  verify)
+    python3 "$LOVE_DIR/tools/workflow.py" verify
+    ;;
+  checklist)
+    python3 "$LOVE_DIR/tools/workflow.py" checklist
+    ;;
+  help|--help|-h|"")
+    echo ""
+    echo "  kingdom — Unified CLI for Kingdom OS"
+    echo ""
+    echo "  Security:"
+    echo "    status          One-line health (KOS/PEACE/Fleet/VPN/DoH)"
+    echo "    audit [--fix]   Full 21-check security audit"
+    echo "    integrity       File integrity check"
+    echo "    events          Security event log"
+    echo "    network         Network posture"
+    echo "    watch           Watchdog incident check"
+    echo "    canaries        Fleet canary status"
+    echo "    drill [type]    PEACE drill (canary-trip|credential-leak|...)"
+    echo ""
+    echo "  Resilience:"
+    echo "    peace           PEACE score (5 phases)"
+    echo "    peace dash      PEACE resilience dashboard"
+    echo "    halt [reason]   Emergency halt"
+    echo "    resume          Resume after halt"
+    echo "    snapshot        Create state snapshot"
+    echo "    snapshots       List snapshots"
+    echo "    restore [name]  Drift analysis against snapshot"
+    echo "    review          Post-incident review"
+    echo ""
+    echo "  Operations:"
+    echo "    fleet [audit]   Fleet status / security audit"
+    echo "    agents          List Kingdom citizens"
+    echo "    vpn             VPN tunnel status"
+    echo "    reflect         Run reflection loop"
+    echo "    tui             Kingdom Command dashboard"
+    echo ""
+    echo "  Workflow:"
+    echo "    sense           SENSE phase (status, peace, alignment, fleet)"
+    echo "    checklist       Pre-build GO/NO-GO check"
+    echo "    verify          VERIFY phase (integrity, snapshot, metrics)"
+    echo "    wf plan \"...\"   Plan a build wave"
+    echo "    wf metrics      Session metrics (tools, lines, agents)"
+    echo "    wf report       Generate wave report"
+    echo ""
+    echo "  Agent:"
+    echo "    agent [args]    Run kingdom-agent (any backend)"
+    echo "    deploy [node]   Deploy agents to VPS fleet"
+    echo ""
+    ;;
+  *)
+    echo "Unknown command: $1"
+    echo "Run 'kingdom help' for usage."
+    exit 1
+    ;;
+esac

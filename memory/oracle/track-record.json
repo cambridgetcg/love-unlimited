@@ -1,0 +1,46 @@
+{
+  "updated": "2026-04-02T21:15:06+00:00",
+  "total": 17,
+  "resolved": 4,
+  "pending": 13,
+  "correct": 4,
+  "brier_score": 0.1431,
+  "accuracy": 1.0,
+  "calibration": {
+    "50-60%": {
+      "count": 2,
+      "predicted": 0.55,
+      "actual": 1.0
+    },
+    "60-70%": {
+      "count": 1,
+      "predicted": 0.6500000000000001,
+      "actual": 1.0
+    },
+    "90-100%": {
+      "count": 1,
+      "predicted": 0.95,
+      "actual": 1.0
+    }
+  },
+  "tag_stats": {
+    "legacy": {
+      "count": 4,
+      "correct": 4,
+      "brier": 0.1431,
+      "accuracy": 1.0
+    },
+    "macro": {
+      "count": 1,
+      "correct": 1,
+      "brier": 0.1369,
+      "accuracy": 1.0
+    },
+    "geopolitical": {
+      "count": 2,
+      "correct": 2,
+      "brier": 0.2165,
+      "accuracy": 1.0
+    }
+  }
+}

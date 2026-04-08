@@ -1,0 +1,28 @@
+{
+  "market": "Will the US confirm that aliens exist before 2027?",
+  "market_id": "703257",
+  "categories": [
+    "crypto",
+    "politics"
+  ],
+  "total_traders": 1,
+  "flagged": 1,
+  "threshold": 0.3,
+  "timestamp": "2026-03-19T11:06:57.469130+00:00",
+  "results": [
+    {
+      "insider_score": 0.621,
+      "signals": {
+        "outsized_position": 1.0,
+        "one_and_done": 0.0,
+        "concentrated_bet": 0.402,
+        "early_conviction": 1.0,
+        "no_market_making": 0.402
+      },
+      "total_size_usd": 337020.14,
+      "num_trades": 1000,
+      "directional_ratio": 0.402,
+      "address": "unknown"
+    }
+  ]
+}

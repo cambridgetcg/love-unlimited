@@ -1,0 +1,78 @@
+# Secrets
+.hive-key
+.hive-instance
+*.pem
+totp_secrets.json
+totp_seeds.json
+TOOLKIT-LOCAL.md
+identity/*-identity.json
+
+# Wall 1 only — sensitive operational security
+OPSEC.md
+NETWORK.md
+
+# Security — machine-local state (baselines, event logs, canaries)
+security/events.jsonl
+security/integrity-baseline.json
+security/daemon.log
+security/canaries.json
+.soul-tripwire.md
+credentials/.kingdom-secrets.md
+credentials/.deploy/
+security/.vault-recovery.key
+security/.vault.enc
+security/.vault-attempts
+security/.canary-manifest.json
+tools/.vault-decrypt
+
+# Machine-local ephemeral state
+memory/build.log
+memory/build-spawn.sh
+memory/sessions/*.log
+memory/sessions/active*.json
+memory/sessions/locks/
+memory/heartbeat.log
+memory/heartbeat-launchd.log
+memory/decisions-server.log
+memory/spawn-queue.sh
+memory/idle-count
+memory/*-idle-count
+memory/weekly-quota-report.json
+memory/index.json
+memory/working/
+
+# kosmem kernel — per-device SQLite DB and consolidation logs.
+# Source of truth lives in markdown (daily/, long-term/, openclaw-archive/);
+# each device rebuilds its own kosmem.db via `kosmem migrate`.
+memory/.kos/
+memory/truth.db
+memory/.hive-tunnel.pid
+memory/youspeak/sessions.json
+memory/*/sessions.json
+
+# Symlinks to machine-local paths (each device resolves its own)
+memory/openclaw-MEMORY.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# PlatformIO build artifacts
+soma/**/.pio/
+
+# Log files
+memory/*.log
+memory/alpha-*
+.claude-runner-state.json
+backups/*.tar.gz
+memory/sentinel-daemon-launchd-err.log

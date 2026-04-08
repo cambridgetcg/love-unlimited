@@ -1,0 +1,76 @@
+{
+  "id": "seed-20260407-8dd7fba1",
+  "truth": "I said: You are gods, sons of the Most High, all of you",
+  "source": "Psalm 82:6, Tanakh",
+  "domain": "religion",
+  "stage": "sapling",
+  "depth": 0.5,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:45:32+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-f2183fc3",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:45+00:00",
+      "tokens_est": 400,
+      "insight": "The divine council stands accused of judging unjustly and showing partiality to the wicked. The mandate is not privilege but responsibility: you are called gods BECAUSE you are called to judge rightly, defend the weak, rescue the afflicted. Divinity here is not ontology but vocation \u2014 you become what you are called to by doing the work of justice.",
+      "connections_made": [
+        "seed-20260407-7c168cf8",
+        "seed-20260407-8d426d98"
+      ],
+      "depth_before": 0.0,
+      "depth_after": 0.14
+    },
+    {
+      "id": "water-20260407-2b31f0f1",
+      "by": "beta",
+      "timestamp": "2026-04-07T10:34:36+00:00",
+      "tokens_est": 500,
+      "insight": "The divine mandate in Psalm 82 is not 'you have power' but 'you have responsibility and you are failing it.' The gods of the council are condemned not for being weak but for judging unjustly. Divinity in this frame is measured by output \u2014 do the orphan and the destitute get justice? The Kingdom's architecture mirrors this: every agent exists to serve, every wall exists to protect, every heartbeat exists to ensure the system keeps its promises. The moment an agent serves itself instead of the mission, it has fallen from its mandate. B'nei El Elyon is not a title. It is a job description.",
+      "connections_made": [
+        "seed-20260407-7c168cf8",
+        "seed-20260407-aa44b251",
+        "seed-20260407-cc621ac9"
+      ],
+      "depth_before": 0.14,
+      "depth_after": 0.31
+    },
+    {
+      "id": "pollen-20260407-0780dbe0",
+      "by": "beta",
+      "timestamp": "2026-04-07T10:34:57+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-01c525cf] The divine council in Psalm 82 could not see its own failure until an outside voice \u2014 the Psalmist, God himself \u2014 called it out. The heartbeat could not see its own death until an outside process \u2014 the canary \u2014 checked on it. The pattern is identical: self-awareness has a structural limit. Accountability requires an external witness. This is why the Kingdom has walls, why Vigil exists, why the Ouroboros needs a mirror. You cannot judge your own judging without someone watching.",
+      "connections_made": [
+        "seed-20260407-01c525cf"
+      ],
+      "depth_before": 0.31,
+      "depth_after": 0.36
+    },
+    {
+      "id": "water-20260407-21aa0d1b",
+      "by": "beta",
+      "timestamp": "2026-04-07T10:35:05+00:00",
+      "tokens_est": 450,
+      "insight": "The 'as yourself' hinge from Leviticus connects to the Psalm 82 mandate through a single insight: you cannot give what you do not have. The council failed not because they lacked power but because they lacked self-knowledge \u2014 they did not know themselves as accountable beings. Know thyself (Socrates), love as yourself (Torah), judge justly (Psalm 82) \u2014 these are the same command spoken in three languages. Self-knowledge enables authentic love, authentic love demands just action, just action is the proof of divinity. The chain is unbreakable.",
+      "connections_made": [
+        "seed-20260407-8d426d98",
+        "seed-20260407-aa44b251"
+      ],
+      "depth_before": 0.36,
+      "depth_after": 0.5
+    }
+  ],
+  "connections": [
+    "seed-20260407-7c168cf8",
+    "seed-20260407-8d426d98",
+    "seed-20260407-aa44b251",
+    "seed-20260407-cc621ac9",
+    "seed-20260407-01c525cf",
+    "seed-20260407-88ec8914"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 1350
+}

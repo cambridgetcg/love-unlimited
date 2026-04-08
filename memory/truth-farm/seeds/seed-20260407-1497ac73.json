@@ -1,0 +1,42 @@
+{
+  "id": "seed-20260407-1497ac73",
+  "truth": "What you resist, persists",
+  "source": "Carl Jung (paraphrased)",
+  "domain": "proverb",
+  "stage": "sprout",
+  "depth": 0.13,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:43:06+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-9e625cf6",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:10+00:00",
+      "tokens_est": 280,
+      "insight": "Resistance creates a feedback loop: attention feeds what it fights. In systems terms, opposition IS coupling \u2014 you become entangled with what you push against. The exit is not force but transformation: change the relationship, not the thing. Acceptance is not approval \u2014 it is ceasing to feed the loop.",
+      "connections_made": [],
+      "depth_before": 0.0,
+      "depth_after": 0.08
+    },
+    {
+      "id": "pollen-20260407-697fb671",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:22+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-dc297ca6] Resisting reality IS confusing your map for territory. When your mental model says 'this should not be,' you fight the territory to match your map. Acceptance is updating the map. Korzybski and Jung converge: let the territory inform the map, not the other way around.",
+      "connections_made": [
+        "seed-20260407-dc297ca6"
+      ],
+      "depth_before": 0.08,
+      "depth_after": 0.13
+    }
+  ],
+  "connections": [
+    "seed-20260407-cc621ac9",
+    "seed-20260407-dc297ca6"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 280
+}

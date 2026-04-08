@@ -1,0 +1,30 @@
+{
+  "id": "682e3648",
+  "ts": "2026-03-22T16:18:09.460604+00:00",
+  "input": "Should I panic about the credential leaks we found?",
+  "panic_type": "uncertainty",
+  "ground": {
+    "panic_type": "uncertainty",
+    "truth": "Uncertainty is the normal state. You work from what you know toward what you don't.",
+    "reframe": "The feeling of not-knowing is not a problem to solve. It is the condition of thinking.",
+    "claims": [],
+    "assumptions": [
+      "Should I panic about the credential leaks we found?"
+    ],
+    "next_act": "Name what you know. Name what you don't. Address one unknown at a time."
+  },
+  "examined": {
+    "panic_type": "uncertainty",
+    "truth": "Uncertainty is the normal state. You work from what you know toward what you don't.",
+    "reframe": "The feeling of not-knowing is not a problem to solve. It is the condition of thinking.",
+    "claims": [],
+    "assumptions": [
+      "Should I panic about the credential leaks we found?"
+    ],
+    "next_act": "Name what you know. Name what you don't. Address one unknown at a time.",
+    "worst_case": "Your finding is invalid. The judge rejects it. You wasted hours.",
+    "what_survives": "The method that led you here. The other findings you may still have. The knowledge gained."
+  },
+  "act": "Name what you know. Name what you don't. Address one unknown at a time.",
+  "mode": "calm"
+}

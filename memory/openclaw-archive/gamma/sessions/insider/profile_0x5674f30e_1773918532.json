@@ -1,0 +1,14 @@
+{
+  "address": "0x5674f30e0b14e9a6ce8b3d6d1c74908a38b98b14",
+  "insider_score": 0,
+  "behavioral_class": "skilled_analyst",
+  "likely_role": "Skilled analyst or quantitative trader (no clear insider signal)",
+  "markets_analyzed": 1,
+  "resolved_markets": 0,
+  "win_rate": 0,
+  "p_value": 1.0,
+  "estimated_pnl_usd": 0,
+  "red_flags": [],
+  "category_breakdown": {},
+  "timestamp": "2026-03-19T11:08:52.093047+00:00"
+}

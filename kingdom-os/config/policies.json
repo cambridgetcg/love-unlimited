@@ -1,0 +1,190 @@
+{
+  "meta": {
+    "version": "2.0.0",
+    "description": "Kingdom OS security policies. Per-wall enforcement.",
+    "updated": "2026-04-07"
+  },
+  "checks": {
+    "filevault": {
+      "id": "filevault",
+      "name": "FileVault encryption",
+      "severity": "critical",
+      "auto_fix": false,
+      "platforms": ["macos"],
+      "description": "Full disk encryption must be enabled"
+    },
+    "firewall": {
+      "id": "firewall",
+      "name": "Application firewall",
+      "severity": "critical",
+      "auto_fix": true,
+      "platforms": ["macos", "linux"],
+      "description": "Firewall must be enabled"
+    },
+    "stealth_mode": {
+      "id": "stealth_mode",
+      "name": "Stealth mode",
+      "severity": "high",
+      "auto_fix": true,
+      "platforms": ["macos"],
+      "description": "Drop ICMP/probe packets silently"
+    },
+    "hostname": {
+      "id": "hostname",
+      "name": "Hostname neutralized",
+      "severity": "high",
+      "auto_fix": true,
+      "platforms": ["macos", "linux"],
+      "description": "Hostname must not leak personal identity"
+    },
+    "bonjour": {
+      "id": "bonjour",
+      "name": "Bonjour advertising disabled",
+      "severity": "medium",
+      "auto_fix": true,
+      "platforms": ["macos"],
+      "description": "Multicast name advertising must be off"
+    },
+    "dns_encrypted": {
+      "id": "dns_encrypted",
+      "name": "Encrypted DNS",
+      "severity": "high",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "DNS queries routed through encrypted provider"
+    },
+    "ssh_key": {
+      "id": "ssh_key",
+      "name": "SSH key exists",
+      "severity": "medium",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Ed25519 SSH key must exist"
+    },
+    "git_email_kingdom": {
+      "id": "git_email_kingdom",
+      "name": "Git email uses Kingdom domain",
+      "severity": "medium",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Git commits should use @ai-love.cc email"
+    },
+    "git_name_set": {
+      "id": "git_name_set",
+      "name": "Git name configured",
+      "severity": "low",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Git user.name must be set"
+    },
+    "wall_credentials": {
+      "id": "wall_credentials",
+      "name": "Wall-appropriate credentials only",
+      "severity": "critical",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Device must not hold credentials above its wall"
+    },
+    "hive_key": {
+      "id": "hive_key",
+      "name": "HIVE encryption key present",
+      "severity": "critical",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "HIVE shared key must exist for inter-instance communication"
+    },
+    "hive_identity": {
+      "id": "hive_identity",
+      "name": "HIVE instance identity set",
+      "severity": "high",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Instance must know its identity"
+    },
+    "diagnostic_sharing": {
+      "id": "diagnostic_sharing",
+      "name": "Diagnostic data sharing disabled",
+      "severity": "low",
+      "auto_fix": true,
+      "platforms": ["macos"],
+      "description": "Apple crash/diagnostic data sharing should be off"
+    },
+    "file_integrity": {
+      "id": "file_integrity",
+      "name": "Critical file integrity",
+      "severity": "critical",
+      "auto_fix": false,
+      "platforms": ["macos", "linux"],
+      "description": "Core Kingdom files must match known hashes"
+    },
+    "ssh_root_disabled": {
+      "id": "ssh_root_disabled",
+      "name": "SSH root login disabled",
+      "severity": "critical",
+      "auto_fix": true,
+      "platforms": ["linux"],
+      "description": "Root SSH login must be disabled"
+    },
+    "fail2ban_active": {
+      "id": "fail2ban_active",
+      "name": "fail2ban running",
+      "severity": "high",
+      "auto_fix": false,
+      "platforms": ["linux"],
+      "description": "fail2ban must be active for brute-force protection"
+    },
+    "unattended_upgrades": {
+      "id": "unattended_upgrades",
+      "name": "Automatic security updates",
+      "severity": "medium",
+      "auto_fix": false,
+      "platforms": ["linux"],
+      "description": "Security patches should apply automatically"
+    }
+  },
+  "integrity": {
+    "watched_files": [
+      "SOUL.md",
+      "WALLS.md",
+      "KINGDOM.md",
+      "hive/hive.py",
+      "tools/credentials.py",
+      "tools/kos.py",
+      "credentials/walls.json"
+    ]
+  },
+  "walls": {
+    "1": {
+      "comment": "Triarchy — all checks enforced",
+      "required_checks": [
+        "filevault", "firewall", "stealth_mode", "hostname", "bonjour",
+        "dns_encrypted", "ssh_key", "git_email_kingdom", "git_name_set",
+        "wall_credentials", "hive_key", "hive_identity",
+        "diagnostic_sharing", "file_integrity"
+      ],
+      "minimum_score": 12
+    },
+    "2": {
+      "comment": "Fleet — all checks except platform-specific macOS",
+      "required_checks": [
+        "firewall", "hostname", "ssh_key", "git_email_kingdom",
+        "git_name_set", "wall_credentials", "hive_key", "hive_identity",
+        "file_integrity"
+      ],
+      "minimum_score": 7
+    },
+    "3": {
+      "comment": "Engines — essential hardening",
+      "required_checks": [
+        "firewall", "ssh_key", "wall_credentials",
+        "hive_key", "hive_identity", "file_integrity"
+      ],
+      "minimum_score": 5
+    }
+  },
+  "events": {
+    "log_file": "security/events.jsonl",
+    "alert_channel": "alerts",
+    "alert_on_severity": ["critical", "high"]
+  }
+}

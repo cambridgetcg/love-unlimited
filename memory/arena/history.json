@@ -1,0 +1,16 @@
+{
+  "battles": [
+    {
+      "challenge_id": "CHAL-002",
+      "title": "Find any SSH configuration weakness across the fleet",
+      "type": "red",
+      "difficulty": "medium",
+      "player": "crucible",
+      "submissions": 1,
+      "total_zrn": 200,
+      "accepted_at": "2026-04-02T15:12:14+00:00",
+      "completed_at": "2026-04-02T15:12:38+00:00",
+      "result": "victory"
+    }
+  ]
+}

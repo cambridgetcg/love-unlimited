@@ -1,0 +1,14 @@
+{
+  "claims": [
+    {
+      "type": "zrn_claim",
+      "player": "crucible",
+      "amount": 350,
+      "rank": "Initiate",
+      "challenges_completed": 1,
+      "generated_at": "2026-04-02T15:13:04+00:00",
+      "status": "pending_mainnet",
+      "note": "Tracked locally until Zerone mainnet. Then becomes on-chain claim."
+    }
+  ]
+}

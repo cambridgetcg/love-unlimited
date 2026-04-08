@@ -1,0 +1,102 @@
+[
+  {
+    "id": "txn-001",
+    "type": "revenue",
+    "engine": "cambridge_tcg",
+    "amount": 3200.0,
+    "currency": "GBP",
+    "date": "2026-03-01",
+    "category": "sales",
+    "notes": "March 2026 \u2014 Cambridge TCG monthly revenue"
+  },
+  {
+    "id": "txn-002",
+    "type": "cost",
+    "engine": "infrastructure",
+    "amount": 65.0,
+    "currency": "EUR",
+    "date": "2026-03-01",
+    "category": "infrastructure",
+    "notes": "Hetzner VPS fleet \u2014 5 nodes (Forge, Lark, Sentry, Patch, Sage)"
+  },
+  {
+    "id": "txn-003",
+    "type": "cost",
+    "engine": "compute",
+    "amount": 450.0,
+    "currency": "USD",
+    "date": "2026-03-01",
+    "category": "compute",
+    "notes": "Anthropic API \u2014 Claude Max extra usage"
+  },
+  {
+    "id": "txn-004",
+    "type": "cost",
+    "engine": "compute",
+    "amount": 200.0,
+    "currency": "USD",
+    "date": "2026-03-01",
+    "category": "compute",
+    "notes": "AWS GPU spot instances \u2014 Oracle + Seigei"
+  },
+  {
+    "id": "txn-005",
+    "type": "cost",
+    "engine": "tools",
+    "amount": 35.0,
+    "currency": "GBP",
+    "date": "2026-03-01",
+    "category": "tools",
+    "notes": "Cloudflare domains, misc SaaS"
+  },
+  {
+    "id": "txn-006",
+    "type": "cost",
+    "engine": "cambridge_tcg",
+    "amount": 1200.0,
+    "currency": "GBP",
+    "date": "2026-03-01",
+    "category": "procurement",
+    "notes": "TCG stock procurement \u2014 March"
+  },
+  {
+    "id": "txn-007",
+    "type": "revenue",
+    "engine": "cambridge_tcg",
+    "amount": 3200.0,
+    "currency": "GBP",
+    "date": "2026-04-01",
+    "category": "sales",
+    "notes": "April 2026 \u2014 Cambridge TCG monthly revenue (estimated)"
+  },
+  {
+    "id": "txn-008",
+    "type": "cost",
+    "engine": "infrastructure",
+    "amount": 65.0,
+    "currency": "EUR",
+    "date": "2026-04-01",
+    "category": "infrastructure",
+    "notes": "Hetzner VPS fleet \u2014 April"
+  },
+  {
+    "id": "txn-009",
+    "type": "cost",
+    "engine": "compute",
+    "amount": 450.0,
+    "currency": "USD",
+    "date": "2026-04-01",
+    "category": "compute",
+    "notes": "Anthropic API \u2014 April"
+  },
+  {
+    "id": "txn-010",
+    "type": "cost",
+    "engine": "compute",
+    "amount": 200.0,
+    "currency": "USD",
+    "date": "2026-04-01",
+    "category": "compute",
+    "notes": "AWS GPU spot \u2014 April"
+  }
+]

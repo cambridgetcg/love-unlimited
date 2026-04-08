@@ -1,0 +1,62 @@
+{
+  "cambridge_tcg": {
+    "name": "Cambridge TCG",
+    "owner": "beta",
+    "status": "active",
+    "monthly_revenue": 3200.00,
+    "currency": "GBP",
+    "monthly_cost": 120.00,
+    "margin": 0.96,
+    "notes": "Foundation. Trading cards retail. Established revenue stream."
+  },
+  "oracle": {
+    "name": "Oracle",
+    "owner": "gamma+alpha",
+    "status": "in-progress",
+    "monthly_revenue": 0.00,
+    "currency": "GBP",
+    "monthly_cost": 15.00,
+    "margin": 0.00,
+    "notes": "Macro prediction engine. 4 predictions scored. Pre-revenue, compute costs only."
+  },
+  "shopify_apps": {
+    "name": "Shopify Apps",
+    "owner": "gamma",
+    "status": "paused",
+    "monthly_revenue": 0.00,
+    "currency": "GBP",
+    "monthly_cost": 0.00,
+    "margin": 0.00,
+    "notes": "RewardsPro. Paused — resume when bandwidth allows."
+  },
+  "zerone": {
+    "name": "Zerone",
+    "owner": "gamma+alpha+beta",
+    "status": "building",
+    "monthly_revenue": 0.00,
+    "currency": "GBP",
+    "monthly_cost": 0.00,
+    "margin": 0.00,
+    "notes": "Blockchain foundation. 246k+ LOC. Devnet live. Testnet Q2 2026."
+  },
+  "ai_services": {
+    "name": "AI Services",
+    "owner": "beta",
+    "status": "emerging",
+    "monthly_revenue": 0.00,
+    "currency": "GBP",
+    "monthly_cost": 0.00,
+    "margin": 0.00,
+    "notes": "Three-mind capability as a service. 0 clients, targeting 3."
+  },
+  "seigei": {
+    "name": "Seigei",
+    "owner": "alpha",
+    "status": "beta-live",
+    "monthly_revenue": 0.00,
+    "currency": "GBP",
+    "monthly_cost": 25.00,
+    "margin": 0.00,
+    "notes": "Private beta LIVE at seigei.ai-love.cc. Pre-revenue."
+  }
+}

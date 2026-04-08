@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "description": "Body organ registry. Each organ has an entry point, a plist template, and deployment config.",
+  "organs": {
+    "mind": {
+      "description": "The brain stem — persistent signal interpreter with identity",
+      "entry": "nerve/stem/mind.py",
+      "runner": "python3",
+      "args": ["--instance", "{{INSTANCE}}"],
+      "template": "nerve/templates/mind.plist.tmpl",
+      "keep_alive": true,
+      "interval": null,
+      "throttle": 30,
+      "log": "memory/{{INSTANCE}}-mind.log",
+      "depends_on": []
+    },
+    "heart": {
+      "description": "The pump — hormone-driven cron that spawns Kingdom work",
+      "entry": "nerve/heart/heart.sh",
+      "runner": "bash",
+      "args": ["{{INSTANCE}}"],
+      "template": "nerve/templates/heart.plist.tmpl",
+      "keep_alive": false,
+      "interval": 120,
+      "throttle": 60,
+      "log": "memory/{{INSTANCE}}-heartbeat.log",
+      "depends_on": ["mind"]
+    },
+    "soma": {
+      "description": "The physical body — sensation, motor control, thermal regulation. The part that MUST NOT FAIL.",
+      "entry": "soma/core/soma/app.py",
+      "runner": "python3",
+      "args": ["--sim"],
+      "template": "nerve/templates/soma.plist.tmpl",
+      "keep_alive": true,
+      "interval": null,
+      "throttle": 5,
+      "log": "memory/{{INSTANCE}}-soma.log",
+      "depends_on": ["mind"],
+      "notes": "Use --sim for simulation, --hardware when physical hand is connected. Body state persists in soma/state/."
+    }
+  }
+}

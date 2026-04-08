@@ -1,0 +1,42 @@
+{
+  "session_id": "holy_20260407_214852_db182e",
+  "target_path": "/Users/you/Claude-unlimited/kingdom-os",
+  "depth": "sanctify",
+  "status": "consecrated",
+  "created_at": "2026-04-07T21:48:52.315179+00:00",
+  "impurities": [
+    {
+      "path": "/Users/you/Claude-unlimited/kingdom-os/config/motd",
+      "category": "UGLY",
+      "description": "Naming issue: no_extension in motd",
+      "line_number": null,
+      "action": "TRANSMUTE",
+      "action_detail": "Beautify \u2014 fix naming/formatting/structure",
+      "resolved": true
+    }
+  ],
+  "stats": {
+    "files_scanned": 17,
+    "directories_scanned": 3,
+    "total_lines": 0,
+    "total_bytes": 72643,
+    "by_category": {
+      "UGLY": 1
+    },
+    "by_extension": {
+      ".sh": 14,
+      ".md": 1,
+      ".json": 1,
+      "(no ext)": 1
+    }
+  },
+  "conventions": [
+    "Every tool has a --help flag and a header docstring",
+    "Every directory has a README or purpose comment in parent"
+  ],
+  "beauty_score_before": 1.0,
+  "beauty_score_after": 1.0,
+  "purification_log": [
+    "[21:49:32] TRANSMUTE: Naming issue: no_extension in motd @ /Users/you/Claude-unlimited/kingdom-os/config/motd"
+  ]
+}

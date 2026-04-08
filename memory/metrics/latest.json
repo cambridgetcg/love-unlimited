@@ -1,0 +1,147 @@
+{
+  "timestamp": "2026-04-07T06:01:05+00:00",
+  "kos": {
+    "score": 19,
+    "total": 21,
+    "status": "YELLOW",
+    "pct": 90.5
+  },
+  "peace": {
+    "score": 89.6,
+    "state": "HALTED",
+    "phases": {
+      "detect": 70.0,
+      "contain": 100.0,
+      "fix": 85.7,
+      "revert": 100.0,
+      "resume": 100.0
+    },
+    "incidents": 6
+  },
+  "fleet": {
+    "total": 5,
+    "healthy": 5,
+    "nodes": {
+      "forge": {
+        "role": "CI/CD",
+        "quality": "good",
+        "disk_pct": 42.0,
+        "mem_pct": 44.0,
+        "load": 0.05,
+        "alerts": 0
+      },
+      "lark": {
+        "role": "AgentTool",
+        "quality": "good",
+        "disk_pct": 28.0,
+        "mem_pct": 35.0,
+        "load": 0.45,
+        "alerts": 0
+      },
+      "sentry": {
+        "role": "monitoring",
+        "quality": "good",
+        "disk_pct": 31.0,
+        "mem_pct": 25.0,
+        "load": 0.35,
+        "alerts": 0
+      },
+      "patch": {
+        "role": "operations",
+        "quality": "good",
+        "disk_pct": 24.0,
+        "mem_pct": 22.0,
+        "load": 0.03,
+        "alerts": 0
+      },
+      "sage": {
+        "role": "oracle-execution",
+        "quality": "good",
+        "disk_pct": 27.0,
+        "mem_pct": 24.0,
+        "load": 0.19,
+        "alerts": 0
+      }
+    }
+  },
+  "treasury": {
+    "revenue_gbp": 3200.0,
+    "costs_gbp": 569.4,
+    "net_pnl_gbp": 2630.6,
+    "margin_pct": 82.2,
+    "runway_months": 99.0,
+    "month": "2026-04"
+  },
+  "oracle": {
+    "total": 17,
+    "resolved": 4,
+    "pending": 13,
+    "brier_score": 0.1431,
+    "accuracy": 1.0
+  },
+  "knowledge": {
+    "entities": 41,
+    "relations": 43,
+    "insights": 22,
+    "lessons": 8,
+    "total": 114
+  },
+  "agents": {
+    "total": 11,
+    "active_heartbeats": 0,
+    "activation_rate": 0.0
+  },
+  "zerone": {
+    "total_zrn": 900,
+    "claims_total": 3,
+    "claims_pending": 3,
+    "claims_verified": 0,
+    "leaderboard": [
+      [
+        "crucible",
+        500
+      ],
+      [
+        "beta",
+        400
+      ]
+    ]
+  },
+  "hive": {
+    "messages": 0,
+    "channels": {}
+  },
+  "watchdog": {
+    "alerts": 2,
+    "escalations": 8,
+    "halts": 3
+  },
+  "alignment": {
+    "overall": 100.0,
+    "dimensions": {
+      "sovereignty": 100.0,
+      "resilience": 100.0,
+      "capability": 100.0,
+      "integrity": 100.0,
+      "service": 100.0
+    }
+  },
+  "code": {
+    "total_tools": 59,
+    "python_files": 45,
+    "bash_files": 14,
+    "python_lines": 35128,
+    "bash_lines": 3753,
+    "total_lines": 38881
+  },
+  "snapshots": {
+    "count": 20,
+    "latest": "2026-04-07T06:00:59"
+  },
+  "threats": {
+    "total": 20,
+    "mitigated": 8,
+    "open": 12,
+    "critical": 1
+  }
+}

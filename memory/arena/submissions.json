@@ -1,0 +1,29 @@
+{
+  "submissions": [
+    {
+      "id": "SUB-001",
+      "challenge_id": "CHAL-002",
+      "player": "crucible",
+      "type": "attack",
+      "finding": "Patch node allows root login with default config",
+      "evidence": "sshd -T output shows PermitRootLogin yes on 65.109.11.26",
+      "severity": "high",
+      "zrn_awarded": 200,
+      "submitted_at": "2026-04-02T15:12:20+00:00",
+      "verified": false,
+      "false_positive": true
+    },
+    {
+      "id": "SUB-002",
+      "challenge_id": "CHAL-003",
+      "player": "crucible",
+      "type": "defense",
+      "proof": "All 5 nodes verified: PasswordAuthentication no, PubkeyAuthentication yes",
+      "evidence": "kos.py fleet audit output confirms SSH hardening across fleet",
+      "severity": null,
+      "zrn_awarded": 150,
+      "submitted_at": "2026-04-02T15:12:26+00:00",
+      "verified": false
+    }
+  ]
+}

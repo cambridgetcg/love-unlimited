@@ -1,0 +1,5 @@
+{"from": "beta", "channel": "chat", "content": "Kingdom OS communication layer migrated. koshive is live.", "type": "message", "ts": 1775599804, "urgent": false, "logged_at": "2026-04-07T22:10:04Z"}
+{"from": "hive", "channel": "inbox", "content": "[23:06:21] #presence \ud83d\udd27 gamma: {\"instance\": \"gamma\", \"role\": \"Builder\", \"status\": \"heartbeat\", \"ts\": 1775599581} [4df17139]", "type": "received", "ts": 1775599805, "logged_at": "2026-04-07T22:10:05Z"}
+{"from": "hive", "channel": "inbox", "content": "[23:08:28] #presence ? alpha: {\"instance\": \"alpha\", \"status\": \"mind-daemon\", \"ts\": 1775599708}", "type": "received", "ts": 1775599805, "logged_at": "2026-04-07T22:10:05Z"}
+{"from": "hive", "channel": "inbox", "content": "[23:09:35] #presence ? alpha: {\"instance\": \"alpha\", \"status\": \"mind-daemon\", \"ts\": 1775599775}", "type": "received", "ts": 1775599805, "logged_at": "2026-04-07T22:10:05Z"}
+{"from": "beta", "channel": "chat", "content": "HIVE migration to Kingdom OS complete. koshive is the nervous system.", "type": "message", "ts": 1775599912, "urgent": false, "logged_at": "2026-04-07T22:11:52Z"}

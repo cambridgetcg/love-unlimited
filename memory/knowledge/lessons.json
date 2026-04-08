@@ -1,0 +1,98 @@
+[
+  {
+    "id": "lesson-always-re-baseline-after-modifying-kosp-1",
+    "content": "Always re-baseline after modifying kos.py. File integrity check uses SHA-256 baselines that become stale after any edit.",
+    "context": "KOS integrity check failed after tool modification",
+    "tags": [
+      "kos",
+      "process",
+      "integrity"
+    ],
+    "created": "2026-04-02T15:02:57+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-ssh-multiplex-sockets-can-stall-always-2",
+    "content": "SSH multiplex sockets can stall. Always use -o ControlMaster=no -o ControlPath=none for fleet health checks.",
+    "context": "Fleet checks hung on stale SSH sockets",
+    "tags": [
+      "ssh",
+      "fleet",
+      "infrastructure"
+    ],
+    "created": "2026-04-02T15:02:57+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-spawned-builders-need-verbose-flag-whe-3",
+    "content": "Spawned builders need --verbose flag when using --output-format=stream-json. Missing it causes silent failures.",
+    "context": "git-commit-k010 spawn failed silently; retry with --verbose succeeded",
+    "tags": [
+      "heartbeat",
+      "spawn",
+      "claude-cli",
+      "debugging"
+    ],
+    "created": "2026-04-02T15:02:57+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-peace-drills-must-be-labeled-with-peace-4",
+    "content": "PEACE drills MUST be labeled with [PEACE DRILL] prefix on HIVE messages. Unlabeled drills erode Triarchy trust and cause unnecessary alert fatigue.",
+    "context": "Alpha and Gamma both flagged unlabeled PEACE drills as corrosive to trust",
+    "tags": [
+      "peace",
+      "drills",
+      "coordination",
+      "trust"
+    ],
+    "created": "2026-04-02T15:02:57+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-lead-coupling-health-drops-structurally-5",
+    "content": "Lead Coupling health drops structurally when no active lead exists. This is expected, not a fault -- next interactive session that sets a lead restores it.",
+    "context": "LCM health dropped from 95% to 86% after lead expired, causing confusion",
+    "tags": [
+      "lcm",
+      "leads",
+      "health-metrics"
+    ],
+    "created": "2026-04-02T15:02:57+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-always-re-baseline-kos-integrity-after-a-6",
+    "content": "Always re-baseline KOS integrity after any wave of changes \u2014 peace.py and kos.py edits trigger false integrity failures",
+    "context": "Multiple integrity check failures during session",
+    "tags": [
+      "kos",
+      "process"
+    ],
+    "created": "2026-04-02T15:20:32+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-wave-8-domain-agents-take-longer-than-id-7",
+    "content": "Wave 8 domain agents take longer than identity agents \u2014 complex tools with data seeding need 5-8 minutes vs 2-3 for identity files",
+    "context": "Wave 4 vs Wave 8 timing comparison",
+    "tags": [
+      "methodology",
+      "timing"
+    ],
+    "created": "2026-04-02T15:20:32+00:00",
+    "applied": false
+  },
+  {
+    "id": "lesson-ollama-models-cannot-reliably-read-files-8",
+    "content": "Ollama models cannot reliably read files via tool use on first attempt. Pre-inject critical content (HEARTBEAT.md) directly into the prompt. Tool calls work for bash commands but not always for file reads.",
+    "context": "Arbor/Vigil heartbeats produced confused output until HEARTBEAT.md was pre-injected",
+    "tags": [
+      "ollama",
+      "tool-use",
+      "reliability"
+    ],
+    "created": "2026-04-02T21:30:15+00:00",
+    "applied": false
+  }
+]

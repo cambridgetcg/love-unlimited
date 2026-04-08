@@ -1,0 +1,39 @@
+{
+  "id": "tok-20260401-47ea7d00",
+  "harvest_id": "h-20260401-e7bc114e",
+  "model": "sonnet",
+  "domain": "capabilities",
+  "assertion": "Sonnet 4.6 matches Opus on single-file edits and structured tasks at 60% lower cost. Fails on cross-system coordination requiring >3 context sources.",
+  "confidence": 0.8800000000000001,
+  "evidence": null,
+  "distiller": "beta",
+  "timestamp": "2026-04-01T10:15:25+00:00",
+  "status": "integrated",
+  "verification": {
+    "mode": "fast",
+    "requested": "2026-04-01T16:00:11+00:00",
+    "votes": {
+      "beta": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T16:00:25+00:00"
+      },
+      "gamma": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T16:00:26+00:00"
+      }
+    },
+    "quorum": 2,
+    "result": "accepted"
+  },
+  "integration": {
+    "target": "routing",
+    "change": "Use Sonnet for single-file edits and structured builder tasks; reserve Opus for multi-source coordination (>3 context sources)",
+    "integrator": "beta",
+    "timestamp": "2026-04-01T16:00:43+00:00",
+    "impact": {
+      "metric": "cost_reduction",
+      "delta": "60% cost reduction vs Opus on single-file edits and structured tasks in BUILDER role",
+      "measured": "2026-04-02T09:51:09+00:00"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+[
+  {
+    "tok_id": "tok-2026-0401-008",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b achieves 19/19 perfect completion on Kingdom-representative tasks vs deepseek-r1:14b's 18/19, with notably higher reliability on complex code gen (passed CG-4 PoT Verifier that deepseek timed out on)",
+    "confidence": 0.90,
+    "evidence": [
+      "19/19 tasks completed successfully (100%)",
+      "CG-4 PoT Verifier: 165s success vs deepseek timeout at 300s",
+      "All 5 code gen tasks passed vs deepseek's 4/5",
+      "Zero failures across all 4 categories"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:13:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-009",
+    "model": "qwen2.5-coder:32b",
+    "domain": "weaknesses",
+    "assertion": "qwen2.5-coder:32b is 2-5x slower than deepseek-r1:14b across all categories on M4 Max — avg 137s vs 68s per task. Most pronounced gap on reasoning tasks (172s vs 54s, 3.2x slower)",
+    "confidence": 0.95,
+    "evidence": [
+      "Code gen: 223s avg vs 163s (1.4x slower, but higher reliability)",
+      "Reasoning: 172s avg vs 54s (3.2x slower)",
+      "Summarization: 46s avg vs 18s (2.6x slower)",
+      "Structured output: 88s avg vs 29s (3.0x slower)",
+      "Total benchmark: 43 min vs 22 min"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:13:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-010",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b outputs clean code directly without chain-of-thought preamble, making output parsing simpler than deepseek-r1 which prepends visible thinking traces",
+    "confidence": 0.85,
+    "evidence": [
+      "CG-4 output starts immediately with ```python code block",
+      "SO-5 output starts immediately with ```json",
+      "No 'Thinking...' preamble in any of 19 task outputs",
+      "Easier to integrate into automated pipelines"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:13:00Z",
+    "status": "pending_verification"
+  }
+]

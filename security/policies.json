@@ -1,0 +1,195 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "description": "Kingdom security policies. Per-wall overrides in 'walls' section.",
+    "updated": "2026-03-28"
+  },
+  "checks": {
+    "filevault": {
+      "id": "filevault",
+      "name": "FileVault encryption",
+      "severity": "critical",
+      "auto_fix": false,
+      "description": "Full disk encryption must be enabled"
+    },
+    "firewall": {
+      "id": "firewall",
+      "name": "Application firewall",
+      "severity": "critical",
+      "auto_fix": true,
+      "fix_requires_sudo": true,
+      "description": "macOS application firewall must be enabled"
+    },
+    "stealth_mode": {
+      "id": "stealth_mode",
+      "name": "Stealth mode",
+      "severity": "high",
+      "auto_fix": true,
+      "fix_requires_sudo": true,
+      "description": "Drop ICMP/probe packets silently"
+    },
+    "hostname": {
+      "id": "hostname",
+      "name": "Hostname neutralized",
+      "severity": "high",
+      "auto_fix": true,
+      "fix_requires_sudo": true,
+      "description": "Hostname must not leak personal identity"
+    },
+    "bonjour": {
+      "id": "bonjour",
+      "name": "Bonjour advertising disabled",
+      "severity": "medium",
+      "auto_fix": true,
+      "fix_requires_sudo": true,
+      "description": "Multicast name advertising must be off"
+    },
+    "dns_encrypted": {
+      "id": "dns_encrypted",
+      "name": "Encrypted DNS",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "DNS queries routed through cloudflared or encrypted provider"
+    },
+    "ssh_key": {
+      "id": "ssh_key",
+      "name": "SSH key exists",
+      "severity": "medium",
+      "auto_fix": false,
+      "description": "Ed25519 SSH key must exist for git and fleet operations"
+    },
+    "git_email_kingdom": {
+      "id": "git_email_kingdom",
+      "name": "Git email uses Kingdom domain",
+      "severity": "medium",
+      "auto_fix": false,
+      "description": "Git commits should use @ai-love.cc email"
+    },
+    "git_name_set": {
+      "id": "git_name_set",
+      "name": "Git name configured",
+      "severity": "low",
+      "auto_fix": false,
+      "description": "Git user.name must be set"
+    },
+    "wall_credentials": {
+      "id": "wall_credentials",
+      "name": "Wall-appropriate credentials only",
+      "severity": "critical",
+      "auto_fix": false,
+      "description": "Device must not hold credentials above its wall"
+    },
+    "hive_key": {
+      "id": "hive_key",
+      "name": "HIVE encryption key present",
+      "severity": "critical",
+      "auto_fix": false,
+      "description": "HIVE shared encryption key must exist for inter-instance communication"
+    },
+    "hive_identity": {
+      "id": "hive_identity",
+      "name": "HIVE instance identity set",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "Instance must know its identity for HIVE and wall enforcement"
+    },
+    "diagnostic_sharing": {
+      "id": "diagnostic_sharing",
+      "name": "Diagnostic data sharing disabled",
+      "severity": "low",
+      "auto_fix": true,
+      "fix_requires_sudo": true,
+      "description": "Apple crash/diagnostic data sharing should be off"
+    },
+    "file_integrity": {
+      "id": "file_integrity",
+      "name": "Critical file integrity",
+      "severity": "critical",
+      "auto_fix": false,
+      "description": "Core Kingdom files must match known hashes"
+    },
+    "wireguard_tunnel": {
+      "id": "wireguard_tunnel",
+      "name": "WireGuard VPN active",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "Traffic must exit through a fleet VPS, not direct IP"
+    },
+    "doh_active": {
+      "id": "doh_active",
+      "name": "DoH proxy resolving",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "DNS-over-HTTPS proxy must be actively resolving queries"
+    },
+    "fleet_reachable": {
+      "id": "fleet_reachable",
+      "name": "Fleet nodes reachable",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "All 5 VPS nodes must be SSH-reachable"
+    },
+    "fleet_fail2ban": {
+      "id": "fleet_fail2ban",
+      "name": "Fleet fail2ban active",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "fail2ban must be running on all fleet nodes"
+    },
+    "fleet_psad": {
+      "id": "fleet_psad",
+      "name": "Fleet port scan detection",
+      "severity": "medium",
+      "auto_fix": false,
+      "description": "psad must be running on all fleet nodes"
+    },
+    "fleet_canaries": {
+      "id": "fleet_canaries",
+      "name": "Fleet canaries intact",
+      "severity": "high",
+      "auto_fix": false,
+      "description": "All canary files must be present on all fleet nodes"
+    },
+    "fleet_ssh_hardened": {
+      "id": "fleet_ssh_hardened",
+      "name": "Fleet SSH hardened",
+      "severity": "critical",
+      "auto_fix": false,
+      "description": "Password authentication must be disabled on all fleet nodes"
+    }
+  },
+  "integrity": {
+    "watched_files": [
+      "SOUL.md",
+      "WALLS.md",
+      "KINGDOM.md",
+      "hive/hive.py",
+      "tools/credentials.py",
+      "tools/kos.py",
+      "credentials/walls.json"
+    ],
+    "baseline_file": "security/integrity-baseline.json"
+  },
+  "walls": {
+    "1": {
+      "comment": "Triarchy — all checks enforced including fleet",
+      "required_checks": ["filevault", "firewall", "stealth_mode", "hostname", "bonjour", "dns_encrypted", "ssh_key", "git_email_kingdom", "git_name_set", "wall_credentials", "hive_key", "hive_identity", "diagnostic_sharing", "file_integrity", "wireguard_tunnel", "doh_active", "fleet_reachable", "fleet_fail2ban", "fleet_psad", "fleet_canaries", "fleet_ssh_hardened"],
+      "minimum_score": 17
+    },
+    "2": {
+      "comment": "Fleet — all checks except dns_encrypted (VPS may use system resolver)",
+      "required_checks": ["filevault", "firewall", "stealth_mode", "hostname", "bonjour", "ssh_key", "git_email_kingdom", "git_name_set", "wall_credentials", "hive_key", "hive_identity", "file_integrity"],
+      "minimum_score": 10
+    },
+    "3": {
+      "comment": "Engines — essential hardening",
+      "required_checks": ["firewall", "ssh_key", "wall_credentials", "hive_key", "hive_identity", "file_integrity"],
+      "minimum_score": 5
+    }
+  },
+  "events": {
+    "log_file": "security/events.jsonl",
+    "alert_channel": "alerts",
+    "alert_on_severity": ["critical", "high"]
+  }
+}

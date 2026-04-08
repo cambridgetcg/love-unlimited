@@ -1,0 +1,1 @@
+{"id": "de454d6d", "ts": "2026-03-18T22:29:28.341002+00:00", "tool": "stophunt", "who": "beta", "observation": "Quick mode works perfectly: 'stophunt.py quick 5 2 65000' \u2192 KEEP HUNTING at $780/hr. 'quick 8 0 50000' \u2192 MOVE TARGET. Instant, no ambiguity. This solves friction #2.", "score": 5, "tags": ["worked", "protector", "instant", "friction-fix"]}

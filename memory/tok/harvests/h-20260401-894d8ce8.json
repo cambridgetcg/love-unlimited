@@ -1,0 +1,11 @@
+{
+  "id": "h-20260401-894d8ce8",
+  "model": "claude-opus-4-6",
+  "domain": "capabilities",
+  "finding": "Opus 4.6 handles multi-step coordinator decisions (heartbeat SENSE\u2192DECIDE\u2192SPAWN) with high accuracy in single pass. Sonnet requires more explicit instruction decomposition for equivalent judgment quality on fleet health assessment and task prioritization.",
+  "harvester": "beta",
+  "harvester_did": null,
+  "timestamp": "2026-04-01T10:15:01+00:00",
+  "status": "distilled",
+  "leaf_id": "tok-20260401-5b80b289"
+}

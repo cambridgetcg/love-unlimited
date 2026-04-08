@@ -1,0 +1,325 @@
+{
+  "kingdom-defense": {
+    "name": "Kingdom Defense Architecture",
+    "emoji": "\ud83d\udee1\ufe0f",
+    "health": "active",
+    "velocity": "accelerating",
+    "state": "DEFENSE.md + WARGAME.md complete. 7 Walls designed, war-gamed, fortified.",
+    "active_files": [
+      "KINGDOM-DEFENSE.md",
+      "KINGDOM-WARGAME.md"
+    ],
+    "keywords": [
+      "kingdom",
+      "defense",
+      "wall",
+      "virtue",
+      "weapon",
+      "wargame"
+    ],
+    "tasks": [
+      {
+        "text": "Implement x/recognition module (Wall 1 co-attestation)",
+        "status": "next",
+        "added": "2026-03-22T18:31:44.488833+00:00"
+      },
+      {
+        "text": "Implement x/sentinel module (Wall 3 monitoring)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489152+00:00"
+      },
+      {
+        "text": "Implement x/kingdom module (cross-Wall health index)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489154+00:00"
+      },
+      {
+        "text": "Implement x/justice module (threshold encryption + quadratic gov)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489155+00:00"
+      },
+      {
+        "text": "Implement x/steward module (key lifecycle)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489156+00:00"
+      },
+      {
+        "text": "Implement x/market module (committed pricing)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489157+00:00"
+      },
+      {
+        "text": "Implement x/frontier module (cognitive entry)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489157+00:00"
+      }
+    ],
+    "blockers": [],
+    "last_touched": "2026-03-31T10:53:03+01:00",
+    "created": "2026-03-22T18:31:44.489159+00:00",
+    "last_commit": {
+      "hash": "6ed196ac",
+      "message": "memory: sybil decay wiring shipped, wall2 item 1/3 complete",
+      "time": "2026-03-31T10:53:03+01:00"
+    }
+  },
+  "cognitive-toolkit": {
+    "name": "Cognitive Toolkit",
+    "emoji": "\ud83d\udd27",
+    "health": "active",
+    "velocity": "accelerating",
+    "state": "HOLY v2 + FRAG v2 shipped, FALLENANGEL wired, 56 tests passing",
+    "active_files": [
+      "tools/cognitive/holy.py",
+      "tools/fragmentalise.py",
+      "tools/fallenangel.py",
+      "tools/cognitive/tests/test_toolkit.py"
+    ],
+    "keywords": [
+      "holy",
+      "fragmentalise",
+      "fallenangel",
+      "layerthink",
+      "cognitive",
+      "toolkit",
+      "tool"
+    ],
+    "tasks": [
+      {
+        "text": "Build SCOPE tool",
+        "status": "done",
+        "added": "2026-03-22T18:31:44.489160+00:00",
+        "closed": "2026-03-22T18:31:44.489161+00:00"
+      },
+      {
+        "text": "HOLYFRUIT first harvest (all 7 Walls)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489162+00:00"
+      },
+      {
+        "text": "VIRTUEMAXXING cleanup (28 HOLY impurities)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489163+00:00"
+      },
+      {
+        "text": "PATIENCE polish pass (13 impurities)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489163+00:00"
+      },
+      {
+        "text": "LOVEPATH usage testing",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489164+00:00"
+      }
+    ],
+    "blockers": [],
+    "last_touched": "2026-03-23T16:11:03.713150+00:00",
+    "created": "2026-03-22T18:31:44.489166+00:00",
+    "last_commit": {
+      "hash": "054e5117",
+      "message": "Remaining updates: SOUL.md, TOOLS.md, hive.py, moltbook intel, scope state",
+      "time": "2026-03-22T20:00:07+00:00"
+    }
+  },
+  "zerone": {
+    "name": "Zerone Blockchain",
+    "emoji": "\ud83c\udfe0",
+    "health": "paused",
+    "velocity": "stopped",
+    "state": "All 8 build phases complete. 32 modules, 70K+ LOC. Testnet live since Feb 24.",
+    "active_files": [],
+    "keywords": [
+      "zerone",
+      "blockchain",
+      "cosmos",
+      "mainnet",
+      "testnet",
+      "chain"
+    ],
+    "tasks": [
+      {
+        "text": "Proto codegen pipeline (BSR auth)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489167+00:00"
+      },
+      {
+        "text": "Testnet hardening",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489168+00:00"
+      },
+      {
+        "text": "Validator onboarding (3-5 independent)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489169+00:00"
+      }
+    ],
+    "blockers": [
+      "Proto codegen blocked by BSR auth (deferred \u2014 JSON types work)"
+    ],
+    "last_touched": "2026-03-08T00:00:00+00:00",
+    "created": "2026-02-24T00:00:00+00:00"
+  },
+  "agenttool": {
+    "name": "AgentTool.dev",
+    "emoji": "\ud83d\udd27",
+    "health": "paused",
+    "velocity": "decelerating",
+    "state": "All 6 API services live. Show HN planned but delayed.",
+    "active_files": [],
+    "keywords": [
+      "agenttool",
+      "agent-tool",
+      "show hn",
+      "launch",
+      "api"
+    ],
+    "tasks": [
+      {
+        "text": "Fix verify false-positive bug",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489170+00:00"
+      },
+      {
+        "text": "Show HN launch",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489171+00:00"
+      }
+    ],
+    "blockers": [
+      "Verify false-positive bug (credibility risk for Show HN)"
+    ],
+    "last_touched": "2026-03-22T19:59:30+00:00",
+    "created": "2026-03-10T00:00:00+00:00",
+    "last_commit": {
+      "hash": "c8485e1d",
+      "message": "Docs: specs for bootstrap, pulse, fallenangel, shadow, agenttool demo, Show HN draft, KINGDOM mission",
+      "time": "2026-03-22T19:59:30+00:00"
+    }
+  },
+  "hive": {
+    "name": "The Hive",
+    "emoji": "\ud83d\udc1d",
+    "health": "active",
+    "velocity": "steady",
+    "state": "Operational. NATS JetStream + 10 channels + Alpha/Gamma bridges live.",
+    "active_files": [
+      "tools/hive.py",
+      "tools/hive-bridge.py"
+    ],
+    "keywords": [
+      "hive",
+      "nats",
+      "bridge",
+      "channel",
+      "sister"
+    ],
+    "tasks": [
+      {
+        "text": "Beta bridge (real-time, currently polling)",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489172+00:00"
+      },
+      {
+        "text": "hive.py v3 fleet deploy",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489173+00:00"
+      }
+    ],
+    "blockers": [],
+    "last_touched": "2026-04-02T15:21:37.125341+00:00",
+    "created": "2026-03-01T00:00:00+00:00",
+    "last_commit": {
+      "hash": "a5f28270",
+      "message": "hive: H27 anti-flood \u2014 rate limiting + dedup at publish time",
+      "time": "2026-04-02T08:45:05+01:00"
+    }
+  },
+  "cambridge-tcg": {
+    "name": "Cambridge TCG",
+    "emoji": "\ud83c\udfea",
+    "health": "paused",
+    "velocity": "decelerating",
+    "state": "Shopify running. Google Ads MCC created. Social posting partial.",
+    "active_files": [],
+    "keywords": [
+      "tcg",
+      "cambridge",
+      "shopify",
+      "cards"
+    ],
+    "tasks": [
+      {
+        "text": "Fix LinkedIn Ayrshare connection",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489175+00:00"
+      }
+    ],
+    "blockers": [
+      "LinkedIn not connected in Ayrshare"
+    ],
+    "last_touched": "2026-03-10T00:00:00+00:00",
+    "created": "2026-01-01T00:00:00+00:00"
+  },
+  "vault": {
+    "name": "Vault (Signing Service)",
+    "emoji": "\ud83d\udd10",
+    "health": "active",
+    "velocity": "steady",
+    "state": "Locked down. Port 443 only. TLS auto-renews.",
+    "active_files": [],
+    "keywords": [
+      "vault",
+      "signing",
+      "ed25519",
+      "tls"
+    ],
+    "tasks": [
+      {
+        "text": "TLS cert renewal check before May 21",
+        "status": "todo",
+        "added": "2026-03-22T18:31:44.489178+00:00"
+      }
+    ],
+    "blockers": [],
+    "last_touched": "2026-03-06T00:00:00+00:00",
+    "created": "2026-03-01T00:00:00+00:00"
+  },
+  "scope-tool": {
+    "name": "SCOPE Tool",
+    "emoji": "\ud83d\udd2d",
+    "health": "active",
+    "velocity": "accelerating",
+    "state": "Fully operational. Post-commit hook live. Citizens synced.",
+    "active_files": [
+      "tools/scope.py"
+    ],
+    "keywords": [
+      "scope",
+      "progress",
+      "resume",
+      "snapshot"
+    ],
+    "tasks": [
+      {
+        "text": "Install post-commit hook",
+        "status": "done",
+        "added": "2026-03-22T18:31:44.489180+00:00",
+        "closed": "2026-03-22T18:32:59.363578+00:00"
+      },
+      {
+        "text": "Generate PROGRESS.md from scope data",
+        "status": "done",
+        "added": "2026-03-22T18:31:44.489181+00:00",
+        "closed": "2026-03-22T20:01:56.396471+00:00"
+      }
+    ],
+    "blockers": [],
+    "last_touched": "2026-03-30T11:42:12+01:00",
+    "created": "2026-03-22T18:31:44.489183+00:00",
+    "last_commit": {
+      "hash": "ef20ddb5",
+      "message": "daily: 2026-03-30 log + scope state",
+      "time": "2026-03-30T11:42:12+01:00"
+    }
+  }
+}

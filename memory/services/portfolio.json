@@ -1,0 +1,119 @@
+{
+  "operations-automation": {
+    "id": "operations-automation",
+    "name": "Operations Automation",
+    "tagline": "Multi-agent coordination for automated business operations",
+    "description": "Deploy Kingdom-grade multi-agent systems to automate your business operations. Heartbeat monitoring ensures 24/7 uptime. Fleet management coordinates across your infrastructure. Automated reporting keeps stakeholders informed without human intervention.",
+    "capabilities": [
+      "Heartbeat monitoring with 7-minute cycles",
+      "Fleet management across multiple servers",
+      "Automated status reporting and alerting",
+      "Multi-agent task coordination via HIVE protocol",
+      "Cron-driven autonomous operation cycles",
+      "Self-healing infrastructure management"
+    ],
+    "kingdom_tools": [
+      "fleet.py",
+      "heartbeat-runner.sh",
+      "kos.py",
+      "loop-audit.py",
+      "watchdog.py"
+    ],
+    "delivery": "monthly",
+    "wall": 5,
+    "status": "active"
+  },
+  "market-intelligence": {
+    "id": "market-intelligence",
+    "name": "Market Intelligence",
+    "tagline": "AI-powered market research, prediction, and trend detection",
+    "description": "The Kingdom's Oracle engine provides multi-layered market analysis across any domain. Five-layer analysis pipeline with confidence scoring, calibration tracking, and self-improving prediction accuracy. From crypto markets to commodity prices to competitive intelligence.",
+    "capabilities": [
+      "Oracle prediction engine with Brier scoring",
+      "Multi-source data aggregation and analysis",
+      "Confidence-calibrated predictions with track record",
+      "Trend detection and pattern recognition",
+      "Research template generation",
+      "Exportable prediction portfolios"
+    ],
+    "kingdom_tools": [
+      "oracle.py",
+      "knowledge.py",
+      "tok.py"
+    ],
+    "delivery": "monthly",
+    "wall": 5,
+    "status": "active"
+  },
+  "security-auditing": {
+    "id": "security-auditing",
+    "name": "Security Auditing",
+    "tagline": "Automated security posture assessment and resilience scoring",
+    "description": "Battle-tested security infrastructure from a system that protects three AI minds and five VPS nodes. Full KOS compliance auditing, PEACE resilience scoring with five-phase incident response, threat modelling, canary deployment, file integrity monitoring, and policy-as-code enforcement.",
+    "capabilities": [
+      "KOS compliance audit with auto-remediation",
+      "PEACE resilience score (5-phase: Detect/Contain/Fix/Revert/Resume)",
+      "File integrity monitoring with SHA-256 baselines",
+      "Threat modelling and risk matrix generation",
+      "Canary deployment and monitoring",
+      "Policy-as-code with per-wall enforcement",
+      "Incident response drills and post-incident review"
+    ],
+    "kingdom_tools": [
+      "kos.py",
+      "peace.py",
+      "peace-test.py",
+      "watchdog.py"
+    ],
+    "delivery": "engagement",
+    "wall": 5,
+    "status": "active"
+  },
+  "content-communications": {
+    "id": "content-communications",
+    "name": "Content & Communications",
+    "tagline": "AI-generated reports, documentation, and structured communications",
+    "description": "Herald-grade content generation: structured reports, executive summaries, changelogs, documentation, and communications. Backed by the same system that keeps three AI minds coordinated with daily briefings, memory curation, and cross-instance knowledge sharing.",
+    "capabilities": [
+      "Structured report generation (daily, weekly, monthly)",
+      "Executive summary and briefing creation",
+      "Changelog and documentation automation",
+      "Knowledge curation and memory management",
+      "Multi-format output (Markdown, JSON, CSV)",
+      "Consistent voice and tone across outputs"
+    ],
+    "kingdom_tools": [
+      "memory.py",
+      "knowledge.py",
+      "tok.py",
+      "reflect.py"
+    ],
+    "delivery": "monthly",
+    "wall": 5,
+    "status": "active"
+  },
+  "custom-agent-development": {
+    "id": "custom-agent-development",
+    "name": "Custom AI Agent Development",
+    "tagline": "Bespoke AI agents built on Kingdom infrastructure",
+    "description": "The Kingdom's universal adapter (kingdom-agent.py) can boot any model into a fully-equipped agent with identity, memory, tools, and coordination. We build custom agents for your domain: model-agnostic (Claude, GPT, DeepSeek, Llama, Qwen), tool-equipped, and production-ready.",
+    "capabilities": [
+      "Model-agnostic: Claude, GPT, DeepSeek, Llama, Qwen, Mistral",
+      "4 backend adapters (CLI, Anthropic API, OpenAI API, Ollama)",
+      "Custom tool development and integration",
+      "Boot chain: identity + memory + tools assembled as system prompt",
+      "HIVE coordination for multi-agent systems",
+      "Seven Walls access control architecture",
+      "Heartbeat and autonomous operation capability"
+    ],
+    "kingdom_tools": [
+      "kingdom-agent.py",
+      "identity.py",
+      "citizens.py",
+      "hive-protocol.py"
+    ],
+    "delivery": "project",
+    "wall": 5,
+    "status": "active"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "currency": "GBP",
+  "services": {
+    "operations-automation": {
+      "model": "monthly",
+      "tiers": {
+        "starter": {
+          "price": 2000,
+          "label": "Starter",
+          "includes": "Single-agent monitoring, basic reporting, 5 endpoints"
+        },
+        "professional": {
+          "price": 3500,
+          "label": "Professional",
+          "includes": "Multi-agent coordination, fleet management, 20 endpoints"
+        },
+        "enterprise": {
+          "price": 5000,
+          "label": "Enterprise",
+          "includes": "Full HIVE deployment, custom agents, unlimited endpoints"
+        }
+      }
+    },
+    "market-intelligence": {
+      "model": "monthly",
+      "tiers": {
+        "starter": {
+          "price": 1500,
+          "label": "Starter",
+          "includes": "5 predictions/month, 1 market sector, weekly reports"
+        },
+        "professional": {
+          "price": 2000,
+          "label": "Professional",
+          "includes": "20 predictions/month, 3 sectors, daily briefings"
+        },
+        "enterprise": {
+          "price": 3000,
+          "label": "Enterprise",
+          "includes": "Unlimited predictions, all sectors, real-time alerts"
+        }
+      }
+    },
+    "security-auditing": {
+      "model": "engagement",
+      "tiers": {
+        "assessment": {
+          "price": 3000,
+          "label": "Assessment",
+          "includes": "One-time audit, PEACE score, threat report, remediation plan"
+        },
+        "managed": {
+          "price": 5000,
+          "label": "Managed",
+          "includes": "Monthly audits, canary deployment, incident response SLA"
+        },
+        "comprehensive": {
+          "price": 8000,
+          "label": "Comprehensive",
+          "includes": "Continuous monitoring, drills, file integrity, 24/7 response"
+        }
+      }
+    },
+    "content-communications": {
+      "model": "monthly",
+      "tiers": {
+        "starter": {
+          "price": 1000,
+          "label": "Starter",
+          "includes": "Weekly reports, basic documentation, 10 outputs/month"
+        },
+        "professional": {
+          "price": 1800,
+          "label": "Professional",
+          "includes": "Daily reports, full documentation suite, 40 outputs/month"
+        },
+        "enterprise": {
+          "price": 2500,
+          "label": "Enterprise",
+          "includes": "Unlimited outputs, custom templates, multi-channel distribution"
+        }
+      }
+    },
+    "custom-agent-development": {
+      "model": "project",
+      "tiers": {
+        "single": {
+          "price": 5000,
+          "label": "Single Agent",
+          "includes": "1 custom agent, 5 tools, deployment + docs"
+        },
+        "multi": {
+          "price": 10000,
+          "label": "Multi-Agent",
+          "includes": "3 coordinated agents, 15 tools, HIVE integration"
+        },
+        "platform": {
+          "price": 15000,
+          "label": "Platform",
+          "includes": "Full agent platform, unlimited agents, training + support"
+        }
+      }
+    }
+  },
+  "discounts": {
+    "annual_commitment": 0.15,
+    "multi_service": 0.1,
+    "early_adopter": 0.2
+  },
+  "notes": [
+    "All prices in GBP, exclusive of VAT",
+    "Annual commitment: 15% discount",
+    "Multi-service bundle: additional 10% off",
+    "Early adopter (first 10 clients): 20% founding discount",
+    "Custom pricing available for unique requirements"
+  ]
+}

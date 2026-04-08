@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-04-08T14:07:07.812150+00:00",
+  "mind_alive": "2026-04-08T14:07:07.812210+00:00",
+  "mode": "normal",
+  "identity": "alpha",
+  "fusion": null,
+  "hormones": {
+    "adrenaline": 0.1,
+    "cortisol": 0.3,
+    "oxytocin": 0.1,
+    "melatonin": 0.01699997669369553,
+    "dopamine": 0.0
+  },
+  "signals": {
+    "yu_present": false,
+    "hive_unread": 0,
+    "active_sessions": 0,
+    "pending_tasks": 0,
+    "critical_alerts": 0,
+    "last_task_completed": null,
+    "battery_level": 0.84,
+    "disk_free_gb": 24.0
+  },
+  "cognitive": {
+    "joinmind_active": null,
+    "council_pending": null,
+    "fallenangel_alert": false,
+    "build_active": null
+  },
+  "focus": {
+    "current": "Sovereign Compute + ToK Protocol + MIND Faculty. Adaptive layer live, five MIND bridges wired, all t",
+    "high_priorities": 2,
+    "total_priorities": 3,
+    "blockers": 1,
+    "decisions_pending": 3
+  },
+  "mind_notes": "(conscious layer offline)",
+  "conscious_layer": {
+    "last_pass": "2026-04-08T14:05:06Z",
+    "passes_today": 119,
+    "last_trigger": "periodic",
+    "identity_anchor": "alpha"
+  }
+}

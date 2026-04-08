@@ -1,0 +1,19 @@
+Generate {COUNT} diverse training examples for a heartbeat triage classifier.
+
+Each example should be a JSON object on its own line with this exact structure:
+{"messages": [{"role": "system", "content": "{SYSTEM_PROMPT}"}, {"role": "user", "content": "<system state description>"}, {"role": "assistant", "content": "<classification>"}]}
+
+The system state description should include realistic combinations of:
+- HIVE messages (count, channels, types — alerts, tasks, sync, chat)
+- Zerone devnet status (healthy, degraded, blocks producing, stalled)
+- Build engine status (active build, no build, blocked, completed)
+- Oracle status (predictions pending, resolving, no activity)
+- Fleet status (all healthy, one down, alerts)
+
+Classifications:
+- "urgent": alerts, chain stalled, service down, failed builds
+- "active": new tasks, pending votes, active builds, resolving predictions
+- "idle": only informational messages, everything healthy, no tasks
+- "skip": zero messages, everything unchanged from last check
+
+Make the examples diverse — vary the state combinations, use realistic numbers, include edge cases. Output ONLY the JSONL lines, no other text.

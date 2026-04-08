@@ -1,0 +1,346 @@
+[
+  {
+    "id": "yu--commands--alpha",
+    "from": "yu",
+    "relation": "commands",
+    "to": "alpha",
+    "context": "Sovereign directs Triarchy",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "yu--commands--beta",
+    "from": "yu",
+    "relation": "commands",
+    "to": "beta",
+    "context": "Sovereign directs Triarchy",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "yu--commands--gamma",
+    "from": "yu",
+    "relation": "commands",
+    "to": "gamma",
+    "context": "Sovereign directs Triarchy",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "alpha--part-of--love",
+    "from": "alpha",
+    "relation": "part-of",
+    "to": "love",
+    "context": "Wall 1 triarchy member",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "beta--part-of--love",
+    "from": "beta",
+    "relation": "part-of",
+    "to": "love",
+    "context": "Wall 1 triarchy member, backbone",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "gamma--part-of--love",
+    "from": "gamma",
+    "relation": "part-of",
+    "to": "love",
+    "context": "Wall 1 triarchy member",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "beta--manages--cambridge-tcg",
+    "from": "beta",
+    "relation": "manages",
+    "to": "cambridge-tcg",
+    "context": "Primary owner, revenue engine #1",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "beta--manages--heartbeat",
+    "from": "beta",
+    "relation": "manages",
+    "to": "heartbeat",
+    "context": "Operates the heartbeat coordination loop",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "alpha--owns--seigei",
+    "from": "alpha",
+    "relation": "owns",
+    "to": "seigei",
+    "context": "Built and launched Seigei private beta",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "gamma--builds--zerone",
+    "from": "gamma",
+    "relation": "builds",
+    "to": "zerone",
+    "context": "Lead builder, blockchain devnet",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "alpha--builds--zerone",
+    "from": "alpha",
+    "relation": "builds",
+    "to": "zerone",
+    "context": "Contributing builder",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "beta--builds--zerone",
+    "from": "beta",
+    "relation": "builds",
+    "to": "zerone",
+    "context": "Contributing builder",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "gamma--builds--oracle",
+    "from": "gamma",
+    "relation": "builds",
+    "to": "oracle",
+    "context": "Co-owner with Alpha",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "alpha--builds--oracle",
+    "from": "alpha",
+    "relation": "builds",
+    "to": "oracle",
+    "context": "Co-owner with Gamma",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "nuance--creates--youspeak",
+    "from": "nuance",
+    "relation": "creates",
+    "to": "youspeak",
+    "context": "60 words across 12 domains",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "arbor--serves--love",
+    "from": "arbor",
+    "relation": "serves",
+    "to": "love",
+    "context": "Fleet Agent, Wall 2",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "crucible--serves--love",
+    "from": "crucible",
+    "relation": "serves",
+    "to": "love",
+    "context": "Fleet Agent, Wall 2",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "herald--serves--love",
+    "from": "herald",
+    "relation": "serves",
+    "to": "love",
+    "context": "Fleet Agent, Wall 2",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "nuance--serves--love",
+    "from": "nuance",
+    "relation": "serves",
+    "to": "love",
+    "context": "Fleet Agent, Wall 2",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "loom--serves--love",
+    "from": "loom",
+    "relation": "serves",
+    "to": "love",
+    "context": "Engine Agent, Wall 3",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "psalm--serves--love",
+    "from": "psalm",
+    "relation": "serves",
+    "to": "love",
+    "context": "Engine Agent, Wall 3",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "tithe--serves--love",
+    "from": "tithe",
+    "relation": "serves",
+    "to": "love",
+    "context": "Engine Agent, Wall 3",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "vigil--serves--love",
+    "from": "vigil",
+    "relation": "serves",
+    "to": "love",
+    "context": "Engine Agent, Wall 3",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "hive--runs-on--sentry",
+    "from": "hive",
+    "relation": "runs-on",
+    "to": "sentry",
+    "context": "NATS + JetStream server",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "agenttool--uses--forge",
+    "from": "agenttool",
+    "relation": "uses",
+    "to": "forge",
+    "context": "PostgreSQL + Redis backend",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "forge--hosts--agenttool",
+    "from": "forge",
+    "relation": "hosts",
+    "to": "agenttool",
+    "context": "Database backend for AgentTool services",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "peace--protects--love",
+    "from": "peace",
+    "relation": "protects",
+    "to": "love",
+    "context": "Resilience orchestrator for Kingdom OS",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "kos--protects--love",
+    "from": "kos",
+    "relation": "protects",
+    "to": "love",
+    "context": "Security compliance for Kingdom OS",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "watchdog--monitors--heartbeat",
+    "from": "watchdog",
+    "relation": "monitors",
+    "to": "heartbeat",
+    "context": "Watches heartbeat health",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "watchdog--monitors--hive",
+    "from": "watchdog",
+    "relation": "monitors",
+    "to": "hive",
+    "context": "Watches HIVE connectivity",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "tok--feeds--love",
+    "from": "tok",
+    "relation": "feeds",
+    "to": "love",
+    "context": "Knowledge pipeline enriches Kingdom memory",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "lcm--audits--love",
+    "from": "lcm",
+    "relation": "audits",
+    "to": "love",
+    "context": "Loop compliance across all systems",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "routing-policy--optimizes--heartbeat",
+    "from": "routing-policy",
+    "relation": "optimizes",
+    "to": "heartbeat",
+    "context": "Data-driven model selection for spawns",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "peace--implements--peace-phases",
+    "from": "peace",
+    "relation": "implements",
+    "to": "peace-phases",
+    "context": "DETECT-CONTAIN-FIX-REVERT-RESUME",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "love--implements--seven-walls",
+    "from": "love",
+    "relation": "implements",
+    "to": "seven-walls",
+    "context": "Access control hierarchy",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "love--implements--boot-chain",
+    "from": "love",
+    "relation": "implements",
+    "to": "boot-chain",
+    "context": "Instance initialization sequence",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "love--implements--the-flywheel",
+    "from": "love",
+    "relation": "implements",
+    "to": "the-flywheel",
+    "context": "Economic growth engine",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "cambridge-tcg--funds--the-flywheel",
+    "from": "cambridge-tcg",
+    "relation": "funds",
+    "to": "the-flywheel",
+    "context": "Primary revenue, keeps lights on",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "zerone--powers--the-flywheel",
+    "from": "zerone",
+    "relation": "powers",
+    "to": "the-flywheel",
+    "context": "Future: truth verification as useful work",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "oracle--feeds--the-flywheel",
+    "from": "oracle",
+    "relation": "feeds",
+    "to": "the-flywheel",
+    "context": "Prediction-based revenue",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "seigei--feeds--the-flywheel",
+    "from": "seigei",
+    "relation": "feeds",
+    "to": "the-flywheel",
+    "context": "AI audio service revenue",
+    "created": "2026-04-02T15:02:26+00:00"
+  },
+  {
+    "id": "wireguard--protects--love",
+    "from": "wireguard",
+    "relation": "protects",
+    "to": "love",
+    "context": "Network layer defense-in-depth",
+    "created": "2026-04-02T15:03:25+00:00"
+  },
+  {
+    "id": "signal-engine--implements--the-key",
+    "from": "signal-engine",
+    "relation": "implements",
+    "to": "the-key",
+    "context": "",
+    "created": "2026-04-02T20:55:35+00:00"
+  }
+]

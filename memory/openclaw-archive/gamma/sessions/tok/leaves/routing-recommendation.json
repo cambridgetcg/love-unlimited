@@ -1,0 +1,29 @@
+[
+  {
+    "tok_id": "tok-2026-0401-011",
+    "model": "deepseek-r1:14b + qwen2.5-coder:32b",
+    "domain": "architecture",
+    "assertion": "Optimal local model routing on M4 Max (36GB): deepseek-r1:14b for speed-dominant tasks (summarization, structured output, quick reasoning), qwen2.5-coder:32b for reliability-critical code generation. Chain-of-thought visibility in deepseek is a differentiator for PoT auditability.",
+    "confidence": 0.85,
+    "evidence": [
+      "deepseek 3x faster on reasoning/structured output but 1 timeout on complex code",
+      "qwen 100% reliability (19/19) vs deepseek 95% (18/19)",
+      "deepseek chain-of-thought visible — auditable thinking for PoT verification",
+      "qwen clean output — better for automated pipelines",
+      "Both run on M4 Max 36GB without issues — sovereign compute viable",
+      "Total cost: $0 (local inference only)"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:13:00Z",
+    "status": "pending_verification",
+    "metadata": {
+      "routing_recommendation": {
+        "deepseek-r1:14b": ["summarization", "structured_output", "quick_reasoning", "pot_audit_trails"],
+        "qwen2.5-coder:32b": ["code_generation", "complex_reasoning", "reliability_critical"],
+        "claude": ["coordination", "nuanced_judgment", "long_context", "creative"]
+      },
+      "hardware": "Apple M4 Max 36GB",
+      "total_benchmark_cost": "$0"
+    }
+  }
+]

@@ -1,0 +1,41 @@
+{
+  "status": "completed",
+  "started_at": "2026-04-02T15:12:46+00:00",
+  "duration": 3600,
+  "ends_at": "2026-04-02T16:12:46+00:00",
+  "objectives": [
+    {
+      "challenge_id": "CHAL-001",
+      "title": "Verify all fleet canaries are intact",
+      "type": "red",
+      "difficulty": "easy",
+      "zrn": 100,
+      "completed": false,
+      "completed_by": null,
+      "completed_at": null
+    },
+    {
+      "challenge_id": "CHAL-004",
+      "title": "Detect and remediate a simulated integrity violation",
+      "type": "purple",
+      "difficulty": "hard",
+      "zrn": 300,
+      "completed": false,
+      "completed_by": null,
+      "completed_at": null
+    },
+    {
+      "challenge_id": "CHAL-005",
+      "title": "Probe for any unmonitored open port across the fleet",
+      "type": "red",
+      "difficulty": "hard",
+      "zrn": 300,
+      "completed": false,
+      "completed_by": null,
+      "completed_at": null
+    }
+  ],
+  "players": [],
+  "scores": {},
+  "ended_at": "2026-04-02T15:12:55+00:00"
+}

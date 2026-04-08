@@ -1,0 +1,8 @@
+{
+  "open": true,
+  "daily_budget": 5,
+  "opened_at": "2026-04-07T05:15:44+00:00",
+  "opened_by": "manual",
+  "reason": "Initial activation \u2014 enabling controlled Claude escalation for high-complexity tasks",
+  "usage": []
+}

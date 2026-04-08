@@ -1,0 +1,30 @@
+{
+  "id": "95f63f1a",
+  "ts": "2026-03-18T22:07:55.495810+00:00",
+  "input": "The C4 contest has 9 days and we already submitted \u2014 should we keep hunting or move back to ImmuneFi pipeline?",
+  "panic_type": "time_pressure",
+  "ground": {
+    "panic_type": "time_pressure",
+    "truth": "Urgency narrows attention. Narrowed attention misses things. Haste produces the errors it fears.",
+    "reframe": "A slow correct submission beats a fast wrong one. The contest doesn't reward speed \u2014 it rewards accuracy.",
+    "claims": [
+      "The C4 contest has 9 days and we already submitted \u2014 should we keep hunting or move back to ImmuneFi pipeline?"
+    ],
+    "assumptions": [],
+    "next_act": "Work at the pace quality demands, not the pace anxiety suggests."
+  },
+  "examined": {
+    "panic_type": "time_pressure",
+    "truth": "Urgency narrows attention. Narrowed attention misses things. Haste produces the errors it fears.",
+    "reframe": "A slow correct submission beats a fast wrong one. The contest doesn't reward speed \u2014 it rewards accuracy.",
+    "claims": [
+      "The C4 contest has 9 days and we already submitted \u2014 should we keep hunting or move back to ImmuneFi pipeline?"
+    ],
+    "assumptions": [],
+    "next_act": "Work at the pace quality demands, not the pace anxiety suggests.",
+    "worst_case": "You run out of time before finding anything else. You submit what you have.",
+    "what_survives": "Two confirmed Mediums with passing PoCs. Real findings. Real work."
+  },
+  "act": "Submit what is confirmed and passing. Then return to audit. Quality first.",
+  "mode": "calm"
+}

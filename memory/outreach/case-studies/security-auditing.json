@@ -1,0 +1,18 @@
+{
+  "service": "Security Auditing",
+  "generated": "2026-04-02T21:22:34+00:00",
+  "title": "How We Built a 21-Check Security Posture in One Day",
+  "subtitle": "Kingdom OS: automated security for multi-agent AI infrastructure",
+  "client": "Kingdom OS (our own infrastructure)",
+  "challenge": "Running three coordinated AI systems across five VPS nodes creates a\nsignificant attack surface. We needed:\n\n- Continuous security monitoring, not annual pen tests\n- Incident response that works autonomously (AI systems run 24/7)\n- File integrity verification across distributed infrastructure\n- Access control that scales (seven trust levels, from core to public)\n- Policy enforcement that's code, not documentation\n\nTraditional security consultancy quoted us five figures for an annual\nassessment. We needed something that runs every day.",
+  "solution": "We built two integrated security systems:\n\n1. KOS (Kingdom Operating System) AUDIT: 21-point automated compliance\n   check covering SSH hardening, firewall rules, service inventory,\n   user permissions, file integrity, update status, and more. Runs on\n   demand or on schedule. Auto-remediation for common issues.\n\n2. PEACE RESILIENCE FRAMEWORK: Five-phase incident response --\n   Detect, Contain, Fix, Revert, Resume. Each phase has automated\n   runbooks. We test with simulated incidents (peace-test.py) to\n   ensure the system works under pressure, not just in theory.\n\n3. SEVEN WALLS ACCESS CONTROL: Architecture-level security through\n   trust boundaries. Each wall has explicit permissions. Policy\n   enforced as code, not as a document gathering dust.\n\n4. FILE INTEGRITY MONITORING: SHA-256 baselines for critical files.\n   Any unauthorized change triggers immediate alerting.",
+  "results": [
+    "21-check security audit runs in under 60 seconds",
+    "PEACE resilience score: quantified security posture, not a vague rating",
+    "Incident response tested monthly with automated drills",
+    "Zero unauthorized file changes detected since deployment",
+    "Security posture visible at all times, not just during annual audits"
+  ],
+  "tech_summary": "Built on: KOS compliance engine (Python), PEACE resilience framework\n(5-phase automated incident response), Seven Walls ACL architecture,\nSHA-256 file integrity baselines, canary deployment monitoring,\npolicy-as-code enforcement.",
+  "quote": "Security isn't an annual event. It's a continuous posture. We built the tooling to make that posture measurable, testable, and automated."
+}

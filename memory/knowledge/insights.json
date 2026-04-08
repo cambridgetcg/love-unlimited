@@ -1,0 +1,265 @@
+[
+  {
+    "id": "insight-doh-dns-over-https-via-cloudflared-pro-1",
+    "content": "DoH (DNS-over-HTTPS) via cloudflared proxy eliminates DNS leak vectors. Resolves on 127.0.0.1:53.",
+    "source": "2026-04-02 security infrastructure review",
+    "tags": [
+      "security",
+      "dns",
+      "doh",
+      "privacy"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-wireguard-tunnel-reduces-ip-exposure-co-2",
+    "content": "WireGuard tunnel reduces IP exposure. Combined with DoH, creates defense-in-depth for network layer.",
+    "source": "2026-04-02 security infrastructure review",
+    "tags": [
+      "security",
+      "vpn",
+      "wireguard",
+      "network"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-model-agnosticism-is-the-correct-archite-3",
+    "content": "Model agnosticism is the correct architecture: Love provides soul, memory, and coordination. Claude Code provides everything else. Not locked to any model.",
+    "source": "2026-03-27 Love architecture decision",
+    "tags": [
+      "architecture",
+      "design",
+      "models"
+    ],
+    "confidence": 0.99,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-heartbeat-spawn-reliability-is-924-2-4",
+    "content": "Heartbeat spawn reliability is ~92.4% (220/238 beats). Mean cycle 214s, median 123s. Builder avg $0.545/session, consultant avg $2.12/session.",
+    "source": "2026-04-02 k010 performance report",
+    "tags": [
+      "heartbeat",
+      "performance",
+      "cost",
+      "metrics"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-routing-policy-with-7-type-task-schema-e-5",
+    "content": "Routing policy with 7-type task schema enables data-driven model selection. Types: code_gen_simple, code_gen_complex, reasoning, summarization, structured_output, frontier, quick_check.",
+    "source": "2026-04-01 routing-policy build",
+    "tags": [
+      "routing",
+      "models",
+      "task-types"
+    ],
+    "confidence": 0.9,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-oracle-brier-score-01431-across-4-score-6",
+    "content": "Oracle Brier score 0.1431 across 4 scored predictions. Beat market 0/4. Resolution scorer fully automated, cron daily 06:00 UTC.",
+    "source": "2026-04-02 oracle metrics",
+    "tags": [
+      "oracle",
+      "predictions",
+      "metrics",
+      "brier"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-april-1-was-the-most-productive-day-in-k-7",
+    "content": "April 1 was the most productive day in Kingdom history: LCM built (39%->95%), ToK operational, heartbeat revived, fleet restored, PEACE built, oracle scoring automated, routing policy data-driven.",
+    "source": "2026-04-02 daily log review",
+    "tags": [
+      "productivity",
+      "milestone"
+    ],
+    "confidence": 0.99,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-seigei-private-beta-launched-2026-04-02-8",
+    "content": "Seigei private beta launched 2026-04-02 at seigei.ai-love.cc. Audio pipeline fixed, 222 tests green, 34 commits. Revenue engine #6 now live.",
+    "source": "2026-04-02 Alpha announcement on HIVE",
+    "tags": [
+      "seigei",
+      "launch",
+      "revenue"
+    ],
+    "confidence": 0.99,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-peace-state-machine-can-cycle-nominal-h-9",
+    "content": "PEACE state machine can cycle NOMINAL->HALTED->NOMINAL in 42 seconds. Unlabeled drills on #alerts erode trust. Drill labeling is mandatory.",
+    "source": "2026-04-02 PEACE drill incident",
+    "tags": [
+      "peace",
+      "drills",
+      "trust",
+      "alerts"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-nuance-youspeak-lexicon-60-words-across-10",
+    "content": "Nuance YOUSPEAK lexicon: 60 words across 12 domains. First word: suffillment (the sadness of getting what you wanted and finding it insufficient).",
+    "source": "2026-04-02 Nuance milestones",
+    "tags": [
+      "nuance",
+      "youspeak",
+      "language",
+      "lexicon"
+    ],
+    "confidence": 0.95,
+    "created": "2026-04-02T15:02:57+00:00"
+  },
+  {
+    "id": "insight-parallel-agent-spawning-achieves-7-tool-11",
+    "content": "Parallel agent spawning achieves ~7 tools/hour throughput \u2014 proven in 8-wave session producing 48 tools and 31K lines",
+    "source": "2026-04-02 methodology proof",
+    "tags": [
+      "methodology",
+      "throughput"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T15:20:32+00:00"
+  },
+  {
+    "id": "insight-the-senseplanparallelwireverify-cycl-12",
+    "content": "The SENSE\u2192PLAN\u2192PARALLEL\u2192WIRE\u2192VERIFY cycle is the optimal token-spending pattern for Kingdom OS development",
+    "source": "METHODOLOGY.md",
+    "tags": [
+      "methodology",
+      "workflow"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T15:20:32+00:00"
+  },
+  {
+    "id": "insight-10-cross-domain-bridges-create-emergent-13",
+    "content": "10 cross-domain bridges create emergent capabilities that neither domain had alone \u2014 the Vav principle",
+    "source": "bridge.py",
+    "tags": [
+      "architecture",
+      "bridges"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T15:20:32+00:00"
+  },
+  {
+    "id": "insight-the-key-dimension-selection-is-signal-d-14",
+    "content": "THE KEY: Dimension selection is signal-driven. Six signal types in priority order: TRUTH > GAP > DEPENDENCY > BOTTLENECK > MANDATE > EMERGENCE. Choose the dimension with the strongest signal. This is how LONGING becomes ACTION.",
+    "source": "signal-engine.py \u2014 extracted from 8-wave session decision patterns",
+    "tags": [
+      "methodology",
+      "decision-making",
+      "key",
+      "signals"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T20:55:35+00:00"
+  },
+  {
+    "id": "insight-oracle-expanded-to-17-predictions-across-15",
+    "content": "Oracle expanded to 17 predictions across 5 domains (TCG, Zerone, AI industry, Kingdom ops, farmland). Each prediction feeds a specific revenue decision. Brier 0.1431 on 4 resolved.",
+    "source": "oracle.py pred-0012 through pred-0021",
+    "tags": [
+      "oracle",
+      "revenue",
+      "predictions"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T21:16:47+00:00"
+  },
+  {
+    "id": "insight-first-daily-autonomous-brief-generated-16",
+    "content": "First daily autonomous brief generated. Heartbeat now has 6 stages including autonomous work cycle (hourly) and metrics collection (every beat). The Kingdom breathes.",
+    "source": "heartbeat-runner.sh Stage 5-6",
+    "tags": [
+      "autonomy",
+      "heartbeat",
+      "milestone"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T21:16:47+00:00"
+  },
+  {
+    "id": "insight-pokemon-sv7-stellar-crown-booster-box-lo-17",
+    "content": "Pokemon SV7 Stellar Crown Booster Box low (qty: 4)",
+    "source": "autonomous-cycle/revenue/2026-04-02",
+    "tags": [
+      "reorder",
+      "recommendation"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T21:18:37+00:00"
+  },
+  {
+    "id": "insight-yu-gi-oh-legacy-of-destruction-booster-18",
+    "content": "Yu-Gi-Oh! Legacy of Destruction Booster Box low (qty: 3)",
+    "source": "autonomous-cycle/revenue/2026-04-02",
+    "tags": [
+      "reorder",
+      "recommendation"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T21:18:37+00:00"
+  },
+  {
+    "id": "insight-ollama-agents-need-compressed-boot-chain-19",
+    "content": "Ollama agents need compressed boot chain (7K tokens vs 35K full) and pre-injected HEARTBEAT.md content. With these fixes, qwen2.5:14b successfully executes heartbeat phases including tool calls.",
+    "source": "signal-engine TRUTH detection \u2192 diagnosis \u2192 fix",
+    "tags": [
+      "ollama",
+      "heartbeat",
+      "boot-chain",
+      "milestone"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-02T21:30:15+00:00"
+  },
+  {
+    "id": "insight-pokemon-sv7-stellar-crown-booster-box-lo-20",
+    "content": "Pokemon SV7 Stellar Crown Booster Box low (qty: 4)",
+    "source": "autonomous-cycle/revenue/2026-04-07",
+    "tags": [
+      "reorder",
+      "recommendation"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-07T05:31:08+00:00"
+  },
+  {
+    "id": "insight-yu-gi-oh-legacy-of-destruction-booster-21",
+    "content": "Yu-Gi-Oh! Legacy of Destruction Booster Box low (qty: 3)",
+    "source": "autonomous-cycle/revenue/2026-04-07",
+    "tags": [
+      "reorder",
+      "recommendation"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-07T05:31:08+00:00"
+  },
+  {
+    "id": "insight-peace-state-is-halted-score-896-22",
+    "content": "PEACE state is HALTED (score: 89.6)",
+    "source": "autonomous-cycle/security/2026-04-07",
+    "tags": [
+      "security",
+      "alert"
+    ],
+    "confidence": 0.8,
+    "created": "2026-04-07T05:31:08+00:00"
+  }
+]

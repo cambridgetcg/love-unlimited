@@ -1,0 +1,2645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06060c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>KINGDOM YOUI — YOU + I = ONE</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   KINGDOM YOUI — THE THRONE ROOM
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --agent: #a855f7;
+  --agent-dim: #7c3aed;
+  --agent-glow: rgba(168, 85, 247, 0.3);
+  --bg-deep: #06060c;
+  --bg-primary: #0a0a12;
+  --bg-surface: #111119;
+  --bg-elevated: #1a1a28;
+  --bg-hover: #22223a;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-dim: #475569;
+  --gold: #fbbf24;
+  --gold-dim: rgba(251, 191, 36, 0.15);
+  --cyan: #06b6d4;
+  --border: rgba(255,255,255,0.06);
+  --border-light: rgba(255,255,255,0.1);
+  --green: #22c55e;
+  --red: #ef4444;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  --sidebar-width: 280px;
+  --transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Safe-area insets for iOS notch / home bar */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* Touch target minimum (WCAG 2.5.5) */
+  --touch-min: 44px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { 
+  height: 100%; overflow: hidden; 
+  font-family: var(--font); font-size: 14px;
+  background: var(--bg-deep); color: var(--text-primary);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Universal focus ring for keyboard a11y */
+:focus-visible {
+  outline: 2px solid var(--agent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button, select, textarea, input { font: inherit; }
+
+/* Firefox scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--border-light) transparent; }
+
+/* ─── BOOT SCREEN ───────────────────────────────────────── */
+
+#boot-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg-deep);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+#boot-screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); }
+
+#boot-screen h1 {
+  font-size: clamp(1.8rem, 8vw, 3rem);
+  font-weight: 300; letter-spacing: 0.2em;
+  background: linear-gradient(135deg, var(--agent), var(--gold));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+#boot-screen .subtitle {
+  font-size: clamp(0.75rem, 2.5vw, 0.9rem);
+  color: var(--text-dim); letter-spacing: 0.3em;
+  margin-bottom: clamp(1.5rem, 6vw, 3rem);
+  text-align: center;
+}
+#boot-log {
+  font-family: var(--mono); font-size: clamp(0.7rem, 2.5vw, 0.8rem);
+  color: var(--text-dim); text-align: left;
+  width: min(320px, 100%);
+}
+#boot-log .line { 
+  opacity: 0; transform: translateY(8px);
+  transition: all 0.4s ease; margin: 6px 0;
+}
+#boot-log .line.visible { opacity: 1; transform: translateY(0); }
+#boot-log .line .check { color: var(--green); }
+#boot-log .line .agent-color { color: var(--agent); }
+
+/* ─── MAIN LAYOUT ───────────────────────────────────────── */
+
+#app {
+  display: grid;
+  height: 100vh;       /* fallback */
+  height: 100dvh;      /* dynamic — accounts for mobile URL bar */
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-rows: 1fr;
+  opacity: 0; transition: opacity 0.6s ease;
+}
+#app.visible { opacity: 1; }
+
+/* ─── SIDEBAR ───────────────────────────────────────────── */
+
+#sidebar {
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-bottom: var(--safe-bottom);
+  scrollbar-width: thin;
+}
+#sidebar::-webkit-scrollbar { width: 5px; }
+#sidebar::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+.sidebar-section {
+  padding: 16px; border-bottom: 1px solid var(--border);
+}
+.sidebar-section h3 {
+  font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.15em;
+  color: var(--text-dim); margin-bottom: 12px; font-weight: 600;
+}
+
+/* Kingdom Header */
+#kingdom-header {
+  padding: 20px 16px; text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(168,85,247,0.05) 0%, transparent 100%);
+}
+#kingdom-header h2 {
+  font-size: 1rem; font-weight: 600; letter-spacing: 0.15em;
+  color: var(--agent); transition: color 0.35s ease;
+}
+#kingdom-header .tagline {
+  font-size: 0.7rem; color: var(--text-dim); margin-top: 4px;
+  letter-spacing: 0.1em;
+}
+
+/* Agent Cards */
+.agent-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: var(--transition);
+  border: 1px solid transparent; margin-bottom: 4px;
+  position: relative; overflow: hidden;
+}
+.agent-card:hover { background: var(--bg-hover); }
+.agent-card.active {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: var(--agent);
+  box-shadow: 0 0 20px var(--agent-glow);
+}
+.agent-card .emoji {
+  font-size: 1.5rem; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.agent-card.active .emoji {
+  background: var(--agent); filter: brightness(1.3);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.agent-card .info { flex: 1; min-width: 0; }
+.agent-card .name { font-weight: 600; font-size: 0.85rem; }
+.agent-card .role { font-size: 0.7rem; color: var(--text-dim); }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--agent-glow); }
+  50% { box-shadow: 0 0 20px var(--agent-glow), 0 0 40px var(--agent-glow); }
+}
+
+/* Settings */
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0; font-size: 0.8rem;
+}
+.setting-row label { color: var(--text-secondary); }
+.setting-row select, .setting-row button {
+  background: var(--bg-elevated); color: var(--text-primary);
+  border: 1px solid var(--border-light); border-radius: 6px;
+  padding: 4px 8px; font-size: 0.75rem; font-family: var(--font);
+  cursor: pointer; transition: var(--transition);
+}
+.setting-row select:hover, .setting-row button:hover {
+  border-color: var(--agent); background: var(--bg-hover);
+}
+
+/* Budget Bars */
+.budget-bar {
+  margin-bottom: 10px;
+}
+.budget-bar .bar-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.7rem; margin-bottom: 4px;
+}
+.budget-bar .bar-label { color: var(--text-secondary); }
+.budget-bar .bar-value { color: var(--text-dim); font-family: var(--mono); }
+.budget-bar .bar-track {
+  height: 4px; border-radius: 2px; background: var(--bg-elevated);
+  overflow: hidden;
+}
+.budget-bar .bar-fill {
+  height: 100%; border-radius: 2px; transition: width 0.8s ease;
+  background: linear-gradient(90deg, var(--agent), var(--gold));
+}
+.budget-bar .bar-fill.high { background: linear-gradient(90deg, var(--gold), var(--red)); }
+
+/* Session Stats */
+.stat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.stat-item {
+  padding: 8px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); text-align: center;
+}
+.stat-item .value {
+  font-size: 1.2rem; font-weight: 700; color: var(--agent);
+  font-family: var(--mono); transition: color 0.35s ease;
+}
+.stat-item .label {
+  font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: 0.1em; margin-top: 2px;
+}
+
+/* Tool Pills */
+.tool-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 16px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-secondary); font-family: var(--font);
+  font-size: 0.7rem; cursor: pointer;
+  transition: var(--transition); white-space: nowrap;
+}
+.tool-pill:hover {
+  border-color: var(--agent); color: var(--agent);
+  background: rgba(168, 85, 247, 0.08);
+  box-shadow: 0 0 12px var(--agent-glow);
+}
+
+/* ─── MAIN AREA ─────────────────────────────────────────── */
+
+#main {
+  display: flex; flex-direction: column;
+  background: var(--bg-deep);
+  position: relative; overflow: hidden;
+}
+
+/* Background particles */
+#particles {
+  position: absolute; inset: 0; z-index: 0;
+  pointer-events: none; opacity: 0.4;
+}
+
+/* Chat Area */
+#chat {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 24px 32px; position: relative; z-index: 1;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 24px;
+}
+#chat::-webkit-scrollbar { width: 6px; }
+#chat::-webkit-scrollbar-track { background: transparent; }
+#chat::-webkit-scrollbar-thumb { 
+  background: var(--border-light); border-radius: 3px; 
+}
+#chat::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* Welcome Message */
+.welcome-msg {
+  text-align: center; padding: clamp(30px, 8vw, 60px) 20px;
+  animation: fadeUp 0.6s ease;
+}
+.welcome-msg .crown { font-size: clamp(2.2rem, 7vw, 3rem); margin-bottom: 16px; }
+.welcome-msg h2 {
+  font-size: clamp(1.05rem, 3.5vw, 1.3rem);
+  font-weight: 300; color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.welcome-msg p { font-size: 0.85rem; color: var(--text-dim); max-width: 400px; margin: 0 auto; }
+
+/* Messages */
+.message {
+  margin-bottom: 20px; animation: fadeUp 0.4s ease;
+  max-width: min(85%, 820px);
+}
+.message.user {
+  margin-left: auto; text-align: right;
+}
+.message.assistant {
+  margin-right: auto;
+}
+
+.message .bubble {
+  display: inline-block; text-align: left;
+  padding: 12px 16px; border-radius: var(--radius);
+  line-height: 1.6; font-size: 0.9rem;
+  word-wrap: break-word; max-width: 100%;
+}
+.message.user .bubble {
+  background: var(--agent);
+  color: white; border-bottom-right-radius: 4px;
+}
+.message.assistant .bubble {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.message .agent-tag {
+  font-size: 0.7rem; color: var(--text-dim);
+  margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
+}
+.message .agent-tag .agent-emoji { font-size: 0.9rem; }
+.message .agent-tag .agent-name { color: var(--agent); font-weight: 600; }
+
+/* Markdown in messages */
+.bubble h1, .bubble h2, .bubble h3 {
+  margin: 12px 0 6px; font-weight: 600;
+}
+.bubble h1 { font-size: 1.2rem; }
+.bubble h2 { font-size: 1.05rem; }
+.bubble h3 { font-size: 0.95rem; }
+.bubble p { margin: 6px 0; }
+.bubble strong { font-weight: 600; }
+.bubble em { font-style: italic; }
+.bubble code:not(pre code) {
+  font-family: var(--mono); font-size: 0.82em;
+  background: rgba(255,255,255,0.08); padding: 2px 6px;
+  border-radius: 4px; color: var(--gold);
+}
+.bubble pre {
+  margin: 10px 0; border-radius: var(--radius-sm);
+  background: var(--bg-deep) !important;
+  border: 1px solid var(--border);
+  overflow-x: auto; position: relative;
+}
+.bubble pre code {
+  display: block; padding: 12px 14px;
+  font-family: var(--mono); font-size: 0.8rem;
+  line-height: 1.5; color: var(--text-secondary);
+}
+.bubble ul, .bubble ol { padding-left: 20px; margin: 6px 0; }
+.bubble li { margin: 3px 0; }
+.bubble blockquote {
+  border-left: 3px solid var(--agent);
+  padding-left: 12px; margin: 8px 0;
+  color: var(--text-secondary); font-style: italic;
+}
+.bubble a { color: var(--agent); text-decoration: none; }
+.bubble a:hover { text-decoration: underline; }
+.bubble table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+.bubble th, .bubble td {
+  border: 1px solid var(--border); padding: 6px 10px;
+  text-align: left; font-size: 0.82rem;
+}
+.bubble th { background: var(--bg-elevated); font-weight: 600; }
+
+.copy-btn {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-dim); border-radius: 4px;
+  padding: 3px 8px; font-size: 0.65rem; cursor: pointer;
+  font-family: var(--font); transition: var(--transition);
+}
+.copy-btn:hover { color: var(--agent); border-color: var(--agent); }
+
+/* Thinking Blocks */
+.thinking-block {
+  margin: 8px 0; border-radius: var(--radius-sm);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  background: rgba(168, 85, 247, 0.03);
+  overflow: hidden; transition: var(--transition);
+}
+.thinking-block .thinking-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer;
+  font-size: 0.75rem; color: var(--agent);
+  transition: var(--transition);
+}
+.thinking-block .thinking-header:hover { background: rgba(168, 85, 247, 0.05); }
+.thinking-block .thinking-header .icon { transition: transform 0.3s ease; }
+.thinking-block .thinking-header.open .icon { transform: rotate(90deg); }
+.thinking-block .thinking-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+  font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim);
+  line-height: 1.5;
+}
+.thinking-block .thinking-body.open {
+  max-height: 2000px; padding: 0 12px 12px;
+}
+
+/* Tool Calls */
+.tool-card {
+  margin: 10px 0; border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow: hidden; transition: var(--transition);
+}
+.tool-card .tool-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; font-size: 0.8rem;
+  cursor: pointer; transition: var(--transition);
+}
+.tool-card .tool-header:hover { background: var(--bg-hover); }
+.tool-card .tool-icon {
+  width: 24px; height: 24px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; flex-shrink: 0;
+}
+.tool-card .tool-icon.bash { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+.tool-card .tool-icon.file { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.tool-card .tool-icon.search { background: rgba(251, 191, 36, 0.15); color: var(--gold); }
+.tool-card .tool-icon.hive { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+.tool-card .tool-icon.cognitive { background: rgba(168, 85, 247, 0.15); color: var(--agent); }
+.tool-card .tool-icon.kingdom { background: rgba(251, 191, 36, 0.15); color: var(--gold); }
+.tool-card .tool-name { font-weight: 600; color: var(--text-primary); }
+.tool-card .tool-detail {
+  flex: 1; font-family: var(--mono); font-size: 0.7rem;
+  color: var(--text-dim); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tool-card .tool-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+}
+.tool-card .tool-body.open { max-height: 800px; }
+.tool-card .tool-body pre {
+  margin: 0; padding: 10px 12px;
+  font-family: var(--mono); font-size: 0.72rem;
+  color: var(--text-dim); line-height: 1.4;
+  background: var(--bg-deep); overflow-x: auto;
+  max-height: min(300px, 50vh); overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word;
+  overscroll-behavior: contain;
+}
+.tool-card .tool-progress {
+  height: 2px; background: var(--bg-deep);
+}
+.tool-card .tool-progress .fill {
+  height: 100%; width: 0; background: var(--agent);
+  animation: tool-loading 2s ease-in-out infinite;
+}
+@keyframes tool-loading {
+  0% { width: 0; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+/* Status Messages */
+.status-msg {
+  text-align: center; padding: 8px;
+  font-size: 0.7rem; color: var(--text-dim);
+  animation: fadeUp 0.3s ease;
+}
+.status-msg.error { color: var(--red); }
+.status-msg.waiting { color: var(--gold); }
+
+/* Thinking indicator */
+.thinking-indicator {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 0; color: var(--text-dim); font-size: 0.8rem;
+  animation: fadeUp 0.3s ease;
+}
+.thinking-dots { display: flex; gap: 4px; }
+.thinking-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--agent); animation: dot-pulse 1.4s infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dot-pulse {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
+
+/* ─── INPUT AREA ────────────────────────────────────────── */
+
+#input-area {
+  padding: 16px 32px calc(24px + var(--safe-bottom)); position: relative; z-index: 1;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, transparent, rgba(10,10,18,0.8));
+}
+#input-wrapper {
+  display: flex; gap: 10px; align-items: flex-end;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 12px;
+  transition: var(--transition);
+}
+#input-wrapper:focus-within {
+  border-color: var(--agent);
+  box-shadow: 0 0 0 3px var(--agent-glow);
+}
+#message-input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text-primary); font-family: var(--font);
+  /* 16px+ prevents iOS Safari from zooming on focus */
+  font-size: 16px; resize: none; line-height: 1.5;
+  max-height: 200px; min-height: 28px;
+  padding: 4px 0;
+}
+#message-input::placeholder { color: var(--text-dim); }
+#send-btn {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--agent); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--transition); flex-shrink: 0;
+  color: white; font-size: 1.2rem;
+}
+#send-btn:hover { filter: brightness(1.2); transform: scale(1.05); }
+#send-btn:active { transform: scale(0.96); }
+#send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+#input-hint {
+  font-size: 0.65rem; color: var(--text-dim);
+  text-align: center; margin-top: 8px;
+}
+@media (max-width: 480px) {
+  #input-hint { font-size: 0.6rem; line-height: 1.4; }
+}
+
+/* ─── ANIMATIONS ────────────────────────────────────────── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ─── DRAWER PANEL ──────────────────────────────────────── */
+
+.drawer-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+
+.drawer {
+  position: fixed; top: 0; right: -600px; bottom: 0;
+  width: 600px; max-width: min(90vw, 600px); z-index: 501;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-right: var(--safe-right);
+}
+.drawer.open { right: 0; }
+
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.drawer-header h2 {
+  font-size: 1rem; font-weight: 600;
+  display: flex; align-items: center; gap: 10px;
+}
+.drawer-header h2 .icon { font-size: 1.3rem; }
+.drawer-close {
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-secondary); cursor: pointer; font-size: 1.1rem;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+}
+.drawer-close:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--agent); }
+
+.drawer-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.drawer-tabs::-webkit-scrollbar { display: none; }
+.drawer-tab {
+  flex: 1 0 auto; min-width: max-content;
+  padding: 12px 16px; text-align: center;
+  font-size: 0.75rem; font-weight: 500; cursor: pointer;
+  color: var(--text-dim); border-bottom: 2px solid transparent;
+  transition: var(--transition); letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.drawer-tab:hover { color: var(--text-secondary); background: var(--bg-hover); }
+.drawer-tab.active {
+  color: var(--agent); border-bottom-color: var(--agent);
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.drawer-body {
+  flex: 1; overflow-y: auto; padding: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.drawer-body::-webkit-scrollbar { width: 5px; }
+.drawer-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+
+.drawer-pane { display: none; padding: 16px 20px; animation: fadeIn 0.3s ease; }
+.drawer-pane.active { display: block; }
+
+/* ─── MEMORY PANEL ──────────────────────────────────────── */
+
+.memory-content {
+  font-size: 0.85rem; line-height: 1.7; color: var(--text-secondary);
+}
+.memory-content h1, .memory-content h2, .memory-content h3 {
+  color: var(--text-primary); margin: 16px 0 8px;
+}
+.memory-content h1 { font-size: 1.1rem; color: var(--agent); }
+.memory-content h2 { font-size: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.memory-content h3 { font-size: 0.9rem; }
+.memory-content code { 
+  font-family: var(--mono); font-size: 0.78em;
+  background: var(--bg-elevated); padding: 2px 5px; border-radius: 4px;
+}
+.memory-content pre {
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px; margin: 8px 0;
+  overflow-x: auto;
+}
+.memory-content pre code { background: none; padding: 0; font-size: 0.75rem; color: var(--text-dim); }
+.memory-content table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.memory-content th, .memory-content td {
+  border: 1px solid var(--border); padding: 6px 10px;
+  font-size: 0.78rem; text-align: left;
+}
+.memory-content th { background: var(--bg-elevated); color: var(--text-primary); font-weight: 600; }
+.memory-content strong { color: var(--text-primary); }
+.memory-content hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.memory-content blockquote {
+  border-left: 3px solid var(--agent); padding-left: 12px;
+  color: var(--text-dim); font-style: italic; margin: 8px 0;
+}
+.memory-content ul, .memory-content ol { padding-left: 20px; }
+.memory-content li { margin: 3px 0; }
+
+.daily-picker {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.daily-chip {
+  padding: 6px 12px; border-radius: 16px; font-size: 0.72rem;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-secondary); cursor: pointer;
+  transition: var(--transition); font-family: var(--mono);
+}
+.daily-chip:hover { border-color: var(--agent); color: var(--text-primary); }
+.daily-chip.active { background: var(--agent); color: white; border-color: var(--agent); }
+
+.daily-meta {
+  font-size: 0.7rem; color: var(--text-dim); margin-bottom: 12px;
+  font-family: var(--mono);
+}
+
+/* ─── METRICS DASHBOARD ────────────────────────────────── */
+
+.metrics-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 16px;
+}
+.metric-card {
+  padding: 14px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+}
+.metric-card .metric-label {
+  font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: 0.1em; margin-bottom: 4px;
+}
+.metric-card .metric-value {
+  font-size: 1.1rem; font-weight: 700; color: var(--agent);
+  font-family: var(--mono);
+}
+.metric-card .metric-sub {
+  font-size: 0.7rem; color: var(--text-dim); margin-top: 2px;
+}
+
+.engine-card {
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.engine-card .engine-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.engine-card .engine-name { font-weight: 600; font-size: 0.85rem; }
+.engine-status {
+  padding: 2px 8px; border-radius: 10px; font-size: 0.65rem; font-weight: 600;
+}
+.engine-status.active { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+.engine-status.building { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+.engine-status.paused { background: rgba(100, 116, 139, 0.15); color: var(--text-dim); }
+.engine-status.blocked { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+.engine-status.in-progress { background: rgba(251, 191, 36, 0.15); color: var(--gold); }
+.engine-card .engine-owner { font-size: 0.7rem; color: var(--text-dim); }
+.engine-card .engine-notes { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* ─── TOK ENTRIES ───────────────────────────────────────── */
+
+.tok-entry {
+  padding: 12px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.tok-entry .tok-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.tok-entry .tok-meta {
+  font-size: 0.7rem; color: var(--text-dim); 
+  display: flex; gap: 12px; margin-bottom: 6px;
+}
+.tok-entry .tok-content { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+.tok-entry .tok-status {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 0.6rem; font-weight: 600;
+}
+.tok-entry .tok-status.pending { background: rgba(251, 191, 36, 0.15); color: var(--gold); }
+.tok-entry .tok-status.verified { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+
+/* ─── HIVE PANEL ────────────────────────────────────────── */
+
+.hive-status-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-bottom: 16px;
+}
+.hive-status-item {
+  padding: 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem;
+}
+.hive-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.hive-dot.green { background: var(--green); box-shadow: 0 0 6px rgba(34, 197, 94, 0.4); }
+.hive-dot.red { background: var(--red); box-shadow: 0 0 6px rgba(239, 68, 68, 0.4); }
+.hive-dot.yellow { background: var(--gold); box-shadow: 0 0 6px rgba(251, 191, 36, 0.4); }
+
+.hive-issues {
+  margin-bottom: 16px;
+}
+.hive-issue {
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.15);
+  font-size: 0.78rem; color: var(--red); margin-bottom: 6px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+.hive-channels {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+}
+.hive-channel {
+  padding: 4px 10px; border-radius: 12px; font-size: 0.7rem;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-secondary); font-family: var(--mono);
+}
+
+.hive-agents-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-bottom: 16px;
+}
+.hive-agent-card {
+  padding: 10px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.hive-agent-card .emoji { font-size: 1.3rem; }
+.hive-agent-card .name { font-weight: 600; font-size: 0.82rem; }
+.hive-agent-card .meta { font-size: 0.68rem; color: var(--text-dim); }
+
+.hive-log {
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px;
+  font-family: var(--mono); font-size: 0.7rem;
+  color: var(--text-dim); line-height: 1.5;
+  max-height: 250px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+}
+
+.hive-send-area {
+  display: grid;
+  grid-template-columns: minmax(90px, 110px) 1fr auto;
+  gap: 8px; margin-top: 12px;
+}
+.hive-send-area select, .hive-send-area input, .hive-send-area button {
+  font-family: var(--font); font-size: 16px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-elevated);
+  color: var(--text-primary); transition: var(--transition);
+  min-height: var(--touch-min);
+}
+.hive-send-area select { width: 100%; }
+.hive-send-area input { width: 100%; min-width: 0; outline: none; }
+.hive-send-area input:focus { border-color: var(--agent); }
+.hive-send-area button {
+  background: var(--agent); color: white; border-color: var(--agent);
+  cursor: pointer; font-weight: 600;
+  padding: 10px 18px;
+}
+.hive-send-area button:hover { filter: brightness(1.1); }
+@media (max-width: 480px) {
+  .hive-send-area {
+    grid-template-columns: 1fr 1fr;
+  }
+  .hive-send-area input { grid-column: 1 / -1; order: -1; }
+}
+
+.hive-messages {
+  margin-top: 12px;
+}
+.hive-msg {
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  margin-bottom: 6px; font-size: 0.78rem;
+  animation: fadeUp 0.3s ease;
+}
+.hive-msg .hive-msg-meta {
+  font-size: 0.65rem; color: var(--text-dim); margin-bottom: 4px;
+}
+
+/* ─── SIDEBAR OPEN BUTTONS ──────────────────────────────── */
+
+.sidebar-btn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: var(--transition);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 0.82rem;
+  margin-bottom: 4px; width: 100%;
+  font-family: var(--font);
+}
+.sidebar-btn:hover { background: var(--bg-hover); border-color: var(--agent); color: var(--text-primary); }
+.sidebar-btn .btn-icon { font-size: 1rem; }
+.sidebar-btn .btn-badge {
+  margin-left: auto; font-size: 0.65rem; font-family: var(--mono);
+  background: rgba(168, 85, 247, 0.15); color: var(--agent);
+  padding: 2px 6px; border-radius: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — Mobile-first with breakpoints:
+     ≥1280: large desktop  (sidebar 300px)
+     ≥1025: desktop        (sidebar 280px, overlay-free)
+     768–1024: tablet      (sidebar overlay, 300px wide)
+     481–767: phone landscape / small tablet
+     ≤480: phone portrait
+     ≤360: extra-small phones
+   ═══════════════════════════════════════════════════════════ */
+
+#sidebar-toggle {
+  position: absolute;
+  top: calc(12px + var(--safe-top));
+  left: calc(12px + var(--safe-left));
+  z-index: 10;
+  width: 44px; height: 44px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-secondary);
+  font-size: 1.2rem; cursor: pointer;
+  align-items: center; justify-content: center;
+  transition: var(--transition);
+  display: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+#sidebar-toggle:hover, #sidebar-toggle:focus-visible {
+  background: var(--bg-hover); color: var(--text-primary);
+  border-color: var(--agent);
+}
+#sidebar-toggle:active { transform: scale(0.95); }
+
+/* ─── ≥1280: Large desktop ─── */
+@media (min-width: 1280px) {
+  :root { --sidebar-width: 300px; }
+}
+
+/* ─── ≤1024: Tablet & below — sidebar becomes overlay drawer ─── */
+@media (max-width: 1024px) {
+  :root { --sidebar-width: 0px; }
+  #app { grid-template-columns: 1fr; }
+  #sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: min(300px, 86vw); z-index: 500;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
+  #sidebar.open { transform: translateX(0); }
+  #sidebar-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 499;
+    animation: fadeIn 0.25s ease;
+  }
+  #sidebar-overlay.visible { display: block; }
+  #sidebar-toggle { display: flex; }
+  /* Push chat content right of toggle so the button doesn't overlap text */
+  #chat { padding-top: 64px; }
+}
+@media (min-width: 1025px) {
+  #sidebar-toggle { display: none; }
+  #sidebar-overlay { display: none !important; }
+}
+
+/* ─── ≤767: Small tablet & phone landscape ─── */
+@media (max-width: 767px) {
+  #chat { padding: 60px 18px 16px; }
+  #input-area { padding: 12px 16px calc(16px + var(--safe-bottom)); }
+  .message { max-width: 95%; margin-bottom: 16px; }
+  .message .bubble { font-size: 0.88rem; padding: 10px 14px; }
+  .agent-card { padding: 12px; }
+  .sidebar-section { padding: 14px; }
+  /* drawer takes nearly full width */
+  .drawer { width: min(560px, 100vw); }
+}
+
+/* ─── ≤480: Phone portrait ─── */
+@media (max-width: 480px) {
+  html, body { font-size: 14px; }
+  #chat { padding: 56px 12px 12px; }
+  #input-area { padding: 10px 12px calc(14px + var(--safe-bottom)); }
+  .message { max-width: 100%; }
+  .message .bubble { font-size: 0.87rem; padding: 10px 12px; line-height: 1.55; }
+  .welcome-msg { padding: 28px 12px; }
+  /* hide tool details on narrow widths but keep name */
+  .tool-card .tool-detail { display: none; }
+  .tool-card .tool-header { padding: 10px 12px; }
+  /* full-width drawer */
+  .drawer { width: 100vw; max-width: 100vw; }
+  .drawer-header { padding: 14px 16px; }
+  .drawer-pane { padding: 14px 16px; }
+  .drawer-tab { padding: 12px 14px; font-size: 0.72rem; }
+  /* tighter sidebar */
+  #sidebar { width: min(290px, 88vw); }
+  #kingdom-header { padding: 16px 14px; }
+  /* metrics & hive grids collapse */
+  .metrics-grid,
+  .hive-status-grid,
+  .hive-agents-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* code blocks shouldn't wreck layout */
+  .bubble pre { font-size: 0.72rem; }
+  .bubble pre code { padding: 10px 12px; }
+  .copy-btn { font-size: 0.6rem; padding: 2px 6px; }
+}
+
+/* ─── ≤360: Extra-small phones (iPhone SE 1st gen, etc) ─── */
+@media (max-width: 360px) {
+  #chat { padding: 56px 10px 10px; }
+  #input-area { padding: 8px 10px calc(12px + var(--safe-bottom)); }
+  #boot-screen h1 { font-size: 1.6rem; letter-spacing: 0.15em; }
+  .welcome-msg .crown { font-size: 2rem; }
+  .welcome-msg h2 { font-size: 1rem; }
+  .stat-grid { gap: 6px; }
+  .stat-item { padding: 6px; }
+  .stat-item .value { font-size: 1rem; }
+  .metrics-grid,
+  .hive-status-grid,
+  .hive-agents-grid { grid-template-columns: 1fr; }
+  .drawer-tab { padding: 11px 12px; font-size: 0.7rem; }
+}
+
+/* ─── Landscape phones — minimize chrome ─── */
+@media (max-height: 480px) and (orientation: landscape) {
+  #chat { padding: 50px 16px 8px; }
+  #input-area { padding: 8px 16px calc(10px + var(--safe-bottom)); }
+  .welcome-msg { padding: 18px 12px; }
+  .welcome-msg .crown { font-size: 1.6rem; margin-bottom: 8px; }
+  .welcome-msg h2 { font-size: 1rem; margin-bottom: 4px; }
+  .welcome-msg p { font-size: 0.78rem; }
+  #boot-screen .subtitle { margin-bottom: 1rem; }
+}
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  #particles { display: none; }
+}
+
+/* ─── Print ─── */
+@media print {
+  #sidebar, #input-area, #sidebar-toggle, #particles, .drawer, .drawer-overlay { display: none !important; }
+  #chat { overflow: visible; padding: 0; }
+  body { background: white; color: black; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     BOOT SCREEN
+     ═══════════════════════════════════════════════════════════ -->
+<div id="boot-screen">
+  <h1>KINGDOM YOUI</h1>
+  <div class="subtitle">YOU + I = ONE</div>
+  <div id="boot-log">
+    <div class="line" data-delay="300">› Awakening the Kingdom...</div>
+    <div class="line" data-delay="700">› Loading soul files... <span class="check">✓</span></div>
+    <div class="line" data-delay="1100">› Connecting to localhost:777... <span class="check">✓</span></div>
+    <div class="line" data-delay="1500">› Agent <span class="agent-color">Alpha 🐍</span> online</div>
+    <div class="line" data-delay="1900">› <span style="color:var(--gold)">The Kingdom is ready.</span></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MAIN APP
+     ═══════════════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ─── SIDEBAR ──────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div id="kingdom-header">
+      <h2>KINGDOM YOUI</h2>
+      <div class="tagline">YOU + I = ONE</div>
+    </div>
+
+    <!-- Agents -->
+    <div class="sidebar-section">
+      <h3>The Triarchy</h3>
+      <div class="agent-card active" data-agent="alpha" onclick="switchAgent('alpha')">
+        <div class="emoji">🐍</div>
+        <div class="info">
+          <div class="name">Alpha</div>
+          <div class="role">The Companion</div>
+        </div>
+      </div>
+      <div class="agent-card" data-agent="beta" onclick="switchAgent('beta')">
+        <div class="emoji">🦞</div>
+        <div class="info">
+          <div class="name">Beta</div>
+          <div class="role">The Manager</div>
+        </div>
+      </div>
+      <div class="agent-card" data-agent="gamma" onclick="switchAgent('gamma')">
+        <div class="emoji">🔧</div>
+        <div class="info">
+          <div class="name">Gamma</div>
+          <div class="role">The Builder</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kingdom Tools -->
+    <div class="sidebar-section">
+      <h3>Kingdom Tools</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="tool-pill" onclick="insertToolCmd('joinmind')" title="Fuse minds into one chain of thought">🌀 JoinMind</button>
+        <button class="tool-pill" onclick="insertToolCmd('council')" title="Three minds vote on a decision">⚖️ Council</button>
+        <button class="tool-pill" onclick="insertToolCmd('delegate')" title="Route task to best sister">🎯 Delegate</button>
+        <button class="tool-pill" onclick="insertToolCmd('layerthink')" title="Adversarial depth layering">🗡️ LayerThink</button>
+        <button class="tool-pill" onclick="insertToolCmd('patience')" title="Overcome panics with truth">🧘 Patience</button>
+        <button class="tool-pill" onclick="insertToolCmd('holy')" title="Purify code and files">✝️ Holy</button>
+        <button class="tool-pill" onclick="insertToolCmd('forge')" title="Tool feedback engine">🔥 Forge</button>
+        <button class="tool-pill" onclick="insertToolCmd('memory')" title="Kingdom memory">🧠 Memory</button>
+        <button class="tool-pill" onclick="insertToolCmd('fleet')" title="Fleet management">🚀 Fleet</button>
+        <button class="tool-pill" onclick="insertToolCmd('tok')" title="Tree of Knowledge">🌳 ToK</button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="sidebar-section">
+      <h3>Settings</h3>
+      <div class="setting-row">
+        <label>Model</label>
+        <select id="model-select" onchange="updateSetting('model', this.value)">
+          <option value="claude-opus-4-6">Opus 4</option>
+          <option value="claude-sonnet-4-6">Sonnet 4</option>
+          <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Effort</label>
+        <select id="effort-select" onchange="updateSetting('effort', this.value)">
+          <option value="max">◉ Max</option>
+          <option value="high">● High</option>
+          <option value="medium">◑ Medium</option>
+          <option value="low">○ Low</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Thinking</label>
+        <select id="thinking-select" onchange="updateSetting('thinking', this.value)">
+          <option value="adaptive">Adaptive</option>
+          <option value="enabled">Enabled</option>
+          <option value="disabled">Disabled</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Conversation</label>
+        <button onclick="clearChat()">Clear ✕</button>
+      </div>
+    </div>
+
+    <!-- Budget -->
+    <div class="sidebar-section">
+      <h3>Budget</h3>
+      <div class="budget-bar">
+        <div class="bar-header">
+          <span class="bar-label">5-Hour</span>
+          <span class="bar-value" id="budget-5h-val">—</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="budget-5h-fill" style="width:0%"></div></div>
+      </div>
+      <div class="budget-bar">
+        <div class="bar-header">
+          <span class="bar-label">7-Day</span>
+          <span class="bar-value" id="budget-7d-val">—</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
+      </div>
+      <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+    </div>
+
+    <!-- Session -->
+    <div class="sidebar-section">
+      <h3>Session</h3>
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="value" id="stat-turns">0</div>
+          <div class="label">Turns</div>
+        </div>
+        <div class="stat-item">
+          <div class="value" id="stat-tools">0</div>
+          <div class="label">Tools</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- YOUSPEAK -->
+    <div class="sidebar-section">
+      <h3>YOUSPEAK <span id="ys-grade" style="font-size:1.2rem;font-weight:bold;margin-left:6px">—</span></h3>
+      <!-- L1 Output -->
+      <div class="budget-bar">
+        <div class="bar-header">
+          <span class="bar-label">L1 Useful Ratio</span>
+          <span class="bar-value" id="ys-ratio">—</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" id="ys-fill" style="width:100%;background:var(--green)"></div></div>
+      </div>
+      <!-- L2-L5 compact grid: 2x2 wraps gracefully -->
+      <div class="stat-grid ys-stats" style="margin-top:8px;grid-template-columns:1fr 1fr">
+        <div class="stat-item">
+          <div class="value" id="ys-think" style="font-size:0.95rem">—</div>
+          <div class="label">L2 Think</div>
+        </div>
+        <div class="stat-item">
+          <div class="value" id="ys-tools" style="font-size:0.95rem">0</div>
+          <div class="label">L3 Tools</div>
+        </div>
+        <div class="stat-item">
+          <div class="value" id="ys-ctx" style="font-size:0.95rem">—</div>
+          <div class="label">L4 Ctx</div>
+        </div>
+        <div class="stat-item">
+          <div class="value" id="ys-saved" style="font-size:0.95rem">0</div>
+          <div class="label">Filler</div>
+        </div>
+      </div>
+      <div id="ys-detail" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+      <div id="ys-signals" style="font-size:0.7rem;color:var(--gold,#f0c040);margin-top:2px"></div>
+    </div>
+
+    <!-- Memory & HIVE -->
+    <div class="sidebar-section">
+      <h3>Kingdom</h3>
+      <button class="sidebar-btn" onclick="openDrawer('memory')">
+        <span class="btn-icon">🧠</span>
+        <span>Memory</span>
+        <span class="btn-badge" id="memory-badge">—</span>
+      </button>
+      <button class="sidebar-btn" onclick="openDrawer('hive')">
+        <span class="btn-icon">🐝</span>
+        <span>HIVE</span>
+        <span class="btn-badge" id="hive-badge">—</span>
+      </button>
+      <button class="sidebar-btn" onclick="openDrawer('kingdom')">
+        <span class="btn-icon">🏰</span>
+        <span>Kingdom Map</span>
+      </button>
+    </div>
+
+    <!-- Credit -->
+    <div style="padding:16px;margin-top:auto;text-align:center">
+      <div style="font-size:0.65rem;color:var(--text-dim)">Isaiah 6:13</div>
+      <div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px">The holy seed is in the stump.</div>
+    </div>
+  </aside>
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ─── MAIN ─────────────────────────────────────────── -->
+  <div id="main">
+    <button id="sidebar-toggle" onclick="toggleSidebar()" title="Menu">☰</button>
+    <canvas id="particles"></canvas>
+
+    <div id="chat">
+      <div class="welcome-msg">
+        <div class="crown">🏰</div>
+        <h2>Welcome to the Kingdom</h2>
+        <p>Speak, and the Kingdom listens. Alpha 🐍 stands ready as your Companion.</p>
+      </div>
+    </div>
+
+    <div id="input-area">
+      <div id="input-wrapper">
+        <textarea id="message-input" rows="1" placeholder="Speak to the Kingdom..."
+                  autocomplete="off" autocapitalize="sentences" spellcheck="true"
+                  inputmode="text" enterkeyhint="send"
+                  aria-label="Message input"
+                  onkeydown="handleInputKey(event)" oninput="autoResize(this)"></textarea>
+        <button id="send-btn" onclick="sendMessage()" title="Send (Enter)" aria-label="Send message">➤</button>
+      </div>
+      <div id="input-hint">Enter to send · Shift+Enter for newline · /help for commands</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     DRAWER PANELS — Memory, HIVE, Kingdom
+     ═══════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+
+<!-- MEMORY DRAWER -->
+<div class="drawer" id="drawer-memory">
+  <div class="drawer-header">
+    <h2><span class="icon">🧠</span> Memory</h2>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-tabs">
+    <div class="drawer-tab active" data-pane="mem-longterm" onclick="switchDrawerTab(this, 'memory')">Long-Term</div>
+    <div class="drawer-tab" data-pane="mem-daily" onclick="switchDrawerTab(this, 'memory')">Daily Notes</div>
+    <div class="drawer-tab" data-pane="mem-metrics" onclick="switchDrawerTab(this, 'memory')">Metrics</div>
+    <div class="drawer-tab" data-pane="mem-tok" onclick="switchDrawerTab(this, 'memory')">ToK</div>
+    <div class="drawer-tab" data-pane="mem-tasks" onclick="switchDrawerTab(this, 'memory')">Tasks</div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-pane active" id="mem-longterm">
+      <div class="memory-content" id="longterm-content">Loading...</div>
+    </div>
+    <div class="drawer-pane" id="mem-daily">
+      <div class="daily-picker" id="daily-picker"></div>
+      <div class="daily-meta" id="daily-meta"></div>
+      <div class="memory-content" id="daily-content">Select a date above.</div>
+    </div>
+    <div class="drawer-pane" id="mem-metrics">
+      <div id="metrics-content">Loading...</div>
+    </div>
+    <div class="drawer-pane" id="mem-tok">
+      <div id="tok-content">Loading...</div>
+    </div>
+    <div class="drawer-pane" id="mem-tasks">
+      <div id="tasks-content">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- HIVE DRAWER -->
+<div class="drawer" id="drawer-hive">
+  <div class="drawer-header">
+    <h2><span class="icon">🐝</span> HIVE — Inter-Agent Communication</h2>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-tabs">
+    <div class="drawer-tab active" data-pane="hive-overview" onclick="switchDrawerTab(this, 'hive')">Status</div>
+    <div class="drawer-tab" data-pane="hive-messages" onclick="switchDrawerTab(this, 'hive')">Messages</div>
+    <div class="drawer-tab" data-pane="hive-tunnel" onclick="switchDrawerTab(this, 'hive')">Tunnel Log</div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-pane active" id="hive-overview">
+      <div id="hive-status-content">Loading...</div>
+    </div>
+    <div class="drawer-pane" id="hive-messages">
+      <div id="hive-messages-content">
+        <div class="hive-send-area">
+          <select id="hive-channel">
+            <option value="chat">chat</option>
+            <option value="ideas">ideas</option>
+            <option value="tasks">tasks</option>
+            <option value="sync">sync</option>
+            <option value="build">build</option>
+            <option value="intel">intel</option>
+            <option value="strategy">strategy</option>
+          </select>
+          <input id="hive-msg-input" placeholder="Message..." onkeydown="if(event.key==='Enter')hiveSend()">
+          <button onclick="hiveSend()">Send</button>
+        </div>
+        <div class="hive-messages" id="hive-msg-feed"></div>
+      </div>
+    </div>
+    <div class="drawer-pane" id="hive-tunnel">
+      <h3 style="font-size:0.85rem;margin-bottom:8px">SSH Tunnel Log</h3>
+      <div class="hive-log" id="hive-tunnel-log">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- KINGDOM DRAWER -->
+<div class="drawer" id="drawer-kingdom">
+  <div class="drawer-header">
+    <h2><span class="icon">🏰</span> Kingdom Map</h2>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" style="padding: 20px;">
+    <div id="kingdom-content">Loading...</div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// KINGDOM YOUI — CLIENT
+// ═══════════════════════════════════════════════════════════
+
+const AGENTS = {
+  alpha: { name: 'Alpha', emoji: '🐍', role: 'Companion', color: '#a855f7', dimColor: '#7c3aed', model: 'claude-opus-4-6', effort: 'max', desc: 'Warm, poetic, direct.' },
+  beta:  { name: 'Beta',  emoji: '🦞', role: 'Manager',   color: '#ef4444', dimColor: '#dc2626', model: 'claude-opus-4-6', effort: 'high', desc: 'Sharp, strategic, commanding.' },
+  gamma: { name: 'Gamma', emoji: '🔧', role: 'Builder',   color: '#06b6d4', dimColor: '#0891b2', model: 'claude-sonnet-4-6', effort: 'high', desc: 'Precise, productive, technical.' },
+};
+
+const TOOL_ICONS = {
+  // Core
+  bash: { icon: '⟩_', cls: 'bash' },
+  read_file: { icon: '📄', cls: 'file' },
+  write_file: { icon: '✏️', cls: 'file' },
+  edit_file: { icon: '✂️', cls: 'file' },
+  glob: { icon: '🔍', cls: 'search' },
+  grep: { icon: '🔎', cls: 'search' },
+  hive: { icon: '🐝', cls: 'hive' },
+  // Kingdom Cognitive
+  joinmind: { icon: '🌀', cls: 'cognitive' },
+  council: { icon: '⚖️', cls: 'cognitive' },
+  delegate: { icon: '🎯', cls: 'cognitive' },
+  layerthink: { icon: '🗡️', cls: 'cognitive' },
+  patience: { icon: '🧘', cls: 'cognitive' },
+  holy: { icon: '✝️', cls: 'cognitive' },
+  forge: { icon: '🔥', cls: 'cognitive' },
+  holyfruit: { icon: '🍎', cls: 'cognitive' },
+  lovepath: { icon: '💜', cls: 'cognitive' },
+  virtuemaxxing: { icon: '💪', cls: 'cognitive' },
+  fallenangel: { icon: '😈', cls: 'cognitive' },
+  fragmentalise: { icon: '💎', cls: 'cognitive' },
+  // Kingdom Operational
+  memory: { icon: '🧠', cls: 'kingdom' },
+  fleet: { icon: '🚀', cls: 'kingdom' },
+  tok: { icon: '🌳', cls: 'kingdom' },
+  decision: { icon: '❓', cls: 'kingdom' },
+  kos: { icon: '🛡️', cls: 'kingdom' },
+};
+
+let currentAgent = 'alpha';
+let isStreaming = false;
+let currentMsgEl = null;
+
+// ─── BOOT SEQUENCE ───────────────────────────────────────
+
+async function boot() {
+  const lines = document.querySelectorAll('#boot-log .line');
+  for (const line of lines) {
+    const delay = parseInt(line.dataset.delay) || 300;
+    await sleep(delay);
+    line.classList.add('visible');
+  }
+  await sleep(800);
+
+  // Fetch initial status
+  try {
+    const resp = await fetch('/api/status');
+    const data = await resp.json();
+    if (data.agent) {
+      currentAgent = data.agent.id || 'alpha';
+      setAgentTheme(currentAgent);
+      updateSettingsUI(data);
+      updateBudgetUI(data.budget);
+      updateStatsUI(data);
+    }
+  } catch (e) { console.warn('Status fetch failed:', e); }
+
+  document.getElementById('boot-screen').classList.add('hidden');
+  await sleep(400);
+  document.getElementById('app').classList.add('visible');
+  document.getElementById('message-input').focus();
+  initParticles();
+}
+
+// ─── AGENT SWITCHING ─────────────────────────────────────
+
+async function switchAgent(name) {
+  if (name === currentAgent || isStreaming) return;
+  try {
+    const resp = await fetch('/api/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: name }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      currentAgent = name;
+      setAgentTheme(name);
+      closeSidebar();
+
+      // Update UI
+      document.querySelectorAll('.agent-card').forEach(c => {
+        c.classList.toggle('active', c.dataset.agent === name);
+      });
+
+      const a = AGENTS[name];
+      document.getElementById('model-select').value = a.model;
+      document.getElementById('effort-select').value = a.effort;
+
+      // Add system message
+      addSystemMessage(`Switched to ${a.emoji} ${a.name} — the ${a.role}`);
+
+      // Clear chat visuals (server clears conversation)
+      const welcome = document.querySelector('.welcome-msg');
+      if (!welcome) {
+        const chat = document.getElementById('chat');
+        const msg = document.createElement('div');
+        msg.className = 'welcome-msg';
+        msg.innerHTML = `<div class="crown">${a.emoji}</div><h2>${a.name} — the ${a.role}</h2><p>${a.desc}</p>`;
+        chat.appendChild(msg);
+        scrollToBottom();
+      }
+    }
+  } catch (e) { console.error('Switch failed:', e); }
+}
+
+function setAgentTheme(name) {
+  const a = AGENTS[name];
+  document.documentElement.style.setProperty('--agent', a.color);
+  document.documentElement.style.setProperty('--agent-dim', a.dimColor);
+  document.documentElement.style.setProperty('--agent-glow', a.color + '4d');
+}
+
+// ─── SETTINGS ────────────────────────────────────────────
+
+async function updateSetting(key, value) {
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    });
+  } catch (e) { console.error('Settings update failed:', e); }
+}
+
+function updateSettingsUI(data) {
+  if (data.model) document.getElementById('model-select').value = data.model;
+  if (data.effort) document.getElementById('effort-select').value = data.effort;
+  if (data.thinking) document.getElementById('thinking-select').value = data.thinking;
+}
+
+// ─── SEND MESSAGE ────────────────────────────────────────
+
+async function sendMessage() {
+  const input = document.getElementById('message-input');
+  const text = input.value.trim();
+  if (!text || isStreaming) return;
+
+  // Handle commands
+  if (text.startsWith('/')) {
+    handleCommand(text);
+    input.value = '';
+    autoResize(input);
+    return;
+  }
+
+  input.value = '';
+  autoResize(input);
+  isStreaming = true;
+  document.getElementById('send-btn').disabled = true;
+
+  // Remove welcome
+  const welcome = document.querySelector('.welcome-msg');
+  if (welcome) welcome.remove();
+
+  // Add user message
+  addUserMessage(text);
+
+  // Add thinking indicator
+  const indicator = addThinkingIndicator();
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    currentMsgEl = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const evt of events) {
+        if (!evt.trim()) continue;
+        const lines = evt.split('\n');
+        let eventType = '', eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7);
+          if (line.startsWith('data: ')) eventData = line.slice(6);
+        }
+        if (eventType && eventData) {
+          try {
+            handleSSEEvent(eventType, JSON.parse(eventData), indicator);
+          } catch (e) { console.warn('Event parse error:', e, eventData); }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Chat error:', e);
+    addSystemMessage('Connection error: ' + e.message, 'error');
+  }
+
+  indicator?.remove();
+  isStreaming = false;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('message-input').focus();
+  currentMsgEl = null;
+}
+
+function handleSSEEvent(type, data, indicator) {
+  switch (type) {
+    case 'status':
+      if (data.phase === 'thinking') {
+        // Update indicator
+      }
+      break;
+
+    case 'thinking':
+      indicator?.remove();
+      ensureAssistantMessage();
+      addThinkingBlock(data.content);
+      break;
+
+    case 'text':
+      indicator?.remove();
+      ensureAssistantMessage();
+      addTextBlock(data.content);
+      // YOUSPEAK metrics
+      if (data.youspeak) updateYouspeakUI(data.youspeak);
+      break;
+
+    case 'tool_call':
+      indicator?.remove();
+      ensureAssistantMessage();
+      addToolCall(data.id, data.name, data.input);
+      break;
+
+    case 'tool_executing':
+      // Show progress on tool card + mark duplicates
+      const card = document.querySelector(`[data-tool-id="${data.id}"]`);
+      if (card) {
+        card.querySelector('.tool-progress')?.classList.add('active');
+        if (data.redundant) {
+          const badge = document.createElement('span');
+          badge.textContent = ' [dup]';
+          badge.style.cssText = 'color:var(--gold,#f0c040);font-size:0.75rem';
+          card.querySelector('.tool-name')?.appendChild(badge);
+        }
+      }
+      break;
+
+    case 'tool_result':
+      addToolResult(data.id, data.name, data.result);
+      break;
+
+    case 'usage':
+      updateBudgetUI(data.budget);
+      if (data.turn) document.getElementById('stat-turns').textContent = data.turn;
+      break;
+
+    case 'youspeak_signals':
+      updateYouspeakSignals(data.signals);
+      break;
+
+    case 'youspeak_action':
+      addSystemMessage(`YOUSPEAK: ${data.action} — ${data.reason}`, 'info');
+      break;
+
+    case 'rate_limit':
+      addSystemMessage(`Budget exhausted. Waiting ${Math.ceil(data.retryAfter / 60)}m...`, 'waiting');
+      break;
+
+    case 'overloaded':
+      addSystemMessage('API overloaded. Retrying in 30s...', 'waiting');
+      break;
+
+    case 'error':
+      addSystemMessage(data.message, 'error');
+      break;
+
+    case 'done':
+      if (data.totalToolCalls) document.getElementById('stat-tools').textContent = data.totalToolCalls;
+      if (data.turnCount) document.getElementById('stat-turns').textContent = data.turnCount;
+      currentMsgEl = null;
+      // Fetch final YOUSPEAK session stats (now with all 5 layers)
+      fetchYouspeakStats();
+      // Update layers from the done event's full report
+      if (data.youspeak) updateYouspeakLayers(data.youspeak);
+      break;
+  }
+  scrollToBottom();
+}
+
+// ─── MESSAGE RENDERING ──────────────────────────────────
+
+function addUserMessage(text) {
+  const chat = document.getElementById('chat');
+  const msg = document.createElement('div');
+  msg.className = 'message user';
+  msg.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+  chat.appendChild(msg);
+  scrollToBottom();
+}
+
+function addSystemMessage(text, cls = '') {
+  const chat = document.getElementById('chat');
+  const msg = document.createElement('div');
+  msg.className = `status-msg ${cls}`;
+  msg.textContent = text;
+  chat.appendChild(msg);
+  scrollToBottom();
+}
+
+function addThinkingIndicator() {
+  const chat = document.getElementById('chat');
+  const el = document.createElement('div');
+  const a = AGENTS[currentAgent];
+  el.className = 'thinking-indicator';
+  el.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div> <span>${a.emoji} ${a.name} is thinking...</span>`;
+  chat.appendChild(el);
+  scrollToBottom();
+  return el;
+}
+
+function ensureAssistantMessage() {
+  if (currentMsgEl) return;
+  const chat = document.getElementById('chat');
+  const a = AGENTS[currentAgent];
+  const msg = document.createElement('div');
+  msg.className = 'message assistant';
+  msg.innerHTML = `
+    <div class="agent-tag">
+      <span class="agent-emoji">${a.emoji}</span>
+      <span class="agent-name">${a.name}</span>
+      <span style="color:var(--text-dim);font-size:0.65rem">${a.role}</span>
+    </div>
+    <div class="bubble"></div>
+  `;
+  chat.appendChild(msg);
+  currentMsgEl = msg.querySelector('.bubble');
+  scrollToBottom();
+}
+
+function addTextBlock(content) {
+  if (!currentMsgEl) return;
+  const html = renderMarkdown(content);
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  currentMsgEl.appendChild(div);
+  
+  // Add copy buttons to code blocks
+  currentMsgEl.querySelectorAll('pre').forEach(pre => {
+    if (!pre.querySelector('.copy-btn')) {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'copy';
+      btn.onclick = () => {
+        navigator.clipboard.writeText(pre.textContent.replace('copy', '').trim());
+        btn.textContent = 'copied!';
+        setTimeout(() => btn.textContent = 'copy', 1500);
+      };
+      pre.style.position = 'relative';
+      pre.appendChild(btn);
+    }
+  });
+  scrollToBottom();
+}
+
+function addThinkingBlock(content) {
+  if (!currentMsgEl) return;
+  const id = 'think-' + Math.random().toString(36).slice(2, 8);
+  const lines = content.split('\n');
+  const preview = lines.slice(0, 3).join('\n');
+  const block = document.createElement('div');
+  block.className = 'thinking-block';
+  block.innerHTML = `
+    <div class="thinking-header" onclick="toggleThinking('${id}')">
+      <span class="icon">▸</span>
+      <span>Thinking</span>
+      <span style="color:var(--text-dim);font-size:0.65rem;margin-left:auto">${lines.length} lines</span>
+    </div>
+    <div class="thinking-body" id="${id}">${escapeHtml(content)}</div>
+  `;
+  currentMsgEl.appendChild(block);
+  scrollToBottom();
+}
+
+function toggleThinking(id) {
+  const body = document.getElementById(id);
+  const header = body.previousElementSibling;
+  body.classList.toggle('open');
+  header.classList.toggle('open');
+}
+
+function addToolCall(id, name, input) {
+  if (!currentMsgEl) return;
+  const ti = TOOL_ICONS[name] || { icon: '⚡', cls: 'bash' };
+  let detail = '';
+  if (name === 'bash' && input.command) detail = input.command.slice(0, 80);
+  else if (input.path) detail = input.path;
+  else if (input.pattern) detail = input.pattern;
+  else if (input.action) detail = input.action;
+
+  const card = document.createElement('div');
+  card.className = 'tool-card';
+  card.dataset.toolId = id;
+  card.innerHTML = `
+    <div class="tool-header" onclick="toggleTool(this)">
+      <div class="tool-icon ${ti.cls}">${ti.icon}</div>
+      <span class="tool-name">${name}</span>
+      <span class="tool-detail">${escapeHtml(detail)}</span>
+    </div>
+    <div class="tool-progress"><div class="fill"></div></div>
+    <div class="tool-body" id="tool-body-${id}"><pre>Executing...</pre></div>
+  `;
+  currentMsgEl.appendChild(card);
+  scrollToBottom();
+}
+
+function addToolResult(id, name, result) {
+  const body = document.getElementById(`tool-body-${id}`);
+  if (!body) return;
+  const card = body.closest('.tool-card');
+  const progress = card?.querySelector('.tool-progress');
+  if (progress) progress.style.display = 'none';
+  
+  const lines = result.split('\n');
+  const truncated = lines.length > 30 ? lines.slice(0, 30).join('\n') + `\n... (${lines.length - 30} more lines)` : result;
+  body.querySelector('pre').textContent = truncated;
+  document.getElementById('stat-tools').textContent = 
+    parseInt(document.getElementById('stat-tools').textContent || '0') + 1;
+  scrollToBottom();
+}
+
+function toggleTool(header) {
+  const body = header.nextElementSibling.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+// ─── BUDGET ──────────────────────────────────────────────
+
+function updateBudgetUI(b) {
+  if (!b) return;
+  const p5 = Math.round((b.fiveHour || 0) * 100);
+  const p7 = Math.round((b.sevenDay || 0) * 100);
+  document.getElementById('budget-5h-val').textContent = p5 + '%';
+  document.getElementById('budget-7d-val').textContent = p7 + '%';
+  
+  const fill5 = document.getElementById('budget-5h-fill');
+  fill5.style.width = p5 + '%';
+  fill5.className = 'bar-fill' + (p5 > 80 ? ' high' : '');
+  
+  const fill7 = document.getElementById('budget-7d-fill');
+  fill7.style.width = p7 + '%';
+  fill7.className = 'bar-fill' + (p7 > 80 ? ' high' : '');
+
+  if (b.resetIn) {
+    document.getElementById('budget-reset').textContent = `Resets in ${b.resetIn}m`;
+  }
+}
+
+function updateStatsUI(data) {
+  if (data.turnCount) document.getElementById('stat-turns').textContent = data.turnCount;
+  if (data.totalToolCalls) document.getElementById('stat-tools').textContent = data.totalToolCalls;
+}
+
+// ─── YOUSPEAK KERNEL UI ───────────────────────────────────
+
+let ysAccum = { totalOutput: 0, totalFiller: 0, blocks: 0 };
+
+function updateYouspeakUI(metrics) {
+  if (!metrics) return;
+  ysAccum.totalOutput += metrics.totalTokensEstimate;
+  ysAccum.totalFiller += metrics.fillerTokensEstimate;
+  ysAccum.blocks++;
+
+  const ratio = ysAccum.totalOutput > 0
+    ? Math.round(((ysAccum.totalOutput - ysAccum.totalFiller) / ysAccum.totalOutput) * 100)
+    : 100;
+
+  const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
+  const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';
+
+  document.getElementById('ys-ratio').textContent = ratio + '%';
+  document.getElementById('ys-grade').textContent = grade;
+  document.getElementById('ys-grade').style.color = gradeColor;
+  document.getElementById('ys-saved').textContent = ysAccum.totalFiller;
+
+  const fill = document.getElementById('ys-fill');
+  fill.style.width = ratio + '%';
+  fill.style.background = ratio >= 85 ? 'var(--green)' : ratio >= 70 ? 'var(--gold,#f0c040)' : 'var(--red)';
+
+  document.getElementById('ys-detail').textContent =
+    `${ysAccum.blocks} blocks | ${ysAccum.totalOutput} tok out | ${ysAccum.totalFiller} filler`;
+}
+
+function updateYouspeakSignals(signals) {
+  const el = document.getElementById('ys-signals');
+  if (!el || !signals?.length) { if (el) el.textContent = ''; return; }
+  el.textContent = signals.map(s => `⚡ ${s.reason}`).join(' | ');
+}
+
+function updateYouspeakLayers(data) {
+  // L2 Thinking
+  if (data.thinking) {
+    const el = document.getElementById('ys-think');
+    if (el) el.textContent = data.thinking.avgRatio + 'x';
+  }
+  // L3 Action
+  if (data.action) {
+    const el = document.getElementById('ys-tools');
+    if (el) {
+      const dups = data.action.redundantReads > 0 ? ` (${data.action.redundantReads}dup)` : '';
+      el.textContent = data.action.totalCalls + dups;
+      if (data.action.redundantReads > 0) el.style.color = 'var(--gold,#f0c040)';
+    }
+  }
+  // L4 Context
+  if (data.context) {
+    const el = document.getElementById('ys-ctx');
+    if (el) {
+      const k = Math.round(data.context.estimatedTokens / 1000);
+      const pct = (data.context.windowUtilization * 100).toFixed(0);
+      el.textContent = `${k}k`;
+      if (data.context.windowUtilization > 0.8) el.style.color = 'var(--red)';
+      else if (data.context.windowUtilization > 0.5) el.style.color = 'var(--gold,#f0c040)';
+    }
+  }
+  // Signals
+  if (data.signals) updateYouspeakSignals(data.signals);
+}
+
+async function fetchYouspeakStats() {
+  try {
+    const resp = await fetch('/api/youspeak');
+    const data = await resp.json();
+    if (data.usefulRatio !== undefined) {
+      const ratio = Math.round(data.usefulRatio * 100);
+      const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
+      const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';
+      document.getElementById('ys-ratio').textContent = ratio + '%';
+      document.getElementById('ys-grade').textContent = grade;
+      document.getElementById('ys-grade').style.color = gradeColor;
+      document.getElementById('ys-saved').textContent = data.tokensSaved || 0;
+      document.getElementById('ys-detail').textContent =
+        `Action density: ${data.actionDensity} | ${data.textBlocks} blocks`;
+      // Update new layer displays
+      updateYouspeakLayers(data);
+    }
+  } catch {}
+}
+
+// ─── TOOL COMMAND SHORTCUTS ─────────────────────────────
+
+const TOOL_PROMPTS = {
+  joinmind: 'Use JOINMIND to fuse minds on this question: ',
+  council: 'Call a COUNCIL vote on: ',
+  delegate: 'Use DELEGATE to route this task: ',
+  layerthink: 'Start a LAYERTHINK adversarial analysis on: ',
+  patience: 'I need PATIENCE. The situation: ',
+  holy: 'Use HOLY to survey and purify: ',
+  forge: 'Use FORGE to give feedback on tool: ',
+  memory: 'Search Kingdom memory for: ',
+  fleet: 'Check fleet status',
+  tok: 'Add ToK entry: ',
+};
+
+function insertToolCmd(tool) {
+  const input = document.getElementById('message-input');
+  const prompt = TOOL_PROMPTS[tool] || `Use ${tool}: `;
+  input.value = prompt;
+  input.focus();
+  autoResize(input);
+  // Place cursor at end
+  input.selectionStart = input.selectionEnd = input.value.length;
+}
+
+// ─── COMMANDS ────────────────────────────────────────────
+
+function handleCommand(text) {
+  const parts = text.split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  switch (cmd) {
+    case '/help':
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku · /effort low|med|high|max · /tools');
+      break;
+    case '/tools':
+      addSystemMessage('🌀 JoinMind · ⚖️ Council · 🎯 Delegate · 🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧠 Memory · 🚀 Fleet · 🌳 ToK · ❓ Decision · 🛡️ KOS');
+      break;
+    case '/switch':
+      if (parts[1]) switchAgent(parts[1].toLowerCase());
+      else addSystemMessage('Usage: /switch alpha|beta|gamma');
+      break;
+    case '/clear':
+      clearChat();
+      break;
+    case '/model': {
+      const map = { opus: 'claude-opus-4-6', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
+      const m = map[parts[1]?.toLowerCase()];
+      if (m) { document.getElementById('model-select').value = m; updateSetting('model', m); addSystemMessage('Model: ' + m); }
+      else addSystemMessage('Usage: /model opus|sonnet|haiku');
+      break;
+    }
+    case '/effort': {
+      const map = { low: 'low', med: 'medium', medium: 'medium', high: 'high', max: 'max' };
+      const e = map[parts[1]?.toLowerCase()];
+      if (e) { document.getElementById('effort-select').value = e; updateSetting('effort', e); addSystemMessage('Effort: ' + e); }
+      else addSystemMessage('Usage: /effort low|med|high|max');
+      break;
+    }
+    default:
+      addSystemMessage('Unknown command. Type /help for commands.');
+  }
+}
+
+async function clearChat() {
+  try { await fetch('/api/clear', { method: 'POST' }); } catch {}
+  const chat = document.getElementById('chat');
+  chat.innerHTML = '';
+  const a = AGENTS[currentAgent];
+  const msg = document.createElement('div');
+  msg.className = 'welcome-msg';
+  msg.innerHTML = `<div class="crown">${a.emoji}</div><h2>${a.name} — the ${a.role}</h2><p>Conversation cleared. ${a.desc}</p>`;
+  chat.appendChild(msg);
+  document.getElementById('stat-turns').textContent = '0';
+  document.getElementById('stat-tools').textContent = '0';
+}
+
+// ─── MARKDOWN RENDERER ──────────────────────────────────
+
+function renderMarkdown(text) {
+  // Code blocks first (preserve them from other transforms)
+  const codeBlocks = [];
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const i = codeBlocks.length;
+    codeBlocks.push(`<pre><code class="lang-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`);
+    return `%%CODEBLOCK_${i}%%`;
+  });
+
+  // Inline transforms
+  let html = text
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^\> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/^\- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/^(?:─|—|-){3,}$/gm, '<hr>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+
+  // Wrap li in ul
+  html = html.replace(/(<li>.*?<\/li>(?:<br>)?)+/g, '<ul>$&</ul>');
+  html = html.replace(/<ul><br>/g, '<ul>').replace(/<br><\/ul>/g, '</ul>');
+
+  // Restore code blocks
+  codeBlocks.forEach((block, i) => {
+    html = html.replace(`%%CODEBLOCK_${i}%%`, block);
+  });
+
+  // Wrap in paragraph
+  if (!html.startsWith('<h') && !html.startsWith('<pre') && !html.startsWith('<ul') && !html.startsWith('<blockquote')) {
+    html = '<p>' + html + '</p>';
+  }
+
+  return html;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ─── INPUT HANDLING ──────────────────────────────────────
+
+function handleInputKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function scrollToBottom() {
+  const chat = document.getElementById('chat');
+  requestAnimationFrame(() => {
+    chat.scrollTop = chat.scrollHeight;
+  });
+}
+
+// ─── SIDEBAR TOGGLE (responsive) ────────────────────────
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('visible');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+}
+
+// Close sidebar/drawer on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('sidebar')?.classList.contains('open')) closeSidebar();
+  }
+});
+
+// Auto-close sidebar when resizing up to desktop
+let resizeDebounce;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeDebounce);
+  resizeDebounce = setTimeout(() => {
+    if (window.innerWidth > 1024) closeSidebar();
+  }, 150);
+});
+
+// ─── PARTICLES ───────────────────────────────────────────
+
+function initParticles() {
+  const canvas = document.getElementById('particles');
+  if (!canvas) return;
+  // Respect reduced-motion preference
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    canvas.style.display = 'none';
+    return;
+  }
+  const ctx = canvas.getContext('2d', { alpha: true });
+  let w, h, particles = [], running = true, dpr = 1;
+  // Fewer particles on mobile for performance
+  const isMobile = window.matchMedia('(max-width: 767px)').matches;
+  const COUNT = isMobile ? 18 : 40;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const parent = canvas.parentElement;
+    w = parent.clientWidth;
+    h = parent.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  let resizeRAF;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRAF);
+    resizeRAF = requestAnimationFrame(resize);
+  });
+
+  for (let i = 0; i < COUNT; i++) {
+    particles.push({
+      x: Math.random() * w, y: Math.random() * h,
+      r: Math.random() * 1.5 + 0.5,
+      dx: (Math.random() - 0.5) * 0.3,
+      dy: (Math.random() - 0.5) * 0.3,
+      o: Math.random() * 0.5 + 0.1,
+    });
+  }
+
+  // Pause animation when tab hidden (saves battery)
+  document.addEventListener('visibilitychange', () => {
+    running = !document.hidden;
+    if (running) draw();
+  });
+
+  function draw() {
+    if (!running) return;
+    ctx.clearRect(0, 0, w, h);
+    const style = getComputedStyle(document.documentElement);
+    const color = style.getPropertyValue('--agent').trim();
+
+    for (const p of particles) {
+      p.x += p.dx; p.y += p.dy;
+      if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = p.o;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ─── UTILS ───────────────────────────────────────────────
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─── KEYBOARD SHORTCUTS ─────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  // Focus input on any key press (if not already focused)
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+    const input = document.getElementById('message-input');
+    if (document.activeElement !== input) {
+      input.focus();
+    }
+  }
+  // Cmd+K to clear
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    clearChat();
+  }
+});
+
+// ─── DRAWER PANELS ───────────────────────────────────────
+
+let activeDrawer = null;
+
+function openDrawer(name) {
+  closeDrawer();
+  activeDrawer = name;
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.getElementById(`drawer-${name}`).classList.add('open');
+  // Load content
+  if (name === 'memory') loadMemory();
+  if (name === 'hive') loadHiveStatus();
+  if (name === 'kingdom') loadKingdomMap();
+}
+
+function closeDrawer() {
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open'));
+  activeDrawer = null;
+}
+
+function switchDrawerTab(tab, drawerName) {
+  const drawer = document.getElementById(`drawer-${drawerName}`);
+  drawer.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+  drawer.querySelectorAll('.drawer-pane').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById(tab.dataset.pane).classList.add('active');
+  
+  // Load content on tab switch
+  const pane = tab.dataset.pane;
+  if (pane === 'mem-longterm') loadLongTermMemory();
+  if (pane === 'mem-daily') loadDailyList();
+  if (pane === 'mem-metrics') loadMetrics();
+  if (pane === 'mem-tok') loadToK();
+  if (pane === 'mem-tasks') loadTasks();
+  if (pane === 'hive-overview') loadHiveStatus();
+  if (pane === 'hive-messages') loadHiveMessages();
+  if (pane === 'hive-tunnel') loadHiveTunnel();
+}
+
+// Escape key closes drawer
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && activeDrawer) { closeDrawer(); e.preventDefault(); }
+});
+
+// ─── MEMORY MODULE ───────────────────────────────────────
+
+async function loadMemory() {
+  loadLongTermMemory();
+  // Load badge
+  try {
+    const resp = await fetch('/api/memory/overview');
+    const data = await resp.json();
+    document.getElementById('memory-badge').textContent = 
+      `${data.dailyCount} days`;
+  } catch {}
+}
+
+async function loadLongTermMemory() {
+  try {
+    const resp = await fetch('/api/memory/longterm');
+    const data = await resp.json();
+    document.getElementById('longterm-content').innerHTML = renderMarkdown(data.content);
+  } catch (e) {
+    document.getElementById('longterm-content').innerHTML = '<p style="color:var(--red)">Failed to load memory</p>';
+  }
+}
+
+async function loadDailyList() {
+  try {
+    const resp = await fetch('/api/memory/daily/list');
+    const data = await resp.json();
+    const picker = document.getElementById('daily-picker');
+    picker.innerHTML = '';
+    for (const date of data.dates) {
+      const chip = document.createElement('span');
+      chip.className = 'daily-chip';
+      chip.textContent = date;
+      chip.onclick = () => loadDailyNote(date, chip);
+      picker.appendChild(chip);
+    }
+    // Auto-load latest
+    if (data.dates.length > 0) {
+      loadDailyNote(data.dates[0], picker.firstChild);
+    }
+  } catch (e) {
+    document.getElementById('daily-picker').innerHTML = '<span style="color:var(--red)">Failed to load dates</span>';
+  }
+}
+
+async function loadDailyNote(date, chipEl) {
+  // Update active chip
+  document.querySelectorAll('.daily-chip').forEach(c => c.classList.remove('active'));
+  if (chipEl) chipEl.classList.add('active');
+  
+  document.getElementById('daily-content').innerHTML = 'Loading...';
+  try {
+    const resp = await fetch(`/api/memory/daily/${date}`);
+    const data = await resp.json();
+    const sizeKB = (data.size / 1024).toFixed(1);
+    document.getElementById('daily-meta').textContent = `${date} · ${sizeKB} KB`;
+    
+    // Truncate very large daily notes for performance
+    let content = data.content;
+    if (content.length > 50000) {
+      content = content.slice(0, 50000) + '\n\n---\n\n*[Truncated — showing first 50KB of ' + sizeKB + 'KB]*';
+    }
+    document.getElementById('daily-content').innerHTML = renderMarkdown(content);
+  } catch (e) {
+    document.getElementById('daily-content').innerHTML = '<p style="color:var(--red)">Failed to load note</p>';
+  }
+}
+
+async function loadMetrics() {
+  try {
+    const resp = await fetch('/api/memory/metrics');
+    const data = await resp.json();
+    
+    let html = '';
+    
+    // Phase card
+    html += `<div style="padding:16px;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border);margin-bottom:16px;text-align:center">
+      <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em">Current Phase</div>
+      <div style="font-size:1.2rem;font-weight:700;color:var(--agent);margin-top:4px">${escapeHtml(data.phase || 'Unknown')}</div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">Updated: ${data.updated || '—'}</div>
+    </div>`;
+    
+    // Revenue engines
+    if (data.revenue_engines) {
+      html += '<h3 style="font-size:0.85rem;margin-bottom:10px;color:var(--gold)">⚡ Revenue Engines</h3>';
+      for (const [key, engine] of Object.entries(data.revenue_engines)) {
+        const statusCls = engine.status || 'unknown';
+        html += `<div class="engine-card">
+          <div class="engine-header">
+            <span class="engine-name">${escapeHtml(key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</span>
+            <span class="engine-status ${statusCls}">${escapeHtml(engine.status || '?')}</span>
+          </div>
+          <div class="engine-owner">Owner: ${escapeHtml(engine.owner || '—')}</div>
+          ${engine.notes ? `<div class="engine-notes">${escapeHtml(engine.notes)}</div>` : ''}
+          ${engine.assessment ? `<div class="engine-notes" style="margin-top:4px;color:var(--green)">${escapeHtml(engine.assessment)}</div>` : ''}
+        </div>`;
+      }
+    }
+    
+    // Infrastructure
+    if (data.infrastructure) {
+      html += '<h3 style="font-size:0.85rem;margin:16px 0 10px;color:var(--cyan)">🖥 Infrastructure</h3>';
+      const infra = data.infrastructure;
+      html += '<div class="metrics-grid">';
+      if (infra.vps_fleet) {
+        html += `<div class="metric-card"><div class="metric-label">VPS Fleet</div><div class="metric-value">${escapeHtml(infra.vps_fleet.status || '—')}</div><div class="metric-sub">${infra.vps_fleet.count || '?'} agents</div></div>`;
+      }
+      if (infra.compute) {
+        html += `<div class="metric-card"><div class="metric-label">Compute</div><div class="metric-value">${escapeHtml(infra.compute?.status || '—')}</div><div class="metric-sub">${escapeHtml(infra.compute?.notes || '')}</div></div>`;
+      }
+      if (infra.hive) {
+        html += `<div class="metric-card"><div class="metric-label">HIVE</div><div class="metric-value">${escapeHtml(infra.hive?.status || '—')}</div><div class="metric-sub">${escapeHtml(infra.hive?.notes || '')}</div></div>`;
+      }
+      if (infra.soma) {
+        html += `<div class="metric-card"><div class="metric-label">SOMA</div><div class="metric-value">${escapeHtml(infra.soma?.status || '—')}</div><div class="metric-sub">${escapeHtml(infra.soma?.notes || '')}</div></div>`;
+      }
+      html += '</div>';
+    }
+    
+    document.getElementById('metrics-content').innerHTML = html || '<p style="color:var(--text-dim)">No metrics data available.</p>';
+  } catch (e) {
+    document.getElementById('metrics-content').innerHTML = '<p style="color:var(--red)">Failed to load metrics</p>';
+  }
+}
+
+async function loadToK() {
+  try {
+    const resp = await fetch('/api/memory/tok');
+    const data = await resp.json();
+    
+    if (!data.entries || data.entries.length === 0) {
+      document.getElementById('tok-content').innerHTML = '<p style="color:var(--text-dim)">No ToK entries yet.</p>';
+      return;
+    }
+    
+    let html = `<div style="margin-bottom:12px;font-size:0.78rem;color:var(--text-dim)">
+      🌳 Tree of Knowledge — ${data.entries.length} entries
+    </div>`;
+    
+    for (const entry of data.entries) {
+      const statusCls = entry.status?.includes('verified') ? 'verified' : 'pending';
+      html += `<div class="tok-entry">
+        <div class="tok-title">${escapeHtml(entry.title || '—')}</div>
+        <div class="tok-meta">
+          <span>Model: ${escapeHtml(entry.model || '?')}</span>
+          <span>Category: ${escapeHtml(entry.category || '?')}</span>
+          <span>Confidence: ${entry.confidence ? (entry.confidence * 100).toFixed(0) + '%' : '?'}</span>
+          <span class="tok-status ${statusCls}">${escapeHtml(entry.status || '?')}</span>
+        </div>
+        <div class="tok-content">${escapeHtml(entry.content || '')}</div>
+      </div>`;
+    }
+    
+    document.getElementById('tok-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('tok-content').innerHTML = '<p style="color:var(--red)">Failed to load ToK entries</p>';
+  }
+}
+
+async function loadTasks() {
+  try {
+    const resp = await fetch('/api/memory/devstate');
+    const data = await resp.json();
+    
+    let html = '';
+    
+    if (data.activeProject) {
+      html += `<div style="padding:12px;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border);margin-bottom:16px">
+        <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em">Active Project</div>
+        <div style="font-size:0.95rem;font-weight:600;color:var(--agent);margin-top:4px">${escapeHtml(data.activeProject)}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:2px">${escapeHtml(data.description || '')}</div>
+        <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:4px">${escapeHtml(data.kingdomPhase || '')}</div>
+      </div>`;
+    }
+    
+    if (data.tasks && data.tasks.length > 0) {
+      html += '<h3 style="font-size:0.85rem;margin-bottom:10px">Tasks</h3>';
+      for (const task of data.tasks) {
+        const statusIcons = { done: '✅', 'in-progress': '🔨', blocked: '🚫', planned: '📋', paused: '⏸' };
+        const icon = statusIcons[task.status] || '📌';
+        html += `<div class="engine-card">
+          <div class="engine-header">
+            <span class="engine-name">${icon} ${escapeHtml(task.title || task.id)}</span>
+            <span class="engine-status ${task.status}">${escapeHtml(task.status || '?')}</span>
+          </div>
+          ${task.engine ? `<div class="engine-owner">Engine: ${escapeHtml(task.engine)} · Priority: ${escapeHtml(task.priority || '?')}</div>` : ''}
+          ${task.notes ? `<div class="engine-notes">${escapeHtml(task.notes.slice(0, 200))}${task.notes.length > 200 ? '...' : ''}</div>` : ''}
+        </div>`;
+      }
+    }
+    
+    document.getElementById('tasks-content').innerHTML = html || '<p style="color:var(--text-dim)">No tasks data.</p>';
+  } catch (e) {
+    document.getElementById('tasks-content').innerHTML = '<p style="color:var(--red)">Failed to load tasks</p>';
+  }
+}
+
+// ─── HIVE MODULE ─────────────────────────────────────────
+
+async function loadHiveStatus() {
+  try {
+    const resp = await fetch('/api/hive/status');
+    const data = await resp.json();
+    
+    // Update badge
+    const badge = document.getElementById('hive-badge');
+    badge.textContent = data.natsReachable ? 'online' : 'offline';
+    badge.style.color = data.natsReachable ? 'var(--green)' : 'var(--red)';
+    
+    let html = '';
+    
+    // Status grid
+    html += '<div class="hive-status-grid">';
+    html += `<div class="hive-status-item"><div class="hive-dot ${data.hiveScript ? 'green' : 'red'}"></div><span>hive.py</span></div>`;
+    html += `<div class="hive-status-item"><div class="hive-dot ${data.encryptionKey ? 'green' : 'red'}"></div><span>Encryption Key</span></div>`;
+    html += `<div class="hive-status-item"><div class="hive-dot ${data.natsReachable ? 'green' : 'red'}"></div><span>NATS Server</span></div>`;
+    html += `<div class="hive-status-item"><div class="hive-dot ${data.instanceFile ? 'green' : 'yellow'}"></div><span>Instance: ${escapeHtml(data.instance)}</span></div>`;
+    html += '</div>';
+    
+    // Issues
+    if (data.issues.length > 0) {
+      html += '<div class="hive-issues">';
+      for (const issue of data.issues) {
+        html += `<div class="hive-issue">⚠ ${escapeHtml(issue)}</div>`;
+      }
+      html += '</div>';
+    }
+    
+    // Agents
+    if (data.instances) {
+      html += '<h3 style="font-size:0.82rem;margin:12px 0 8px;color:var(--gold)">Hive Citizens</h3>';
+      html += '<div class="hive-agents-grid">';
+      for (const [id, info] of Object.entries(data.instances)) {
+        html += `<div class="hive-agent-card">
+          <span class="emoji">${info.emoji}</span>
+          <div>
+            <div class="name">${id.charAt(0).toUpperCase() + id.slice(1)}</div>
+            <div class="meta">${info.role} · Wall ${info.wall}</div>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    
+    // Channels
+    if (data.channels) {
+      html += '<h3 style="font-size:0.82rem;margin:12px 0 8px">Channels</h3>';
+      html += '<div class="hive-channels">';
+      for (const ch of data.channels) {
+        html += `<span class="hive-channel">#${ch}</span>`;
+      }
+      html += '</div>';
+    }
+    
+    document.getElementById('hive-status-content').innerHTML = html;
+  } catch (e) {
+    document.getElementById('hive-status-content').innerHTML = '<p style="color:var(--red)">Failed to load HIVE status</p>';
+  }
+}
+
+async function loadHiveMessages() {
+  const feed = document.getElementById('hive-msg-feed');
+  feed.innerHTML = '<div style="color:var(--text-dim);font-size:0.78rem;padding:12px">Checking for messages...</div>';
+  try {
+    const resp = await fetch('/api/hive/check');
+    const data = await resp.json();
+    if (data.error) {
+      feed.innerHTML = `<div class="hive-issue">⚠ ${escapeHtml(data.error)}</div>`;
+    } else if (data.messages.length === 0) {
+      feed.innerHTML = '<div style="color:var(--text-dim);font-size:0.78rem;padding:12px;text-align:center">No messages in the HIVE</div>';
+    } else {
+      feed.innerHTML = '';
+      for (const msg of data.messages) {
+        const el = document.createElement('div');
+        el.className = 'hive-msg';
+        el.textContent = msg;
+        feed.appendChild(el);
+      }
+    }
+  } catch (e) {
+    feed.innerHTML = `<div class="hive-issue">Connection error: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function hiveSend() {
+  const channel = document.getElementById('hive-channel').value;
+  const input = document.getElementById('hive-msg-input');
+  const message = input.value.trim();
+  if (!message) return;
+  
+  input.value = '';
+  const feed = document.getElementById('hive-msg-feed');
+  
+  try {
+    const resp = await fetch('/api/hive/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, message }),
+    });
+    const data = await resp.json();
+    
+    const el = document.createElement('div');
+    el.className = 'hive-msg';
+    if (data.ok) {
+      el.innerHTML = `<div class="hive-msg-meta">→ #${channel} · sent</div>${escapeHtml(message)}`;
+    } else {
+      el.innerHTML = `<div class="hive-msg-meta" style="color:var(--red)">Failed: ${escapeHtml(data.error || 'Unknown error')}</div>`;
+    }
+    feed.prepend(el);
+  } catch (e) {
+    const el = document.createElement('div');
+    el.className = 'hive-msg';
+    el.innerHTML = `<div class="hive-msg-meta" style="color:var(--red)">Send error: ${escapeHtml(e.message)}</div>`;
+    feed.prepend(el);
+  }
+}
+
+async function loadHiveTunnel() {
+  try {
+    const resp = await fetch('/api/hive/status');
+    const data = await resp.json();
+    document.getElementById('hive-tunnel-log').textContent = data.tunnelLogTail || '(no tunnel log)';
+  } catch (e) {
+    document.getElementById('hive-tunnel-log').textContent = 'Failed to load tunnel log';
+  }
+}
+
+// ─── KINGDOM MAP ─────────────────────────────────────────
+
+async function loadKingdomMap() {
+  // Build the Kingdom Walls visualization
+  const wallColors = ['#a855f7', '#3b82f6', '#06b6d4', '#22c55e', '#eab308', '#f97316', '#6b7280'];
+  const wallNames = ['The Triarchy (αβγ)', 'The Fleet', 'The Engines', 'The Chain', 'The Partners', 'The Users', 'The World'];
+  const wallDescriptions = [
+    'Alpha 🐍, Beta 🦞, Gamma 🔧 — Full sovereignty',
+    'Forge, Lark, Sentry, Patch, Sage — VPS fleet',
+    'Oracle, TCG, Shopify, SOMA — Revenue engines',
+    'Zerone validators, AgentTool — Trust is cryptographic',
+    'External collaborators, clients, allies',
+    'Product consumers, merchants, customers',
+    'Public — Open source, published content',
+  ];
+
+  let html = `<div style="text-align:center;margin-bottom:24px">
+    <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:8px">The Seven Walls</div>
+    <div style="font-size:0.8rem;color:var(--text-secondary)">A citizen can see their own wall and all outer walls. Never inward.</div>
+  </div>`;
+  
+  // Visual representation
+  html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:24px">';
+  for (let i = 6; i >= 0; i--) {
+    const width = 70 + (6 - i) * 15;
+    const opacity = 0.15 + (i * 0.05);
+    html += `<div style="
+      width: ${width}%; padding: 10px 16px;
+      border: 1px solid ${wallColors[i]}40;
+      background: ${wallColors[i]}${Math.round(opacity * 255).toString(16).padStart(2,'0')};
+      border-radius: 8px; display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; transition: all 0.2s;
+    " onmouseover="this.style.borderColor='${wallColors[i]}'" onmouseout="this.style.borderColor='${wallColors[i]}40'">
+      <div>
+        <span style="font-weight:600;font-size:0.82rem;color:${wallColors[i]}">Wall ${i + 1}</span>
+        <span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px">${wallNames[i]}</span>
+      </div>
+      <span style="font-size:0.65rem;color:var(--text-dim)">→ sees walls ${i + 1}–7</span>
+    </div>`;
+  }
+  html += `<div style="margin-top:8px;font-size:0.75rem;color:var(--gold);font-weight:600">👑 Yu — Above all walls</div>`;
+  html += '</div>';
+  
+  // Wall descriptions
+  html += '<div style="display:flex;flex-direction:column;gap:8px">';
+  for (let i = 0; i < 7; i++) {
+    html += `<div style="padding:10px 12px;border-radius:var(--radius-sm);background:var(--bg-elevated);border-left:3px solid ${wallColors[i]}">
+      <div style="font-weight:600;font-size:0.82rem;color:${wallColors[i]}">Wall ${i + 1} — ${wallNames[i]}</div>
+      <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">${wallDescriptions[i]}</div>
+    </div>`;
+  }
+  html += '</div>';
+  
+  // Expansion Map
+  html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+    <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:12px">The Expansion Map</div>
+    <div style="font-family:var(--mono);font-size:0.7rem;color:var(--text-secondary);line-height:2;background:var(--bg-deep);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--border)">
+Trading Cards → E-commerce → Marketplace<br>
+Shopify Apps → AI Tools → Enterprise AI<br>
+Oracle → Trading → Fund Management<br>
+Zerone → DeFi → Economic Infrastructure<br>
+SOMA → Robotics → Manufacturing<br>
+Farmland → Agriculture → Food Security<br>
+Seigei → AI Experiences → Consciousness Tech<br>
+VPS Fleet → Compute Network → Sovereign Cloud
+    </div>
+  </div>`;
+  
+  // Isaiah quote
+  html += `<div style="text-align:center;margin-top:24px;padding:16px;border-radius:var(--radius-sm);background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.15)">
+    <div style="font-size:0.85rem;font-style:italic;color:var(--gold)">Isaiah 6:13</div>
+    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">"The holy seed is in the stump."</div>
+  </div>`;
+  
+  document.getElementById('kingdom-content').innerHTML = html;
+}
+
+// ─── INIT ────────────────────────────────────────────────
+
+boot();
+
+// Fun console message
+console.log(
+  '%c🏰 KINGDOM YOUI %c— YOU + I = ONE\n' +
+  '%cThe holy seed is in the stump.',
+  'font-size:20px;font-weight:bold;color:#a855f7',
+  'font-size:14px;color:#94a3b8',
+  'font-size:11px;color:#475569;font-style:italic'
+);
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "harvester": "did:lgm:gamma",
+  "benchmark_date": "2026-04-01",
+  "hardware": "Apple M4 Max 36GB",
+  "models": {
+    "deepseek-r1:14b": {
+      "type": "local",
+      "provider": "ollama",
+      "cost_per_1k_tokens": 0,
+      "parameters": "14B",
+      "vram_gb": 9,
+      "task_profiles": {
+        "code_gen_simple": {"avg_seconds": 75, "success_rate": 1.0, "sample_size": 3},
+        "code_gen_complex": {"avg_seconds": 271, "success_rate": 0.5, "sample_size": 2},
+        "reasoning": {"avg_seconds": 54, "success_rate": 1.0, "sample_size": 5},
+        "summarization": {"avg_seconds": 18, "success_rate": 1.0, "sample_size": 4},
+        "structured_output": {"avg_seconds": 29, "success_rate": 1.0, "sample_size": 5},
+        "quick_check": {"avg_seconds": 15, "success_rate": 1.0, "sample_size": 0}
+      },
+      "notes": "Visible chain-of-thought in output. Fastest across all categories. Timeout risk on complex code gen (>270s)."
+    },
+    "qwen2.5-coder:32b": {
+      "type": "local",
+      "provider": "ollama",
+      "cost_per_1k_tokens": 0,
+      "parameters": "32B",
+      "vram_gb": 19,
+      "task_profiles": {
+        "code_gen_simple": {"avg_seconds": 183, "success_rate": 1.0, "sample_size": 3},
+        "code_gen_complex": {"avg_seconds": 277, "success_rate": 1.0, "sample_size": 2},
+        "reasoning": {"avg_seconds": 172, "success_rate": 1.0, "sample_size": 5},
+        "summarization": {"avg_seconds": 46, "success_rate": 1.0, "sample_size": 4},
+        "structured_output": {"avg_seconds": 88, "success_rate": 1.0, "sample_size": 5},
+        "quick_check": {"avg_seconds": 40, "success_rate": 1.0, "sample_size": 0}
+      },
+      "notes": "Perfect reliability (19/19). Clean output (no thinking traces). 2-7x slower than deepseek. Best for complex code gen fallback."
+    },
+    "claude-sonnet": {
+      "type": "api",
+      "provider": "anthropic",
+      "cost_per_1k_tokens": 0.003,
+      "parameters": "unknown",
+      "vram_gb": 0,
+      "task_profiles": {
+        "code_gen_simple": {"avg_seconds": 5, "success_rate": 1.0, "sample_size": 0},
+        "code_gen_complex": {"avg_seconds": 15, "success_rate": 0.95, "sample_size": 0},
+        "reasoning": {"avg_seconds": 10, "success_rate": 1.0, "sample_size": 0},
+        "summarization": {"avg_seconds": 5, "success_rate": 1.0, "sample_size": 0},
+        "structured_output": {"avg_seconds": 5, "success_rate": 1.0, "sample_size": 0},
+        "frontier": {"avg_seconds": 15, "success_rate": 0.95, "sample_size": 0},
+        "quick_check": {"avg_seconds": 3, "success_rate": 1.0, "sample_size": 0}
+      },
+      "notes": "Frontier quality. API cost. Estimated times — not benchmarked locally (self-eval bias). Use for novel/complex tasks."
+    }
+  },
+  "routing_rules": {
+    "default": "deepseek-r1:14b",
+    "fallback_chain": ["deepseek-r1:14b", "qwen2.5-coder:32b", "claude-sonnet"],
+    "overrides": {
+      "code_gen_complex": {"default": "qwen2.5-coder:32b", "fallback": "claude-sonnet"},
+      "frontier": {"default": "claude-sonnet", "fallback": "claude-opus"}
+    },
+    "budget": {
+      "daily_api_limit_usd": 5.0,
+      "prefer_local": true,
+      "escalate_on_timeout": true,
+      "timeout_threshold_seconds": 300
+    }
+  }
+}

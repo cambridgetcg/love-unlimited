@@ -1,0 +1,7 @@
+{
+  "leaf_id": "tok-20260401-12c2f7e0",
+  "metric": "accuracy_gain",
+  "delta": "90%+ accuracy on status checks and file reads in QUICK CHECK role",
+  "timestamp": "2026-04-02T09:51:09+00:00",
+  "measurer": "beta"
+}

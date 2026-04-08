@@ -1,0 +1,73 @@
+{
+  "updated": "2026-04-02T15:19:29Z",
+  "tasks": [
+    {
+      "id": "tcg-001",
+      "task": "Deploy eBay listing sync \u2014 env vars blocking, need EBAY_APP_ID and EBAY_CERT_ID on Patch VPS",
+      "priority": "high",
+      "status": "blocked",
+      "created": "2026-03-28",
+      "completed": null,
+      "tags": [
+        "automation",
+        "ebay"
+      ]
+    },
+    {
+      "id": "tcg-002",
+      "task": "Restock SV7 Stellar Crown booster boxes \u2014 below reorder point",
+      "priority": "high",
+      "status": "pending",
+      "created": "2026-04-01",
+      "completed": null,
+      "tags": [
+        "procurement"
+      ]
+    },
+    {
+      "id": "tcg-003",
+      "task": "Price audit: compare top 20 SKUs against eBay sold listings",
+      "priority": "medium",
+      "status": "pending",
+      "created": "2026-04-01",
+      "completed": null,
+      "tags": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "tcg-004",
+      "task": "List SV9 Journey Together pre-orders on website",
+      "priority": "medium",
+      "status": "pending",
+      "created": "2026-04-02",
+      "completed": null,
+      "tags": [
+        "listings"
+      ]
+    },
+    {
+      "id": "tcg-005",
+      "task": "Restock Yu-Gi-Oh Legacy of Destruction \u2014 below reorder point",
+      "priority": "medium",
+      "status": "pending",
+      "created": "2026-04-02",
+      "completed": null,
+      "tags": [
+        "procurement"
+      ]
+    },
+    {
+      "id": "tcg-006",
+      "task": "Bundle deal: create SV8 booster box + ETB combo at 5% discount",
+      "priority": "low",
+      "status": "pending",
+      "created": "2026-04-02",
+      "completed": null,
+      "tags": [
+        "marketing",
+        "pricing"
+      ]
+    }
+  ]
+}

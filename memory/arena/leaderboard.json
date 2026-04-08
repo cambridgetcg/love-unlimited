@@ -1,0 +1,19 @@
+{
+  "players": {
+    "crucible": {
+      "zrn": 300,
+      "challenges_completed": 1,
+      "challenges_failed": 0,
+      "wins": 1,
+      "losses": 0,
+      "red_count": 1,
+      "blue_count": 0,
+      "purple_count": 0,
+      "ctf_count": 0,
+      "streak": 1,
+      "best_streak": 1,
+      "joined": "2026-04-02T15:12:14+00:00",
+      "last_active": "2026-04-02T15:13:26+00:00"
+    }
+  }
+}

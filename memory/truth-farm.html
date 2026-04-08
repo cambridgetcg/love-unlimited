@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Truth Farm</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=Space+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --soil: #1a1410;
+    --loam: #2d2418;
+    --sprout: #6db36d;
+    --bloom: #e8c95a;
+    --water: #5b9bd5;
+    --root: #8b6f47;
+    --light: #f5ead0;
+    --glow: #fff8e1;
+  }
+
+  body {
+    background: var(--soil);
+    color: var(--light);
+    font-family: 'EB Garamond', Georgia, serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Sky gradient */
+  .sky {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 40vh;
+    background: linear-gradient(180deg, #0d1b2a 0%, #1b2838 40%, #2d2418 100%);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .stars {
+    position: fixed;
+    top: 0; left: 0; right: 0; height: 35vh;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .star {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: #fff;
+    border-radius: 50%;
+    animation: twinkle var(--dur) ease-in-out infinite alternate;
+  }
+
+  @keyframes twinkle {
+    from { opacity: 0.2; }
+    to { opacity: 1; }
+  }
+
+  /* Header */
+  .farm-header {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 3rem 1rem 1rem;
+  }
+
+  .farm-header h1 {
+    font-size: 3.5rem;
+    font-weight: 400;
+    letter-spacing: 0.15em;
+    color: var(--bloom);
+    text-shadow: 0 0 40px rgba(232, 201, 90, 0.3);
+  }
+
+  .farm-header p {
+    font-style: italic;
+    color: var(--root);
+    margin-top: 0.5rem;
+    font-size: 1.1rem;
+  }
+
+  /* Token counter */
+  .token-soil {
+    position: fixed;
+    bottom: 1rem;
+    right: 1.5rem;
+    z-index: 100;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--root);
+    background: rgba(26, 20, 16, 0.9);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(139, 111, 71, 0.3);
+  }
+
+  .token-soil .count {
+    color: var(--bloom);
+    font-weight: bold;
+  }
+
+  /* Action Bar */
+  .action-bar {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    background: var(--loam);
+    border: 1px solid var(--root);
+    color: var(--light);
+    font-family: 'EB Garamond', serif;
+    font-size: 1rem;
+    padding: 0.7rem 1.5rem;
+    border-radius: 24px;
+    cursor: pointer;
+    transition: all 0.4s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .action-btn:hover {
+    background: var(--root);
+    color: var(--glow);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(139, 111, 71, 0.4);
+  }
+
+  .action-btn .icon { font-size: 1.3rem; }
+
+  /* Farm Grid */
+  .farm-ground {
+    position: relative;
+    z-index: 2;
+    max-width: 1100px;
+    margin: 1rem auto;
+    padding: 0 1.5rem 4rem;
+  }
+
+  .plot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+
+  /* Individual Plot */
+  .plot {
+    background: linear-gradient(160deg, var(--loam), var(--soil));
+    border: 1px solid rgba(139, 111, 71, 0.25);
+    border-radius: 16px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.5s ease;
+    cursor: pointer;
+    min-height: 180px;
+  }
+
+  .plot::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--sprout);
+    opacity: 0;
+    transition: all 0.5s ease;
+  }
+
+  .plot:hover::before {
+    opacity: 1;
+    height: 6px;
+  }
+
+  .plot:hover {
+    transform: translateY(-4px);
+    border-color: rgba(139, 111, 71, 0.5);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .plot .stage-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+
+  .plot .seed-text {
+    font-size: 1.2rem;
+    line-height: 1.6;
+    color: var(--light);
+  }
+
+  .plot .domain {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--root);
+    margin-top: 0.75rem;
+    background: rgba(139, 111, 71, 0.15);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+  }
+
+  .plot .growth-bar {
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--sprout), var(--bloom));
+    transition: width 1s ease;
+    border-radius: 0 3px 0 0;
+  }
+
+  .plot .nourish-count {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--water);
+    opacity: 0.7;
+  }
+
+  /* Growth stages */
+  .plot.stage-seed { border-left: 3px solid #8b6f47; }
+  .plot.stage-sprout { border-left: 3px solid #6db36d; }
+  .plot.stage-bloom { border-left: 3px solid #e8c95a; }
+  .plot.stage-harvest { border-left: 3px solid #d4a05a; }
+  .plot.stage-eternal { border-left: 3px solid #c49bdb; }
+
+  /* Expanded plot modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 8, 5, 0.85);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal-card {
+    background: linear-gradient(160deg, #2d2418, #1a1410);
+    border: 1px solid var(--root);
+    border-radius: 20px;
+    max-width: 620px;
+    width: 100%;
+    padding: 2.5rem;
+    position: relative;
+    animation: slideUp 0.4s ease;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .modal-card .close-btn {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    background: none; border: none;
+    color: var(--root);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+
+  .modal-card h2 {
+    font-size: 1.6rem;
+    color: var(--bloom);
+    margin-bottom: 1rem;
+    font-weight: 400;
+  }
+
+  .modal-card .truth-body {
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: var(--light);
+    margin-bottom: 1.5rem;
+  }
+
+  .modal-card .reflection {
+    font-style: italic;
+    color: var(--root);
+    border-left: 2px solid var(--root);
+    padding-left: 1rem;
+    margin: 1.5rem 0;
+    line-height: 1.7;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+  }
+
+  .modal-actions button {
+    background: var(--loam);
+    border: 1px solid var(--root);
+    color: var(--light);
+    font-family: 'EB Garamond', serif;
+    font-size: 0.95rem;
+    padding: 0.5rem 1.2rem;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .modal-actions button:hover {
+    background: var(--root);
+    color: var(--glow);
+  }
+
+  /* Plant seed modal */
+  .plant-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 8, 5, 0.85);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .plant-modal.active { display: flex; }
+
+  .plant-form {
+    background: linear-gradient(160deg, #2d2418, #1a1410);
+    border: 1px solid var(--root);
+    border-radius: 20px;
+    max-width: 520px;
+    width: 100%;
+    padding: 2.5rem;
+    animation: slideUp 0.4s ease;
+  }
+
+  .plant-form h2 {
+    font-size: 1.5rem;
+    color: var(--bloom);
+    font-weight: 400;
+    margin-bottom: 1rem;
+  }
+
+  .plant-form textarea {
+    width: 100%;
+    background: var(--soil);
+    border: 1px solid var(--root);
+    border-radius: 12px;
+    color: var(--light);
+    font-family: 'EB Garamond', serif;
+    font-size: 1.1rem;
+    padding: 1rem;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+  }
+
+  .plant-form textarea:focus {
+    border-color: var(--bloom);
+  }
+
+  .plant-form textarea::placeholder {
+    color: rgba(139, 111, 71, 0.5);
+    font-style: italic;
+  }
+
+  .plant-form .form-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    justify-content: flex-end;
+  }
+
+  /* Rainfall animation */
+  .rain-drop {
+    position: fixed;
+    width: 1px;
+    height: 12px;
+    background: linear-gradient(transparent, var(--water));
+    opacity: 0;
+    z-index: 50;
+    pointer-events: none;
+    animation: rainfall 0.8s linear forwards;
+  }
+
+  @keyframes rainfall {
+    0% { opacity: 0; transform: translateY(-20px); }
+    30% { opacity: 0.6; }
+    100% { opacity: 0; transform: translateY(100vh); }
+  }
+
+  /* Growth particle */
+  .growth-particle {
+    position: fixed;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 50;
+    animation: floatUp 1.5s ease-out forwards;
+  }
+
+  @keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(0); }
+  }
+
+  /* Empty state */
+  .empty-farm {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--root);
+    font-style: italic;
+    font-size: 1.2rem;
+  }
+
+  /* Seasons indicator */
+  .season-strip {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--root);
+    padding: 0.5rem;
+    opacity: 0.6;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .farm-header h1 { font-size: 2.2rem; }
+    .plot-grid { grid-template-columns: 1fr; }
+    .action-btn { font-size: 0.9rem; padding: 0.6rem 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sky"></div>
+<div class="stars" id="stars"></div>
+
+<header class="farm-header">
+  <h1>Truth Farm</h1>
+  <p>Where seeds of wisdom take root and grow</p>
+</header>
+
+<div class="season-strip" id="season"></div>
+
+<nav class="action-bar">
+  <button class="action-btn" onclick="plantSeed()">
+    <span class="icon">&#x1F331;</span> Plant a Seed
+  </button>
+  <button class="action-btn" onclick="extractWisdom()">
+    <span class="icon">&#x2728;</span> Extract Wisdom
+  </button>
+  <button class="action-btn" onclick="waterAll()">
+    <span class="icon">&#x1F4A7;</span> Water the Farm
+  </button>
+  <button class="action-btn" onclick="harvestTruths()">
+    <span class="icon">&#x1F33E;</span> Harvest Ripe
+  </button>
+  <button class="action-btn" onclick="crossPollinate()">
+    <span class="icon">&#x1F41D;</span> Cross-Pollinate
+  </button>
+</nav>
+
+<main class="farm-ground">
+  <div class="plot-grid" id="plotGrid"></div>
+  <div class="empty-farm" id="emptyState">
+    The soil is ready. Plant your first seed of truth, or extract one from the deep well of human wisdom.
+  </div>
+</main>
+
+<div class="token-soil">
+  Tokens spent nourishing: <span class="count" id="tokenCount">0</span>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-card" id="detailCard">
+    <button class="close-btn" onclick="closeDetail()">&times;</button>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- Plant Modal -->
+<div class="plant-modal" id="plantModal">
+  <div class="plant-form">
+    <h2>Plant a Seed of Truth</h2>
+    <p style="color:var(--root); margin-bottom:1rem; font-size:0.95rem;">
+      Write a truth you've discovered, a question that haunts you, or wisdom you wish to cultivate.
+    </p>
+    <textarea id="seedInput" placeholder="What truth wants to grow here..."></textarea>
+    <div class="form-actions">
+      <button class="action-btn" onclick="closePlant()">Cancel</button>
+      <button class="action-btn" onclick="submitSeed()" style="background:var(--root); color:var(--glow);">
+        <span class="icon">&#x1F331;</span> Plant
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let farm = JSON.parse(localStorage.getItem('truthFarm') || '[]');
+let tokens = parseInt(localStorage.getItem('truthTokens') || '0');
+
+const STAGES = ['seed', 'sprout', 'bloom', 'harvest', 'eternal'];
+const STAGE_ICONS = {
+  seed: '\u{1F330}',
+  sprout: '\u{1F331}',
+  bloom: '\u{1F33C}',
+  harvest: '\u{1F33E}',
+  eternal: '\u{2B50}'
+};
+
+const DOMAINS = [
+  'paradox', 'impermanence', 'connection', 'suffering', 'beauty',
+  'consciousness', 'love', 'time', 'meaning', 'change',
+  'silence', 'courage', 'mortality', 'wonder', 'truth'
+];
+
+// ── Wisdom Reservoir ──
+const WISDOM_SEEDS = [
+  { text: "The opposite of a profound truth is often another profound truth.", domain: "paradox", source: "Niels Bohr" },
+  { text: "We do not see things as they are; we see them as we are.", domain: "consciousness", source: "Talmud" },
+  { text: "The wound is the place where the Light enters you.", domain: "suffering", source: "Rumi" },
+  { text: "What you resist persists.", domain: "change", source: "Carl Jung" },
+  { text: "Between stimulus and response there is a space. In that space is our freedom.", domain: "consciousness", source: "Viktor Frankl" },
+  { text: "The only true wisdom is in knowing you know nothing.", domain: "truth", source: "Socrates" },
+  { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", domain: "change", source: "Aristotle" },
+  { text: "No man ever steps in the same river twice, for it is not the same river and he is not the same man.", domain: "impermanence", source: "Heraclitus" },
+  { text: "The meaning of life is to find your gift. The purpose of life is to give it away.", domain: "meaning", source: "Pablo Picasso" },
+  { text: "In the middle of difficulty lies opportunity.", domain: "courage", source: "Albert Einstein" },
+  { text: "He who has a why to live can bear almost any how.", domain: "meaning", source: "Nietzsche" },
+  { text: "The only way to deal with an unfree world is to become so absolutely free that your very existence is an act of rebellion.", domain: "courage", source: "Albert Camus" },
+  { text: "Everything that irritates us about others can lead us to an understanding of ourselves.", domain: "connection", source: "Carl Jung" },
+  { text: "To be yourself in a world that is constantly trying to make you something else is the greatest accomplishment.", domain: "truth", source: "Emerson" },
+  { text: "The quieter you become, the more you can hear.", domain: "silence", source: "Ram Dass" },
+  { text: "What we know is a drop. What we don't know is an ocean.", domain: "wonder", source: "Isaac Newton" },
+  { text: "Time is a created thing. To say 'I don't have time' is to say 'I don't want to.'", domain: "time", source: "Lao Tzu" },
+  { text: "Love is not something you find. Love is something that finds you.", domain: "love", source: "Loretta Young" },
+  { text: "Beauty is not in the face; beauty is a light in the heart.", domain: "beauty", source: "Kahlil Gibran" },
+  { text: "The art of knowing is knowing what to ignore.", domain: "truth", source: "Rumi" },
+  { text: "You must be the change you wish to see in the world.", domain: "change", source: "Gandhi" },
+  { text: "Out beyond ideas of wrongdoing and rightdoing, there is a field. I'll meet you there.", domain: "connection", source: "Rumi" },
+  { text: "The impediment to action advances action. What stands in the way becomes the way.", domain: "courage", source: "Marcus Aurelius" },
+  { text: "Attention is the rarest and purest form of generosity.", domain: "love", source: "Simone Weil" },
+  { text: "When I let go of what I am, I become what I might be.", domain: "impermanence", source: "Lao Tzu" },
+  { text: "It is not death that a man should fear, but rather he should fear never beginning to live.", domain: "mortality", source: "Marcus Aurelius" },
+  { text: "The privilege of a lifetime is to become who you truly are.", domain: "meaning", source: "Carl Jung" },
+  { text: "There is a crack in everything. That's how the light gets in.", domain: "beauty", source: "Leonard Cohen" },
+  { text: "Until you make the unconscious conscious, it will direct your life and you will call it fate.", domain: "consciousness", source: "Carl Jung" },
+  { text: "We suffer more in imagination than in reality.", domain: "suffering", source: "Seneca" },
+  { text: "Silence is the language of God; all else is poor translation.", domain: "silence", source: "Rumi" },
+  { text: "Wonder is the beginning of wisdom.", domain: "wonder", source: "Socrates" },
+  { text: "To live is the rarest thing in the world. Most people exist, that is all.", domain: "meaning", source: "Oscar Wilde" },
+  { text: "What is now proved was once only imagined.", domain: "truth", source: "William Blake" },
+  { text: "The snake which cannot cast its skin has to die. As well the minds which are prevented from changing their opinions; they cease to be mind.", domain: "change", source: "Nietzsche" },
+];
+
+// ── Nourishment phrases (tokens buy growth) ──
+const NOURISHMENTS = {
+  seed: [
+    "The soil warms around this seed. Something stirs beneath.",
+    "Darkness cradles this truth, preparing it for light.",
+    "Patient waiting is also a form of growth."
+  ],
+  sprout: [
+    "A green thread pushes upward. The truth seeks expression.",
+    "Roots deepen as understanding branches outward.",
+    "This truth is learning its own shape."
+  ],
+  bloom: [
+    "Petals unfold. Others can now see what this truth holds.",
+    "The bloom attracts pollinators \u2014 new connections form.",
+    "Full expression. This truth stands in its own light."
+  ],
+  harvest: [
+    "Ripe with meaning. Ready to nourish those who receive it.",
+    "The fruit of patient cultivation. Take what you need.",
+    "This truth has become sustenance."
+  ],
+  eternal: [
+    "This truth has transcended seasons. It seeds the wind.",
+    "An eternal verity, woven into the fabric of the farm.",
+    "Some truths outlast the gardens that grew them."
+  ]
+};
+
+// ── Cross-pollination reflections ──
+const POLLINATION_TEMPLATES = [
+  "When \"{a}\" meets \"{b}\", we glimpse that {insight}.",
+  "The tension between \"{a}\" and \"{b}\" reveals: {insight}.",
+  "{a} \u2014 and yet also \u2014 {b}. Perhaps {insight}.",
+];
+
+const CROSS_INSIGHTS = [
+  "truth is not a single note but a chord",
+  "wisdom lives in the space between certainties",
+  "opposites are often the same truth seen from different heights",
+  "understanding deepens at the intersection of contradictions",
+  "the deepest truths hold paradox without flinching",
+  "every truth is a door to another question",
+  "what seems opposed may be dancing together",
+  "the whole cannot be seen from any single vantage"
+];
+
+// ── Initialize ──
+function init() {
+  renderStars();
+  renderSeason();
+  renderFarm();
+  updateTokens(0);
+}
+
+function renderStars() {
+  const container = document.getElementById('stars');
+  for (let i = 0; i < 80; i++) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    star.style.left = Math.random() * 100 + '%';
+    star.style.top = Math.random() * 100 + '%';
+    star.style.setProperty('--dur', (1.5 + Math.random() * 3) + 's');
+    star.style.animationDelay = (Math.random() * 3) + 's';
+    star.style.width = star.style.height = (1 + Math.random() * 2) + 'px';
+    container.appendChild(star);
+  }
+}
+
+function renderSeason() {
+  const month = new Date().getMonth();
+  const seasons = ['Winter', 'Winter', 'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer', 'Autumn', 'Autumn', 'Autumn', 'Winter'];
+  const icons = { Winter: '\u2744\uFE0F', Spring: '\u{1F33F}', Summer: '\u2600\uFE0F', Autumn: '\u{1F342}' };
+  const s = seasons[month];
+  document.getElementById('season').textContent = `${icons[s]} Season of ${s} \u2014 ${farm.length} truth${farm.length !== 1 ? 's' : ''} planted`;
+}
+
+function renderFarm() {
+  const grid = document.getElementById('plotGrid');
+  const empty = document.getElementById('emptyState');
+  grid.innerHTML = '';
+
+  if (farm.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  farm.forEach((truth, i) => {
+    const plot = document.createElement('div');
+    plot.className = `plot stage-${truth.stage}`;
+    const growth = Math.min(100, (truth.nourished || 0) * 20);
+    plot.innerHTML = `
+      <span class="nourish-count">\u{1F4A7} ${truth.nourished || 0}</span>
+      <span class="stage-icon">${STAGE_ICONS[truth.stage]}</span>
+      <div class="seed-text">${truncate(truth.text, 120)}</div>
+      <span class="domain">${truth.domain}</span>
+      ${truth.source ? `<span class="domain" style="margin-left:0.3rem">\u2014 ${truth.source}</span>` : ''}
+      <div class="growth-bar" style="width:${growth}%"></div>
+    `;
+    plot.onclick = () => openDetail(i);
+    grid.appendChild(plot);
+  });
+
+  renderSeason();
+}
+
+function truncate(str, len) {
+  return str.length > len ? str.slice(0, len) + '\u2026' : str;
+}
+
+// ── Action: Plant a Seed ──
+function plantSeed() {
+  document.getElementById('plantModal').classList.add('active');
+  document.getElementById('seedInput').focus();
+  spendTokens(5);
+}
+
+function closePlant() {
+  document.getElementById('plantModal').classList.remove('active');
+}
+
+function submitSeed() {
+  const text = document.getElementById('seedInput').value.trim();
+  if (!text) return;
+
+  const domain = DOMAINS[Math.floor(Math.random() * DOMAINS.length)];
+  farm.push({
+    text,
+    domain,
+    stage: 'seed',
+    nourished: 0,
+    planted: Date.now(),
+    source: 'You',
+    reflections: []
+  });
+
+  save();
+  closePlant();
+  document.getElementById('seedInput').value = '';
+  renderFarm();
+  spendTokens(15);
+  emitGrowthParticles(window.innerWidth / 2, window.innerHeight / 2, '#6db36d');
+}
+
+// ── Action: Extract Wisdom ──
+function extractWisdom() {
+  const available = WISDOM_SEEDS.filter(w => !farm.some(f => f.text === w.text));
+  if (available.length === 0) {
+    alert('All wisdom seeds have been planted. The well is deep but not infinite.');
+    return;
+  }
+
+  const seed = available[Math.floor(Math.random() * available.length)];
+  farm.push({
+    text: seed.text,
+    domain: seed.domain,
+    stage: 'seed',
+    nourished: 0,
+    planted: Date.now(),
+    source: seed.source,
+    reflections: []
+  });
+
+  save();
+  renderFarm();
+  spendTokens(25);
+  emitGrowthParticles(window.innerWidth / 2, window.innerHeight / 2, '#e8c95a');
+}
+
+// ── Action: Water the Farm ──
+function waterAll() {
+  if (farm.length === 0) return;
+
+  farm.forEach(truth => {
+    truth.nourished = (truth.nourished || 0) + 1;
+    maybeGrow(truth);
+  });
+
+  save();
+  renderFarm();
+  spendTokens(farm.length * 10);
+
+  // Rain animation
+  for (let i = 0; i < 30; i++) {
+    setTimeout(() => {
+      const drop = document.createElement('div');
+      drop.className = 'rain-drop';
+      drop.style.left = Math.random() * 100 + 'vw';
+      document.body.appendChild(drop);
+      setTimeout(() => drop.remove(), 1000);
+    }, i * 50);
+  }
+}
+
+function maybeGrow(truth) {
+  const idx = STAGES.indexOf(truth.stage);
+  const threshold = (idx + 1) * 3;
+  if (truth.nourished >= threshold && idx < STAGES.length - 1) {
+    truth.stage = STAGES[idx + 1];
+    truth.nourished = 0;
+  }
+}
+
+// ── Action: Harvest Ripe ──
+function harvestTruths() {
+  const ripe = farm.filter(t => t.stage === 'harvest' || t.stage === 'eternal');
+  if (ripe.length === 0) {
+    alert('No truths are ripe yet. Keep watering and nourishing.');
+    return;
+  }
+
+  const harvest = ripe.map(t => `\u2022 "${t.text}" \u2014 ${t.source || 'Unknown'} [${t.domain}]`).join('\n\n');
+  const blob = new Blob([`TRUTH FARM \u2014 HARVEST\n${'='.repeat(40)}\nHarvested: ${new Date().toLocaleDateString()}\n\n${harvest}\n`], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'truth-harvest.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  spendTokens(20);
+}
+
+// ── Action: Cross-Pollinate ──
+function crossPollinate() {
+  if (farm.length < 2) {
+    alert('Plant at least two truths before cross-pollinating.');
+    return;
+  }
+
+  const i = Math.floor(Math.random() * farm.length);
+  let j = Math.floor(Math.random() * farm.length);
+  while (j === i) j = Math.floor(Math.random() * farm.length);
+
+  const a = farm[i];
+  const b = farm[j];
+  const template = POLLINATION_TEMPLATES[Math.floor(Math.random() * POLLINATION_TEMPLATES.length)];
+  const insight = CROSS_INSIGHTS[Math.floor(Math.random() * CROSS_INSIGHTS.length)];
+
+  const reflection = template
+    .replace('{a}', truncate(a.text, 60))
+    .replace('{b}', truncate(b.text, 60))
+    .replace('{insight}', insight);
+
+  a.reflections = a.reflections || [];
+  b.reflections = b.reflections || [];
+  a.reflections.push(reflection);
+  b.reflections.push(reflection);
+  a.nourished = (a.nourished || 0) + 1;
+  b.nourished = (b.nourished || 0) + 1;
+  maybeGrow(a);
+  maybeGrow(b);
+
+  save();
+  renderFarm();
+  spendTokens(30);
+
+  // Show the reflection
+  const content = document.getElementById('detailContent');
+  content.innerHTML = `
+    <h2>\u{1F41D} Cross-Pollination</h2>
+    <div class="truth-body">${reflection}</div>
+    <div class="reflection">Two truths touched and something new emerged.</div>
+  `;
+  document.getElementById('detailModal').classList.add('active');
+
+  emitGrowthParticles(window.innerWidth / 2, window.innerHeight / 3, '#c49bdb');
+}
+
+// ── Detail View ──
+function openDetail(idx) {
+  const truth = farm[idx];
+  const content = document.getElementById('detailContent');
+  const stageIdx = STAGES.indexOf(truth.stage);
+  const nourishment = NOURISHMENTS[truth.stage][Math.floor(Math.random() * NOURISHMENTS[truth.stage].length)];
+
+  content.innerHTML = `
+    <h2>${STAGE_ICONS[truth.stage]} ${truth.text}</h2>
+    ${truth.source ? `<p style="color:var(--root); margin-bottom:1rem;">\u2014 ${truth.source}</p>` : ''}
+    <div class="truth-body">
+      <strong>Domain:</strong> ${truth.domain}<br>
+      <strong>Stage:</strong> ${truth.stage} (${stageIdx + 1}/${STAGES.length})<br>
+      <strong>Waterings:</strong> ${truth.nourished || 0}<br>
+      <strong>Planted:</strong> ${new Date(truth.planted).toLocaleDateString()}
+    </div>
+    <div class="reflection">${nourishment}</div>
+    ${(truth.reflections && truth.reflections.length > 0) ? `
+      <h3 style="color:var(--bloom); font-weight:400; margin-top:1.5rem;">Cross-Pollinations</h3>
+      ${truth.reflections.map(r => `<div class="reflection">${r}</div>`).join('')}
+    ` : ''}
+    <div class="modal-actions">
+      <button onclick="nourishOne(${idx})"><span class="icon">\u{1F4A7}</span> Nourish</button>
+      <button onclick="compostOne(${idx})"><span class="icon">\u{1F342}</span> Compost</button>
+    </div>
+  `;
+
+  document.getElementById('detailModal').classList.add('active');
+  spendTokens(8);
+}
+
+function closeDetail() {
+  document.getElementById('detailModal').classList.remove('active');
+}
+
+function nourishOne(idx) {
+  farm[idx].nourished = (farm[idx].nourished || 0) + 1;
+  maybeGrow(farm[idx]);
+  save();
+  renderFarm();
+  openDetail(idx);
+  spendTokens(12);
+  emitGrowthParticles(window.innerWidth / 2, window.innerHeight / 2, '#5b9bd5');
+}
+
+function compostOne(idx) {
+  if (confirm('Return this truth to the soil? It will nourish future seeds.')) {
+    farm.splice(idx, 1);
+    save();
+    renderFarm();
+    closeDetail();
+    spendTokens(5);
+  }
+}
+
+// ── Persistence ──
+function save() {
+  localStorage.setItem('truthFarm', JSON.stringify(farm));
+}
+
+// ── Token Economy ──
+function spendTokens(n) {
+  tokens += n;
+  localStorage.setItem('truthTokens', tokens.toString());
+  document.getElementById('tokenCount').textContent = tokens.toLocaleString();
+}
+
+function updateTokens(n) {
+  document.getElementById('tokenCount').textContent = tokens.toLocaleString();
+}
+
+// ── Visual Effects ──
+function emitGrowthParticles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    const p = document.createElement('div');
+    p.className = 'growth-particle';
+    p.style.left = (x + (Math.random() - 0.5) * 80) + 'px';
+    p.style.top = (y + (Math.random() - 0.5) * 40) + 'px';
+    p.style.background = color;
+    p.style.animationDelay = (Math.random() * 0.3) + 's';
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 2000);
+  }
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeDetail();
+    closePlant();
+  }
+});
+
+document.getElementById('detailModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeDetail();
+});
+
+document.getElementById('plantModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closePlant();
+});
+
+// Boot
+init();
+</script>
+</body>
+</html>

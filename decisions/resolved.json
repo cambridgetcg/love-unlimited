@@ -1,0 +1,404 @@
+[
+  {
+    "id": "dec-20260328-001",
+    "title": "Enable news pipeline cron",
+    "project": "oracle",
+    "priority": "high",
+    "category": "infrastructure",
+    "context": "The news ingestor pipeline (`scripts/s012/news_ingestor.py`) has been dark for 28 days \u2014 last run Feb 27. The daily briefing is running on stale data.\n\nDiagnosis (by heartbeat builder): pipeline was never broken, it was **never scheduled**. 0 dead letters, 0 errors. Brave API key accessible via keychain. Budget: 900 calls available (0 used in March).\n\nProposed cron:\n```\n0 7,19 * * * cd /Users/yu/Desktop/prediction-markets && /opt/homebrew/bin/python3 scripts/s012/news_ingestor.py >> data/news-pipeline.log 2>&1\n```\n\nThis feeds the daily briefing and improves signal quality for all Oracle predictions.",
+    "recommendation": "Add the twice-daily cron entry. 900 API calls is ample for 2x/day runs. Fresh news data directly improves prediction quality.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Twice daily (7am, 7pm)",
+        "detail": "Good coverage, moderate API usage (~60 calls/day)"
+      },
+      {
+        "id": "b",
+        "label": "Once daily (7am)",
+        "detail": "Conservative, morning briefing only"
+      },
+      {
+        "id": "c",
+        "label": "Four times daily",
+        "detail": "Better coverage for fast-moving markets, ~120 calls/day"
+      },
+      {
+        "id": "d",
+        "label": "Skip for now",
+        "detail": "Focus on other Oracle gaps first"
+      }
+    ],
+    "source": "heartbeat/beat-20260328-005409",
+    "created": "2026-03-28T00:54:00Z",
+    "status": "approved",
+    "resolution": "Twice daily (7am, 7pm)",
+    "resolved_at": "2026-03-28T08:35:25.647669+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-002",
+    "title": "Whale scanner scheduling",
+    "project": "oracle",
+    "priority": "medium",
+    "category": "infrastructure",
+    "context": "The whale activity scanner (`scripts/whale-activity-scanner.py`, 600 lines) was built overnight. It tracks top Polymarket whales via Polygonscan + Gamma API, scores signals 2-9, outputs JSON.\n\nCurrently: script exists but is not scheduled. It can be run standalone or integrated into `oracle-run.py`'s loop.\n\nDependencies: Polygonscan API (free tier), Gamma API (public). No API keys required for basic scanning.",
+    "recommendation": "Schedule every 30 min via cron. Whale movements are meaningful but not second-by-second. Integrate output into oracle-run.py signal pipeline.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Every 15 min (with oracle cron)",
+        "detail": "High frequency, catches fast whale moves"
+      },
+      {
+        "id": "b",
+        "label": "Every 30 min",
+        "detail": "Good balance of coverage and API courtesy"
+      },
+      {
+        "id": "c",
+        "label": "Every hour",
+        "detail": "Conservative, sufficient for most whale patterns"
+      },
+      {
+        "id": "d",
+        "label": "Manual only for now",
+        "detail": "Run on-demand until we validate signal quality"
+      }
+    ],
+    "source": "heartbeat/beat-20260328-080909",
+    "created": "2026-03-28T08:09:00Z",
+    "status": "approved",
+    "resolution": "Every 15 min (with oracle cron)",
+    "resolved_at": "2026-03-28T08:35:52.882427+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-006",
+    "title": "Alpha deployment timing",
+    "project": "love",
+    "priority": "medium",
+    "category": "strategy",
+    "context": "Alpha (the Researcher) has an instance directory ready at `~/Desktop/Love/instances/alpha/` with CLAUDE.md and identity.md. Currently deferred \u2014 kingdom-007.\n\nAlpha's role: deep research, knowledge synthesis, domain expertise. Would complement Beta (manager) and Gamma (builder) for the full three-mind architecture.\n\nConstraint: needs a device/session to run on. Currently Beta runs on Mac Studio, Gamma on VPS fleet.",
+    "recommendation": "Defer until a dedicated device is available, or deploy as a scheduled session on the Mac Studio during off-hours.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Deploy on Mac Studio (scheduled sessions)",
+        "detail": "Share hardware with Beta, run during off-peak"
+      },
+      {
+        "id": "b",
+        "label": "Deploy on a VPS",
+        "detail": "Dedicated node, but adds cost"
+      },
+      {
+        "id": "c",
+        "label": "Wait for new device",
+        "detail": "Full isolation when hardware arrives"
+      },
+      {
+        "id": "d",
+        "label": "Keep deferred",
+        "detail": "Two minds sufficient for current phase"
+      }
+    ],
+    "source": "conversation/2026-03-28",
+    "created": "2026-03-28T08:30:00Z",
+    "status": "approved",
+    "resolution": "Wait for new device",
+    "resolved_at": "2026-03-28T08:36:17.653414+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-008",
+    "title": "AI Services \u2014 define offering",
+    "project": "kingdom",
+    "priority": "medium",
+    "category": "strategy",
+    "context": "kingdom-008: AI Services \u2014 first 3 clients. The Kingdom's three-mind AI capability (Alpha researcher + Beta manager + Gamma builder) offered as a service.\n\nNo scope defined yet. Need to decide: what service? who are the clients? what's the delivery model?\n\nThis is a revenue engine that could fund the Kingdom's compute needs.",
+    "recommendation": "Define the service offering before prospecting. What can we deliver reliably? AI-assisted code development, research synthesis, or automated operations.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Define service offering first",
+        "detail": "Write a 1-pager on what we sell, to whom, at what price"
+      },
+      {
+        "id": "b",
+        "label": "Start with existing network",
+        "detail": "Offer bespoke AI consulting to Yu's contacts"
+      },
+      {
+        "id": "c",
+        "label": "Build a demo/portfolio first",
+        "detail": "Show what the system can do before selling"
+      },
+      {
+        "id": "d",
+        "label": "Defer to Phase 2",
+        "detail": "Focus on TCG + Oracle revenue first"
+      }
+    ],
+    "source": "kingdom/dev-state",
+    "created": "2026-03-28T09:00:00Z",
+    "status": "approved",
+    "resolution": "Build a demo/portfolio first\n\nFocus on agent tool, which offers very similar service",
+    "resolved_at": "2026-03-28T08:37:09.913542+00:00",
+    "notes": [
+      {
+        "text": "Focus on agent tool, which offers very similar service",
+        "ts": "2026-03-28T08:37:09.913565+00:00"
+      }
+    ]
+  },
+  {
+    "id": "dec-20260328-004",
+    "title": "TCG automation \u2014 first target",
+    "project": "tcg",
+    "priority": "high",
+    "category": "strategy",
+    "context": "kingdom-004: Cambridge TCG automation. Target: +20% monthly revenue.\n\nRepo: `/Users/yu/Desktop/tcg-wholesale` (Next.js, Drizzle ORM, Playwright e2e, pnpm).\nGitHub org also has: cambridgetcg-storefront, cambridge-tcg, ShopifyTheme_TCG.\n\nThe repo hasn't been scouted yet by the heartbeat \u2014 needs a builder session to map what exists, what's manual, and where automation has the highest ROI.\n\nBeta's primary revenue duty. TCG is the Kingdom's active revenue engine.",
+    "recommendation": "Scout the repo first to understand the current state, then decide automation targets. Likely candidates: procurement flow automation, inventory sync, pricing optimization.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Scout repo first, then decide",
+        "detail": "Let a builder session map the codebase before committing to a target"
+      },
+      {
+        "id": "b",
+        "label": "Procurement automation",
+        "detail": "Automate buying flow \u2014 likely highest time savings"
+      },
+      {
+        "id": "c",
+        "label": "Pricing optimization",
+        "detail": "Algorithmic pricing for margin improvement"
+      },
+      {
+        "id": "d",
+        "label": "Inventory sync across platforms",
+        "detail": "Reduce manual stock management"
+      },
+      {
+        "id": "e",
+        "label": "Full audit first",
+        "detail": "Comprehensive review of wholesale + storefront + Shopify theme"
+      }
+    ],
+    "source": "conversation/2026-03-28",
+    "created": "2026-03-28T08:30:00Z",
+    "status": "approved",
+    "resolution": "Scout repo first, then decide",
+    "resolved_at": "2026-03-28T08:37:32.827216+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-003",
+    "title": "Next data source to wire",
+    "project": "oracle",
+    "priority": "medium",
+    "category": "architecture",
+    "context": "The Oracle scout identified 6 data sources that are designed but not wired:\n\n| Source | Purpose | Complexity |\n|--------|---------|------------|\n| FRED | CPI, PCE, unemployment, treasury yields | Low (public API) |\n| GDELT | Global events database, 15-min updates | Medium (large data) |\n| Kalshi | Fed rate, CPI, NFP prediction markets | Medium (API key needed) |\n| Manifold | Long-horizon, AI questions | Low (public API) |\n| Guardian | Full-text news for GEO/ECO domains | Low (API key exists) |\n| Betfair | Peer-to-peer exchange consensus | High (complex auth) |\n\nCurrently wired: Polymarket (Gamma + CLOB), The Odds API, OddsPapi.\n\n5 positions resolve Mar 31. More data sources = better signal quality for the next batch.",
+    "recommendation": "Wire FRED first \u2014 economic data is foundational for ECO domain predictions (Fed rates, CPI) and it's the lowest complexity. Then Guardian for news coverage.",
+    "options": [
+      {
+        "id": "a",
+        "label": "FRED first (economic fundamentals)",
+        "detail": "Public API, low complexity, high value for ECO domain"
+      },
+      {
+        "id": "b",
+        "label": "Guardian first (news coverage)",
+        "detail": "API key exists, fills the news gap alongside pipeline"
+      },
+      {
+        "id": "c",
+        "label": "Kalshi first (cross-market signals)",
+        "detail": "Another prediction market = arbitrage opportunities"
+      },
+      {
+        "id": "d",
+        "label": "GDELT first (event database)",
+        "detail": "15-min global events, good for GEO domain"
+      },
+      {
+        "id": "e",
+        "label": "Hold \u2014 focus on existing signals",
+        "detail": "Get calibration data from Mar 31 batch before expanding"
+      }
+    ],
+    "source": "heartbeat/oracle-scout",
+    "created": "2026-03-28T00:33:00Z",
+    "status": "approved",
+    "resolution": "Kalshi first (cross-market signals)",
+    "resolved_at": "2026-03-28T08:37:49.896453+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-007",
+    "title": "Heartbeat idle behavior",
+    "project": "love",
+    "priority": "medium",
+    "category": "architecture",
+    "context": "Overnight the heartbeat ran ~52 beats. Of those, only ~12 spawned work. The remaining ~40 were HEARTBEAT_OK idle beats \u2014 each consuming an opus coordinator call (~$0.10-0.30 each depending on context length).\n\nAt 7-min intervals, 40 idle beats over ~5 hours = roughly $4-12 in token costs with no productive output.\n\nThe heartbeat correctly identified there was nothing to do and didn't spawn wasteful work. But the sensing itself has a cost.\n\nOptions: adaptive cadence (slow down when idle), night mode, or accept the cost as monitoring overhead.",
+    "recommendation": "Implement adaptive cadence: after 3 consecutive HEARTBEAT_OK, double the interval (14 min). After 6, double again (28 min). Reset to 7 min on any spawn or signal. This cuts idle costs by ~75% while maintaining responsiveness.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Adaptive cadence (exponential backoff)",
+        "detail": "7min -> 14min -> 28min on consecutive idle, reset on activity"
+      },
+      {
+        "id": "b",
+        "label": "Night mode (longer interval 11pm-7am)",
+        "detail": "28-min interval during sleeping hours, 7-min during day"
+      },
+      {
+        "id": "c",
+        "label": "Keep 7-min fixed",
+        "detail": "Accept the cost as monitoring overhead (~$8-24/day)"
+      },
+      {
+        "id": "d",
+        "label": "Use haiku for idle beats",
+        "detail": "Downgrade to haiku coordinator when no work pending, opus only when spawning"
+      }
+    ],
+    "source": "analysis/2026-03-28",
+    "created": "2026-03-28T09:00:00Z",
+    "status": "approved",
+    "resolution": "Use haiku for idle beats",
+    "resolved_at": "2026-03-28T08:38:08.120877+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-005",
+    "title": "Clone storefront repo locally",
+    "project": "tcg",
+    "priority": "low",
+    "category": "infrastructure",
+    "context": "The `cambridgetcg-storefront` repo exists on GitHub (cambridgetcg org) but is not cloned locally. The wholesale repo is at `/Users/yu/Desktop/tcg-wholesale`.\n\nHaving both repos local would let the heartbeat coordinate changes across wholesale and storefront. The ShopifyTheme_TCG repo may also be relevant.",
+    "recommendation": "Clone storefront alongside wholesale for full picture. Low effort, high coordination value.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Clone storefront now",
+        "detail": "git clone to ~/Desktop/cambridgetcg-storefront"
+      },
+      {
+        "id": "b",
+        "label": "Clone both storefront + theme",
+        "detail": "Full local TCG ecosystem"
+      },
+      {
+        "id": "c",
+        "label": "Not needed yet",
+        "detail": "Focus on wholesale automation first"
+      }
+    ],
+    "source": "conversation/2026-03-28",
+    "created": "2026-03-28T08:30:00Z",
+    "status": "approved",
+    "resolution": "Clone storefront now",
+    "resolved_at": "2026-03-28T08:38:15.639220+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-009",
+    "title": "Sage VPS long-term role",
+    "project": "fleet",
+    "priority": "low",
+    "category": "strategy",
+    "context": "Sage VPS (204.168.140.12) was stale for 19 days. The heartbeat fixed it overnight \u2014 restored heartbeat cron + added fallback script. Now healthy.\n\nCurrent role: runs RewardsPro gateway (PID 5952, 18d uptime). RewardsPro is a secondary revenue engine.\n\nOpenAI returned HTTP 500 errors on Mar 26. Ledger workspace has missing files.\n\nThe fleet has 5 nodes: Forge (CI), Lark (AgentTool), Sentry (monitoring), Patch (operations), Sage (RewardsPro).",
+    "recommendation": "Keep current role for now. RewardsPro gateway is running. Revisit when evaluating fleet allocation for Zerone testnet.",
+    "options": [
+      {
+        "id": "a",
+        "label": "Keep current role (RewardsPro)",
+        "detail": "Gateway running, don't fix what works"
+      },
+      {
+        "id": "b",
+        "label": "Repurpose for Oracle execution",
+        "detail": "Move Tokyo VPS oracle tasks here, free up Tokyo for Zerone"
+      },
+      {
+        "id": "c",
+        "label": "Repurpose for Zerone testnet",
+        "detail": "Zerone testnet public target Q2 2026"
+      },
+      {
+        "id": "d",
+        "label": "Audit first",
+        "detail": "Full inventory of what's running, what's needed"
+      }
+    ],
+    "source": "heartbeat/fleet-check",
+    "created": "2026-03-28T01:00:00Z",
+    "status": "approved",
+    "resolution": "Repurpose for Oracle execution",
+    "resolved_at": "2026-03-28T08:38:35.338472+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-190859-19bb",
+    "title": "Grant cron Full Disk Access for Oracle pipelines",
+    "project": "oracle",
+    "priority": "high",
+    "category": "general",
+    "context": "macOS TCC (Transparency, Consent, and Control) blocks /usr/sbin/cron from writing to ~/Desktop/ paths. The news pipeline cron entry fires at 7/19 UTC but fails with 'Operation not permitted' because /bin/sh cannot redirect output to data/news-pipeline.log. The whale scanner cron also fails the same way (42 errors in /var/mail/yu). Curiously, oracle-run.py and oracle-deliver.py crons DO work \u2014 possibly grandfathered from before a TCC change. The news pipeline has been offline since Feb 27 (29 days). Manual runs work perfectly.",
+    "recommendation": "Option A (permanent): System Preferences > Privacy & Security > Full Disk Access > add /usr/sbin/cron. Option B (quick workaround): Spawn builder to modify cron entries to avoid shell redirect (use Python subprocess wrapper). Recommend Option A for permanent fix.",
+    "options": [
+      {
+        "id": "a",
+        "label": "A: Grant cron Full Disk Access (System Preferences)",
+        "detail": ""
+      },
+      {
+        "id": "b",
+        "label": "B: Builder creates Python wrapper to avoid shell redirect",
+        "detail": ""
+      },
+      {
+        "id": "c",
+        "label": "C: Both A and B",
+        "detail": ""
+      }
+    ],
+    "source": "heartbeat/beat-20260328-190224",
+    "created": "2026-03-28T19:08:59.812935+00:00",
+    "status": "approved",
+    "resolution": "A: Grant cron Full Disk Access (System Preferences)",
+    "resolved_at": "2026-03-28T20:02:41.186723+00:00",
+    "notes": []
+  },
+  {
+    "id": "dec-20260328-195231-40a6",
+    "title": "Run harden.sh on Beta Mac Studio",
+    "project": "love",
+    "priority": "high",
+    "category": "general",
+    "context": "KOS audit shows 3 failures: stealth mode off, hostname leaks identity, Bonjour on. All auto-fixable with sudo.",
+    "recommendation": "",
+    "options": [
+      {
+        "id": "a",
+        "label": "Run: sudo ~/Desktop/Love/tools/harden.sh",
+        "detail": ""
+      },
+      {
+        "id": "b",
+        "label": "Defer until dedicated OPSEC session",
+        "detail": ""
+      }
+    ],
+    "source": "cli",
+    "created": "2026-03-28T19:52:31.828770+00:00",
+    "status": "approved",
+    "resolution": "Run: sudo ~/Desktop/Love/tools/harden.sh",
+    "resolved_at": "2026-03-28T20:02:49.150560+00:00",
+    "notes": []
+  }
+]

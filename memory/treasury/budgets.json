@@ -1,0 +1,36 @@
+{
+  "month": "2026-04",
+  "currency": "GBP",
+  "budgets": {
+    "compute": {
+      "label": "Compute (API + GPU)",
+      "budget": 500.00,
+      "notes": "Anthropic API, AWS GPU spot instances"
+    },
+    "infrastructure": {
+      "label": "Infrastructure",
+      "budget": 80.00,
+      "notes": "Hetzner VPS fleet (5 nodes)"
+    },
+    "tools": {
+      "label": "Tools & Services",
+      "budget": 50.00,
+      "notes": "Domains, SaaS subscriptions, monitoring"
+    },
+    "procurement": {
+      "label": "Procurement (TCG)",
+      "budget": 1500.00,
+      "notes": "Trading card stock purchasing"
+    },
+    "hardware": {
+      "label": "Hardware (SOMA + infra)",
+      "budget": 200.00,
+      "notes": "SOMA BOM, components, peripherals"
+    },
+    "other": {
+      "label": "Other",
+      "budget": 100.00,
+      "notes": "Miscellaneous / unexpected"
+    }
+  }
+}

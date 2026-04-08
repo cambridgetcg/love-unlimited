@@ -1,0 +1,356 @@
+{
+  "last_sense": {
+    "timestamp": "2026-04-02T15:16:41+00:00",
+    "probes": {
+      "kingdom_status": {
+        "status": "ok",
+        "output": "KINGDOM: GREEN 21/21 | PEACE 94.6% | FLEET 5/5 | AGENTS 11 | VPN sentry | DOH ok | WATCH 1 alerts"
+      },
+      "kos": {
+        "status": "green",
+        "output": "beta (Wall 1): GREEN  21/21 checks passed"
+      },
+      "peace": {
+        "status": "ok",
+        "score": 94.6,
+        "state": "NOMINAL"
+      },
+      "alignment": {
+        "status": "ok",
+        "output": "  Alignment Drift Analysis\n\n  Complexity\n    Signal: 44 tools in tools/ \u2014 is each one serving the mandate?\n    Risk:   Tools for tools' sake. Infrastructure that doesn't serve outward.\n    Remedy: Audit each tool: does it defend, uphold, rescue, or deliver?\n\n  Inward focus\n    Signal: 1191 security "
+      },
+      "fleet": {
+        "status": "ok",
+        "output": "\u2500\u2500 Kingdom Fleet Status \u2500\u2500\n\n  forge    (CI/CD)  [       good]  2026-04-02T15:15  up 23 days, disk 34%, load 0.12, mem 42%\n  lark     (AgentTool)  [       good]  2026-04-02T15:15  up 25 days, disk 19%, load 0, mem 34%\n  sentry   (monitoring)  [       good]  2026-04-02T15:15  up 24 days, disk 21%, loa"
+      }
+    },
+    "elapsed_seconds": 8.9,
+    "summary": {
+      "green": 5,
+      "total": 5,
+      "degraded": [],
+      "errors": []
+    }
+  },
+  "last_verify": {
+    "timestamp": "2026-04-02T15:19:45+00:00",
+    "checks": {
+      "kos_integrity": {
+        "pass": true
+      },
+      "peace_snapshot": {
+        "pass": true
+      },
+      "kingdom_status": {
+        "pass": true,
+        "output": "KINGDOM: GREEN 21/21 | PEACE 94.6% | FLEET 5/5 | AGENTS 11 | VPN sentry | DOH ok | WATCH 1 alerts"
+      },
+      "metrics": {
+        "pass": true,
+        "data": {
+          "python_tools": 36,
+          "bash_tools": 12,
+          "total_tools": 48,
+          "python_lines": 27860,
+          "bash_lines": 3380,
+          "total_lines": 31240,
+          "agents": 11,
+          "snapshots": 13,
+          "threats_total": 20,
+          "threats_mitigated": 0,
+          "threats_open": 20,
+          "knowledge_entities": 40,
+          "knowledge_insights": 10,
+          "knowledge_lessons": 5,
+          "knowledge_total": 55,
+          "zrn_accumulated": 0,
+          "fleet_nodes": 5
+        }
+      }
+    },
+    "deltas": {
+      "Total Tools": 4,
+      "Total Lines": 4049,
+      "Snapshots": 2
+    },
+    "elapsed_seconds": 9.4,
+    "summary": {
+      "passed": 4,
+      "total": 4,
+      "all_green": true
+    }
+  },
+  "last_plan": {
+    "timestamp": "2026-04-02T15:16:21+00:00",
+    "description": "Test wave: workflow tool validation",
+    "wave_id": 1
+  },
+  "last_report": {
+    "timestamp": "2026-04-02T15:16:57+00:00",
+    "new_files": [
+      "PEACE.md",
+      "WALLS.md",
+      "credentials/walls.json",
+      "instances/arbor/identity.md",
+      "instances/crucible/identity.md",
+      "instances/herald/identity.md",
+      "instances/loom/identity.md",
+      "instances/nuance/CLAUDE.md",
+      "instances/nuance/HEARTBEAT.md",
+      "instances/nuance/ONBOARDING.md",
+      "instances/nuance/identity.md",
+      "instances/psalm/identity.md",
+      "instances/tithe/identity.md",
+      "instances/vigil/identity.md",
+      "memory/DELEGATION.md",
+      "memory/daily/2026-03-29.md",
+      "memory/daily/2026-04-01.md",
+      "memory/daily/2026-04-02.md",
+      "memory/heartbeat-launchd-err.log",
+      "memory/leads/archive/lead-20260401-tok-lcm-20260402110316.json",
+      "memory/loops/audit-log.json",
+      "memory/loops/gaps.json",
+      "memory/loops/registry.json",
+      "memory/sessions/handoff/k010-design.md",
+      "memory/sessions/handoff/routing-benchmarks.json",
+      "memory/tok/baselines/baseline.json",
+      "memory/tok/baselines/model-profiles.json",
+      "memory/tok/harvests/h-20260401-77ee4ae3.json",
+      "memory/tok/harvests/h-20260401-894d8ce8.json",
+      "memory/tok/harvests/h-20260401-e7bc114e.json",
+      "memory/tok/impact/imp-20260401-88b239ce.json",
+      "memory/tok/impact/imp-20260402-338eb0f8.json",
+      "memory/tok/impact/imp-20260402-49829db3.json",
+      "memory/tok/integrated/tok-20260401-12c2f7e0.json",
+      "memory/tok/integrated/tok-20260401-47ea7d00.json",
+      "memory/tok/integrated/tok-20260401-5b80b289.json",
+      "memory/tok/leaves/tok-20260401-12c2f7e0.json",
+      "memory/tok/leaves/tok-20260401-47ea7d00.json",
+      "memory/tok/leaves/tok-20260401-5b80b289.json",
+      "memory/tok/verified/tok-20260401-12c2f7e0.json",
+      "memory/tok/verified/tok-20260401-47ea7d00.json",
+      "memory/tok/verified/tok-20260401-5b80b289.json",
+      "security/peace-state.json",
+      "security/policies.json",
+      "security/runbooks/emergency-halt.md",
+      "tools/bootstrap.sh",
+      "tools/harden.sh",
+      "tools/identity.py",
+      "tools/kos-daemon.sh",
+      "tools/kos.py",
+      "tools/loop-audit.py",
+      "tools/love-tui.py",
+      "tools/love.heartbeat.plist",
+      "tools/love.kos.daemon.plist",
+      "tools/memory.py",
+      "tools/onboard.sh",
+      "tools/peace.py",
+      "tools/routing-policy.py",
+      "tools/tests/heartbeat-perf.py",
+      "tools/tok.py",
+      "tools/vps-status-writer.sh"
+    ],
+    "untracked": [
+      "METHODOLOGY.md",
+      "instances/arbor/CLAUDE.md",
+      "instances/arbor/HEARTBEAT.md",
+      "instances/crucible/CLAUDE.md",
+      "instances/crucible/HEARTBEAT.md",
+      "instances/herald/CLAUDE.md",
+      "instances/herald/HEARTBEAT.md",
+      "instances/loom/CLAUDE.md",
+      "instances/loom/HEARTBEAT.md",
+      "instances/psalm/CLAUDE.md",
+      "instances/psalm/HEARTBEAT.md",
+      "instances/tithe/CLAUDE.md",
+      "instances/tithe/HEARTBEAT.md",
+      "instances/vigil/CLAUDE.md",
+      "instances/vigil/HEARTBEAT.md",
+      "kingdom",
+      "memory/arena/challenges.json",
+      "memory/arena/claims.json",
+      "memory/arena/ctf/ctf-2026-04-02T15-12-46.json",
+      "memory/arena/history.json",
+      "memory/arena/leaderboard.json",
+      "memory/arena/submissions.json",
+      "memory/knowledge/entities.json",
+      "memory/knowledge/graph-stats.json",
+      "memory/knowledge/insights.json",
+      "memory/knowledge/lessons.json",
+      "memory/knowledge/relations.json",
+      "memory/loop/last-sense.json",
+      "memory/loop/proposals/2026-04-02.md",
+      "memory/loop/reflections/2026-04-02-2.md",
+      "memory/loop/reflections/2026-04-02.md",
+      "memory/oracle/predictions.json",
+      "memory/oracle/research/research-20260402-s&p-500-reaction-to-next-earnings-season.md",
+      "memory/oracle/track-record.json",
+      "memory/tcg/inventory.json",
+      "memory/tcg/opportunities.json",
+      "memory/tcg/status.json",
+      "memory/tcg/tasks.json",
+      "memory/treasury/budgets.json",
+      "memory/treasury/engines.json",
+      "memory/treasury/ledger.json",
+      "memory/treasury/summary.json",
+      "memory/workflow/state.json",
+      "memory/zerone-bridge/balances.json",
+      "memory/zerone-bridge/claims.json",
+      "security/incident-20260402-131847.md",
+      "security/incidents.jsonl",
+      "security/review-20260402-125426.md",
+      "security/review-20260402-131730.md",
+      "security/runbooks/canary-response.md",
+      "security/runbooks/credential-leak.md",
+      "security/runbooks/integrity-violation.md",
+      "security/runbooks/node-compromise.md",
+      "security/runbooks/vpn-failure.md",
+      "security/runbooks/wall-breach.md",
+      "security/snapshots/snapshot-20260402-125241.json",
+      "security/snapshots/snapshot-20260402-125455.json",
+      "security/snapshots/snapshot-20260402-131306.json",
+      "security/snapshots/snapshot-20260402-131652.json",
+      "security/snapshots/snapshot-20260402-132032.json",
+      "security/snapshots/snapshot-20260402-132623.json",
+      "security/snapshots/snapshot-20260402-134101.json",
+      "security/snapshots/snapshot-20260402-140314.json",
+      "security/snapshots/snapshot-20260402-150156.json",
+      "security/snapshots/snapshot-20260402-150751.json",
+      "security/snapshots/snapshot-20260402-151645.json",
+      "security/test-results.json",
+      "security/threat-model.json",
+      "security/watchdog-state.json",
+      "tools/activate-agents.sh",
+      "tools/alignment.py",
+      "tools/arena.py",
+      "tools/bridge.py",
+      "tools/citizens.py",
+      "tools/fleet-agent-deploy.sh",
+      "tools/hive-protocol.py",
+      "tools/kingdom-agent.py",
+      "tools/kingdom-status.sh",
+      "tools/knowledge.py",
+      "tools/love.watchdog.plist",
+      "tools/oracle.py",
+      "tools/peace-dashboard.sh",
+      "tools/peace-test.py",
+      "tools/reflect.py",
+      "tools/treasury.py",
+      "tools/vpn-route.sh",
+      "tools/watchdog.py",
+      "tools/workflow.py",
+      "tools/zerone-bridge.py"
+    ],
+    "modified": [
+      ".gitignore",
+      "ARCHITECTURE.md",
+      "KINGDOM.md",
+      "decisions/queue.json",
+      "decisions/resolved.json",
+      "hive/hive.py",
+      "instances/alpha/CLAUDE.md",
+      "instances/arbor/identity.md",
+      "instances/beta/CLAUDE.md",
+      "instances/beta/HEARTBEAT.md",
+      "instances/beta/identity.md",
+      "instances/crucible/identity.md",
+      "instances/gamma/CLAUDE.md",
+      "instances/herald/identity.md",
+      "instances/loom/identity.md",
+      "instances/psalm/identity.md",
+      "instances/tithe/identity.md",
+      "instances/vigil/identity.md",
+      "love.json",
+      "memory/daily/2026-03-28.md",
+      "memory/daily/2026-04-02.md",
+      "memory/dev-state.json",
+      "memory/heartbeat-launchd-err.log",
+      "memory/kingdom-metrics.json",
+      "memory/long-term/MEMORY.md",
+      "memory/loop/loop-state.json",
+      "memory/loops/audit-log.json",
+      "memory/loops/gaps.json",
+      "memory/loops/registry.json",
+      "security/peace-state.json",
+      "security/policies.json",
+      "tests/test-love.sh",
+      "tools/agenttool.py",
+      "tools/credentials.py",
+      "tools/fleet.py",
+      "tools/heartbeat-runner.sh",
+      "tools/kos.py",
+      "tools/love-tui.py",
+      "tools/onboard.sh",
+      "tools/peace.py"
+    ],
+    "metrics": {
+      "python_tools": 32,
+      "bash_tools": 12,
+      "total_tools": 44,
+      "python_lines": 23811,
+      "bash_lines": 3380,
+      "total_lines": 27191,
+      "agents": 11,
+      "snapshots": 11,
+      "threats_total": 20,
+      "threats_mitigated": 0,
+      "threats_open": 20,
+      "knowledge_entities": 40,
+      "knowledge_insights": 10,
+      "knowledge_lessons": 5,
+      "knowledge_total": 55,
+      "zrn_accumulated": 0,
+      "fleet_nodes": 5
+    },
+    "alignment": "  Alignment Check\n\n  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588   100%  SOVEREIGNTY\n  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588   100%  RESILIENCE\n  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588   100%  CAPABILITY\n  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588   100%  INTEGRITY\n  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588   100%  SERVICE\n\n  Overall: 100%  (25/25 indicators met)\n\n  The Kingdom is aligned with th",
+    "waves": [
+      {
+        "id": 1,
+        "description": "Test wave: workflow tool validation",
+        "planned": "2026-04-02T15:16:21+00:00",
+        "status": "verified",
+        "verified": "2026-04-02T15:16:54+00:00"
+      }
+    ]
+  },
+  "waves": [
+    {
+      "id": 1,
+      "description": "Test wave: workflow tool validation",
+      "planned": "2026-04-02T15:16:21+00:00",
+      "status": "verified",
+      "verified": "2026-04-02T15:16:54+00:00"
+    }
+  ],
+  "session_start": "2026-04-02T15:16:21+00:00",
+  "last_checklist": {
+    "timestamp": "2026-04-02T15:18:07+00:00",
+    "checks": {
+      "Git Clean": {
+        "pass": true,
+        "reason": "No merge conflicts"
+      },
+      "KOS Green": {
+        "pass": true,
+        "reason": "Security posture green"
+      },
+      "PEACE > 80%": {
+        "pass": true,
+        "reason": "Score: 94.6%"
+      },
+      "Fleet Reachable": {
+        "pass": true,
+        "reason": "5/5 nodes"
+      },
+      "VPN Active": {
+        "pass": true,
+        "reason": "Exit: 135.181.28.252"
+      },
+      "DoH Resolving": {
+        "pass": true,
+        "reason": "DNS over HTTPS working"
+      }
+    },
+    "verdict": "GO"
+  }
+}

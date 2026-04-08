@@ -1,0 +1,11 @@
+{
+  "id": "h-20260401-77ee4ae3",
+  "model": "claude-haiku-4-5-20251001",
+  "domain": "capabilities",
+  "finding": "Haiku 4.5 handles status checks, file reads, and simple verifications at 90%+ accuracy. Fails on tasks requiring context synthesis across >3 sources or nuanced judgment.",
+  "harvester": "beta",
+  "harvester_did": null,
+  "timestamp": "2026-04-01T10:15:11+00:00",
+  "status": "distilled",
+  "leaf_id": "tok-20260401-12c2f7e0"
+}

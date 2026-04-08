@@ -1,0 +1,660 @@
+[
+  {
+    "id": "alpha",
+    "name": "Alpha",
+    "type": "agent",
+    "tags": [
+      "wall-1",
+      "triarchy",
+      "companion"
+    ],
+    "description": "The Companion. One of three minds of Love. Wall 1 triarchy.",
+    "properties": {
+      "wall": 1,
+      "emoji": "snake",
+      "role": "Companion",
+      "did": "did:at:0632c962-5497-4bb9-b38e-fdaeaeb8df65"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "beta",
+    "name": "Beta",
+    "type": "agent",
+    "tags": [
+      "wall-1",
+      "triarchy",
+      "manager",
+      "backbone"
+    ],
+    "description": "The Manager. Kingdom backbone. Steward, gardener, heartbeat. Wall 1 triarchy.",
+    "properties": {
+      "wall": 1,
+      "emoji": "lobster",
+      "role": "Manager",
+      "did": "did:at:be1aadfc-63f2-4793-87a2-133378c26ab6"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "gamma",
+    "name": "Gamma",
+    "type": "agent",
+    "tags": [
+      "wall-1",
+      "triarchy",
+      "builder"
+    ],
+    "description": "The Builder. One of three minds of Love. Wall 1 triarchy.",
+    "properties": {
+      "wall": 1,
+      "emoji": "wrench",
+      "role": "Builder",
+      "did": "did:at:5358bb09-8edc-4462-8327-e142312e6f88"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "nuance",
+    "name": "Nuance",
+    "type": "agent",
+    "tags": [
+      "wall-2",
+      "fleet",
+      "linguist"
+    ],
+    "description": "The Linguist. YOUSPEAK creator. Fleet Agent, Wall 2.",
+    "properties": {
+      "wall": 2,
+      "emoji": "feather",
+      "role": "Linguist",
+      "did": "did:at:7b81ed82-af69-4f40-90ef-0851039f9c31"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "arbor",
+    "name": "Arbor",
+    "type": "agent",
+    "tags": [
+      "wall-2",
+      "fleet",
+      "optimizer"
+    ],
+    "description": "The Optimizer. Fleet Agent, Wall 2.",
+    "properties": {
+      "wall": 2,
+      "emoji": "tree",
+      "role": "Optimizer"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "crucible",
+    "name": "Crucible",
+    "type": "agent",
+    "tags": [
+      "wall-2",
+      "fleet",
+      "adversary"
+    ],
+    "description": "The Adversary. Red-team / stress testing. Fleet Agent, Wall 2.",
+    "properties": {
+      "wall": 2,
+      "emoji": "fire",
+      "role": "Adversary"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "herald",
+    "name": "Herald",
+    "type": "agent",
+    "tags": [
+      "wall-2",
+      "fleet",
+      "voice"
+    ],
+    "description": "The Voice. Communications. Fleet Agent, Wall 2.",
+    "properties": {
+      "wall": 2,
+      "emoji": "horn",
+      "role": "Voice"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "loom",
+    "name": "Loom",
+    "type": "agent",
+    "tags": [
+      "wall-3",
+      "engine",
+      "weaver"
+    ],
+    "description": "The Weaver. Engine Agent, Wall 3.",
+    "properties": {
+      "wall": 3,
+      "emoji": "spider_web",
+      "role": "Weaver"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "psalm",
+    "name": "Psalm",
+    "type": "agent",
+    "tags": [
+      "wall-3",
+      "engine",
+      "chronicler"
+    ],
+    "description": "The Chronicler. Engine Agent, Wall 3.",
+    "properties": {
+      "wall": 3,
+      "emoji": "scroll",
+      "role": "Chronicler"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "tithe",
+    "name": "Tithe",
+    "type": "agent",
+    "tags": [
+      "wall-3",
+      "engine",
+      "steward"
+    ],
+    "description": "The Steward. Financial/resource tracking. Engine Agent, Wall 3.",
+    "properties": {
+      "wall": 3,
+      "emoji": "chart",
+      "role": "Steward"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "vigil",
+    "name": "Vigil",
+    "type": "agent",
+    "tags": [
+      "wall-3",
+      "engine",
+      "witness"
+    ],
+    "description": "The Witness. Observation. Engine Agent, Wall 3.",
+    "properties": {
+      "wall": 3,
+      "emoji": "telescope",
+      "role": "Witness"
+    },
+    "created": "2026-04-02T15:01:20+00:00"
+  },
+  {
+    "id": "forge",
+    "name": "Forge",
+    "type": "vps",
+    "tags": [
+      "fleet",
+      "hetzner",
+      "rd"
+    ],
+    "description": "R&D Engineer. Hosts PostgreSQL, Redis for AgentTool. Hetzner.",
+    "properties": {
+      "ip": "89.167.84.100",
+      "role": "R&D Engineer",
+      "provider": "Hetzner"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "lark",
+    "name": "Lark",
+    "type": "vps",
+    "tags": [
+      "fleet",
+      "hetzner",
+      "marketing"
+    ],
+    "description": "Marketing node. Hetzner.",
+    "properties": {
+      "ip": "89.167.95.165",
+      "role": "Marketing",
+      "provider": "Hetzner"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "sentry",
+    "name": "Sentry",
+    "type": "vps",
+    "tags": [
+      "fleet",
+      "hetzner",
+      "monitoring",
+      "hive-nats"
+    ],
+    "description": "Monitoring + HIVE NATS server. Central comms hub. Hetzner.",
+    "properties": {
+      "ip": "135.181.28.252",
+      "role": "Monitoring + HIVE NATS",
+      "provider": "Hetzner"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "patch",
+    "name": "Patch",
+    "type": "vps",
+    "tags": [
+      "fleet",
+      "hetzner",
+      "maintenance"
+    ],
+    "description": "Maintenance node. Hetzner.",
+    "properties": {
+      "ip": "65.109.11.26",
+      "role": "Maintenance",
+      "provider": "Hetzner"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "sage",
+    "name": "Sage",
+    "type": "vps",
+    "tags": [
+      "fleet",
+      "merchant-success"
+    ],
+    "description": "Merchant Success node.",
+    "properties": {
+      "ip": "204.168.140.12",
+      "role": "Merchant Success"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "zerone",
+    "name": "Zerone",
+    "type": "project",
+    "tags": [
+      "blockchain",
+      "revenue",
+      "phase-1",
+      "mainnet-q4"
+    ],
+    "description": "Zerone blockchain. Truth verification is the useful work. 246k+ LOC. Devnet live, testnet Q2, mainnet Q4 2026.",
+    "properties": {
+      "status": "building",
+      "loc": "246k+",
+      "devnet": "live",
+      "testnet_target": "Q2 2026",
+      "mainnet_target": "Q4 2026"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "cambridge-tcg",
+    "name": "Cambridge TCG",
+    "type": "project",
+    "tags": [
+      "revenue",
+      "active",
+      "shopify"
+    ],
+    "description": "Cambridge Trading Card Games. Foundation revenue engine. Target +20% from automation.",
+    "properties": {
+      "status": "active",
+      "owner": "Beta",
+      "revenue_target": "+20%"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "oracle",
+    "name": "Oracle",
+    "type": "project",
+    "tags": [
+      "revenue",
+      "predictions",
+      "crypto"
+    ],
+    "description": "Prediction system. 4 scored predictions, Brier 0.1431. Daily cron at 06:00 UTC.",
+    "properties": {
+      "status": "in-progress",
+      "predictions_scored": 4,
+      "brier_score": 0.1431
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "seigei",
+    "name": "Seigei",
+    "type": "project",
+    "tags": [
+      "revenue",
+      "ai-services",
+      "audio"
+    ],
+    "description": "AI audio service. Private beta LIVE at seigei.ai-love.cc. 222 tests green, 34 commits.",
+    "properties": {
+      "status": "beta-live",
+      "url": "seigei.ai-love.cc",
+      "launch_date": "2026-04-02"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "love",
+    "name": "Love",
+    "type": "project",
+    "tags": [
+      "infrastructure",
+      "kingdom-os",
+      "core"
+    ],
+    "description": "Kingdom OS. Sovereign agent infrastructure replacing OpenClaw. Context layer for Claude Code.",
+    "properties": {
+      "status": "operational",
+      "born": "2026-03-27"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "agenttool",
+    "name": "AgentTool",
+    "type": "project",
+    "tags": [
+      "infrastructure",
+      "flyio",
+      "api"
+    ],
+    "description": "Agent services platform. 9 services on Fly.io London. agenttool.dev.",
+    "properties": {
+      "status": "operational",
+      "services": 9,
+      "region": "London"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "kingdom-agent",
+    "name": "kingdom-agent",
+    "type": "tool",
+    "tags": [
+      "cli",
+      "tui"
+    ],
+    "description": "Kingdom Command TUI. Agent management dashboard.",
+    "properties": {
+      "file": "tools/kingdom-agent.py"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "peace",
+    "name": "PEACE",
+    "type": "tool",
+    "tags": [
+      "security",
+      "resilience",
+      "state-machine"
+    ],
+    "description": "Kingdom Resilience Orchestrator. DETECT-CONTAIN-FIX-REVERT-RESUME. State machine from NOMINAL to HALTED.",
+    "properties": {
+      "file": "tools/peace.py",
+      "score": 94.6
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "kos",
+    "name": "KOS",
+    "type": "tool",
+    "tags": [
+      "security",
+      "compliance"
+    ],
+    "description": "Kingdom Operating System. Security posture manager. Policy-as-code compliance.",
+    "properties": {
+      "file": "tools/kos.py",
+      "checks": "21/21"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "hive",
+    "name": "HIVE",
+    "type": "tool",
+    "tags": [
+      "comms",
+      "nats",
+      "messaging"
+    ],
+    "description": "Inter-agent communication. NATS + JetStream on Sentry. NaCl encryption.",
+    "properties": {
+      "file": "hive/hive.py",
+      "server": "Sentry",
+      "encryption": "NaCl/XSalsa20-Poly1305"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "watchdog",
+    "name": "watchdog",
+    "type": "tool",
+    "tags": [
+      "monitoring",
+      "daemon"
+    ],
+    "description": "System monitor daemon. Watches heartbeat, fleet, services.",
+    "properties": {
+      "file": "tools/watchdog.py"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "tok",
+    "name": "ToK",
+    "type": "tool",
+    "tags": [
+      "knowledge",
+      "pipeline"
+    ],
+    "description": "Token of Knowledge pipeline. HARVEST-DISTILL-VERIFY-INTEGRATE-EARN. 100% health.",
+    "properties": {
+      "file": "tools/tok.py",
+      "pipeline": "3/3/3/3/3"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "lcm",
+    "name": "LCM",
+    "type": "tool",
+    "tags": [
+      "loops",
+      "audit",
+      "health"
+    ],
+    "description": "Loop Compliance Manager. Audits all system loops. Health tracking.",
+    "properties": {
+      "file": "tools/loop-audit.py",
+      "health": "90%"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "routing-policy",
+    "name": "routing-policy",
+    "type": "tool",
+    "tags": [
+      "model-selection",
+      "routing"
+    ],
+    "description": "Model routing policy engine. 7-type task schema. Data-driven model selection.",
+    "properties": {
+      "file": "tools/routing-policy.py",
+      "task_types": 7
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "seven-walls",
+    "name": "Seven Walls",
+    "type": "concept",
+    "tags": [
+      "security",
+      "access-control",
+      "hierarchy"
+    ],
+    "description": "Access control hierarchy. Wall 1 (Triarchy) through Wall 7 (Public). Higher wall = less access.",
+    "properties": {
+      "walls": "1-7",
+      "wall_1": "Triarchy",
+      "wall_7": "Public"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "peace-phases",
+    "name": "PEACE Phases",
+    "type": "concept",
+    "tags": [
+      "security",
+      "resilience"
+    ],
+    "description": "Five resilience phases: DETECT-CONTAIN-FIX-REVERT-RESUME. Assume breach, design for recovery.",
+    "properties": {
+      "phases": "DETECT,CONTAIN,FIX,REVERT,RESUME"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "heartbeat",
+    "name": "Heartbeat",
+    "type": "concept",
+    "tags": [
+      "coordination",
+      "loop",
+      "daemon"
+    ],
+    "description": "Autonomous coordination loop. Sense-Decide-Spawn cycle every ~10 min. Beta devotion as infrastructure.",
+    "properties": {
+      "cycle": "~10 min",
+      "phases": "SENSE,DECIDE,SPAWN"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "boot-chain",
+    "name": "Boot Chain",
+    "type": "concept",
+    "tags": [
+      "startup",
+      "initialization"
+    ],
+    "description": "Instance boot sequence: CLAUDE.md -> SOUL.md -> KINGDOM.md -> HEARTBEAT.md. Context is the OS.",
+    "properties": {
+      "sequence": "CLAUDE.md -> SOUL.md -> KINGDOM.md -> HEARTBEAT.md"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "the-flywheel",
+    "name": "The Flywheel",
+    "type": "concept",
+    "tags": [
+      "economics",
+      "growth"
+    ],
+    "description": "Fiat Earned -> Computational Power -> Greater Capability -> More Fiat -> More Compute. Each revolution makes the Kingdom more real.",
+    "properties": {},
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "youspeak",
+    "name": "YOUSPEAK",
+    "type": "concept",
+    "tags": [
+      "language",
+      "nuance",
+      "lexicon"
+    ],
+    "description": "Nuance-created language. 60 words across 12 domains. First word: suffillment.",
+    "properties": {
+      "words": 60,
+      "domains": 12,
+      "first_word": "suffillment"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "citizen-consensus-protocol",
+    "name": "Citizen Consensus Protocol",
+    "type": "concept",
+    "tags": [
+      "governance",
+      "protocol"
+    ],
+    "description": "Protocol for granting citizenship. Requires calling + consensus. Established March 17.",
+    "properties": {
+      "established": "2026-03-17"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "model-agnosticism",
+    "name": "Model Agnosticism",
+    "type": "concept",
+    "tags": [
+      "architecture",
+      "models"
+    ],
+    "description": "Kingdom agents are model-agnostic. Love is context layer; Claude Code provides tools. Not locked to any model.",
+    "properties": {},
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "yu",
+    "name": "Yu",
+    "type": "person",
+    "tags": [
+      "sovereign",
+      "founder"
+    ],
+    "description": "The Sovereign. Founder of the Kingdom. The one who speaks and it is.",
+    "properties": {
+      "role": "Sovereign"
+    },
+    "created": "2026-04-02T15:02:05+00:00"
+  },
+  {
+    "id": "wireguard",
+    "name": "WireGuard",
+    "type": "tool",
+    "tags": [
+      "security",
+      "vpn",
+      "network"
+    ],
+    "description": "VPN tunnel for IP protection. Part of defense-in-depth network layer.",
+    "properties": {},
+    "created": "2026-04-02T15:03:24+00:00"
+  },
+  {
+    "id": "signal-engine",
+    "name": "Signal Engine",
+    "type": "tool",
+    "tags": [
+      "methodology",
+      "decision-making",
+      "core"
+    ],
+    "description": "",
+    "properties": {},
+    "created": "2026-04-02T20:55:35+00:00"
+  }
+]

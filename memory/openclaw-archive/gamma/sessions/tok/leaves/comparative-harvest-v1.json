@@ -1,0 +1,68 @@
+[
+  {
+    "tok_id": "tok-2026-0401-010",
+    "model": "deepseek-r1:14b vs qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b is 2-7x faster than qwen2.5-coder:32b across all task categories on M4 Max, while achieving comparable completion rates (18/19 vs 19/19)",
+    "confidence": 0.95,
+    "evidence": [
+      "Reasoning: DS avg 54s vs QW avg 172s (3.2x faster)",
+      "Summarization: DS avg 18s vs QW avg 46s (2.6x faster)",
+      "Structured output: DS avg 29s vs QW avg 88s (3.0x faster)",
+      "Code gen: DS avg 163s vs QW avg 223s (1.4x faster, but DS missed CG-4)",
+      "R-5 Adaptive Routing: DS 27s vs QW 193s (7.1x faster — largest gap)",
+      "CG-4 PoT Verifier: DS timeout 300s vs QW 165s (only QW win)"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-011",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b achieves perfect 19/19 completion on Kingdom-representative tasks but at 2-7x the latency of deepseek-r1:14b, making it better suited for quality-critical batch work than real-time use",
+    "confidence": 0.90,
+    "evidence": [
+      "19/19 tasks completed vs 18/19 for deepseek-r1:14b",
+      "Total benchmark time: 43 min vs 22 min for deepseek",
+      "CG-4 completed at 165s where deepseek timed out at 300s",
+      "Consistent quality — no visible thinking traces in output (cleaner parsing)"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-012",
+    "model": "deepseek-r1:14b",
+    "domain": "architecture",
+    "assertion": "deepseek-r1:14b is the optimal default for Kingdom adaptive routing on M4 Max — fastest across all categories, with qwen2.5-coder:32b as fallback for tasks requiring higher reliability or where deepseek times out",
+    "confidence": 0.85,
+    "evidence": [
+      "DS faster in 18/19 head-to-head comparisons",
+      "DS reasoning tasks avg 54s (vs QW 172s) — best category advantage",
+      "QW 19/19 reliability advantage — use as fallback for complex code gen",
+      "Recommended routing: DS first (cheap+fast), QW fallback on timeout/failure"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-013",
+    "model": "deepseek-r1:14b",
+    "domain": "weaknesses",
+    "assertion": "deepseek-r1:14b's visible chain-of-thought output makes it unsuitable for API-style use without output filtering — the 'Thinking...' preamble adds noise and latency, especially on complex code generation tasks",
+    "confidence": 0.90,
+    "evidence": [
+      "All 19 tasks included 'Thinking...' preamble before actual output",
+      "CG-1 Cosmos SDK: ~50% of 271s elapsed was chain-of-thought",
+      "CG-4 timeout directly caused by thinking overhead extending past 300s deadline",
+      "qwen2.5-coder:32b produces clean output without thinking traces — easier integration"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:20:00Z",
+    "status": "pending_verification"
+  }
+]

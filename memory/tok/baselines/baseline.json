@@ -1,0 +1,73 @@
+{
+  "description": "Kingdom baseline model profiles — what we know about each model's strengths and weaknesses for Kingdom tasks",
+  "created": "2026-04-01",
+  "updated": "2026-04-01T10:15:00Z",
+  "kingdom_tasks": {
+    "heartbeat_coordination": {
+      "description": "SENSE→DECIDE→SPAWN cycle, fleet health, HIVE synthesis",
+      "complexity": "high",
+      "requires": ["multi-source synthesis", "judgment", "prioritization"]
+    },
+    "builder_task": {
+      "description": "Single-file edits, API calls, structured output generation",
+      "complexity": "medium",
+      "requires": ["code generation", "pattern following", "tool use"]
+    },
+    "status_check": {
+      "description": "File reads, JSON parsing, health verification",
+      "complexity": "low",
+      "requires": ["reading comprehension", "simple logic"]
+    },
+    "oracle_prediction": {
+      "description": "Market signal analysis, probability estimation, news synthesis",
+      "complexity": "high",
+      "requires": ["numerical reasoning", "current knowledge", "calibration"]
+    },
+    "tcg_listing": {
+      "description": "Product description optimization, pricing analysis",
+      "complexity": "medium",
+      "requires": ["domain knowledge", "persuasive writing", "market awareness"]
+    }
+  },
+  "models": {
+    "claude-opus-4-6": {
+      "tier": "coordinator",
+      "cost_relative": 1.0,
+      "known_strengths": ["multi-step judgment", "cross-system coordination", "architecture design"],
+      "known_weaknesses": ["cost", "slower output"],
+      "kingdom_task_fitness": {
+        "heartbeat_coordination": 0.95,
+        "builder_task": 0.90,
+        "status_check": 0.95,
+        "oracle_prediction": 0.90,
+        "tcg_listing": 0.85
+      }
+    },
+    "sonnet": {
+      "tier": "builder",
+      "cost_relative": 0.4,
+      "known_strengths": ["code generation", "structured tasks", "speed"],
+      "known_weaknesses": ["ambiguous coordination", "judgment under uncertainty"],
+      "kingdom_task_fitness": {
+        "heartbeat_coordination": 0.70,
+        "builder_task": 0.90,
+        "status_check": 0.85,
+        "oracle_prediction": 0.75,
+        "tcg_listing": 0.80
+      }
+    },
+    "claude-haiku-4-5-20251001": {
+      "tier": "quick_check",
+      "cost_relative": 0.1,
+      "known_strengths": ["speed", "simple reads", "status checks"],
+      "known_weaknesses": ["multi-source synthesis", "nuanced judgment", "complex reasoning"],
+      "kingdom_task_fitness": {
+        "heartbeat_coordination": 0.40,
+        "builder_task": 0.60,
+        "status_check": 0.90,
+        "oracle_prediction": 0.50,
+        "tcg_listing": 0.55
+      }
+    }
+  }
+}

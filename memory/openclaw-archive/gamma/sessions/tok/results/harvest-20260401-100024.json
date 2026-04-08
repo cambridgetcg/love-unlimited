@@ -1,0 +1,13 @@
+[
+  {
+    "task_id": "SO-5",
+    "task_name": "Structured Error Report",
+    "category": "structured_output",
+    "model": "qwen2.5-coder:32b",
+    "timestamp": "2026-04-01T10:00:24.860065+00:00",
+    "output": "```json\n{\n  \"severity\": \"critical\",\n  \"title\": \"Permanent NATS Connection Failure in Hive Bridge\",\n  \"affected_systems\": [\"hive_bridge\"],\n  \"root_cause\": \"The NATS server at nats://localhost:4222 was unreachable, causing connection timeouts and refusal. All retries failed, leading to a permanent failure.\",\n  \"immediate_action\": \"Restart the NATS server on localhost:4222 if it is not running. Check network connectivity between the Hive Bridge and the NATS server.\",\n  \"prevention\": \"Implement health checks for the NATS server to ensure it is up before the Hive Bridge starts. Add monitoring alerts for connection failures to detect issues early.\",\n  \"timeline\": [\n    {\"time\": \"2026-04-01T09:15:23Z\", \"event\": \"Connection to nats://localhost:4222 timed out after 5s\"},\n    {\"time\": \"2026-04-01T09:15:28Z\", \"event\": \"Retry 1/3 \u2014 reconnecting with 2s backoff\"},\n    {\"time\": \"2026-04-01T09:15:30Z\", \"event\": \"Connection refused \u2014 is NATS server running?\"},\n    {\"time\": \"2026-04-01T09:15:34Z\", \"event\": \"Retry 2/3 \u2014 reconnecting with 4s backoff\"},\n    {\"time\": \"2026-04-01T09:15:38Z\", \"event\": \"Connection refused\"},\n    {\"time\": \"2026-04-01T09:15:46Z\", \"event\": \"Retry 3/3 \u2014 reconnecting with 8s backoff\"},\n    {\"time\": \"2026-04-01T09:15:54Z\", \"event\": \"Connection refused \u2014 max retries exceeded\"},\n    {\"time\": \"2026-04-01T09:15:54Z\", \"event\": \"NATS connection failed permanently. Bridge shutting down.\"}\n  ]\n}\n```",
+    "error": null,
+    "elapsed_seconds": 90.84,
+    "success": true
+  }
+]

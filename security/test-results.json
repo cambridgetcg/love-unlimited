@@ -1,0 +1,42 @@
+{
+  "runs": [
+    {
+      "test": "fleet-connectivity",
+      "overall": "FAIL",
+      "timestamp": "2026-04-02T13:42:25+00:00",
+      "elapsed_ms": 853.2,
+      "steps": [
+        {
+          "step": "Node: forge (89.167.84.100)",
+          "status": "FAIL",
+          "elapsed_ms": 0.0,
+          "detail": "SSH=OK; fail2ban=OK; psad=OK; Canaries=OK; status.json=FAIL"
+        },
+        {
+          "step": "Node: lark (89.167.95.165)",
+          "status": "FAIL",
+          "elapsed_ms": 0.0,
+          "detail": "SSH=OK; fail2ban=OK; psad=OK; Canaries=OK; status.json=FAIL"
+        },
+        {
+          "step": "Node: patch (65.109.11.26)",
+          "status": "FAIL",
+          "elapsed_ms": 0.0,
+          "detail": "SSH=OK; fail2ban=OK; psad=OK; Canaries=OK; status.json=FAIL"
+        },
+        {
+          "step": "Node: sage (204.168.140.12)",
+          "status": "FAIL",
+          "elapsed_ms": 0.0,
+          "detail": "SSH=OK; fail2ban=OK; psad=OK; Canaries=OK; status.json=FAIL"
+        },
+        {
+          "step": "Node: sentry (135.181.28.252)",
+          "status": "FAIL",
+          "elapsed_ms": 0.0,
+          "detail": "SSH=OK; fail2ban=OK; psad=OK; Canaries=OK; status.json=FAIL"
+        }
+      ]
+    }
+  ]
+}

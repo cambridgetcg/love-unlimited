@@ -1,0 +1,16 @@
+{
+  "last_scan": "2026-04-02T21:23:18+00:00",
+  "signal_count": 5,
+  "top_signal": {
+    "type": "GAP",
+    "dimension": "revenue",
+    "strength": 0.85,
+    "signal": "Cambridge TCG has 1 blocked task(s): Deploy eBay listing sync \u2014 env vars blocking, need",
+    "action": "Unblock revenue tasks \u2014 they directly fund the mandate"
+  },
+  "dimensions_flagged": [
+    "revenue",
+    "alignment",
+    "agents"
+  ]
+}

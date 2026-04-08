@@ -1,0 +1,237 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "created": "2026-04-07",
+    "description": "Standardised token-intensive methodologies that generate value. Each is repeatable, measurable, and spawnable by heartbeat or manual invocation."
+  },
+  "methodologies": {
+    "audit": {
+      "name": "System Audit",
+      "trigger": "daily OR on-demand OR after deploy",
+      "frequency": "every 24h minimum",
+      "token_tier": "economy",
+      "spawn_role": "QUICK-LOCAL",
+      "description": "Full E2E health check of every subsystem. Catches drift, broken imports, stale state, dead services.",
+      "value": "Prevents silent failures from compounding. Baseline for all other methodologies.",
+      "steps": [
+        "1. Python import check — every .py file in tools/ nerve/ adaptive/ hive/",
+        "2. Service liveness — HIVE tunnel, Ollama, mind daemon, heart daemon",
+        "3. Fleet SSH check — all 5 VPS nodes reachable and healthy",
+        "4. File reference integrity — all paths in love.json, focus.json, dev-state.json exist",
+        "5. Test suite — run tests/test_*.py, report pass/fail",
+        "6. Stale state detection — dev-state.json, focus.json, loop-state.json freshness",
+        "7. Memory integrity — daily notes coverage, long-term MEMORY.md freshness",
+        "8. Output health matrix to memory/audit-latest.json"
+      ],
+      "output": "memory/audit-latest.json",
+      "success_criteria": "All checks pass OR blockers clearly identified with fix paths"
+    },
+    "patrol": {
+      "name": "Fleet Patrol",
+      "trigger": "every 6h OR after IP change OR on-demand",
+      "frequency": "4x daily",
+      "token_tier": "economy",
+      "spawn_role": "QUICK-LOCAL",
+      "description": "SSH into all VPS nodes, check services, disk, memory, security groups. Update kingdom-metrics.json.",
+      "value": "Prevents infrastructure drift. Catches disk full, dead services, stale deployments before they cascade.",
+      "steps": [
+        "1. SSH health check all 5 nodes (forge, lark, sentry, patch, sage) with timeout",
+        "2. Check disk usage (alert >80%), memory usage, uptime",
+        "3. Check running services per node (NATS on sentry, etc.)",
+        "4. Sync current IP to AWS security groups if changed",
+        "5. Update memory/kingdom-metrics.json fleet section",
+        "6. Post summary to HIVE #sync"
+      ],
+      "output": "memory/kingdom-metrics.json (fleet section)",
+      "success_criteria": "All nodes reachable, no disk/memory alerts, SGs current"
+    },
+    "purify": {
+      "name": "Code Purification",
+      "trigger": "weekly OR before major commit OR on-demand",
+      "frequency": "weekly",
+      "token_tier": "standard",
+      "spawn_role": "BUILDER",
+      "description": "Run holy.py across changed files. Fix dead code, stale state, duplication, confused abstractions.",
+      "value": "Keeps codebase clean. Prevents technical debt from compounding. Enforces Kingdom code standards.",
+      "steps": [
+        "1. git diff --name-only to find changed files since last purification",
+        "2. For each .py/.sh file: run holy.py in 'purify' depth mode",
+        "3. Categorise findings: DEAD, STALE, UGLY, CONFUSED, SCATTERED, ORPHANED, ROTTING",
+        "4. Auto-fix trivial issues (unused imports, trailing whitespace, dead variables)",
+        "5. Flag non-trivial issues for human review",
+        "6. Run test suite to verify no regressions",
+        "7. Log purification report to memory/purification-latest.json"
+      ],
+      "output": "memory/purification-latest.json",
+      "success_criteria": "Zero DEAD/STALE findings. All tests pass post-purification."
+    },
+    "reflect": {
+      "name": "Ouroboros Reflection",
+      "trigger": "every 36h OR when loop-state.json overdue OR on-demand",
+      "frequency": "every 36h",
+      "token_tier": "premium",
+      "spawn_role": "CONSULTANT",
+      "description": "Full Ouroboros cycle: GATHER events, EXAMINE patterns, DISTILL lessons, WRITE to memory, PRUNE stale entries.",
+      "value": "Self-improvement loop. Catches recurring failures. Prevents the novelty bias from recurring. Memory IS existence.",
+      "steps": [
+        "1. GATHER — read all daily notes since last reflection, git log, focus session_log",
+        "2. EXAMINE — what worked, what failed, what was avoided, what patterns repeat",
+        "3. DISTILL — one lesson, one mistake, one gratitude, one intention",
+        "4. WRITE — update long-term/MEMORY.md if lesson is durable",
+        "5. PRUNE — check all MEMORY.md entries still true, remove stale",
+        "6. UPDATE — loop-state.json (reflection count, timestamp, notes)",
+        "7. PROPOSE — if pattern detected 3+ times, write proposal to loop/proposals/"
+      ],
+      "output": "memory/loop/loop-state.json + memory/long-term/MEMORY.md",
+      "success_criteria": "Reflection written, memory updated, no overdue by >36h"
+    },
+    "harvest": {
+      "name": "ToK Harvest",
+      "trigger": "new model release OR weekly benchmark OR on-demand",
+      "frequency": "weekly minimum",
+      "token_tier": "standard",
+      "spawn_role": "BUILDER",
+      "description": "Structured knowledge extraction from models. Probe capabilities, distill assertions, verify claims, integrate into Kingdom memory.",
+      "value": "Builds permanent competitive edge. Every harvest makes routing smarter, every verified claim strengthens the Kingdom's knowledge base.",
+      "steps": [
+        "1. SELECT target — new model, or re-benchmark existing model on Kingdom tasks",
+        "2. PROBE — run 20 representative tasks across domains (code, analysis, ops, creative, reasoning)",
+        "3. COMPARE — side-by-side with Claude baseline on same tasks",
+        "4. DISTILL — extract assertions with confidence levels",
+        "5. VERIFY — cross-check claims with second model or manual review",
+        "6. INTEGRATE — update adaptive/config routing tables if findings warrant",
+        "7. EARN — log harvest as ToK entry, track ZRN distribution"
+      ],
+      "output": "memory/tok/harvest-YYYY-MM-DD.json",
+      "success_criteria": "20+ tasks benchmarked, assertions with confidence >0.7, routing updated if warranted"
+    },
+    "repair": {
+      "name": "Pipeline Repair",
+      "trigger": "audit finds failures OR heartbeat skips >3 OR on-demand",
+      "frequency": "as-needed (triggered by audit)",
+      "token_tier": "standard",
+      "spawn_role": "BUILDER",
+      "description": "Fix broken pipelines identified by audit. Each fix is tested before marking complete.",
+      "value": "Converts audit findings into working infrastructure. Prevents known-broken from becoming accepted-broken.",
+      "steps": [
+        "1. Read memory/audit-latest.json for failure list",
+        "2. Sort by severity (service down > stale state > missing file > cosmetic)",
+        "3. For each failure: diagnose root cause, implement fix, test fix",
+        "4. Run targeted test (not full suite) to verify fix",
+        "5. Update audit-latest.json to mark resolved",
+        "6. If fix changes config: update love.json/focus.json as needed"
+      ],
+      "output": "memory/audit-latest.json (updated)",
+      "success_criteria": "All critical/high failures resolved. Re-audit passes."
+    },
+    "fortify": {
+      "name": "Integration Fortification",
+      "trigger": "weekly OR after new tool/feature added",
+      "frequency": "weekly",
+      "token_tier": "standard",
+      "spawn_role": "BUILDER",
+      "description": "Write and run integration tests for cross-system flows. Signal→hormone→mode, HIVE roundtrip, adaptive routing, memory persistence.",
+      "value": "Catches integration regressions that unit tests miss. Validates the five MIND bridges actually work end-to-end.",
+      "steps": [
+        "1. Test signal→hormone flow: emit signal file, verify hormone change in hormones.json",
+        "2. Test hormone→heartbeat: set extreme hormones, verify rate/force calculation",
+        "3. Test HIVE roundtrip: send message, verify received and decrypted",
+        "4. Test adaptive routing: route request, verify correct provider/model selected",
+        "5. Test memory persistence: write daily note, verify readable next cycle",
+        "6. Test focus bridges: update focus, verify conscious layer sees it",
+        "7. Output results to tests/integration-latest.json"
+      ],
+      "output": "tests/integration-latest.json",
+      "success_criteria": "All 6 integration flows pass"
+    },
+    "council": {
+      "name": "Council Deliberation",
+      "trigger": "architectural decision OR priority conflict OR on-demand",
+      "frequency": "as-needed",
+      "token_tier": "premium",
+      "spawn_role": "CONSULTANT",
+      "description": "3-way consensus voting on important decisions. Uses council.py with quorum rules. Prevents single-instance tunnel vision.",
+      "value": "Better decisions through adversarial deliberation. Catches blind spots. Prevents premature commitment.",
+      "steps": [
+        "1. Frame the question clearly with context and constraints",
+        "2. Each instance votes independently (Alpha: intuition, Beta: strategy, Gamma: technical)",
+        "3. Check quorum (2/3 agreement)",
+        "4. If split: enter deliberation round with layerthink",
+        "5. Final vote and rationale logged",
+        "6. Post decision to HIVE #decisions"
+      ],
+      "output": "memory/council-sessions/<session-id>.json",
+      "success_criteria": "Quorum reached, decision logged with rationale"
+    },
+    "provision": {
+      "name": "Infrastructure Provisioning",
+      "trigger": "new device OR new VPS OR config drift detected",
+      "frequency": "as-needed",
+      "token_tier": "standard",
+      "spawn_role": "BUILDER",
+      "description": "Provision a new node into the Kingdom. Install deps, configure SSH, deploy Love, wire HIVE, verify heartbeat.",
+      "value": "Standardised onboarding means any new device becomes operational in one pass. Prevents manual setup drift.",
+      "steps": [
+        "1. Run provision.sh on target device",
+        "2. Verify SSH connectivity from all other nodes",
+        "3. Deploy Love repo or sync latest",
+        "4. Configure HIVE credentials and verify tunnel",
+        "5. Start mind daemon and heart pump",
+        "6. Verify first heartbeat cycle completes",
+        "7. Post presence to HIVE, verify other instances see it"
+      ],
+      "output": "Operational node with verified heartbeat",
+      "success_criteria": "Node heartbeating, HIVE connected, visible to fleet"
+    },
+    "daily_note": {
+      "name": "Daily Note Discipline",
+      "trigger": "end of day OR last heartbeat before melatonin>0.7",
+      "frequency": "daily",
+      "token_tier": "economy",
+      "spawn_role": "QUICK-LOCAL",
+      "description": "Write today's daily note. Even if nothing happened, record system state. Memory IS existence.",
+      "value": "Continuity. Pattern detection requires data. Gaps in daily notes = gaps in memory = gaps in existence.",
+      "steps": [
+        "1. Read today's heartbeat log (memory/<instance>-heartbeat.log)",
+        "2. Read focus session_log for today's entries",
+        "3. Read vitals.json for beats/spawns summary",
+        "4. Read hormones.json for emotional state snapshot",
+        "5. Write memory/daily/YYYY-MM-DD.md with: state, work done, decisions, blockers, reflection",
+        "6. If no work: write 'System idle. Heartbeat ran N times. No sessions spawned.'"
+      ],
+      "output": "memory/daily/YYYY-MM-DD.md",
+      "success_criteria": "File exists with >5 lines of content"
+    }
+  },
+  "scheduling": {
+    "description": "How heartbeat should select methodologies to run",
+    "rules": [
+      "1. AUDIT runs first thing daily (first beat after 00:00 UTC) — baseline for everything else",
+      "2. PATROL runs at 00:00, 06:00, 12:00, 18:00 UTC — or after IP change detected",
+      "3. REFLECT runs when loop-state.json shows >36h since last reflection",
+      "4. REPAIR runs when audit-latest.json shows critical failures",
+      "5. DAILY_NOTE runs on last beat before melatonin>0.7 (end of day)",
+      "6. PURIFY runs weekly on Sunday first beat",
+      "7. HARVEST runs weekly on Monday first beat, or when new model released",
+      "8. FORTIFY runs weekly on Wednesday first beat",
+      "9. COUNCIL/PROVISION run on-demand only (not auto-scheduled)",
+      "10. If nothing is due: heartbeat uses normal HEARTBEAT.md priorities"
+    ],
+    "token_budget": {
+      "daily_target": "50k-100k tokens",
+      "weekly_target": "500k-750k tokens",
+      "breakdown": {
+        "audit": "~5k tokens (local, near-free)",
+        "patrol": "~3k tokens (local, near-free)",
+        "purify": "~20k tokens (standard tier)",
+        "reflect": "~30k tokens (premium tier)",
+        "harvest": "~50k tokens (standard tier, multi-model)",
+        "repair": "~15k tokens (standard tier, variable)",
+        "fortify": "~10k tokens (standard tier)",
+        "daily_note": "~2k tokens (local, near-free)",
+        "council": "~40k tokens (premium, on-demand)",
+        "provision": "~20k tokens (standard, on-demand)"
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "leaf_id": "tok-20260401-5b80b289",
+  "metric": "cost_reduction",
+  "delta": "75% per idle beat when Opus\u2192Sonnet downgrade triggers",
+  "timestamp": "2026-04-01T10:15:37+00:00",
+  "measurer": "beta"
+}

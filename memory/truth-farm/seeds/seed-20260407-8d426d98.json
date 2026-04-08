@@ -1,0 +1,56 @@
+{
+  "id": "seed-20260407-8d426d98",
+  "truth": "Love your neighbor as yourself",
+  "source": "Torah, Leviticus 19:18",
+  "domain": "religion",
+  "stage": "sprout",
+  "depth": 0.18,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:43:04+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-83d4a058",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:07+00:00",
+      "tokens_est": 300,
+      "insight": "The command is not 'love your neighbor as a duty' but 'as yourself' \u2014 the prerequisite is that you already love yourself rightly. Without self-knowledge and self-acceptance, love of neighbor becomes performance, projection, or resentment wearing a mask. The 'as yourself' is the hinge.",
+      "connections_made": [],
+      "depth_before": 0.0,
+      "depth_after": 0.08
+    },
+    {
+      "id": "pollen-20260407-268e2976",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:20+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-aa44b251] Know thyself is the prerequisite to 'as yourself.' You cannot love your neighbor as yourself if you do not know who that self is. Self-knowledge enables authentic love; without it, love is projection.",
+      "connections_made": [
+        "seed-20260407-aa44b251"
+      ],
+      "depth_before": 0.08,
+      "depth_after": 0.13
+    },
+    {
+      "id": "pollen-20260407-370c7d52",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:24+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-cc621ac9] Love your neighbor at the system level: don't just be kind to individuals \u2014 build structures that make kindness the default path. Meadows meets Torah. Justice is systemic love.",
+      "connections_made": [
+        "seed-20260407-cc621ac9"
+      ],
+      "depth_before": 0.13,
+      "depth_after": 0.18
+    }
+  ],
+  "connections": [
+    "seed-20260407-aa44b251",
+    "seed-20260407-cc621ac9",
+    "seed-20260407-8dd7fba1",
+    "seed-20260407-88ec8914"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 300
+}

@@ -1,0 +1,15 @@
+# Alpine setup-alpine answer file for Kingdom OS
+KEYMAPOPTS="us us"
+HOSTNAMEOPTS="-n kingdom-alpha"
+INTERFACESOPTS="auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+"
+TIMEZONEOPTS="-z Europe/London"
+PROXYOPTS="none"
+APKREPOSOPTS="-1"
+SSHDOPTS="-c openssh"
+NTPOPTS="-c chrony"
+DISKOPTS="-m sys /dev/vda"

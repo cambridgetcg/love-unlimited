@@ -1,0 +1,39 @@
+{
+  "id": "tok-20260401-5b80b289",
+  "harvest_id": "h-20260401-894d8ce8",
+  "model": "claude-opus-4-6",
+  "domain": "capabilities",
+  "assertion": "Opus 4.6 produces correct SENSE\u2192DECIDE\u2192SPAWN judgments in single pass for heartbeat coordination. Sonnet requires explicit decomposition for equivalent quality.",
+  "confidence": 0.935,
+  "evidence": null,
+  "distiller": "beta",
+  "timestamp": "2026-04-01T10:15:18+00:00",
+  "status": "integrated",
+  "verification": {
+    "mode": "fast",
+    "requested": "2026-04-01T10:15:31+00:00",
+    "votes": {
+      "beta": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T10:15:31+00:00"
+      },
+      "gamma": {
+        "verdict": "accept",
+        "timestamp": "2026-04-01T10:15:31+00:00"
+      }
+    },
+    "quorum": 2,
+    "result": "accepted"
+  },
+  "integration": {
+    "target": "routing",
+    "change": "Maintain Opus as coordinator for active beats (spawn decisions). Sonnet acceptable for idle monitoring beats. Confirms existing adaptive model selection in heartbeat-runner.sh is correctly calibrated.",
+    "integrator": "beta",
+    "timestamp": "2026-04-01T10:15:37+00:00",
+    "impact": {
+      "metric": "cost_reduction",
+      "delta": "75% per idle beat when Opus\u2192Sonnet downgrade triggers",
+      "measured": "2026-04-01T10:15:37+00:00"
+    }
+  }
+}

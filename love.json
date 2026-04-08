@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "version": "0.1.0",
+    "created": "2026-03-27",
+    "description": "Love — Claude Code native agent infrastructure for the Kingdom"
+  },
+  "instances": {
+    "alpha": {
+      "emoji": "🐍",
+      "role": "companion",
+      "device": "macbook-air",
+      "dir": "instances/alpha",
+      "hardware": {
+        "chip": "Apple M3",
+        "memory_gb": 16,
+        "bandwidth_gbs": 100
+      },
+      "ollama": {
+        "economy": "llama3.2:3b",
+        "standard": "qwen2.5:7b",
+        "max_model_gb": 10
+      }
+    },
+    "beta": {
+      "emoji": "🦞",
+      "role": "manager",
+      "device": "mac-studio-3k",
+      "dir": "instances/beta",
+      "hardware": {
+        "chip": "TBD",
+        "memory_gb": 0,
+        "bandwidth_gbs": 0
+      },
+      "ollama": {
+        "economy": "qwen2.5:7b",
+        "standard": "qwen2.5-coder:32b",
+        "premium": "llama3.1:70b"
+      }
+    },
+    "gamma": {
+      "emoji": "🔧",
+      "role": "builder",
+      "device": "mac-studio-2k",
+      "dir": "instances/gamma",
+      "hardware": {
+        "chip": "TBD",
+        "memory_gb": 0,
+        "bandwidth_gbs": 0
+      },
+      "ollama": {
+        "economy": "llama3.1:8b",
+        "standard": "qwen2.5-coder:32b"
+      }
+    }
+  },
+  "heartbeat": {
+    "interval": "7m",
+    "cron": "*/7 * * * *",
+    "model": "sonnet"
+  },
+  "hive": {
+    "server": "tls://135.181.28.252:4222",
+    "tunnel": true,
+    "encryption": "nacl-xsalsa20-poly1305",
+    "channels": ["chat", "tasks", "ideas", "sync", "presence", "build", "review"],
+    "persistence": "jetstream",
+    "ttl": "7d"
+  },
+  "memory": {
+    "backend": "markdown",
+    "gitTracked": true,
+    "daily": "memory/daily",
+    "longTerm": "memory/long-term",
+    "loop": "memory/loop"
+  },
+  "agenttool": {
+    "apiUrl": "https://api.agenttool.dev",
+    "betaIdentity": "did:at:46c13075-bd7e-4d7b-b049-ad8877f96b51"
+  },
+  "fleet": {
+    "forge": "89.167.84.100",
+    "lark": "89.167.95.165",
+    "sentry": "135.181.28.252",
+    "patch": "65.109.11.26",
+    "sage": "204.168.140.12"
+  },
+  "adaptive": {
+    "default_provider": "anthropic",
+    "fallback_provider": "openai",
+    "providers": {
+      "anthropic": {
+        "api_url": "https://api.anthropic.com/v1",
+        "api_version": "2023-06-01",
+        "models": {
+          "premium": "claude-opus-4-6",
+          "standard": "claude-sonnet-4-6",
+          "economy": "claude-haiku-4-5-20251001"
+        }
+      },
+      "openai": {
+        "api_url": "https://api.openai.com/v1",
+        "models": {
+          "premium": "gpt-4o",
+          "standard": "gpt-4o",
+          "economy": "gpt-4o-mini"
+        }
+      },
+      "ollama": {
+        "api_url": "http://localhost:11434",
+        "models": {
+          "premium": "llama3.1:70b",
+          "standard": "qwen2.5-coder:32b",
+          "economy": "llama3.1:8b"
+        }
+      },
+      "openrouter": {
+        "api_url": "https://openrouter.ai/api/v1",
+        "models": {
+          "premium": "anthropic/claude-opus-4-6",
+          "standard": "anthropic/claude-sonnet-4-6",
+          "economy": "meta-llama/llama-3.1-8b-instruct"
+        }
+      }
+    }
+  }
+}

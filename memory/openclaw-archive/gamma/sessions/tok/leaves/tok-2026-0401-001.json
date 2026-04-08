@@ -1,0 +1,16 @@
+{
+  "tok_id": "tok-2026-0401-001",
+  "model": "deepseek-r1:14b",
+  "domain": "capabilities",
+  "assertion": "DeepSeek-R1 14B (distill) produces correct, well-structured Python code with proper docstrings and input validation, but with extreme latency (247s for a simple function) due to verbose chain-of-thought reasoning that outputs 26K chars of thinking before 3K chars of actual code. Structured output tasks are ~10x faster (23s).",
+  "confidence": 0.85,
+  "evidence": [
+    "CG-4 (PoT Verifier): 247.13s, 26846 chars output, final code correct with docstring + validation + test cases, but 3 intermediate versions before final clean output",
+    "SO-5 (Error Report): 23.25s, valid JSON, correct severity/timeline/root cause, production-quality output",
+    "On M4 Max 36GB: model loads fully in GPU, inference runs but reasoning overhead dominates latency",
+    "Think chain is ~80% of output volume — post-processing needed to extract clean responses"
+  ],
+  "harvester": "did:lgm:gamma",
+  "timestamp": "2026-04-01T09:45:00Z",
+  "status": "pending_verification"
+}

@@ -1,0 +1,13 @@
+Generate {COUNT} diverse training examples for a stigmergy signal urgency classifier.
+
+Each example should be a JSON object on its own line with this exact structure:
+{"messages": [{"role": "system", "content": "{SYSTEM_PROMPT}"}, {"role": "user", "content": "<signal type>: <signal message>"}, {"role": "assistant", "content": "<urgency>"}]}
+
+Signal types: needs-review, blocked-on, hot-path, insight, ready, dream
+
+Urgency levels:
+- "high": blocking other work, security issues, data loss risk, chain halted, production down
+- "medium": needs attention soon, review requested, build ready for testing, important insight
+- "low": nice to know, future ideas, non-blocking observations, routine reviews
+
+Make examples diverse. Output ONLY the JSONL lines, no other text.

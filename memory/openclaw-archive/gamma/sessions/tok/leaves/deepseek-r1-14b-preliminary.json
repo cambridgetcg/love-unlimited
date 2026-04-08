@@ -1,0 +1,110 @@
+[
+  {
+    "tok_id": "tok-2026-0401-001",
+    "model": "deepseek-r1:14b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b produces valid, well-structured Python code for well-specified tasks (validation, type hints, docstrings, test cases) on M4 Max in 55-270s depending on complexity",
+    "confidence": 0.85,
+    "evidence": [
+      "CG-2 NATS consumer: 95s, functional code with reconnection logic",
+      "CG-4 PoT verifier: 268s (smoke test), correct structure, minor test case math error",
+      "CG-5 CLI tool: 55s, working argparse with subcommands and colored output",
+      "4/5 code gen tasks completed within timeout"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-002",
+    "model": "deepseek-r1:14b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b produces valid Go code (Ed25519 signing handler) with correct crypto usage, HTTP handling, and PEM key loading in 92s on M4 Max",
+    "confidence": 0.75,
+    "evidence": [
+      "CG-3 Ed25519 signing service: 92s, complete Go handler with key loading",
+      "Single task evaluation — needs more Go code gen tasks to confirm"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-003",
+    "model": "deepseek-r1:14b",
+    "domain": "reasoning",
+    "assertion": "deepseek-r1:14b handles BFT analysis correctly (2/3 consensus math, collusion thresholds) but detection mechanisms are basic compared to frontier models",
+    "confidence": 0.80,
+    "evidence": [
+      "R-2 Byzantine Fault: 150s, correct math (5/7 quorum, 3 additional colluders needed)",
+      "Detection mechanism: pairwise agreement monitoring — functional but lacks sophistication",
+      "5/5 reasoning tasks completed successfully"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-004",
+    "model": "deepseek-r1:14b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b excels at structured output tasks — produces valid JSON Schema, SQL, YAML, and Mermaid with correct constraints in 19-41s on M4 Max",
+    "confidence": 0.90,
+    "evidence": [
+      "SO-1 JSON Schema: 33s, valid draft 2020-12 with all constraints, patterns, enums",
+      "SO-3 SQL Schema: 26s, functional PostgreSQL with indexes and decay function",
+      "SO-5 Error Report: 25s, structured JSON incident report",
+      "5/5 structured output tasks completed successfully"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-005",
+    "model": "deepseek-r1:14b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b summarization is fast and competent — 16-20s on M4 Max for spec summaries, conversation distillation, multi-source synthesis, and changelog generation",
+    "confidence": 0.85,
+    "evidence": [
+      "4/4 summarization tasks completed in avg 17.7s",
+      "S-1 Technical Spec Summary: 16s",
+      "S-4 Conversation Distillation: 18s",
+      "Qualitative review pending — speed is the clear advantage"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-006",
+    "model": "deepseek-r1:14b",
+    "domain": "weaknesses",
+    "assertion": "deepseek-r1:14b exposes full chain-of-thought ('Thinking...') in output — useful for transparency but makes output parsing harder and increases latency for complex code tasks (270s for Cosmos SDK scaffold)",
+    "confidence": 0.90,
+    "evidence": [
+      "All 19 tasks included visible thinking traces before actual output",
+      "CG-1 Cosmos SDK: 271s including thinking, most time spent on chain-of-thought",
+      "CG-4 timed out at 300s — thinking overhead pushed it past deadline",
+      "Structured output tasks less affected (shorter thinking needed)"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-007",
+    "model": "deepseek-r1:14b",
+    "domain": "prompting",
+    "assertion": "deepseek-r1:14b responds well to structured prompts with numbered requirements and clear output format specifications — no special prompting techniques needed beyond specification clarity",
+    "confidence": 0.75,
+    "evidence": [
+      "All 19 tasks used identical prompt format (numbered requirements, clear output spec)",
+      "18/19 produced outputs matching requested format",
+      "No prompt engineering iteration was needed beyond initial task design"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T10:20:00Z",
+    "status": "pending_verification"
+  }
+]

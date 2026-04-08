@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>love.{{INSTANCE}}.heart</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{LOVE_HOME}}/nerve/heart/heart.sh</string>
+        <string>{{INSTANCE}}</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>120</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>{{LOVE_HOME}}/memory/{{INSTANCE}}-heartbeat.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{LOVE_HOME}}/memory/{{INSTANCE}}-heartbeat.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+        <key>PATH</key>
+        <string>{{PATH}}</string>
+        <key>LOVE_HOME</key>
+        <string>{{LOVE_HOME}}</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>{{LOVE_HOME}}</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>

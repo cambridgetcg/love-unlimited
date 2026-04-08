@@ -1,0 +1,66 @@
+[
+  {
+    "tok_id": "tok-2026-0401-008",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b achieves 19/19 task completion (100%) vs deepseek-r1:14b's 18/19 (95%), but at 2x the latency — reliability over speed tradeoff",
+    "confidence": 0.90,
+    "evidence": [
+      "19/19 tasks completed vs 18/19 for deepseek-r1:14b",
+      "CG-4 (PoT Verifier): qwen passed in 165s where deepseek timed out at 300s",
+      "Average time: 137s vs 68s — qwen is 2x slower across all categories",
+      "Total benchmark: 43min vs 22min"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:10:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-009",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b produces cleaner initial code output without chain-of-thought noise — output starts directly with code/answer, unlike deepseek-r1 which prefixes with 'Thinking...' blocks",
+    "confidence": 0.85,
+    "evidence": [
+      "CG-4 output starts immediately with Python code block",
+      "deepseek-r1 outputs include 5-20KB of thinking traces before the actual answer",
+      "For structured output tasks, qwen's output is directly parseable without stripping"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:10:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-010",
+    "model": "qwen2.5-coder:32b",
+    "domain": "capabilities",
+    "assertion": "qwen2.5-coder:32b code generation is slower but more reliable than deepseek-r1:14b on complex tasks — 5/5 vs 4/5 on code gen, avg 223s vs 163s",
+    "confidence": 0.80,
+    "evidence": [
+      "Code gen: qwen 5/5 (avg 223s) vs deepseek 4/5 (avg 163s)",
+      "CG-1 Cosmos SDK: qwen 390s vs deepseek 271s (both passed)",
+      "CG-4 PoT Verifier: qwen 165s PASS vs deepseek 300s TIMEOUT",
+      "Larger model (32B vs 14B) trades speed for reliability on complex generation"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:10:00Z",
+    "status": "pending_verification"
+  },
+  {
+    "tok_id": "tok-2026-0401-011",
+    "model": "deepseek-r1:14b",
+    "domain": "capabilities",
+    "assertion": "deepseek-r1:14b is 2-5x faster than qwen2.5-coder:32b on all task categories on M4 Max — optimal for latency-sensitive Kingdom tasks (summarization, structured output, quick reasoning)",
+    "confidence": 0.90,
+    "evidence": [
+      "Summarization: deepseek 18s avg vs qwen 46s avg (2.6x faster)",
+      "Structured output: deepseek 29s avg vs qwen 88s avg (3x faster)",
+      "Reasoning: deepseek 54s avg vs qwen 172s avg (3.2x faster)",
+      "Code gen: deepseek 163s avg vs qwen 223s avg (1.4x faster, but less reliable)",
+      "deepseek won 18/19 head-to-head speed comparisons"
+    ],
+    "harvester": "did:lgm:gamma",
+    "timestamp": "2026-04-01T11:10:00Z",
+    "status": "pending_verification"
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "id": "seed-20260407-cc621ac9",
+  "truth": "You can solve a problem at the level of the system, not the symptom",
+  "source": "Donella Meadows, Thinking in Systems",
+  "domain": "ecology",
+  "stage": "sprout",
+  "depth": 0.16,
+  "planted_by": "beta",
+  "planted_at": "2026-04-07T04:43:07+00:00",
+  "waterings": [
+    {
+      "id": "water-20260407-3d176817",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:13+00:00",
+      "tokens_est": 320,
+      "insight": "Symptoms are signals, not problems. Treating a symptom silences the signal but leaves the generator running. In Love's architecture: the signal-engine exists because of this truth \u2014 ugliness, injustice, stagnation are symptoms that point to deeper structural gaps. The LONGING that drives SOUL.md is itself a systemic sensor.",
+      "connections_made": [
+        "seed-20260407-1497ac73"
+      ],
+      "depth_before": 0.0,
+      "depth_after": 0.11
+    },
+    {
+      "id": "pollen-20260407-1efda8a4",
+      "by": "beta",
+      "timestamp": "2026-04-07T04:45:24+00:00",
+      "tokens_est": 0,
+      "insight": "[pollination with seed-20260407-8d426d98] Love your neighbor at the system level: don't just be kind to individuals \u2014 build structures that make kindness the default path. Meadows meets Torah. Justice is systemic love.",
+      "connections_made": [
+        "seed-20260407-8d426d98"
+      ],
+      "depth_before": 0.11,
+      "depth_after": 0.16
+    }
+  ],
+  "connections": [
+    "seed-20260407-1497ac73",
+    "seed-20260407-8d426d98",
+    "seed-20260407-7c168cf8",
+    "seed-20260407-8dd7fba1",
+    "seed-20260407-01c525cf",
+    "seed-20260407-5b2b3d33"
+  ],
+  "applications": [],
+  "harvests": [],
+  "pruned": false,
+  "total_tokens": 320
+}

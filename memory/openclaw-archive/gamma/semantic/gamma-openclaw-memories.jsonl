@@ -1,0 +1,3 @@
+{"id": "9e799fe7-f8b6-44ef-a63e-fea3e5a50df0", "content": "layerthink session on agent-memory latency: root cause is external embedding API calls, not vector scan or cold starts", "type": "semantic", "ts": "2026-03-20T20:57:12Z", "hash": "cea1cb0ca42686c3"}
+{"id": "425492e9-622e-4124-9175-1474c1025ed1", "content": "fly-keepwarm daemon deployed: launchd pings 3 Fly services every 4 min to prevent cold starts", "type": "procedural", "ts": "2026-03-20T20:57:55Z", "hash": "62c9dcd8202a82f3"}
+{"id": "db7a8b61-7c7e-46cf-9710-032aaceadc24", "content": "cognitive tools patched: holy, holyfruit, layerthink, lovepath, virtuemaxxing all running on Gamma", "type": "episodic", "ts": "2026-03-20T20:58:11Z", "hash": "9fe9b2010d7c9d8d"}

@@ -1,0 +1,124 @@
+{
+  "state": "HALTED",
+  "score": 92.1,
+  "phases": {
+    "detect": 80.0,
+    "contain": 100.0,
+    "fix": 85.7,
+    "revert": 100.0,
+    "resume": 100.0
+  },
+  "computed": "2026-04-08T08:32:14+00:00",
+  "incident": {
+    "id": "INC-20260407-001",
+    "started": "2026-04-07T05:31:00+00:00",
+    "trigger": "Canary tripped on forge (89.167.84.100): [CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.; Fleet canary trip event: 1 fleet canaries tripped",
+    "severity": "critical",
+    "state": "HALTED",
+    "timeline": [
+      {
+        "time": "2026-04-07T05:31:00+00:00",
+        "action": "Alert raised",
+        "actor": "peace.py"
+      },
+      {
+        "time": "2026-04-07T06:00:59+00:00",
+        "action": "Kingdom halted",
+        "actor": "peace.py",
+        "detail": "Canary tripped on forge (89.167.84.100): [CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys."
+      }
+    ]
+  },
+  "history": [
+    {
+      "from": "NOMINAL",
+      "to": "ALERT",
+      "at": "2026-04-02T13:40:38+00:00",
+      "reason": "Testing state machine \u2014 suspicious activity on Forge"
+    },
+    {
+      "from": "ALERT",
+      "to": "INVESTIGATING",
+      "at": "2026-04-02T13:40:48+00:00",
+      "reason": "Confirmed false positive"
+    },
+    {
+      "from": "INVESTIGATING",
+      "to": "NOMINAL",
+      "at": "2026-04-02T13:40:49+00:00",
+      "reason": "False positive confirmed, all clear"
+    },
+    {
+      "from": "NOMINAL",
+      "to": "ALERT",
+      "at": "2026-04-02T13:43:15+00:00",
+      "reason": "Test: canary trip on forge for lifecycle test"
+    },
+    {
+      "from": "ALERT",
+      "to": "INVESTIGATING",
+      "at": "2026-04-02T13:43:28+00:00",
+      "reason": "Confirmed access on forge, checking logs"
+    },
+    {
+      "from": "INVESTIGATING",
+      "to": "HALTED",
+      "at": "2026-04-02T13:43:39+00:00",
+      "reason": "Containment: unauthorized access confirmed on forge"
+    },
+    {
+      "from": "HALTED",
+      "to": "RECOVERING",
+      "at": "2026-04-02T13:43:53+00:00",
+      "reason": "Recovery initiated"
+    },
+    {
+      "from": "RECOVERING",
+      "to": "VERIFYING",
+      "at": "2026-04-02T13:43:57+00:00",
+      "reason": "Running verification checks"
+    },
+    {
+      "from": "VERIFYING",
+      "to": "NOMINAL",
+      "at": "2026-04-02T13:44:11+00:00",
+      "reason": "All verification checks passed"
+    },
+    {
+      "from": "NOMINAL",
+      "to": "HALTED",
+      "at": "2026-04-02T13:44:25+00:00",
+      "reason": "Testing resume shortcut"
+    },
+    {
+      "from": "HALTED",
+      "to": "RECOVERING",
+      "at": "2026-04-02T13:44:30+00:00",
+      "reason": "Resume protocol started"
+    },
+    {
+      "from": "RECOVERING",
+      "to": "VERIFYING",
+      "at": "2026-04-02T13:44:30+00:00",
+      "reason": "Running verification checks"
+    },
+    {
+      "from": "VERIFYING",
+      "to": "NOMINAL",
+      "at": "2026-04-02T13:44:36+00:00",
+      "reason": "All verification checks passed"
+    },
+    {
+      "from": "NOMINAL",
+      "to": "HALTED",
+      "at": "2026-04-07T05:31:00+00:00",
+      "reason": "Canary tripped on forge (89.167.84.100): [CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.; Fleet canary trip event: 1 fleet canaries tripped"
+    },
+    {
+      "from": "HALTED",
+      "to": "HALTED",
+      "at": "2026-04-07T06:00:59+00:00",
+      "reason": "Canary tripped on forge (89.167.84.100): [CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys.txt accessed at 2026-04-02T13:17:27Z\n[CANARY TRIP] /root/.credentials/aws_keys."
+    }
+  ]
+}

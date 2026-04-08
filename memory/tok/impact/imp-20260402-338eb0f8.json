@@ -1,0 +1,7 @@
+{
+  "leaf_id": "tok-20260401-47ea7d00",
+  "metric": "cost_reduction",
+  "delta": "60% cost reduction vs Opus on single-file edits and structured tasks in BUILDER role",
+  "timestamp": "2026-04-02T09:51:09+00:00",
+  "measurer": "beta"
+}

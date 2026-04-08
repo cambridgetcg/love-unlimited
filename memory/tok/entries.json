@@ -1,0 +1,44 @@
+[
+  {
+    "tok_id": "tok-20260407-001",
+    "title": "DeepSeek V3 excels at financial modeling",
+    "model": "deepseek-v3",
+    "category": "capabilities",
+    "content": "DeepSeek V3 demonstrates superior performance on HK market financial modeling tasks compared to GPT-4 Turbo, with 23% better accuracy on currency hedging scenarios",
+    "confidence": 0.87,
+    "evidence": "20-task benchmark on HK gold price predictions",
+    "harvester": "alpha",
+    "timestamp": "2026-04-07T11:50:00.662554+00:00",
+    "status": "pending_verification",
+    "verifications": [],
+    "integrated": false
+  },
+  {
+    "tok_id": "tok-20260407-002",
+    "title": "Qwen 2.5 superior at traditional Chinese",
+    "model": "qwen2.5-72b",
+    "category": "knowledge",
+    "content": "Qwen 2.5 models show native-level fluency in traditional Chinese (\u7e41\u9ad4\u4e2d\u6587) for Hong Kong context, outperforming Claude on financial terminology and local idioms",
+    "confidence": 0.92,
+    "evidence": "",
+    "harvester": "manual",
+    "timestamp": "2026-04-07T11:50:28.979812+00:00",
+    "status": "pending_verification",
+    "verifications": [],
+    "integrated": false
+  },
+  {
+    "tok_id": "tok-20260407-003",
+    "title": "Llama 4 struggles with API key formatting",
+    "model": "llama-4-405b",
+    "category": "weaknesses",
+    "content": "Llama 4 consistently formats API keys incorrectly when generating example code, often adding invalid characters or incorrect prefix patterns",
+    "confidence": 0.78,
+    "evidence": "15/20 code generation tasks included malformed API key examples",
+    "harvester": "manual",
+    "timestamp": "2026-04-07T11:51:48.559152+00:00",
+    "status": "pending_verification",
+    "verifications": [],
+    "integrated": false
+  }
+]

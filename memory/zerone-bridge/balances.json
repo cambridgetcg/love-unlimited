@@ -1,0 +1,14 @@
+{
+  "crucible": {
+    "total_earned": 500,
+    "pending": 500,
+    "verified": 0,
+    "on_chain": 0
+  },
+  "beta": {
+    "total_earned": 400,
+    "pending": 400,
+    "verified": 0,
+    "on_chain": 0
+  }
+}

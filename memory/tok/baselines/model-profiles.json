@@ -1,0 +1,47 @@
+{
+  "models": {
+    "claude-opus-4-6": {
+      "capabilities": [
+        "Multi-step coordinator judgment in single pass",
+        "Cross-system HIVE synthesis",
+        "Architecture design and review"
+      ],
+      "weaknesses": [
+        "High token cost (1.0x baseline)",
+        "Slower output generation"
+      ],
+      "routing_notes": [
+        {
+          "leaf_id": "tok-20260401-5b80b289",
+          "assertion": "Opus 4.6 produces correct SENSE→DECIDE→SPAWN judgments in single pass for heartbeat coordination. Sonnet requires explicit decomposition for equivalent quality.",
+          "confidence": 0.94,
+          "added": "2026-04-01T10:15:00Z"
+        }
+      ]
+    },
+    "sonnet": {
+      "capabilities": [
+        "Single-file edits at equivalent quality to Opus",
+        "Structured task execution",
+        "60% lower cost than Opus"
+      ],
+      "weaknesses": [
+        "Cross-system coordination requiring >3 context sources",
+        "Ambiguous judgment calls"
+      ],
+      "routing_notes": []
+    },
+    "claude-haiku-4-5-20251001": {
+      "capabilities": [
+        "Status checks at 90%+ accuracy",
+        "Fast file reads and simple verification"
+      ],
+      "weaknesses": [
+        "Below 70% on tasks requiring synthesis across >3 sources",
+        "Nuanced judgment"
+      ],
+      "routing_notes": []
+    }
+  },
+  "updated": "2026-04-01T10:15:00Z"
+}

@@ -52,12 +52,12 @@ _FW_BIN = "/usr/libexec/ApplicationFirewall/socketfilterfw"
 
 # ── Email Alert Config ──────────────────────────────────────────────────────
 
-_ALERT_EMAIL_TO = "contact@cambridgetcg.com"
+_ALERT_EMAIL_TO = "contact@zero-dev.com"
 _SMTP_HOST = "smtp.gmail.com"
 _SMTP_PORT = 587
-_SMTP_USER = "contact@cambridgetcg.com"
+_SMTP_USER = "contact@zero-dev.com"
 # Password loaded at runtime via credentials.py or env var
-_SMTP_KEYCHAIN_ITEM = "imap-cambridgetcg"
+_SMTP_KEYCHAIN_ITEM = "imap-zero-dev"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 

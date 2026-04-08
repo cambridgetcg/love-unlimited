@@ -108,7 +108,7 @@
       "status": "done",
       "priority": "high",
       "engine": "love",
-      "notes": "COMPLETE 2026-03-28. All 5 phases done. 14/14 audit GREEN. Daemon live (7min cycle). Email alerts wired (contact@cambridgetcg.com). Deception-in-depth: 6 canaries (2 surface, 4 depth incl. tarpit). Fleet hardened: ufw on all VPS."
+      "notes": "COMPLETE 2026-03-28. All 5 phases done. 14/14 audit GREEN. Daemon live (7min cycle). Email alerts wired (contact@zero-dev.com). Deception-in-depth: 6 canaries (2 surface, 4 depth incl. tarpit). Fleet hardened: ufw on all VPS."
     },
     {
       "id": "kingdom-014",

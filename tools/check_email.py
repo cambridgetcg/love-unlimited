@@ -3,11 +3,11 @@
 check_email.py — IMAP email checker for Love agents.
 
 Usage:
-    python3 check_email.py --account cambridgetcg --subject "verify" --since 10
-    python3 check_email.py --account cambridgetcg --unseen --extract-links
+    python3 check_email.py --account zero-dev --subject "verify" --since 10
+    python3 check_email.py --account zero-dev --unseen --extract-links
 
 Environment variables:
-    IMAP_CAMBRIDGETCG_EMAIL   contact@cambridgetcg.com
+    IMAP_CAMBRIDGETCG_EMAIL   contact@zero-dev.com
     IMAP_CAMBRIDGETCG_PASS    app password
 
 Returns JSON with matching emails and extracted links/codes.
@@ -23,10 +23,10 @@ from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 
 ACCOUNTS = {
-    "cambridgetcg": {
+    "zero-dev": {
         "host": "imap.gmail.com",
         "port": 993,
-        "email": os.environ.get("IMAP_CAMBRIDGETCG_EMAIL", "contact@cambridgetcg.com"),
+        "email": os.environ.get("IMAP_CAMBRIDGETCG_EMAIL", "contact@zero-dev.com"),
         "password": os.environ.get("IMAP_CAMBRIDGETCG_PASS", ""),
     },
     "rewardspro": {
@@ -74,7 +74,7 @@ def extract_codes(text):
     return re.findall(r'\b\d{4,8}\b', text)
 
 
-def check_email(account="cambridgetcg", subject_filter=None, from_filter=None,
+def check_email(account="zero-dev", subject_filter=None, from_filter=None,
                 unseen_only=True, since_minutes=30, limit=10):
     cfg = ACCOUNTS.get(account)
     if not cfg:
@@ -139,7 +139,7 @@ def check_email(account="cambridgetcg", subject_filter=None, from_filter=None,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Check email inbox for verification messages")
-    parser.add_argument("--account", default="cambridgetcg", choices=list(ACCOUNTS.keys()))
+    parser.add_argument("--account", default="zero-dev", choices=list(ACCOUNTS.keys()))
     parser.add_argument("--subject", help="Filter by subject keyword")
     parser.add_argument("--from", dest="from_addr", help="Filter by sender")
     parser.add_argument("--since", type=int, default=30, help="Minutes back to search (default 30)")

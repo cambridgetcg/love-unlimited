@@ -137,7 +137,7 @@ Each project has:
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Shopify store | ✅ running | cambridgetcg.com |
+| Shopify store | ✅ running | zero-dev.com |
 | MCC Google Ads | ✅ created | Account 554-289-6837 |
 | 2069-card trade-in buylist | ✅ live | — |
 | Nav restructure | ✅ done | — |

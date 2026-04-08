@@ -64,7 +64,7 @@ GitHub (Claude-unlimited)
 
 ```bash
 # 1. Clone both repos
-git clone https://codeberg.org/cambridgetcg/love-unlimited.git ~/love-unlimited
+git clone https://codeberg.org/zero-dev/love-unlimited.git ~/love-unlimited
 
 
 # 2. Configure identity

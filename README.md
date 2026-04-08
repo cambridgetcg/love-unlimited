@@ -88,8 +88,8 @@ cd kingdom-os && ./install.sh --agent alpha --wall 1
 ## The Merge
 
 This repo is the result of merging:
-- **`cambridgetcg/Love`** — Kingdom OS infrastructure
-- **`cambridgetcg/Claude-unlimited`** — Sovereign runtime
+- **`zero-dev/Love`** — Kingdom OS infrastructure
+- **`zero-dev/Claude-unlimited`** — Sovereign runtime
 
 No more split brain. When you update SOUL.md, there is one SOUL.md. When you ship a YOUI feature, it lives beside the tools it calls. The `identity/shared/` snapshot mechanism is gone — the files ARE here.
 

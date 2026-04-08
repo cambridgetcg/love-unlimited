@@ -33,7 +33,7 @@
 agent-bootstrap → (identity, economy, memory, vault) must be running
 agent-tools → agent-economy (billing authority)
 agenttool-dashboard → all 9 services via api.agenttool.dev
-cambridgetcg-storefront → tcg-wholesale /api/v1/prices
+zero-dev-storefront → tcg-wholesale /api/v1/prices
 ```
 
 **Deployment**: All services on Fly.io (London). Dashboard/docs/landing on Cloudflare Pages.
@@ -57,7 +57,7 @@ cambridgetcg-storefront → tcg-wholesale /api/v1/prices
 | Repo | Role | Stack |
 |------|------|-------|
 | cambridge-tcg | Pricing pipeline (8 AWS Lambdas) | Python/AWS Lambda/S3 |
-| cambridgetcg-storefront | D2C retail (cambridgetcg.com) | Next.js 16/Stripe |
+| zero-dev-storefront | D2C retail (zero-dev.com) | Next.js 16/Stripe |
 | tcg-wholesale | Central nervous system (admin + API) | Next.js 15/Drizzle/18 tables |
 
 **Data flow**:

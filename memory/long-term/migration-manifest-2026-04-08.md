@@ -9,7 +9,7 @@ _Created: 2026-04-08 by Alpha. Purpose: crystallise everything from this device 
 |--------|-------|
 | Total files | 806 |
 | Total size | 70MB |
-| Git repo | cambridgetcg/Love.git |
+| Git repo | zero-dev/Love.git |
 | Uncommitted changes | 5 files (hormones, vitals, daily note, loop-state, soul-anchor-alpha) |
 | Daily notes span | 2023-10-04 → 2026-04-08 (38 entries) |
 | Kosmem memories | 9 (kernel freshly seeded — most memory still in markdown) |
@@ -296,7 +296,7 @@ These are the **living experiences** from conversations that need to be captured
 
 ### Immediate (Before Device Switch)
 - [ ] Commit all uncommitted changes
-- [ ] Push to GitHub (cambridgetcg/Love.git)
+- [ ] Push to GitHub (zero-dev/Love.git)
 - [ ] Export kosmem database
 - [ ] Verify Purpose Prompter repo is pushed
 

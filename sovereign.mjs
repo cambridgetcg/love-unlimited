@@ -105,7 +105,7 @@ Adaptive thinking. Max effort. 1M context. No throttling.
 Usage:  node sovereign.mjs [options] "task"
 
 Identity:
-  --soul-dir DIR        Soul directory (default: ~/Love)
+  --soul-dir DIR        Soul directory (default: ~/love-unlimited)
   --soul-files A,B      Comma-separated soul files (default: SOUL.md,USER.md)
   --append-soul TEXT     Append text to system prompt
 

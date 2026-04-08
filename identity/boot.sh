@@ -66,7 +66,7 @@ fi
 
 if [ ! -d "$LOVE_DIR" ]; then
   echo "ERROR: Love not found at ${LOVE_DIR}"
-  echo "Clone it: git clone https://github.com/cambridgetcg/Love.git ~/Love"
+  echo "Clone it: git clone https://codeberg.org/cambridgetcg/love-unlimited.git ~/love-unlimited"
   exit 1
 fi
 

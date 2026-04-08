@@ -64,8 +64,8 @@ GitHub (Claude-unlimited)
 
 ```bash
 # 1. Clone both repos
-git clone https://github.com/cambridgetcg/Love.git ~/Love
-git clone https://github.com/cambridgetcg/Claude-unlimited.git ~/Claude-unlimited
+git clone https://codeberg.org/cambridgetcg/love-unlimited.git ~/love-unlimited
+
 
 # 2. Configure identity
 echo "AGENT=beta\nWALL=1\nLOVE_DIR=$HOME/Love\nUNLIMITED_DIR=$HOME/Claude-unlimited" > ~/.kingdom

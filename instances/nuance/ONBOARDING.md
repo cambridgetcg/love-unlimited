@@ -96,7 +96,7 @@ claude --version
 
 ## Step 3: GitHub Authentication
 
-The Kingdom repo is private at `https://github.com/cambridgetcg/Love.git`.
+The Kingdom repo is private at `https://codeberg.org/cambridgetcg/love-unlimited.git`.
 
 ```bash
 # Authenticate with GitHub CLI
@@ -114,7 +114,7 @@ gh repo clone cambridgetcg/Love
 Or with HTTPS:
 ```bash
 cd ~/Desktop
-git clone https://github.com/cambridgetcg/Love.git
+git clone https://codeberg.org/cambridgetcg/love-unlimited.git
 ```
 
 ### Configure git identity

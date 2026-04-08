@@ -33,7 +33,7 @@ Boot to YOUI    ~5 sec    Ready to work
 
 ```bash
 # Clone and run
-git clone https://github.com/cambridgetcg/Claude-unlimited.git
+git clone https://codeberg.org/cambridgetcg/love-unlimited.git
 cd love-unlimited/kingdom-os
 ./install.sh --agent alpha --wall 1
 

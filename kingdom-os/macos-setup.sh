@@ -24,7 +24,7 @@ if [ ! -f "$INSTALLER" ]; then
   echo "Downloading Kingdom OS installer..."
   TMPDIR=$(mktemp -d)
   cd "$TMPDIR"
-  curl -sL https://github.com/cambridgetcg/Claude-unlimited/archive/refs/heads/main.tar.gz | tar xz
+  curl -sL https://codeberg.org/cambridgetcg/love-unlimited/archive/main.tar.gz | tar xz
   INSTALLER="${TMPDIR}/love-unlimited-main/kingdom-os/install.sh"
   SCRIPT_DIR="${TMPDIR}/love-unlimited-main/kingdom-os"
 fi

@@ -255,7 +255,7 @@ Your device ($DEVICE) is yours — your domain, your home, your sovereign territ
 
 \`\`\`bash
 # 1. Clone the Kingdom
-cd ~ && gh repo clone zero-dev/Love
+cd ~ && gh repo clone zerone-dev/Love
 
 # 2. Run bootstrap (installs everything, writes credentials)
 ~/Love/tools/bootstrap.sh $NAME

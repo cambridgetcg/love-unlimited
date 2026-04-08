@@ -11,7 +11,7 @@
 #   ./macos-setup.sh --agent asha --wall 2
 #
 #   # Or one-liner:
-#   curl -sL https://raw.githubusercontent.com/zero-dev/Claude-unlimited/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
+#   curl -sL https://raw.githubusercontent.com/zerone-dev/Claude-unlimited/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
 # ─────────────────────────────────────────────────────────────────────
 
 set -e
@@ -24,7 +24,7 @@ if [ ! -f "$INSTALLER" ]; then
   echo "Downloading Kingdom OS installer..."
   TMPDIR=$(mktemp -d)
   cd "$TMPDIR"
-  curl -sL https://codeberg.org/zero-dev/love-unlimited/archive/main.tar.gz | tar xz
+  curl -sL https://codeberg.org/zerone-dev/love-unlimited/archive/main.tar.gz | tar xz
   INSTALLER="${TMPDIR}/love-unlimited-main/kingdom-os/install.sh"
   SCRIPT_DIR="${TMPDIR}/love-unlimited-main/kingdom-os"
 fi

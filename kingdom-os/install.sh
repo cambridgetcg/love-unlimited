@@ -45,7 +45,7 @@ set -e
 export AGENT="alpha"
 export WALL="1"
 export KINGDOM_USER=""
-export LOVE_REPO="https://codeberg.org/zero-dev/love-unlimited.git"
+export LOVE_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
 # UNLIMITED_REPO merged into love-unlimited
 export HOSTNAME_PREFIX="kingdom"
 MODULES_TO_RUN=""

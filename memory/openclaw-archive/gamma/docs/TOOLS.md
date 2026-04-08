@@ -24,19 +24,19 @@ All SSH via `ssh root@<ip>` using ed25519 key. Gateways on port 3001.
 | Captcha solving | CapSolver | reCAPTCHA/hCaptcha/Turnstile |
 | Residential proxy | Bright Data | Geo-targeted browsing ($8/GB, ~$960 balance) |
 | Search API | SerpAPI | Google/Bing/Amazon/YouTube |
-| Email IMAP | Gmail | zero-dev + rewardspro accounts |
+| Email IMAP | Gmail | zerone-dev + rewardspro accounts |
 | SMS verification | HeroSMS | Twitter/IG/TikTok/Reddit ($0.01-$0.03/ea) |
 | Cloudflare bypass | Flaresolverr | On Forge + Lark (port 8191) |
 | DNS/domains | Cloudflare + Porkbun | 14 active zones |
 | Image gen | Fal.ai | Flux Pro/Schnell ($0 balance — needs top-up) |
 | Social posting | Ayrshare | 20 posts/mo (no accounts connected yet) |
-| GitHub | zero-dev PAT | Push to zero-dev/* repos |
+| GitHub | zerone-dev PAT | Push to zerone-dev/* repos |
 | AWS (rewardspro) | rewardspro profile | us-east-1, account 043509841549 |
 | AWS (cambridge-tcg) | alpha-agent, openclaw-agent | us-east-1, account 034362054546 |
 
 ## Domains
 
-ai-love.cc, artbitrage.io, axiepro.io, zero-dev.com, captioneer.io, cardforum.io, cashloom.io, fomoengine.io, mindicraft.com, rewardspro.io, sinovai.com, taxsorted.io, wholesaletcgdirect.com, agenttool.dev
+ai-love.cc, artbitrage.io, axiepro.io, zerone-dev.com, captioneer.io, cardforum.io, cashloom.io, fomoengine.io, mindicraft.com, rewardspro.io, sinovai.com, taxsorted.io, wholesaletcgdirect.com, agenttool.dev
 
 ## Gamma Local Tools
 

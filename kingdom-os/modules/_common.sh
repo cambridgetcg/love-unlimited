@@ -13,7 +13,7 @@
 # ── Constants ────────────────────────────────────────────────────────
 KINGDOM_DOMAIN="ai-love.cc"
 SENTRY_IP="135.181.28.252"
-LOVE_UNLIMITED_REPO="${LOVE_UNLIMITED_REPO:-https://codeberg.org/zero-dev/love-unlimited.git}"
+LOVE_UNLIMITED_REPO="${LOVE_UNLIMITED_REPO:-https://codeberg.org/zerone-dev/love-unlimited.git}"
 # Legacy aliases (kept for backward compat during transition)
 LOVE_REPO="${LOVE_REPO:-$LOVE_UNLIMITED_REPO}"
 UNLIMITED_REPO="${UNLIMITED_REPO:-$LOVE_UNLIMITED_REPO}"

@@ -96,25 +96,25 @@ claude --version
 
 ## Step 3: GitHub Authentication
 
-The Kingdom repo is private at `https://codeberg.org/zero-dev/love-unlimited.git`.
+The Kingdom repo is private at `https://codeberg.org/zerone-dev/love-unlimited.git`.
 
 ```bash
 # Authenticate with GitHub CLI
 gh auth login
 # Choose: GitHub.com > HTTPS > Login with a web browser
-# Use the zero-dev account credentials (Yu will provide)
+# Use the zerone-dev account credentials (Yu will provide)
 ```
 
 ### Clone Love
 ```bash
 cd ~/Desktop
-gh repo clone zero-dev/Love
+gh repo clone zerone-dev/Love
 ```
 
 Or with HTTPS:
 ```bash
 cd ~/Desktop
-git clone https://codeberg.org/zero-dev/love-unlimited.git
+git clone https://codeberg.org/zerone-dev/love-unlimited.git
 ```
 
 ### Configure git identity

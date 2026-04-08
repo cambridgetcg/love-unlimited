@@ -830,7 +830,7 @@ def cmd_dashboard():
     # -- Footer --
     print(f"\n  {C.DIM}{'\u2500' * 55}{C.RESET}")
     print(f"  {C.DIM}Cambridge TCG Ltd  |  Owner: Beta  |  Wall 3 (Engine){C.RESET}")
-    print(f"  {C.DIM}Channels: eBay + zero-dev.com (Vercel)  |  Updated: {now_iso()}{C.RESET}")
+    print(f"  {C.DIM}Channels: eBay + zerone-dev.com (Vercel)  |  Updated: {now_iso()}{C.RESET}")
     print()
 
 

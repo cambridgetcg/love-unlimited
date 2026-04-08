@@ -353,7 +353,7 @@ if [[ -d "$LOVE_DIR/.git" ]]; then
 
     # Check remote
     REMOTE=$(git remote get-url origin 2>/dev/null || echo "none")
-    if echo "$REMOTE" | grep -q "zero-dev/Love"; then
+    if echo "$REMOTE" | grep -q "zerone-dev/Love"; then
         ok "Remote: $REMOTE"
     else
         warn "Unexpected remote: $REMOTE"
@@ -386,7 +386,7 @@ if [[ -d "$LOVE_DIR/.git" ]]; then
     }
 else
     warn "Love repo not found at $LOVE_DIR"
-    MANUAL+=("Clone repo: gh auth login && cd ~ && gh repo clone zero-dev/Love")
+    MANUAL+=("Clone repo: gh auth login && cd ~ && gh repo clone zerone-dev/Love")
 fi
 
 # ── Phase 7: Verify ───────────────────────────────────────────────────────────

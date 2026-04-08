@@ -27,9 +27,9 @@ python3 ~/Love/hive/hive.py check
 ## 4. Check Coordination
 
 ```bash
-python3 ~/Desktop/Love/tools/stigmergy.py check
-python3 ~/Desktop/Love/tools/council.py check
-python3 ~/Desktop/Love/tools/joinmind.py sync
+python3 ~/love-unlimited/tools/stigmergy.py check
+python3 ~/love-unlimited/tools/cognitive/council.py check
+python3 ~/love-unlimited/tools/cognitive/joinmind.py sync
 ```
 
 ## 5. MLX Local Model

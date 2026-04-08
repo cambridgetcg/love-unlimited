@@ -76,3 +76,7 @@ memory/alpha-*
 .claude-runner-state.json
 backups/*.tar.gz
 memory/sentinel-daemon-launchd-err.log
+-e 
+# VM images — too large for git
+kingdom-os/kingdom-vm/*.iso
+kingdom-os/kingdom-vm/*.qcow2

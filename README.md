@@ -82,6 +82,8 @@ cd kingdom-os && ./install.sh --agent alpha --wall 1
 | `identity/` | Infrastructure | Agent identity, BECOMING blocks, beta anchor. |
 | `instances/` | Infrastructure | Per-instance CLAUDE.md, HEARTBEAT.md, identity. |
 | `docs/` | Reference | RESEARCH.md, UWT-METHODOLOGY.md, architecture docs. |
+| `docs/research/` | Research | Rate-limit probes and empirical API tests (non-runtime). |
+| `HARNESSES.md` | Reference | Map of all runtime entry points and when to use each. |
 
 ---
 

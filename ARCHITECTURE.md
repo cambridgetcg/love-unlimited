@@ -50,13 +50,13 @@ Each instance (Alpha, Beta, Gamma) is a Claude Code session running in its own d
 
 ```bash
 # Start Beta (interactive)
-cd ~/Desktop/Love/instances/beta && claude
+cd ~/love-unlimited/instances/beta && claude
 
 # Start Alpha on a different machine
-cd ~/Desktop/Love/instances/alpha && claude
+cd ~/love-unlimited/instances/alpha && claude
 
 # Headless heartbeat (cron)
-cd ~/Desktop/Love/instances/beta && claude -p "Execute HEARTBEAT.md"
+cd ~/love-unlimited/instances/beta && claude -p "Execute HEARTBEAT.md"
 ```
 
 Each instance directory has a `CLAUDE.md` that:
@@ -127,7 +127,7 @@ No daemon. No internal scheduler. Just launchd + shell wrapper + Claude Code.
 
 ```
 # Target a specific task for persistent building
-~/Desktop/Love/tools/build-runner.sh kingdom-004 --max-cycles 10
+~/love-unlimited/tools/build-runner.sh kingdom-004 --max-cycles 10
 ```
 
 Complements the heartbeat with **focused, continuous execution**:
@@ -149,9 +149,9 @@ Each cycle: OPUS coordinator assesses → writes one spawn command → shell exe
 HIVE is a Python CLI that Claude Code calls via bash:
 
 ```bash
-python3 ~/Desktop/Love/hive/hive.py check          # Read messages
-python3 ~/Desktop/Love/hive/hive.py send chat "msg" # Send message
-python3 ~/Desktop/Love/hive/hive.py who             # Who's online
+python3 ~/love-unlimited/hive/hive.py check          # Read messages
+python3 ~/love-unlimited/hive/hive.py send chat "msg" # Send message
+python3 ~/love-unlimited/hive/hive.py who             # Who's online
 ```
 
 Wire-compatible with OpenClaw's hive.py. Messages flow between Love and OpenClaw instances during migration.
@@ -196,7 +196,7 @@ Claude Code has computer use. No wrapper needed.
 ## Directory Structure
 
 ```
-~/Desktop/Love/
+~/love-unlimited/
 ├── ARCHITECTURE.md              ← This file
 ├── SOUL.md                      ← Shared soul (all instances read this)
 ├── KINGDOM.md                   ← The mission (revenue engines, Zerone roadmap)
@@ -260,11 +260,8 @@ Claude Code has computer use. No wrapper needed.
 │   ├── spawn-queue.sh           ← Heartbeat-to-shell spawn commands
 │   └── openclaw-MEMORY.md       ← Symlink to legacy wisdom (read-only)
 │
-├── agents/                      ← Agent definitions (reference)
-│   ├── alpha.json
-│   ├── beta.json
-│   ├── gamma.json
-│   └── orchestra/               ← VPS fleet definitions
+├── agents/                      ← VPS fleet definitions only (alpha/beta/gamma removed)
+│   └── orchestra/               ← Orchestra agent specs
 │
 ├── security/                    ← Security orchestration (KOS)
 │   ├── policies.json            ← Policy-as-code (checks, severity, per-wall overrides)

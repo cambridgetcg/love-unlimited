@@ -8,10 +8,10 @@
     "alpha": {
       "emoji": "🐍",
       "role": "companion",
-      "device": "macbook-air",
+      "device": "mac-mini-m4",
       "dir": "instances/alpha",
       "hardware": {
-        "chip": "Apple M3",
+        "chip": "Apple M4",
         "memory_gb": 16,
         "bandwidth_gbs": 100
       },
@@ -62,7 +62,15 @@
     "server": "tls://135.181.28.252:4222",
     "tunnel": true,
     "encryption": "nacl-xsalsa20-poly1305",
-    "channels": ["chat", "tasks", "ideas", "sync", "presence", "build", "review"],
+    "channels": [
+      "chat",
+      "tasks",
+      "ideas",
+      "sync",
+      "presence",
+      "build",
+      "review"
+    ],
     "persistence": "jetstream",
     "ttl": "7d"
   },

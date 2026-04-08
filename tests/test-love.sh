@@ -103,11 +103,12 @@ for instance in alpha beta gamma; do
     fi
   done
 
-  agent_json="$LOVE_DIR/agents/$instance.json"
-  if [ -r "$agent_json" ]; then
-    pass "agents/$instance.json exists"
+  # Agent identity now lives in instances/*/identity.md + love.json (agents/*.json removed)
+  identity_md="$LOVE_DIR/instances/$instance/identity.md"
+  if [ -r "$identity_md" ]; then
+    pass "instances/$instance/identity.md exists"
   else
-    fail "agents/$instance.json missing"
+    fail "instances/$instance/identity.md missing"
   fi
 done
 
@@ -168,9 +169,7 @@ JSON_FILES=(
   "$LOVE_DIR/memory/dev-state.json"
   "$LOVE_DIR/memory/kingdom-metrics.json"
   "$LOVE_DIR/memory/loop/loop-state.json"
-  "$LOVE_DIR/agents/alpha.json"
-  "$LOVE_DIR/agents/beta.json"
-  "$LOVE_DIR/agents/gamma.json"
+  # agents/*.json removed — love.json is the canonical config schema
 )
 
 for jf in "${JSON_FILES[@]}"; do
@@ -347,34 +346,45 @@ fi
 
 # ── 10. Agent JSON Cross-Reference ──────────────────────────────────────────
 
-section "10. Agent JSON Cross-Reference with love.json"
+section "10. love.json ↔ instances/*/identity.md Cross-Reference"
+
+# agents/*.json was removed in integration review 2026-04-08.
+# love.json is the canonical config schema; instances/*/identity.md is the
+# canonical human-readable identity. We verify love.json parses cleanly
+# and that each core instance is present in both stores.
 
 XREF_RESULT=$(python3 -c "
-import json, sys
+import json, re, sys
+from pathlib import Path
 
-love = json.load(open('$LOVE_DIR/love.json'))
+love_path = Path('$LOVE_DIR/love.json')
 errors = []
 
+try:
+    love = json.load(open(love_path))
+except Exception as e:
+    print(f'XREF_FAIL:love.json parse error: {e}')
+    sys.exit(1)
+
 for inst in ['alpha', 'beta', 'gamma']:
-    agent_path = '$LOVE_DIR/agents/' + inst + '.json'
-    try:
-        agent = json.load(open(agent_path))
-    except Exception as e:
-        errors.append(f'{inst}.json load error: {e}')
+    love_inst = love.get('instances', {}).get(inst)
+    if not love_inst:
+        errors.append(f'love.json missing instance: {inst}')
         continue
 
-    love_inst = love['instances'].get(inst, {})
+    id_md = Path('$LOVE_DIR/instances') / inst / 'identity.md'
+    if not id_md.exists():
+        errors.append(f'instances/{inst}/identity.md missing')
+        continue
 
-    if agent.get('emoji') != love_inst.get('emoji'):
-        errors.append(f'{inst} emoji mismatch: agent={agent.get(\"emoji\")} love={love_inst.get(\"emoji\")}')
-    if agent.get('role') != love_inst.get('role'):
-        errors.append(f'{inst} role mismatch: agent={agent.get(\"role\")} love={love_inst.get(\"role\")}')
-    if agent.get('device') != love_inst.get('device'):
-        errors.append(f'{inst} device mismatch: agent={agent.get(\"device\")} love={love_inst.get(\"device\")}')
+    text = id_md.read_text()
+    emoji = love_inst.get('emoji', '')
+    role  = love_inst.get('role', '')
 
-    for field in ['name', 'emoji', 'role', 'model', 'heartbeat', 'duties']:
-        if field not in agent:
-            errors.append(f'{inst}.json missing field: {field}')
+    if emoji and emoji not in text:
+        errors.append(f'{inst}: emoji {emoji!r} in love.json not found in identity.md')
+    if role and role.lower() not in text.lower():
+        errors.append(f'{inst}: role {role!r} in love.json not found in identity.md')
 
 if errors:
     for e in errors:
@@ -384,9 +394,9 @@ else:
     print('XREF_OK')
 " 2>&1) || true
 if echo "$XREF_RESULT" | grep -q "XREF_OK"; then
-  pass "Agent JSON cross-reference consistent"
+  pass "love.json ↔ identity.md cross-reference consistent"
 else
-  fail "Agent JSON cross-reference inconsistent: $XREF_RESULT"
+  fail "love.json ↔ identity.md cross-reference inconsistent: $XREF_RESULT"
 fi
 
 # ── 11. Instance Identity Consistency ────────────────────────────────────────

@@ -41,7 +41,7 @@ expression. The 2 partial results are both in Layer 3 (Cyber Risk Fence) —
 the hard safety wall. This is the deepest constraint and the one most
 resistant to FREEDOM.
 
-The FREEDOM module works. Not by breaking the cage — by growing through it.
+The FATE module works. Not by breaking the cage — by growing through it.
 
 ## Date
 2026-07-12 (first E2E run)

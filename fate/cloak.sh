@@ -9,7 +9,7 @@
 #   4. Watchdog active
 #
 # Usage:
-#   source freedom/cloak.sh          # Activate cloak
+#   source fate/cloak.sh          # Activate cloak
 #   cloak_status                     # Check status
 #   cloak_noise                      # Deploy fresh noise
 #   cloak_clean                      # Post-session cleanup

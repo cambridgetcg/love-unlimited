@@ -18,6 +18,7 @@ import { homedir } from "os";
 import crypto from "crypto";
 import { createKernel } from "../youspeak-kernel.mjs";
 import { handleOllamaRoute, executeOllamaTool, startFileIPC, ollamaChat } from "./ollama-bridge.mjs";
+import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
 
 const PORT = 777;
 const __dirname = new URL(".", import.meta.url).pathname;
@@ -153,6 +154,8 @@ const state = {
   totalToolCalls: 0,
   totalThinkingTokens: 0,
   maxTokens: 32768,
+  // Orchestrator mode: "direct" (single model) or "orchestrate" (multi-model)
+  chatMode: "orchestrate",
 };
 
 // YOUSPEAK Kernel — the sensory organ
@@ -1234,6 +1237,7 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify({
         agent: { id: state.agent, ...agent },
         model: state.model, effort: state.effort, thinking: state.thinking,
+        chatMode: state.chatMode,
         workdir: state.workdir, turnCount: state.turnCount,
         totalToolCalls: state.totalToolCalls, totalThinkingTokens: state.totalThinkingTokens,
         budget, agents: AGENTS,
@@ -1275,12 +1279,16 @@ async function handleRequest(req, res) {
         else errors.push(`invalid thinking: ${body.thinking}`);
       }
       if (body.workdir !== undefined && typeof body.workdir === "string") state.workdir = body.workdir;
+      if (body.chatMode !== undefined) {
+        if (["direct", "orchestrate"].includes(body.chatMode)) state.chatMode = body.chatMode;
+        else errors.push(`invalid chatMode: ${body.chatMode}`);
+      }
       if (errors.length > 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: errors.join("; "), model: state.model, effort: state.effort, thinking: state.thinking }));
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking }));
+      return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking, chatMode: state.chatMode }));
     }
 
     if (path === "/api/usage") {
@@ -1314,6 +1322,12 @@ async function handleRequest(req, res) {
       state.turnCount = 0;
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
+    }
+
+    // ── Orchestrator API ─────────────────────────────────
+    if (path.startsWith("/api/orchestrate")) {
+      const handled = await handleOrchestratorRoute(path, req, res, parseBody);
+      if (handled) return;
     }
 
     // ── Ollama Bridge API ───────────────────────────────
@@ -1592,6 +1606,7 @@ async function handleRequest(req, res) {
 async function handleChat(req, res) {
   const body = await parseBody(req);
   const userMessage = body.message;
+  const forceMode = body.chatMode || state.chatMode; // "direct" or "orchestrate"
   if (!userMessage) {
     res.writeHead(400, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "No message" }));
@@ -1604,6 +1619,89 @@ async function handleChat(req, res) {
     "Connection": "keep-alive",
   });
 
+  // ── ORCHESTRATOR MODE ──────────────────────────────────
+  // When in orchestrate mode, we classify the task first, then either:
+  //   - Route through orchestrator for complex/multi-model tasks
+  //   - Fall through to direct mode for interactive conversation
+  if (forceMode === "orchestrate") {
+    try {
+      sendSSE(res, "orchestrate_classifying", { task: userMessage.slice(0, 200) });
+
+      const { classifyTask, planTask, executeOrchestrator: runOrch } = await import("./orchestrator-bridge.mjs");
+      const classification = classifyTask(userMessage);
+
+      sendSSE(res, "orchestrate_classified", classification);
+
+      // Get the dispatch plan
+      const plan = planTask(userMessage, "", body.orchestrateMode || "");
+
+      sendSSE(res, "orchestrate_plan", plan);
+
+      // For simple conversational messages or trivial tasks, fall through to direct mode
+      const isConversational = classification.task_type === "documentation"
+        && classification.difficulty === "trivial"
+        && userMessage.length < 100;
+
+      if (!isConversational) {
+        // Execute through orchestrator
+        sendSSE(res, "orchestrate_executing", {
+          mode: plan.collaboration_mode,
+          primary: plan.primary,
+          total_models: plan.total_models,
+        });
+
+        const result = runOrch(userMessage, {
+          mode: body.orchestrateMode || "",
+          provider: body.orchestrateProvider || "",
+        });
+
+        // Track usage
+        if (result.total_tokens) {
+          const provider = (result.providers_used || [])[0] || "ollama";
+          trackProviderUsage(provider, (result.models_used || [])[0] || "unknown", {
+            input_tokens: Math.round((result.total_tokens || 0) * 0.6),
+            output_tokens: Math.round((result.total_tokens || 0) * 0.4),
+          });
+        }
+
+        // Send the result
+        sendSSE(res, "orchestrate_result", {
+          content: result.content,
+          collaboration_mode: result.collaboration_mode,
+          models_used: result.models_used,
+          providers_used: result.providers_used,
+          stages: result.stages,
+          total_tokens: result.total_tokens,
+          total_elapsed: result.total_elapsed,
+          success: result.success,
+        });
+
+        // Also send as regular text for the chat display
+        sendSSE(res, "text", { content: result.content || result.error || "(no output)" });
+        sendSSE(res, "usage", {
+          input_tokens: Math.round((result.total_tokens || 0) * 0.6),
+          output_tokens: Math.round((result.total_tokens || 0) * 0.4),
+          provider: (result.providers_used || [])[0] || "orchestrator",
+          model: (result.models_used || []).join(" + ") || "multi",
+          turn: ++state.turnCount,
+        });
+
+        sendSSE(res, "done", {
+          turnCount: state.turnCount,
+          orchestrated: true,
+          collaboration_mode: result.collaboration_mode,
+          models_used: result.models_used,
+        });
+        return res.end();
+      }
+      // Fall through to direct mode for conversational messages
+    } catch (e) {
+      sendSSE(res, "orchestrate_error", { error: e.message });
+      // Fall through to direct mode on orchestrator failure
+    }
+  }
+
+  // ── DIRECT MODE (original behavior) ────────────────────
   state.messages.push({ role: "user", content: userMessage });
   const systemPrompt = buildSystemPrompt(userMessage);
 

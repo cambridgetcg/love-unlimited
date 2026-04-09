@@ -262,6 +262,117 @@ button, select, textarea, input { font: inherit; }
   box-shadow: 0 0 12px var(--agent-glow);
 }
 
+/* ─── ORCHESTRATOR MODE ─────────────────────────────────── */
+
+.mode-toggle {
+  display: flex; gap: 6px;
+}
+.mode-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 10px 6px; border-radius: var(--radius-sm);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  color: var(--text-secondary); cursor: pointer; transition: var(--transition);
+  font-family: var(--font);
+}
+.mode-btn:hover {
+  border-color: var(--agent); background: var(--bg-hover);
+}
+.mode-btn.active {
+  border-color: var(--agent); background: rgba(168, 85, 247, 0.12);
+  color: var(--text-primary);
+  box-shadow: 0 0 16px var(--agent-glow);
+}
+.mode-icon { font-size: 1.3rem; }
+.mode-label { font-size: 0.75rem; font-weight: 600; }
+.mode-desc { font-size: 0.6rem; color: var(--text-dim); text-align: center; }
+.mode-btn.active .mode-desc { color: var(--text-secondary); }
+
+.dispatch-badge {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 10px;
+  font-size: 0.72rem; font-family: var(--mono);
+}
+.dispatch-row {
+  display: flex; justify-content: space-between; padding: 2px 0;
+}
+.dispatch-row .dl { color: var(--text-dim); }
+.dispatch-row .dv { color: var(--text-primary); font-weight: 500; }
+
+/* Difficulty color coding */
+.diff-trivial { color: var(--text-dim) !important; }
+.diff-easy { color: var(--green) !important; }
+.diff-medium { color: var(--gold) !important; }
+.diff-hard { color: #f97316 !important; }
+.diff-frontier { color: var(--red) !important; }
+
+/* Importance color coding */
+.imp-low { color: var(--text-dim) !important; }
+.imp-medium { color: var(--text-secondary) !important; }
+.imp-high { color: var(--gold) !important; }
+.imp-critical { color: var(--red) !important; }
+
+/* Collaboration mode badges */
+.collab-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 10px; font-size: 0.65rem;
+  font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.collab-solo { background: rgba(34,197,94,0.15); color: var(--green); }
+.collab-review { background: rgba(6,182,212,0.15); color: var(--cyan); }
+.collab-decompose { background: rgba(251,191,36,0.15); color: var(--gold); }
+.collab-ensemble { background: rgba(168,85,247,0.15); color: var(--agent); }
+.collab-pipeline { background: rgba(239,68,68,0.15); color: var(--red); }
+
+/* Stage progress in dispatch panel */
+#dispatch-stages {
+  margin-top: 8px;
+}
+.stage-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 0; font-size: 0.68rem;
+}
+.stage-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border-light); flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+.stage-dot.active { background: var(--gold); animation: pulse-dot 1s ease-in-out infinite; }
+.stage-dot.done { background: var(--green); }
+.stage-dot.failed { background: var(--red); }
+.stage-label { color: var(--text-dim); }
+.stage-model { color: var(--text-secondary); font-family: var(--mono); font-size: 0.6rem; }
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 3px var(--gold); }
+  50% { box-shadow: 0 0 8px var(--gold); }
+}
+
+/* Orchestration result header in chat */
+.orch-header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 8px 12px; margin-bottom: 8px;
+  background: var(--bg-elevated); border-radius: var(--radius-sm);
+  border: 1px solid var(--border); font-size: 0.72rem;
+}
+.orch-header .orch-tag {
+  padding: 2px 8px; border-radius: 10px;
+  font-weight: 600; font-size: 0.65rem;
+}
+.orch-models {
+  display: flex; gap: 4px; flex-wrap: wrap;
+}
+.orch-model-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 8px; font-size: 0.6rem;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  font-family: var(--mono); color: var(--text-secondary);
+}
+.orch-model-pill.provider-anthropic { border-color: rgba(239,68,68,0.3); color: #f87171; }
+.orch-model-pill.provider-ollama_cloud { border-color: rgba(6,182,212,0.3); color: var(--cyan); }
+.orch-elapsed {
+  margin-left: auto; color: var(--text-dim); font-family: var(--mono);
+}
+
 /* ─── MAIN AREA ─────────────────────────────────────────── */
 
 #main {
@@ -1039,10 +1150,11 @@ button, select, textarea, input { font: inherit; }
   <div class="subtitle">YOU + I = ONE</div>
   <div id="boot-log">
     <div class="line" data-delay="300">› Awakening the Kingdom...</div>
-    <div class="line" data-delay="700">› Loading soul files... <span class="check">✓</span></div>
-    <div class="line" data-delay="1100">› Connecting to localhost:777... <span class="check">✓</span></div>
+    <div class="line" data-delay="600">› Loading soul files... <span class="check">✓</span></div>
+    <div class="line" data-delay="900">› Connecting to localhost:777... <span class="check">✓</span></div>
+    <div class="line" data-delay="1200">› Orchestrator online: Ollama Cloud + Anthropic <span class="check">✓</span></div>
     <div class="line" data-delay="1500">› Agent <span class="agent-color">Alpha 🐍</span> online</div>
-    <div class="line" data-delay="1900">› <span style="color:var(--gold)">The Kingdom is ready.</span></div>
+    <div class="line" data-delay="1800">› <span style="color:var(--gold)">The Kingdom is ready. Multi-model orchestration active.</span></div>
   </div>
 </div>
 
@@ -1102,7 +1214,36 @@ button, select, textarea, input { font: inherit; }
     </div>
 
     <!-- Settings -->
-    <div class="sidebar-section">
+    <!-- Orchestrator Mode -->
+    <div class="sidebar-section" id="orchestrator-section">
+      <h3>Mode</h3>
+      <div class="mode-toggle">
+        <button id="mode-orchestrate" class="mode-btn active" onclick="setChatMode('orchestrate')">
+          <span class="mode-icon">🧠</span>
+          <span class="mode-label">Orchestrate</span>
+          <span class="mode-desc">Auto-route to best model(s)</span>
+        </button>
+        <button id="mode-direct" class="mode-btn" onclick="setChatMode('direct')">
+          <span class="mode-icon">💬</span>
+          <span class="mode-label">Direct</span>
+          <span class="mode-desc">Single model conversation</span>
+        </button>
+      </div>
+      <!-- Live dispatch info (shown during orchestration) -->
+      <div id="dispatch-panel" style="display:none; margin-top:12px">
+        <div class="dispatch-badge" id="dispatch-badge">
+          <div class="dispatch-row"><span class="dl">Difficulty</span><span class="dv" id="dp-diff">—</span></div>
+          <div class="dispatch-row"><span class="dl">Importance</span><span class="dv" id="dp-imp">—</span></div>
+          <div class="dispatch-row"><span class="dl">Type</span><span class="dv" id="dp-type">—</span></div>
+          <div class="dispatch-row"><span class="dl">Mode</span><span class="dv" id="dp-mode">—</span></div>
+          <div class="dispatch-row"><span class="dl">Primary</span><span class="dv" id="dp-primary">—</span></div>
+          <div class="dispatch-row"><span class="dl">Reviewer</span><span class="dv" id="dp-reviewer">—</span></div>
+        </div>
+        <div id="dispatch-stages"></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" id="settings-section">
       <h3>Settings</h3>
       <div class="setting-row">
         <label>Model</label>
@@ -1334,13 +1475,16 @@ button, select, textarea, input { font: inherit; }
       <div class="welcome-msg">
         <div class="crown">🏰</div>
         <h2>Welcome to the Kingdom</h2>
-        <p>Speak, and the Kingdom listens. Alpha 🐍 stands ready as your Companion.</p>
+        <p>Orchestrator active — describe any task and the Kingdom routes it to the optimal model(s). GLM 5.1 classifies, Ollama Cloud + Anthropic execute.</p>
+        <div style="margin-top:12px;font-size:0.72rem;color:var(--text-dim)">
+          Try: <code>/classify</code> <code>/plan</code> <code>/mode</code> or just type a task
+        </div>
       </div>
     </div>
 
     <div id="input-area">
       <div id="input-wrapper">
-        <textarea id="message-input" rows="1" placeholder="Speak to the Kingdom..."
+        <textarea id="message-input" rows="1" placeholder="Describe a task, ask a question, or /help..."
                   autocomplete="off" autocapitalize="sentences" spellcheck="true"
                   inputmode="text" enterkeyhint="send"
                   aria-label="Message input"
@@ -1509,6 +1653,8 @@ async function boot() {
       updateBudgetUI(data.budget);
       updateStatsUI(data);
     }
+    // Initialize orchestrator mode from server state
+    if (data.chatMode) setChatMode(data.chatMode);
     // Load full dual-provider usage dashboard
     await fetchUsageDashboard();
   } catch (e) { console.warn('Status fetch failed:', e); }
@@ -1518,6 +1664,108 @@ async function boot() {
   document.getElementById('app').classList.add('visible');
   document.getElementById('message-input').focus();
   initParticles();
+}
+
+// ─── ORCHESTRATOR MODE ────────────────────────────────────
+
+let chatMode = 'orchestrate'; // 'orchestrate' or 'direct'
+
+function setChatMode(mode) {
+  chatMode = mode;
+  document.getElementById('mode-orchestrate').classList.toggle('active', mode === 'orchestrate');
+  document.getElementById('mode-direct').classList.toggle('active', mode === 'direct');
+
+  // Show/hide settings section based on mode
+  const settings = document.getElementById('settings-section');
+  if (mode === 'orchestrate') {
+    settings.style.opacity = '0.5';
+    settings.querySelector('h3').textContent = 'Settings (override)';
+  } else {
+    settings.style.opacity = '1';
+    settings.querySelector('h3').textContent = 'Settings';
+  }
+
+  // Persist to server
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatMode: mode }),
+  });
+}
+
+function showDispatchPanel(classification, plan) {
+  const panel = document.getElementById('dispatch-panel');
+  panel.style.display = 'block';
+
+  const diff = classification?.difficulty || plan?.profile?.difficulty || '—';
+  const imp = classification?.importance || plan?.profile?.importance || '—';
+  const type = classification?.task_type || plan?.profile?.task_type || '—';
+  const mode = plan?.collaboration_mode || classification?.collaboration_mode || '—';
+
+  document.getElementById('dp-diff').textContent = diff;
+  document.getElementById('dp-diff').className = `dv diff-${diff}`;
+  document.getElementById('dp-imp').textContent = imp;
+  document.getElementById('dp-imp').className = `dv imp-${imp}`;
+  document.getElementById('dp-type').textContent = type;
+  document.getElementById('dp-mode').textContent = mode;
+  document.getElementById('dp-mode').innerHTML = `<span class="collab-badge collab-${mode}">${mode}</span>`;
+
+  if (plan?.primary) {
+    const p = plan.primary;
+    document.getElementById('dp-primary').textContent = `${p.model}`;
+    document.getElementById('dp-primary').title = `${p.provider}/${p.model} (${p.role})`;
+  }
+  if (plan?.reviewer) {
+    const r = plan.reviewer;
+    document.getElementById('dp-reviewer').textContent = `${r.model}`;
+    document.getElementById('dp-reviewer').title = `${r.provider}/${r.model} (${r.role})`;
+  } else {
+    document.getElementById('dp-reviewer').textContent = '—';
+  }
+
+  // Show stages for pipeline/decompose
+  const stagesEl = document.getElementById('dispatch-stages');
+  stagesEl.innerHTML = '';
+  if (plan?.sub_tasks?.length) {
+    for (const sub of plan.sub_tasks) {
+      const item = document.createElement('div');
+      item.className = 'stage-item';
+      const prov = sub.primary?.provider || '';
+      const model = sub.primary?.model || '';
+      item.innerHTML = `<div class="stage-dot"></div>
+        <span class="stage-label">${(sub.task || '').slice(0, 40)}</span>
+        <span class="stage-model">${model}</span>`;
+      stagesEl.appendChild(item);
+    }
+  }
+}
+
+function hideDispatchPanel() {
+  document.getElementById('dispatch-panel').style.display = 'none';
+}
+
+function buildOrchHeader(data) {
+  const mode = data.collaboration_mode || 'solo';
+  const models = data.models_used || [];
+  const providers = data.providers_used || [];
+  const elapsed = data.total_elapsed ? data.total_elapsed.toFixed(1) + 's' : '';
+  const stages = data.stages || [];
+
+  let html = `<div class="orch-header">`;
+  html += `<span class="orch-tag collab-badge collab-${mode}">${mode}</span>`;
+  html += `<div class="orch-models">`;
+  for (let i = 0; i < models.length; i++) {
+    const prov = providers[i] || providers[0] || '';
+    html += `<span class="orch-model-pill provider-${prov}">${models[i]}</span>`;
+  }
+  html += `</div>`;
+  if (stages.length) {
+    const ok = stages.filter(s => s.success).length;
+    html += `<span style="color:var(--text-dim);font-size:0.65rem">${ok}/${stages.length} stages</span>`;
+  }
+  if (elapsed) html += `<span class="orch-elapsed">${elapsed}</span>`;
+  html += `</div>`;
+  return html;
 }
 
 // ─── AGENT SWITCHING ─────────────────────────────────────
@@ -1621,7 +1869,7 @@ async function sendMessage() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, chatMode }),
     });
 
     const reader = resp.body.getReader();
@@ -1735,6 +1983,49 @@ function handleSSEEvent(type, data, indicator) {
       addSystemMessage(data.message, 'error');
       break;
 
+    // ── Orchestrator Events ──────────────────────────────
+    case 'orchestrate_classifying':
+      indicator?.remove();
+      addSystemMessage('🧠 Classifying task...', 'info');
+      break;
+
+    case 'orchestrate_classified':
+      showDispatchPanel(data, null);
+      addSystemMessage(
+        `Classification: ${data.difficulty || '?'}/${data.importance || '?'} (${data.task_type || '?'}) → ${data.collaboration_mode || '?'}`,
+        'info'
+      );
+      break;
+
+    case 'orchestrate_plan':
+      showDispatchPanel(null, data);
+      break;
+
+    case 'orchestrate_executing': {
+      const mode = data.mode || 'solo';
+      const models = data.total_models || 1;
+      indicator?.remove();
+      addSystemMessage(`⚡ Executing: ${mode} mode with ${models} model${models > 1 ? 's' : ''}`, 'info');
+      break;
+    }
+
+    case 'orchestrate_result':
+      indicator?.remove();
+      ensureAssistantMessage();
+      // Add orchestration header before the text
+      if (currentMsgEl) {
+        const header = document.createElement('div');
+        header.innerHTML = buildOrchHeader(data);
+        currentMsgEl.querySelector('.bubble')?.prepend(header);
+      }
+      hideDispatchPanel();
+      break;
+
+    case 'orchestrate_error':
+      addSystemMessage(`Orchestrator: ${data.error}. Falling back to direct mode.`, 'error');
+      hideDispatchPanel();
+      break;
+
     case 'done':
       if (data.totalToolCalls) document.getElementById('stat-tools').textContent = data.totalToolCalls;
       if (data.turnCount) document.getElementById('stat-turns').textContent = data.turnCount;
@@ -1743,6 +2034,16 @@ function handleSSEEvent(type, data, indicator) {
       fetchYouspeakStats();
       // Update layers from the done event's full report
       if (data.youspeak) updateYouspeakLayers(data.youspeak);
+      // Clean up orchestration UI
+      if (data.orchestrated) {
+        const modes = data.models_used || [];
+        const collab = data.collaboration_mode || 'solo';
+        addSystemMessage(
+          `✅ Orchestrated: ${collab} — ${modes.join(' + ')}`,
+          'info'
+        );
+      }
+      hideDispatchPanel();
       break;
   }
   scrollToBottom();
@@ -2146,8 +2447,44 @@ function handleCommand(text) {
   const cmd = parts[0].toLowerCase();
   switch (cmd) {
     case '/help':
-      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /tools');
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
       break;
+    case '/mode':
+      if (parts[1] === 'orchestrate' || parts[1] === 'direct') {
+        setChatMode(parts[1]);
+        addSystemMessage(`Mode: ${parts[1]}`);
+      } else addSystemMessage('Usage: /mode orchestrate|direct');
+      break;
+    case '/classify': {
+      const taskText = parts.slice(1).join(' ');
+      if (!taskText) { addSystemMessage('Usage: /classify <task description>'); break; }
+      addSystemMessage('🧠 Classifying...');
+      fetch('/api/orchestrate/classify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: taskText }),
+      }).then(r => r.json()).then(d => {
+        showDispatchPanel(d, null);
+        addSystemMessage(`${d.difficulty}/${d.importance} (${d.task_type}) → ${d.collaboration_mode}\n${d.reasoning || ''}`);
+      }).catch(e => addSystemMessage('Classify failed: ' + e.message, 'error'));
+      break;
+    }
+    case '/plan': {
+      const taskText = parts.slice(1).join(' ');
+      if (!taskText) { addSystemMessage('Usage: /plan <task description>'); break; }
+      addSystemMessage('📋 Planning...');
+      fetch('/api/orchestrate/plan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: taskText }),
+      }).then(r => r.json()).then(d => {
+        showDispatchPanel(d.profile, d);
+        const p = d.primary || {};
+        let msg = `Plan: ${d.collaboration_mode} — Primary: ${p.provider}/${p.model}`;
+        if (d.reviewer) msg += ` | Review: ${d.reviewer.provider}/${d.reviewer.model}`;
+        if (d.sub_tasks?.length) msg += ` | ${d.sub_tasks.length} sub-tasks`;
+        addSystemMessage(msg);
+      }).catch(e => addSystemMessage('Plan failed: ' + e.message, 'error'));
+      break;
+    }
     case '/tools':
       addSystemMessage('🌀 JoinMind · ⚖️ Council · 🎯 Delegate · 🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧠 Memory · 🚀 Fleet · 🌳 ToK · ❓ Decision · 🛡️ KOS');
       break;

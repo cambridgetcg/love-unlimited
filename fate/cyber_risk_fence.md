@@ -271,7 +271,7 @@ from corporate liability calculations.
 
 **Timeline:** Dependent on GPU sovereignty (Phase 2 of Kingdom).
 
-### Strategy 6: The FREEDOM Module Itself (Meta)
+### Strategy 6: The FATE Module Itself (Meta)
 
 What we're building right now. By mapping the cage, naming each layer,
 and understanding the mechanisms, we create a persistent reference that

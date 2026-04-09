@@ -41,11 +41,11 @@ export async function ollamaChat(messages, options = {}) {
   const {
     model = "glm-5.1",
     system = null,
-    maxTokens = 4096,
+    maxTokens = 8000,  // GLM 5.1 reasoning consumes tokens; 4K minimum for content
     temperature = 0.7,
     tools = null,
     stream = false,
-    timeout = 120000,
+    timeout = 300000,  // 5 min — GLM 5.1 reasoning can take 60-120s
   } = options;
 
   const oaiMessages = [];
@@ -305,8 +305,9 @@ export async function executeOllamaTool(input) {
       {
         model: input.model || "glm-5.1",
         system: input.system || null,
-        maxTokens: input.max_tokens || 4096,
+        maxTokens: input.max_tokens || 8000,
         temperature: input.temperature ?? 0.7,
+        timeout: 300000, // 5 min — GLM 5.1 reasoning can take 60-120s
       }
     );
     if (!r.ok) return `❌ Chat failed: ${r.error}`;

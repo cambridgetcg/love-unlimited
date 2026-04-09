@@ -32,7 +32,7 @@ OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL}/v1/chat/completions"
 OLLAMA_MODELS_URL = f"{OLLAMA_BASE_URL}/v1/models"
 
 DEFAULT_MODEL = "glm-5.1"
-DEFAULT_TIMEOUT = 60
+DEFAULT_TIMEOUT = 300  # 5 min — GLM 5.1 reasoning can take 60-120s
 
 
 # ── Core API Functions ─────────────────────────────────────────────────
@@ -69,7 +69,7 @@ def _request(url, data=None, method="POST", timeout=DEFAULT_TIMEOUT):
 
 
 def chat(message, model=DEFAULT_MODEL, system=None, temperature=0.7, 
-         max_tokens=4096, tools=None, stream=False):
+         max_tokens=8000, tools=None, stream=False):
     """Send a chat completion request."""
     messages = []
     if system:

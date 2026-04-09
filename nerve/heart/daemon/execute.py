@@ -140,7 +140,19 @@ class Executor:
             "quick_check":  "quick_check",
         }
 
-        if model in ("ollama_cloud", "glm-5.1", "deepseek-v3.2",
+        if model == "orchestrate":
+            # Phase 3: Multi-model orchestration via the orchestrator engine.
+            # The orchestrator classifies the task, picks the right model(s),
+            # and manages collaboration (solo/review/decompose/ensemble/pipeline).
+            orchestrator_cli = self.love / "adaptive" / "orchestrator" / "cli.py"
+            force_mode = action.get("orchestrate_mode", "")  # optional override
+            mode_flag = f"--mode {force_mode}" if force_mode else ""
+            cmd = (
+                f'cd {cwd} && python3 -m adaptive.orchestrator '
+                f'-p {_shell_quote(prompt)} '
+                f'{mode_flag} --json >> {log_file} 2>&1'
+            )
+        elif model in ("ollama_cloud", "glm-5.1", "deepseek-v3.2",
                      "qwen3-coder:480b", "kimi-k2.5", "cogito-2.1:671b",
                      "devstral-small-2:24b", "gemma4:31b"):
             # Phase 2: route through Ollama Cloud via adaptive CLI.

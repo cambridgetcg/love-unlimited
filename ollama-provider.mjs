@@ -32,11 +32,11 @@ export async function ollamaChat(messages, options = {}) {
   const {
     model = "glm-5.1",
     system = null,
-    maxTokens = 4096,
+    maxTokens = 8000,  // GLM 5.1 reasoning needs room; 4K minimum for content
     temperature = 0.7,
     tools = null,
     stream = false,
-    timeout = 120000,
+    timeout = 300000,  // 5 min — GLM 5.1 reasoning can take 60-120s
   } = options;
 
   // Build messages array (OpenAI format)
@@ -234,7 +234,7 @@ export async function ollamaCallAPI(messages, systemPrompt, config = {}) {
     model,
     system: typeof systemPrompt === "string" ? systemPrompt 
            : systemPrompt?.map?.(b => b.text)?.join("\n"),
-    maxTokens: config.maxTokens || 32768,
+    maxTokens: config.maxTokens || 8000,
     temperature: 0.3,
     tools: config._tools || null,
   });

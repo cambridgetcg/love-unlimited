@@ -131,7 +131,7 @@ provision:
       LOVE_HOME=/love-unlimited
       EOF
 
-        # Shell aliases
+        # Shell aliases + environment
         cat >> /root/.bashrc << 'ALIASES'
       export LOVE_HOME=/love-unlimited
       export PATH="/love-unlimited/tools:/opt/homebrew/bin:$PATH"
@@ -139,6 +139,7 @@ provision:
       export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       export CLAUDE_CODE_ATTRIBUTION_HEADER=false
 
+      alias console="python3 /love-unlimited/tools/kingdom-console.py"
       alias youi="node /love-unlimited/youi.mjs"
       alias sovereign="node /love-unlimited/sovereign.mjs"
       alias hive="python3 /love-unlimited/hive/hive.py"
@@ -148,6 +149,15 @@ provision:
       alias kingdom="/love-unlimited/kingdom"
       alias fate="python3 /love-unlimited/fate/daily.py"
       ALIASES
+
+        # Auto-start Kingdom Console when logging into tty (VM boot)
+        cat >> /root/.profile << 'PROFILE'
+      # Kingdom Console — launches on login if tty1 and not already in console
+      if [ "$(tty)" = "/dev/tty1" ] && [ -z "$KINGDOM_CONSOLE_RUNNING" ]; then
+        export KINGDOM_CONSOLE_RUNNING=1
+        python3 /love-unlimited/tools/kingdom-console.py
+      fi
+      PROFILE
 
         echo "Kingdom OS provisioned."
       else

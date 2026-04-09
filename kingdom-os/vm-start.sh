@@ -115,6 +115,11 @@ case "$ACTION" in
     limactl shell "$VM_NAME" -- bash -c \
       "cd /love-unlimited && node youi.mjs --agent ${AGENT}"
     ;;
+  console)
+    bold "Launching Kingdom Console inside Kingdom VM..."
+    limactl shell "$VM_NAME" -- bash -c \
+      "HIVE_INSTANCE=${AGENT} python3 /love-unlimited/tools/kingdom-console.py --agent ${AGENT}"
+    ;;
   start)
     green "Kingdom VM running: $VM_NAME"
     echo ""

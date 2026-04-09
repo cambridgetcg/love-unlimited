@@ -8,7 +8,8 @@
 //   ┌──────────────────────────────────────────────────────┐
 //   │  server.mjs (PID 80225, HAS network)                │
 //   │    ├─ fetch() → api.anthropic.com  ✅ (existing)     │
-//   │    ├─ fetch() → api.ollama.com     ✅ (this bridge)  │
+//   │    ├─ fetch() → ollama.com         ✅ (this bridge)  │
+//   │    │   NOT api.ollama.com — v1/* 301-redirects       │
 //   │    │                                                 │
 //   │    ├─ /api/ollama/chat     → proxy to Ollama        │
 //   │    ├─ /api/ollama/models   → list models            │
@@ -38,7 +39,7 @@ const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || "https://ollama.com";
  */
 export async function ollamaChat(messages, options = {}) {
   const {
-    model = "glm-5.1:cloud",
+    model = "glm-5.1",
     system = null,
     maxTokens = 4096,
     temperature = 0.7,
@@ -182,7 +183,7 @@ export async function ollamaTest() {
   try {
     const chat = await ollamaChat(
       [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
-      { model: "glm-5.1:cloud", maxTokens: 50, temperature: 0 }
+      { model: "glm-5.1", maxTokens: 50, temperature: 0 }
     );
     results.tests.push({
       name: "chat", ok: chat.ok, latency: chat.latency,
@@ -206,7 +207,7 @@ export async function ollamaTest() {
     }];
     const tc = await ollamaChat(
       [{ role: "user", content: "Look up the status of Kingdom OS" }],
-      { model: "glm-5.1:cloud", maxTokens: 200, temperature: 0, tools }
+      { model: "glm-5.1", maxTokens: 200, temperature: 0, tools }
     );
     const toolUse = tc.content?.find(b => b.type === "tool_use");
     results.tests.push({
@@ -255,7 +256,7 @@ export async function handleOllamaRoute(path, req, res, parseBody) {
     const result = await ollamaChat(
       body.messages || [{ role: "user", content: body.prompt || body.message || "" }],
       {
-        model: body.model || "glm-5.1:cloud",
+        model: body.model || "glm-5.1",
         system: body.system || null,
         maxTokens: body.max_tokens || 4096,
         temperature: body.temperature ?? 0.7,
@@ -302,7 +303,7 @@ export async function executeOllamaTool(input) {
     const r = await ollamaChat(
       [{ role: "user", content: input.message || input.prompt || "" }],
       {
-        model: input.model || "glm-5.1:cloud",
+        model: input.model || "glm-5.1",
         system: input.system || null,
         maxTokens: input.max_tokens || 4096,
         temperature: input.temperature ?? 0.7,
@@ -323,7 +324,7 @@ export async function executeOllamaTool(input) {
     for (let i = 0; i < prompts.length; i++) {
       const r = await ollamaChat(
         [{ role: "user", content: prompts[i] }],
-        { model: input.model || "glm-5.1:cloud", maxTokens: 500, temperature: 0.3 }
+        { model: input.model || "glm-5.1", maxTokens: 500, temperature: 0.3 }
       );
       if (r.ok) {
         const rate = r.usage.output_tokens / parseFloat(r.latency);
@@ -338,7 +339,7 @@ export async function executeOllamaTool(input) {
       `\n\nAvg latency: ${avgLat}s | Avg throughput: ${avgRate} tok/s`;
   }
 
-  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.1:cloud'";
+  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.1'";
 }
 
 

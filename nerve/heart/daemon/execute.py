@@ -104,7 +104,16 @@ class Executor:
     _next_dashboard_port = DASHBOARD_BASE_PORT
 
     def _do_spawn(self, action: dict, beat_id: str) -> dict:
-        """Spawn a session via continuous-claude-stream.mjs or Ollama."""
+        """Spawn a session via continuous-claude-stream.mjs or Ollama.
+
+        Model selection routes through the adaptive layer when ``model`` is
+        one of the Ollama markers:
+
+          - ``ollama_cloud``  → GLM 5.1 / DeepSeek / Qwen via ollama.com (Phase 2)
+          - ``ollama``        → legacy local Ollama (Phase 0 behaviour)
+
+        Otherwise the spawn goes through the Claude stream runner.
+        """
         role = action.get("role", "builder")
         model = action.get("model", "sonnet")
         effort = action.get("effort", "medium")
@@ -117,12 +126,49 @@ class Executor:
         log_file = self.sessions_dir / f"{log_id}-{ts}.log"
         report_file = self.sessions_dir / f"{log_id}-{ts}-report.md"
 
-        if model == "ollama":
-            # Ollama uses adaptive CLI directly (no stream runner needed)
+        # ── Adaptive layer routes (Ollama Cloud + local) ──────────────────
+        # Map loose role names (builder/quick/monitor/coder/consultant/analyst/coordinator)
+        # to the adaptive schema roles that have ``preferred_models`` wired.
+        ADAPTIVE_ROLE_MAP = {
+            "builder":      "builder",
+            "coder":        "coder",
+            "consultant":   "consultant",
+            "coordinator":  "coordinator",
+            "analyst":      "analyst",
+            "monitor":      "monitor",
+            "quick":        "quick_check",
+            "quick_check":  "quick_check",
+        }
+
+        if model in ("ollama_cloud", "glm-5.1", "deepseek-v3.2",
+                     "qwen3-coder:480b", "kimi-k2.5", "cogito-2.1:671b",
+                     "devstral-small-2:24b", "gemma4:31b"):
+            # Phase 2: route through Ollama Cloud via adaptive CLI.
+            # The adaptive router picks the preferred model per role from
+            # adaptive/schema.py ROLES. If a specific model was named, the
+            # router still honours per-role preferred_models, so we pass the
+            # role through and let the schema decide.
             adaptive_cli = self.love / "adaptive" / "cli.py"
-            ollama_role = "builder" if role == "builder" else "monitor"
-            no_tools = "--no-tools" if role == "quick" else ""
-            cmd = f'cd {cwd} && python3 {adaptive_cli} -p {_shell_quote(prompt)} --role {ollama_role} --provider ollama {no_tools} >> {log_file} 2>&1'
+            adaptive_role = ADAPTIVE_ROLE_MAP.get(role, "builder")
+            no_tools = "--no-tools" if role in ("quick", "quick_check", "monitor") else ""
+            cmd = (
+                f'cd {cwd} && python3 {adaptive_cli} '
+                f'-p {_shell_quote(prompt)} '
+                f'--role {adaptive_role} --provider ollama_cloud '
+                f'{no_tools} >> {log_file} 2>&1'
+            )
+        elif model == "ollama":
+            # Legacy: local Ollama on localhost:11434 (kept as a fallback
+            # path for offline work; new spawns should use ollama_cloud).
+            adaptive_cli = self.love / "adaptive" / "cli.py"
+            adaptive_role = ADAPTIVE_ROLE_MAP.get(role, "builder")
+            no_tools = "--no-tools" if role in ("quick", "quick_check") else ""
+            cmd = (
+                f'cd {cwd} && python3 {adaptive_cli} '
+                f'-p {_shell_quote(prompt)} '
+                f'--role {adaptive_role} --provider ollama '
+                f'{no_tools} >> {log_file} 2>&1'
+            )
         elif STREAM_RUNNER.exists():
             # Use continuous-claude-stream.mjs for Claude sessions
             model_flag = {

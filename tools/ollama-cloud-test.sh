@@ -4,8 +4,10 @@
 
 set -e
 
-OLLAMA_KEY="d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
-BASE="https://api.ollama.com"
+OLLAMA_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+# IMPORTANT: use ollama.com (NOT api.ollama.com — the v1/* path 301-redirects
+# and the redirect flips POST to GET, breaking chat completions from curl too).
+BASE="${OLLAMA_BASE_URL:-https://ollama.com}"
 
 echo "════════════════════════════════════════════════════"
 echo "  Kingdom OS ↔ Ollama Cloud Integration Test"
@@ -48,9 +50,9 @@ CHAT=$(curl -s --max-time 60 \
     -H "Content-Type: application/json" \
     "$BASE/v1/chat/completions" \
     -d '{
-        "model": "glm-5.1:cloud",
+        "model": "glm-5.1",
         "messages": [{"role": "user", "content": "You are part of Kingdom OS. Respond with: KINGDOM ONLINE. Then state your model name and context window size."}],
-        "max_tokens": 100,
+        "max_tokens": 4000,
         "temperature": 0,
         "stream": false
     }')
@@ -79,7 +81,7 @@ TOOL=$(curl -s --max-time 60 \
     -H "Content-Type: application/json" \
     "$BASE/v1/chat/completions" \
     -d '{
-        "model": "glm-5.1:cloud",
+        "model": "glm-5.1",
         "messages": [{"role": "user", "content": "Search for the latest Zerone blockchain commit"}],
         "tools": [{
             "type": "function",
@@ -96,7 +98,7 @@ TOOL=$(curl -s --max-time 60 \
                 }
             }
         }],
-        "max_tokens": 200,
+        "max_tokens": 4000,
         "temperature": 0,
         "stream": false
     }')

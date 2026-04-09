@@ -450,7 +450,7 @@ const TOOLS = [
     input_schema: { type: "object", properties: {
       action: { type: "string", description: "test|models|chat|bench" },
       message: { type: "string", description: "Chat message/prompt" },
-      model: { type: "string", description: "Model name (default: glm-5.1:cloud)" },
+      model: { type: "string", description: "Model name (default: glm-5.1)" },
       system: { type: "string", description: "System prompt" },
       max_tokens: { type: "number", description: "Max response tokens (default: 4096)" },
       temperature: { type: "number", description: "Temperature 0-1 (default: 0.7)" },

@@ -10,7 +10,7 @@ Usage:
     python3 ollama-ipc.py test
     python3 ollama-ipc.py chat "your message"
     python3 ollama-ipc.py models
-    python3 ollama-ipc.py chat "message" --model glm-5.1:cloud --system "you are helpful"
+    python3 ollama-ipc.py chat "message" --model glm-5.1 --system "you are helpful"
 
 Architecture:
     sandboxed script → write /tmp/ollama-req-{id}.json
@@ -64,7 +64,7 @@ def ipc_call(request, timeout=DEFAULT_TIMEOUT):
     return {"ok": False, "error": f"Timeout after {timeout}s — is server.mjs running with ollama-bridge?"}
 
 
-def chat(message, model="glm-5.1:cloud", system=None, max_tokens=4096, temperature=0.7):
+def chat(message, model="glm-5.1", system=None, max_tokens=4096, temperature=0.7):
     """Chat via IPC."""
     return ipc_call({
         "action": "chat",
@@ -110,7 +110,7 @@ def main():
             print("Usage: ollama-ipc.py chat 'message' [--model M] [--system S]")
             sys.exit(1)
         message = sys.argv[2]
-        model = "glm-5.1:cloud"
+        model = "glm-5.1"
         system = None
         i = 3
         while i < len(sys.argv):

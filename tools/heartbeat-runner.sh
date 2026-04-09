@@ -44,31 +44,51 @@ done
 # Clean any previous spawn queue
 > "$SPAWN_QUEUE"
 
-# ── Adaptive model selection ─────────────────────────────────────────────────
-# Three tiers:
-#   - Idle (2+ consecutive): Local Ollama (zero cost) or haiku fallback
-#   - Active: Opus via Claude CLI (full power for decisions)
-#   - Adaptive CLI available: python3 ~/love-unlimited/adaptive/cli.py
+# ── Adaptive model selection (Phase 2 — Ollama Cloud first) ────────────────
+# Three tiers, in priority order:
+#   - Idle (2+ consecutive): Ollama Cloud GLM 5.1 (sovereign, zero marginal
+#     cost, 36 frontier models). Falls back to local Ollama, then Haiku.
+#   - Active: Sonnet via Claude CLI (full power for decisions)
+#   - Local Ollama is the offline fallback only.
 IDLE_COUNT=0
 [ -f "$IDLE_COUNT_FILE" ] && IDLE_COUNT=$(cat "$IDLE_COUNT_FILE" 2>/dev/null || echo 0)
 
 ADAPTIVE_CLI="$LOVE_DIR/adaptive/cli.py"
-OLLAMA_AVAILABLE=false
+
+OLLAMA_LOCAL_UP=false
 if curl -s --connect-timeout 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
-  OLLAMA_AVAILABLE=true
+  OLLAMA_LOCAL_UP=true
 fi
 
-if [ "$IDLE_COUNT" -ge 2 ] && [ "$OLLAMA_AVAILABLE" = true ]; then
+OLLAMA_CLOUD_UP=false
+OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+if curl -s --connect-timeout 3 --max-time 5 \
+      -H "Authorization: Bearer $OLLAMA_CLOUD_KEY" \
+      -o /dev/null -w "%{http_code}" \
+      https://ollama.com/v1/models 2>/dev/null | grep -q "^200$"; then
+  OLLAMA_CLOUD_UP=true
+fi
+
+if [ "$IDLE_COUNT" -ge 2 ] && [ "$OLLAMA_CLOUD_UP" = true ]; then
+  # Phase 2 sovereign default for idle beats — GLM 5.1 via ollama.com.
+  USE_ADAPTIVE=true
+  COORD_PROVIDER="ollama_cloud"
+  COORD_ROLE="coordinator"   # routes to glm-5.1 via adaptive/schema.py
+  COORD_LABEL="ollama_cloud/glm-5.1 (idle beat #$IDLE_COUNT, sovereign)"
+elif [ "$IDLE_COUNT" -ge 2 ] && [ "$OLLAMA_LOCAL_UP" = true ]; then
+  # Cloud unreachable — fall back to local Ollama.
   USE_ADAPTIVE=true
   COORD_PROVIDER="ollama"
   COORD_ROLE="monitor"
-  COORD_LABEL="ollama/monitor (idle beat #$IDLE_COUNT, zero cost)"
+  COORD_LABEL="ollama-local/monitor (idle beat #$IDLE_COUNT, cloud unreachable)"
 elif [ "$IDLE_COUNT" -ge 2 ]; then
+  # No Ollama at all — fall back to Claude Haiku.
   USE_ADAPTIVE=false
   COORD_MODEL="claude-haiku-4-5-20251001"
   COORD_EFFORT="low"
-  COORD_LABEL="haiku/low (idle beat #$IDLE_COUNT)"
+  COORD_LABEL="haiku/low (idle beat #$IDLE_COUNT, no ollama)"
 else
+  # Active beat — full power Claude Sonnet.
   USE_ADAPTIVE=false
   COORD_MODEL="sonnet"
   COORD_EFFORT="medium"
@@ -109,25 +129,57 @@ Do Phase 1 (SENSE) and Phase 2 (DECIDE).
 
 For Phase 3 (SPAWN), write spawn commands to ~/love-unlimited/memory/spawn-queue.sh as executable shell lines. Do NOT invoke claude directly — the shell runner handles execution after you exit.
 
-Each line should be a complete command. Choose role, model, and effort by task:
+Each line should be a complete command. Choose role, model, and effort by task.
+Phase 2 default is OLLAMA CLOUD (GLM 5.1 + 36 frontier models, sovereign).
 
-BUILDER (sonnet, medium effort — the workhorse):
+═══ OLLAMA CLOUD (Phase 2 — prefer for ALL routine work) ═══
+
+BUILDER-CLOUD (DeepSeek v3.2 via adaptive layer — top coding benchmarks, sovereign):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role builder --provider ollama_cloud >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+CODER-CLOUD (qwen3-coder:480b — pure code generation specialist):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role coder --provider ollama_cloud >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+CONSULTANT-CLOUD (kimi-k2.5 — massive context for repo-wide analysis):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role consultant --provider ollama_cloud >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+ANALYST-CLOUD (cogito-2.1:671b — reasoning specialist for Oracle/markets):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role analyst --provider ollama_cloud >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+QUICK-CLOUD (gemma4:31b — fast verification, no tools):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role quick_check --provider ollama_cloud --no-tools >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+═══ CLAUDE (frontier reasoning, novel problems, human-interactive only) ═══
+
+BUILDER (sonnet, medium effort — the workhorse for frontier reasoning):
 cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
-BUILDER-LOCAL (qwen2.5-coder:32b via adaptive layer — zero cost, use for routine code tasks):
-cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role builder --provider ollama >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
-
-CONSULTANT (opus, high effort — expert hire for hard problems):
+CONSULTANT (opus, high effort — expert hire, reserve for hard problems only):
 cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
 QUICK CHECK (haiku, low effort — fast lightweight verification):
 cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-haiku-4-5-20251001 --effort low --dangerously-skip-permissions --no-session-persistence >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
-QUICK-LOCAL (local 7B via adaptive layer — zero cost, use for status checks):
+═══ LOCAL OLLAMA (offline fallback only) ═══
+
+BUILDER-LOCAL (only if cloud is down):
+cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role builder --provider ollama >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+QUICK-LOCAL (only if cloud is down):
 cd <dir> && python3 ~/love-unlimited/adaptive/cli.py -p \"<prompt>\" --role monitor --provider ollama --no-tools >> ~/love-unlimited/memory/sessions/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
-Prefer LOCAL variants when the task is routine (status checks, simple code edits, log parsing, summarization).
-Use Claude variants when the task requires frontier reasoning, long context, or high-stakes judgment.
+═══ ROUTING POLICY ═══
+
+Backends available this beat:
+  • Ollama Cloud:  $OLLAMA_CLOUD_UP   ← PREFER for routine work
+  • Ollama local:  $OLLAMA_LOCAL_UP   ← offline fallback
+  • Claude:        always             ← reserve for frontier / interactive
+
+Decision rules:
+  1. Routine code, status checks, log parsing, doc updates → CLOUD variants
+  2. Frontier reasoning, novel architecture, SOUL work     → CLAUDE
+  3. Local-only when cloud is down                         → LOCAL
+  4. GLM 5.1 reasoning latency is 15-45s — fine for background, NOT real-time
 
 For CONSULTANT→BUILDER sequential pairs, write consultant line first — they execute in order.
 For parallel independent tasks, prefix with '# PARALLEL' comment.

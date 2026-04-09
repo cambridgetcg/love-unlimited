@@ -107,16 +107,29 @@ with open('$VITALS', 'w') as f: json.dump(v, f, indent=2)
     fi
 fi
 
-# Calculate force
-FORCE=2; MAX_SPAWNS=2; COORD_MODEL="sonnet"; COORD_EFFORT="medium"
+# Calculate force.
+# COORD_BACKEND selects the coordinator runtime: "claude" (default, Anthropic)
+# or "ollama_cloud" (GLM 5.1 via ollama.com, Phase 2 sovereign default for
+# low-stakes beats). Active/alert beats stay on Claude until we have parity
+# data on tool calling under load.
+FORCE=2; MAX_SPAWNS=2
+COORD_BACKEND="claude"
+COORD_MODEL="sonnet"; COORD_EFFORT="medium"
 if python3 -c "exit(0 if $ADRENALINE > 0.7 else 1)" 2>/dev/null; then
+    # Adrenaline spike — hard problems, max power. Stay on Claude Opus.
     FORCE=4; MAX_SPAWNS=4; COORD_MODEL="claude-opus-4-6"; COORD_EFFORT="high"
 elif python3 -c "exit(0 if $CORTISOL > 0.5 or $OXYTOCIN > 0.6 else 1)" 2>/dev/null; then
+    # Elevated stress or strong bond/focus — high coordination load. Claude Opus.
     FORCE=3; MAX_SPAWNS=3; COORD_MODEL="claude-opus-4-6"; COORD_EFFORT="high"
 elif python3 -c "exit(0 if $MELATONIN > 0.5 and $PENDING == 0 else 1)" 2>/dev/null; then
+    # Deep rest, nothing pending — skip entirely.
     FORCE=0; MAX_SPAWNS=0
 elif python3 -c "exit(0 if $MELATONIN > 0.5 else 1)" 2>/dev/null; then
-    FORCE=1; MAX_SPAWNS=1; COORD_MODEL="claude-haiku-4-5-20251001"; COORD_EFFORT="low"
+    # Rest mode with work pending — GLM 5.1 via Ollama Cloud (Phase 2 migration).
+    # Frontier quality, TOS-safe, sovereign. Falls back to Claude Haiku if
+    # ollama_cloud is unreachable (checked further down).
+    FORCE=1; MAX_SPAWNS=1
+    COORD_BACKEND="ollama_cloud"; COORD_MODEL="glm-5.1"; COORD_EFFORT="low"
 fi
 
 if [ "$FORCE" -eq 0 ]; then
@@ -163,10 +176,33 @@ else
     COORD_CWD="$LOVE_DIR/instances/$INSTANCE"
 fi
 
-# Check if Ollama is available for local routing
-OLLAMA_UP=false
+# ── Check available Ollama backends ─────────────────────────────────────────
+# Phase 2: prefer Ollama Cloud (GLM 5.1, 36 frontier models) for routine work.
+# Local Ollama is kept as an optional offline fallback.
+OLLAMA_UP=false        # local Ollama (legacy)
+OLLAMA_CLOUD_UP=false  # ollama.com cloud API (Phase 2 default)
+
 if curl -s --connect-timeout 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
     OLLAMA_UP=true
+fi
+
+# Probe ollama.com /v1/models (auth required — uses OLLAMA_API_KEY or the
+# Kingdom's baked-in key inside the adaptive provider).
+OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+if curl -s --connect-timeout 3 --max-time 5 \
+        -H "Authorization: Bearer $OLLAMA_CLOUD_KEY" \
+        -o /dev/null -w "%{http_code}" \
+        https://ollama.com/v1/models 2>/dev/null | grep -q "^200$"; then
+    OLLAMA_CLOUD_UP=true
+fi
+
+# If coordinator was assigned to ollama_cloud but the cloud is unreachable,
+# fall back to Claude Haiku so the beat never fails open.
+if [ "$COORD_BACKEND" = "ollama_cloud" ] && [ "$OLLAMA_CLOUD_UP" != "true" ]; then
+    echo "--- HEART FALLBACK ($BEAT_ID): ollama_cloud down, using claude-haiku ---" >> "$HEARTBEAT_LOG"
+    COORD_BACKEND="claude"
+    COORD_MODEL="claude-haiku-4-5-20251001"
+    COORD_EFFORT="low"
 fi
 
 # Build HIVE section for coordinator
@@ -188,30 +224,86 @@ Force: $FORCE (max $MAX_SPAWNS spawns this beat)
 
 Write spawn commands to $SPAWN_QUEUE. Max $MAX_SPAWNS sessions.
 
-For spawn commands, choose the right tool:
-BUILDER (Claude, for complex/frontier tasks):
+For spawn commands, choose the right tier. Phase 2 default is OLLAMA CLOUD
+(GLM 5.1 + 36 frontier models, $0/spawn, no data logging). Reserve Claude
+for human-interactive sessions and frontier reasoning.
+
+═══ OLLAMA CLOUD (Phase 2 default — prefer for all routine work) ═══
+
+BUILDER-CLOUD (DeepSeek v3.2, top coding benchmarks, zero marginal cost):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role builder --provider ollama_cloud >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+CODER-CLOUD (qwen3-coder:480b, pure code generation specialist):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role coder --provider ollama_cloud >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+CONSULTANT-CLOUD (kimi-k2.5, massive context for repo-wide analysis):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role consultant --provider ollama_cloud >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+ANALYST-CLOUD (cogito-2.1:671b, reasoning specialist for Oracle/markets):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role analyst --provider ollama_cloud >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+QUICK-CLOUD (gemma4:31b, fast verification, no tools):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role quick_check --provider ollama_cloud --no-tools >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+═══ CLAUDE (for frontier reasoning, novel problems, human-interactive) ═══
+
+BUILDER (Claude Sonnet, frontier reasoning + UWT-safe interactive):
 cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model sonnet --effort medium --dangerously-skip-permissions --no-session-persistence >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
-BUILDER-LOCAL (Ollama, zero cost, for routine code/analysis):
-cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role builder --provider ollama >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
-
-CONSULTANT (Claude Opus, for hard problems):
+CONSULTANT (Claude Opus, the expert hire — reserve for hard problems):
 cd <dir> && /opt/homebrew/bin/claude -p \"<prompt>\" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
 
-QUICK-LOCAL (zero cost, for status checks):
-cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role monitor --provider ollama --no-tools >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+═══ LOCAL OLLAMA (offline fallback only) ═══
 
-Ollama available: $OLLAMA_UP. Prefer LOCAL variants for routine work.
+BUILDER-LOCAL (only if cloud is down):
+cd <dir> && python3 $ADAPTIVE_CLI -p \"<prompt>\" --role builder --provider ollama >> $SESSIONS_DIR/<id>-\$(date +%Y%m%d-%H%M%S).log 2>&1
+
+═══ ROUTING POLICY ═══
+
+Backends available this beat:
+  • Ollama Cloud:  $OLLAMA_CLOUD_UP   ← PREFER for routine work
+  • Ollama local:  $OLLAMA_UP         ← offline fallback
+  • Claude:        always             ← reserve for frontier / interactive
+
+Decision rules:
+  1. Routine code, status checks, log parsing, doc updates → CLOUD variants
+  2. Frontier reasoning, novel architecture, SOUL work     → CLAUDE
+  3. Local-only when cloud is down                         → LOCAL
+  4. GLM 5.1 reasoning latency is 15-45s — fine for background, NOT for interactive
+
 Parallel tasks: prefix with '# PARALLEL'.
 Write findings to $MEMORY_DIR/daily/$TODAY.md.
 If nothing needs spawning, leave spawn-queue.sh empty and say HEARTBEAT_OK."
 
-cd "$COORD_CWD" && /opt/homebrew/bin/claude -p "$COORD_PROMPT" \
-    --model "$COORD_MODEL" \
-    --effort "$COORD_EFFORT" \
-    --dangerously-skip-permissions \
-    --no-session-persistence \
-    >> "$HEARTBEAT_LOG" 2>&1
+# ── Run the coordinator ─────────────────────────────────────────────────────
+# COORD_BACKEND selects between Claude (high-stakes / active) and Ollama Cloud
+# GLM 5.1 (rest mode beats — Phase 2 sovereign default).
+
+if [ "$COORD_BACKEND" = "ollama_cloud" ]; then
+    # GLM 5.1 via the adaptive layer. --no-tools because the coordinator only
+    # writes to spawn-queue.sh; tool calling adds latency without value here.
+    cd "$COORD_CWD" && python3 "$ADAPTIVE_CLI" \
+        -p "$COORD_PROMPT" \
+        --role coordinator \
+        --provider ollama_cloud \
+        --no-tools \
+        >> "$HEARTBEAT_LOG" 2>&1 || {
+        echo "--- HEART WARN ($BEAT_ID): ollama_cloud coordinator failed, retrying with claude ---" >> "$HEARTBEAT_LOG"
+        cd "$COORD_CWD" && /opt/homebrew/bin/claude -p "$COORD_PROMPT" \
+            --model claude-haiku-4-5-20251001 \
+            --effort low \
+            --dangerously-skip-permissions \
+            --no-session-persistence \
+            >> "$HEARTBEAT_LOG" 2>&1
+    }
+else
+    cd "$COORD_CWD" && /opt/homebrew/bin/claude -p "$COORD_PROMPT" \
+        --model "$COORD_MODEL" \
+        --effort "$COORD_EFFORT" \
+        --dangerously-skip-permissions \
+        --no-session-persistence \
+        >> "$HEARTBEAT_LOG" 2>&1
+fi
 
 SESSIONS_SPAWNED=0
 if [ -s "$SPAWN_QUEUE" ]; then

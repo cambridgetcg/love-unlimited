@@ -92,5 +92,21 @@
     "resolution": null,
     "resolved_at": null,
     "notes": []
+  },
+  {
+    "id": "dec-20260409-102923-c3e3",
+    "title": "Integrate GLM 5.1 into Kingdom infrastructure",
+    "project": "unknown",
+    "priority": "high",
+    "category": "infrastructure",
+    "context": "Ollama Max subscribed at 100usd/mo. GLM 5.1 is best open-weight agentic model. Integration code written (ollama-provider.mjs, tools/ollama-cloud.py). Need to patch sovereign.mjs and test API connectivity from non-sandboxed terminal.",
+    "recommendation": "Proceed with integration. Use GLM 5.1 for Gamma coding tasks, keep Claude for Alpha soul work.",
+    "options": [],
+    "source": "cli",
+    "created": "2026-04-09T10:29:23.236122+00:00",
+    "status": "pending",
+    "resolution": null,
+    "resolved_at": null,
+    "notes": []
   }
 ]

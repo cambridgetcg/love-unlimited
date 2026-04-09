@@ -17,9 +17,85 @@ import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
 import { createKernel } from "../youspeak-kernel.mjs";
+import { handleOllamaRoute, executeOllamaTool, startFileIPC, ollamaChat } from "./ollama-bridge.mjs";
 
 const PORT = 777;
 const __dirname = new URL(".", import.meta.url).pathname;
+
+// Ollama Cloud models available in settings
+const OLLAMA_MODELS = [
+  "glm-5.1", "glm-5", "glm-4.7", "glm-4.6",
+  "deepseek-v3.2", "deepseek-v3.1:671b",
+  "qwen3.5:397b", "qwen3-coder:480b", "qwen3-coder-next",
+  "kimi-k2.5", "kimi-k2:1t", "kimi-k2-thinking",
+  "gemma4:31b", "gemma3:27b", "gemma3:12b",
+  "mistral-large-3:675b", "devstral-2:123b", "devstral-small-2:24b",
+  "minimax-m2.7", "minimax-m2.5", "minimax-m2.1",
+  "nemotron-3-super", "nemotron-3-nano:30b",
+  "cogito-2.1:671b",
+  "gemini-3-flash-preview",
+];
+const CLAUDE_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
+const ALL_VALID_MODELS = [...CLAUDE_MODELS, ...OLLAMA_MODELS];
+function isOllamaModel(model) { return !model.startsWith("claude-"); }
+
+// Ollama Cloud pricing ($/1M tokens) — best-effort estimates
+const OLLAMA_PRICING = {
+  "glm-5.1":              { input: 0.30, output: 0.60 },
+  "glm-5":                { input: 0.25, output: 0.50 },
+  "glm-4.7":              { input: 0.20, output: 0.40 },
+  "glm-4.6":              { input: 0.15, output: 0.30 },
+  "deepseek-v3.2":        { input: 0.27, output: 1.10 },
+  "deepseek-v3.1:671b":   { input: 0.27, output: 1.10 },
+  "qwen3.5:397b":         { input: 0.30, output: 1.20 },
+  "qwen3-coder:480b":     { input: 0.30, output: 1.20 },
+  "qwen3-coder-next":     { input: 0.30, output: 1.20 },
+  "kimi-k2.5":            { input: 0.25, output: 1.00 },
+  "kimi-k2:1t":           { input: 0.25, output: 1.00 },
+  "kimi-k2-thinking":     { input: 0.25, output: 1.00 },
+  "gemma4:31b":           { input: 0.05, output: 0.10 },
+  "gemma3:27b":           { input: 0.05, output: 0.10 },
+  "gemma3:12b":           { input: 0.03, output: 0.06 },
+  "mistral-large-3:675b": { input: 0.40, output: 1.60 },
+  "devstral-2:123b":      { input: 0.15, output: 0.45 },
+  "devstral-small-2:24b": { input: 0.05, output: 0.15 },
+  "minimax-m2.7":         { input: 0.20, output: 0.80 },
+  "minimax-m2.5":         { input: 0.15, output: 0.60 },
+  "minimax-m2.1":         { input: 0.10, output: 0.40 },
+  "nemotron-3-super":     { input: 0.20, output: 0.80 },
+  "nemotron-3-nano:30b":  { input: 0.05, output: 0.10 },
+  "cogito-2.1:671b":      { input: 0.20, output: 0.80 },
+  "gemini-3-flash-preview": { input: 0.10, output: 0.40 },
+};
+const OLLAMA_DEFAULT_PRICE = { input: 0.20, output: 0.60 };
+
+// Dual-provider usage accumulator
+const providerUsage = {
+  claude: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, turns: 0, cost: 0 },
+  ollama: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
+  sessionStart: Date.now(),
+};
+
+function trackProviderUsage(provider, model, usage) {
+  const u = providerUsage[provider];
+  u.inputTokens += usage.input_tokens || 0;
+  u.outputTokens += usage.output_tokens || 0;
+  u.turns++;
+  if (provider === "claude") {
+    u.thinkingTokens += usage.thinking_tokens || 0;
+  } else {
+    // Estimate Ollama cost
+    const pricing = OLLAMA_PRICING[model] || OLLAMA_DEFAULT_PRICE;
+    const inCost = ((usage.input_tokens || 0) / 1_000_000) * pricing.input;
+    const outCost = ((usage.output_tokens || 0) / 1_000_000) * pricing.output;
+    u.cost += inCost + outCost;
+    if (!u.byModel[model]) u.byModel[model] = { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0 };
+    u.byModel[model].inputTokens += usage.input_tokens || 0;
+    u.byModel[model].outputTokens += usage.output_tokens || 0;
+    u.byModel[model].turns++;
+    u.byModel[model].cost += inCost + outCost;
+  }
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS
@@ -71,7 +147,7 @@ const state = {
   effort: AGENTS[detectedAgent]?.defaultEffort || "max",
   thinking: "adaptive",
   workdir: homedir(),
-  soulDir: join(homedir(), "Love"),
+  soulDir: process.env.LOVE_HOME || resolve(join(__dirname, "..")),
   messages: [],
   turnCount: 0,
   totalToolCalls: 0,
@@ -369,6 +445,16 @@ const TOOLS = [
       action: { type: "string", description: "audit|check|events|baseline" },
       scope: { type: "string", description: "Audit scope: full|quick|critical" },
     }, required: ["action"] } },
+  { name: "ollama",
+    description: "OLLAMA — Call GLM 5.1 and other Ollama cloud models. Runs in-process (bypasses sandbox). Actions: test (connectivity+chat+tools test), models (list available), chat (send message to model), bench (latency/throughput benchmark).",
+    input_schema: { type: "object", properties: {
+      action: { type: "string", description: "test|models|chat|bench" },
+      message: { type: "string", description: "Chat message/prompt" },
+      model: { type: "string", description: "Model name (default: glm-5.1:cloud)" },
+      system: { type: "string", description: "System prompt" },
+      max_tokens: { type: "number", description: "Max response tokens (default: 4096)" },
+      temperature: { type: "number", description: "Temperature 0-1 (default: 0.7)" },
+    }, required: ["action"] } },
 ];
 
 function resolvePath(p) {
@@ -420,7 +506,7 @@ function shellEscape(s) {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`")}"`;
 }
 
-function executeTool(name, input) {
+async function executeTool(name, input) {
   try {
     switch (name) {
       // ─── Core Tools ──────────────────────────────────────
@@ -754,8 +840,15 @@ function executeTool(name, input) {
       case "tok": {
         const a = input.action;
         if (a === "add" && input.entry) {
-          const tags = input.tags ? `--tags ${input.tags}` : "";
-          return runOperationalTool("tok", `add ${shellEscape(input.entry)} ${tags}`);
+          // tok.py add requires --title, --source, --content
+          // Parse from entry string or use structured fields
+          const title = input.title || input.entry.slice(0, 80);
+          const source = input.source || "kingdom";
+          const content = input.content || input.entry;
+          const category = input.category || input.tags?.split(",")[0] || "general";
+          const tags = input.tags ? `--tags ${shellEscape(input.tags)}` : "";
+          return runOperationalTool("tok",
+            `add --title ${shellEscape(title)} --source ${shellEscape(source)} --category ${shellEscape(category)} --content ${shellEscape(content)} ${tags}`);
         }
         if (a === "list") return runOperationalTool("tok", "list");
         if (a === "stats") return runOperationalTool("tok", "stats");
@@ -766,9 +859,13 @@ function executeTool(name, input) {
 
       case "decision": {
         const a = input.action;
-        if (a === "queue" && input.question) {
+        if ((a === "queue" || a === "add") && input.question) {
+          // decision.py expects: add --title "..." [--priority P] [--context C] [--recommendation R]
+          const title = shellEscape(input.question);
           const pri = input.priority ? `--priority ${input.priority}` : "";
-          return runOperationalTool("decision", `queue ${shellEscape(input.question)} ${pri}`);
+          const ctx = input.context ? `--context ${shellEscape(input.context)}` : "";
+          const rec = input.recommendation ? `--recommendation ${shellEscape(input.recommendation)}` : "";
+          return runOperationalTool("decision", `add --title ${title} ${pri} ${ctx} ${rec}`);
         }
         if (a === "list" || a === "pending") return runOperationalTool("decision", "list");
         if (a === "resolve" && input.decision_id && input.answer)
@@ -779,6 +876,10 @@ function executeTool(name, input) {
       case "kos": {
         const scope = input.scope || "quick";
         return runOperationalTool("kos", `${input.action} --scope ${scope}`);
+      }
+
+      case "ollama": {
+        return await executeOllamaTool(input);
       }
 
       default: return `Unknown tool: ${name}`;
@@ -995,6 +1096,34 @@ async function callClaude(messages, systemPrompt) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
+// OLLAMA — Route to Ollama Cloud for non-Claude models
+// ═════════════════════════════════════════════════════════════════════
+
+async function callOllamaModel(messages, systemPrompt) {
+  const result = await ollamaChat(messages, {
+    model: state.model,
+    system: systemPrompt,
+    maxTokens: state.maxTokens,
+    tools: TOOLS.map(t => ({
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: t.input_schema },
+    })),
+  });
+
+  if (!result.ok) throw new Error(`Ollama ${result.status}: ${result.error}`);
+
+  return {
+    content: result.content,
+    stop_reason: result.stop_reason,
+    usage: {
+      input_tokens: result.usage?.input_tokens || 0,
+      output_tokens: result.usage?.output_tokens || 0,
+    },
+    _provider: "ollama",
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // YOUSPEAK — Now powered by youspeak-kernel.mjs
 // All 5 layers: Output, Thinking, Action, Context, System
 // ═════════════════════════════════════════════════════════════════════
@@ -1129,7 +1258,7 @@ async function handleRequest(req, res) {
 
     if (path === "/api/settings" && req.method === "POST") {
       const body = await parseBody(req);
-      const VALID_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
+      const VALID_MODELS = ALL_VALID_MODELS;
       const VALID_EFFORTS = ["none", "low", "medium", "high", "max"];
       const VALID_THINKING = ["adaptive", "enabled", "disabled"];
       const errors = [];
@@ -1154,6 +1283,27 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking }));
     }
 
+    if (path === "/api/usage") {
+      const elapsed = Math.round((Date.now() - providerUsage.sessionStart) / 60000);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({
+        elapsed,
+        activeModel: state.model,
+        activeProvider: isOllamaModel(state.model) ? "ollama" : "claude",
+        claude: {
+          ...providerUsage.claude,
+          budget: {
+            fiveHour: { utilization: budget.fiveHour.utilization, status: budget.fiveHour.status },
+            sevenDay: { utilization: budget.sevenDay.utilization, status: budget.sevenDay.status },
+            overage: budget.overage,
+            isOverage: budget.isUsingOverage,
+            resetIn: budget.fiveHour.reset > Date.now() ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) : null,
+          },
+        },
+        ollama: providerUsage.ollama,
+      }));
+    }
+
     if (path === "/api/memory") {
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ memory: readMemory() }));
@@ -1164,6 +1314,12 @@ async function handleRequest(req, res) {
       state.turnCount = 0;
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
+    }
+
+    // ── Ollama Bridge API ───────────────────────────────
+    if (path.startsWith("/api/ollama")) {
+      const handled = await handleOllamaRoute(path, req, res, parseBody);
+      if (handled) return;
     }
 
     // ── Memory API ──────────────────────────────────────
@@ -1459,7 +1615,9 @@ async function handleChat(req, res) {
 
     let response;
     try {
-      response = await callClaude(state.messages, systemPrompt);
+      response = isOllamaModel(state.model)
+        ? await callOllamaModel(state.messages, systemPrompt)
+        : await callClaude(state.messages, systemPrompt);
     } catch (e) {
       if (e.status === 429) {
         ys.senseRateLimit();
@@ -1504,17 +1662,24 @@ async function handleChat(req, res) {
       }
     }
 
+    // Track provider usage
+    const provider = isOllamaModel(state.model) ? "ollama" : "claude";
+    trackProviderUsage(provider, state.model, { ...usage, thinking_tokens: thinkingTokens });
+
     // Usage info with YOUSPEAK status
     sendSSE(res, "usage", {
       input_tokens: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0),
       output_tokens: usage.output_tokens || 0,
       thinking_tokens: thinkingTokens,
+      provider,
+      model: state.model,
       budget: {
         fiveHour: budget.fiveHour.utilization,
         sevenDay: budget.sevenDay.utilization,
         resetIn: budget.fiveHour.reset > Date.now() ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) : null,
         isOverage: budget.isUsingOverage,
       },
+      ollamaCost: provider === "ollama" ? providerUsage.ollama.cost : undefined,
       turn: state.turnCount,
       youspeak: ys.statusLine(),
     });
@@ -1532,7 +1697,7 @@ async function handleChat(req, res) {
       const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
       sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
 
-      const result = executeTool(toolUse.name, toolUse.input);
+      const result = await executeTool(toolUse.name, toolUse.input);
       const truncated = result.slice(0, 50000);
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: truncated });
 
@@ -1597,4 +1762,5 @@ server.listen(PORT, () => {
   console.log("");
 
   appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}.`);
+  startFileIPC();
 });

@@ -82,31 +82,64 @@ ROLES = {
     "coordinator": {
         "description": "Strategic sensing and decision-making",
         "effort": "high",
-        "max_tokens": 4096,
+        "max_tokens": 8192,       # GLM 5.1 reasoning needs room
         "tier": "premium",
+        "preferred_models": {     # per-provider model overrides
+            "ollama_cloud": "glm-5.1",
+        },
     },
     "consultant": {
         "description": "Expert analysis for hard problems",
         "effort": "high",
         "max_tokens": 8192,
         "tier": "premium",
+        "preferred_models": {
+            "ollama_cloud": "kimi-k2.5",  # massive context for analysis
+        },
     },
     "builder": {
         "description": "Code generation and routine automation",
         "effort": "medium",
         "max_tokens": 8192,
         "tier": "standard",
+        "preferred_models": {
+            "ollama_cloud": "deepseek-v3.2",  # top coding benchmarks
+        },
+    },
+    "coder": {
+        "description": "Pure code generation specialist",
+        "effort": "medium",
+        "max_tokens": 8192,
+        "tier": "standard",
+        "preferred_models": {
+            "ollama_cloud": "qwen3-coder:480b",
+        },
+    },
+    "analyst": {
+        "description": "Market analysis, prediction, reasoning",
+        "effort": "high",
+        "max_tokens": 8192,
+        "tier": "premium",
+        "preferred_models": {
+            "ollama_cloud": "cogito-2.1:671b",
+        },
     },
     "monitor": {
         "description": "Lightweight status checks and verification",
         "effort": "low",
-        "max_tokens": 2048,
+        "max_tokens": 4000,       # min for reasoning models
         "tier": "economy",
+        "preferred_models": {
+            "ollama_cloud": "devstral-small-2:24b",
+        },
     },
     "quick_check": {
         "description": "Fast one-shot verification",
         "effort": "low",
-        "max_tokens": 1024,
+        "max_tokens": 4000,       # min for reasoning models
         "tier": "economy",
+        "preferred_models": {
+            "ollama_cloud": "gemma4:31b",
+        },
     },
 }

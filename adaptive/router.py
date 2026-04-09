@@ -63,13 +63,19 @@ class Router:
             if p not in providers_to_try:
                 providers_to_try.append(p)
 
+        # Check for role-specific model preferences
+        preferred_models = role_config.get("preferred_models", {})
+
         # Try each provider in order
         errors = []
         for provider_name in providers_to_try:
             try:
                 provider = self._get_provider(provider_name)
                 if provider.available():
-                    model = self.config.model_for(provider_name, tier)
+                    # Use role-specific model if defined for this provider
+                    model = preferred_models.get(provider_name)
+                    if not model:
+                        model = self.config.model_for(provider_name, tier)
                     if model:
                         return provider, model
                     else:

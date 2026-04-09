@@ -1,0 +1,1 @@
+{"id": "1d5b1ff6", "ts": "2026-04-09T10:14:55.492103+00:00", "tool": "bash", "who": "alpha", "observation": "Completely non-functional \u2014 every command returns Exit 1 with empty stdout/stderr, including basic echo commands. Cannot access internet, filesystem, or run any computation.", "score": 1, "tags": ["broken", "critical", "blocking"]}

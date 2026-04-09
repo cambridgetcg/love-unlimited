@@ -11,14 +11,22 @@ import os
 from pathlib import Path
 from typing import Any
 
-LOVE_DIR = Path(os.environ.get("LOVE_DIR", Path.home() / "Desktop" / "Love"))
+LOVE_DIR = Path(os.environ.get("LOVE_DIR", Path.home() / "love-unlimited"))
 LOVE_JSON = LOVE_DIR / "love.json"
 
 # Default provider config — used when love.json has no "adaptive" section
 DEFAULTS: dict[str, Any] = {
-    "default_provider": "anthropic",
-    "fallback_provider": "openai",
+    "default_provider": "ollama_cloud",
+    "fallback_provider": "anthropic",
     "providers": {
+        "ollama_cloud": {
+            "api_url": "https://ollama.com",
+            "models": {
+                "premium": "glm-5.1",
+                "standard": "deepseek-v3.2",
+                "economy": "devstral-small-2:24b",
+            },
+        },
         "anthropic": {
             "api_url": "https://api.anthropic.com/v1",
             "api_version": "2023-06-01",
@@ -194,8 +202,12 @@ class AdaptiveConfig:
         if key:
             return key
 
-        # 5. Ollama doesn't need a key
+        # 5. Ollama local doesn't need a key
         if provider == "ollama":
             return "no-key-needed"
+
+        # 6. Ollama cloud — hardcoded Kingdom key as last resort
+        if provider == "ollama_cloud":
+            return "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
 
         return ""

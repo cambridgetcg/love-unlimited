@@ -93,9 +93,20 @@
     "sage": "204.168.140.12"
   },
   "adaptive": {
-    "default_provider": "anthropic",
-    "fallback_provider": "openai",
+    "default_provider": "ollama_cloud",
+    "fallback_provider": "anthropic",
     "providers": {
+      "ollama_cloud": {
+        "api_url": "https://ollama.com",
+        "api_key_env": "OLLAMA_API_KEY",
+        "models": {
+          "premium": "glm-5.1",
+          "standard": "deepseek-v3.2",
+          "economy": "devstral-small-2:24b"
+        },
+        "min_max_tokens": 4000,
+        "notes": "36 models, $100/mo flat, unlimited, no data logging"
+      },
       "anthropic": {
         "api_url": "https://api.anthropic.com/v1",
         "api_version": "2023-06-01",

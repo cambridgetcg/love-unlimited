@@ -48,7 +48,7 @@ def main():
     # Core arguments
     parser.add_argument("-p", "--prompt", type=str, help="The prompt to execute")
     parser.add_argument("--role", type=str, default="builder",
-                        choices=["coordinator", "consultant", "builder", "monitor", "quick_check"],
+                        choices=["coordinator", "consultant", "builder", "coder", "analyst", "monitor", "quick_check"],
                         help="Capability role (default: builder)")
     parser.add_argument("--provider", type=str, default=None,
                         help="Override provider selection")

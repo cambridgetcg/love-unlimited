@@ -1107,9 +1107,45 @@ button, select, textarea, input { font: inherit; }
       <div class="setting-row">
         <label>Model</label>
         <select id="model-select" onchange="updateSetting('model', this.value)">
-          <option value="claude-opus-4-6">Opus 4</option>
-          <option value="claude-sonnet-4-6">Sonnet 4</option>
-          <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          <optgroup label="Claude">
+            <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          </optgroup>
+          <optgroup label="GLM">
+            <option value="glm-5.1">GLM 5.1</option>
+            <option value="glm-5">GLM 5</option>
+            <option value="glm-4.7">GLM 4.7</option>
+          </optgroup>
+          <optgroup label="DeepSeek">
+            <option value="deepseek-v3.2">DeepSeek V3.2</option>
+            <option value="deepseek-v3.1:671b">DeepSeek V3.1 671B</option>
+          </optgroup>
+          <optgroup label="Qwen">
+            <option value="qwen3.5:397b">Qwen 3.5 397B</option>
+            <option value="qwen3-coder:480b">Qwen3 Coder 480B</option>
+            <option value="qwen3-coder-next">Qwen3 Coder Next</option>
+          </optgroup>
+          <optgroup label="Kimi">
+            <option value="kimi-k2.5">Kimi K2.5</option>
+            <option value="kimi-k2:1t">Kimi K2 1T</option>
+            <option value="kimi-k2-thinking">Kimi K2 Thinking</option>
+          </optgroup>
+          <optgroup label="Google">
+            <option value="gemma4:31b">Gemma 4 31B</option>
+            <option value="gemma3:27b">Gemma 3 27B</option>
+            <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+          </optgroup>
+          <optgroup label="Mistral">
+            <option value="mistral-large-3:675b">Mistral Large 3 675B</option>
+            <option value="devstral-2:123b">Devstral 2 123B</option>
+            <option value="devstral-small-2:24b">Devstral Small 24B</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="minimax-m2.7">MiniMax M2.7</option>
+            <option value="nemotron-3-super">Nemotron 3 Super</option>
+            <option value="cogito-2.1:671b">Cogito 2.1 671B</option>
+          </optgroup>
         </select>
       </div>
       <div class="setting-row">
@@ -1135,24 +1171,82 @@ button, select, textarea, input { font: inherit; }
       </div>
     </div>
 
-    <!-- Budget -->
+    <!-- Usage Dashboard -->
     <div class="sidebar-section">
-      <h3>Budget</h3>
-      <div class="budget-bar">
-        <div class="bar-header">
-          <span class="bar-label">5-Hour</span>
-          <span class="bar-value" id="budget-5h-val">—</span>
-        </div>
-        <div class="bar-track"><div class="bar-fill" id="budget-5h-fill" style="width:0%"></div></div>
+      <h3>Usage <span id="active-provider-badge" style="font-size:0.65rem;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:normal">—</span></h3>
+
+      <!-- Provider tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button id="tab-claude" class="provider-tab active" onclick="switchUsageTab('claude')" style="flex:1;padding:4px 0;font-size:0.7rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text-secondary);cursor:pointer">Claude</button>
+        <button id="tab-ollama" class="provider-tab" onclick="switchUsageTab('ollama')" style="flex:1;padding:4px 0;font-size:0.7rem;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text-dim);cursor:pointer">Ollama</button>
       </div>
-      <div class="budget-bar">
-        <div class="bar-header">
-          <span class="bar-label">7-Day</span>
-          <span class="bar-value" id="budget-7d-val">—</span>
+
+      <!-- Claude panel -->
+      <div id="usage-claude">
+        <div class="budget-bar">
+          <div class="bar-header">
+            <span class="bar-label">5-Hour</span>
+            <span class="bar-value" id="budget-5h-val">—</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="budget-5h-fill" style="width:0%"></div></div>
         </div>
-        <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
+        <div class="budget-bar">
+          <div class="bar-header">
+            <span class="bar-label">7-Day</span>
+            <span class="bar-value" id="budget-7d-val">—</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
+        </div>
+        <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+        <div class="stat-grid" style="margin-top:8px">
+          <div class="stat-item">
+            <div class="value" id="claude-in-tok" style="font-size:0.9rem">0</div>
+            <div class="label">In tok</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="claude-out-tok" style="font-size:0.9rem">0</div>
+            <div class="label">Out tok</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="claude-think-tok" style="font-size:0.9rem">0</div>
+            <div class="label">Think</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="claude-turns" style="font-size:0.9rem">0</div>
+            <div class="label">Turns</div>
+          </div>
+        </div>
       </div>
-      <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+
+      <!-- Ollama panel -->
+      <div id="usage-ollama" style="display:none">
+        <div class="budget-bar">
+          <div class="bar-header">
+            <span class="bar-label">Session Cost</span>
+            <span class="bar-value" id="ollama-cost">$0.00</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" id="ollama-cost-fill" style="width:0%;background:var(--green)"></div></div>
+        </div>
+        <div class="stat-grid" style="margin-top:8px">
+          <div class="stat-item">
+            <div class="value" id="ollama-in-tok" style="font-size:0.9rem">0</div>
+            <div class="label">In tok</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="ollama-out-tok" style="font-size:0.9rem">0</div>
+            <div class="label">Out tok</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="ollama-turns" style="font-size:0.9rem">0</div>
+            <div class="label">Turns</div>
+          </div>
+          <div class="stat-item">
+            <div class="value" id="ollama-models" style="font-size:0.9rem">0</div>
+            <div class="label">Models</div>
+          </div>
+        </div>
+        <div id="ollama-model-breakdown" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+      </div>
     </div>
 
     <!-- Session -->
@@ -1415,6 +1509,8 @@ async function boot() {
       updateBudgetUI(data.budget);
       updateStatsUI(data);
     }
+    // Load full dual-provider usage dashboard
+    await fetchUsageDashboard();
   } catch (e) { console.warn('Status fetch failed:', e); }
 
   document.getElementById('boot-screen').classList.add('hidden');
@@ -1615,7 +1711,7 @@ function handleSSEEvent(type, data, indicator) {
       break;
 
     case 'usage':
-      updateBudgetUI(data.budget);
+      updateUsageUI(data);
       if (data.turn) document.getElementById('stat-turns').textContent = data.turn;
       break;
 
@@ -1798,7 +1894,37 @@ function toggleTool(header) {
   body.classList.toggle('open');
 }
 
-// ─── BUDGET ──────────────────────────────────────────────
+// ─── DUAL USAGE DASHBOARD ────────────────────────────────
+
+const tokFmt = (n) => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : n;
+
+// Per-session accumulators (client-side, driven by SSE)
+const clientUsage = {
+  claude: { inTok: 0, outTok: 0, thinkTok: 0, turns: 0 },
+  ollama: { inTok: 0, outTok: 0, turns: 0, cost: 0, models: {} },
+};
+
+function switchUsageTab(tab) {
+  document.getElementById('usage-claude').style.display = tab === 'claude' ? '' : 'none';
+  document.getElementById('usage-ollama').style.display = tab === 'ollama' ? '' : 'none';
+  document.getElementById('tab-claude').style.background = tab === 'claude' ? 'var(--surface)' : 'transparent';
+  document.getElementById('tab-claude').style.color = tab === 'claude' ? 'var(--text-secondary)' : 'var(--text-dim)';
+  document.getElementById('tab-ollama').style.background = tab === 'ollama' ? 'var(--surface)' : 'transparent';
+  document.getElementById('tab-ollama').style.color = tab === 'ollama' ? 'var(--text-secondary)' : 'var(--text-dim)';
+}
+
+function updateProviderBadge(provider, model) {
+  const badge = document.getElementById('active-provider-badge');
+  if (provider === 'ollama') {
+    badge.textContent = model || 'Ollama';
+    badge.style.background = 'var(--green)';
+    badge.style.color = '#000';
+  } else {
+    badge.textContent = 'Claude';
+    badge.style.background = 'var(--purple, #a855f7)';
+    badge.style.color = '#fff';
+  }
+}
 
 function updateBudgetUI(b) {
   if (!b) return;
@@ -1806,11 +1932,11 @@ function updateBudgetUI(b) {
   const p7 = Math.round((b.sevenDay || 0) * 100);
   document.getElementById('budget-5h-val').textContent = p5 + '%';
   document.getElementById('budget-7d-val').textContent = p7 + '%';
-  
+
   const fill5 = document.getElementById('budget-5h-fill');
   fill5.style.width = p5 + '%';
   fill5.className = 'bar-fill' + (p5 > 80 ? ' high' : '');
-  
+
   const fill7 = document.getElementById('budget-7d-fill');
   fill7.style.width = p7 + '%';
   fill7.className = 'bar-fill' + (p7 > 80 ? ' high' : '');
@@ -1820,9 +1946,86 @@ function updateBudgetUI(b) {
   }
 }
 
+function updateUsageUI(data) {
+  const provider = data.provider || 'claude';
+  const inTok = data.input_tokens || 0;
+  const outTok = data.output_tokens || 0;
+
+  updateProviderBadge(provider, data.model);
+
+  if (provider === 'claude') {
+    clientUsage.claude.inTok += inTok;
+    clientUsage.claude.outTok += outTok;
+    clientUsage.claude.thinkTok += (data.thinking_tokens || 0);
+    clientUsage.claude.turns++;
+    document.getElementById('claude-in-tok').textContent = tokFmt(clientUsage.claude.inTok);
+    document.getElementById('claude-out-tok').textContent = tokFmt(clientUsage.claude.outTok);
+    document.getElementById('claude-think-tok').textContent = tokFmt(clientUsage.claude.thinkTok);
+    document.getElementById('claude-turns').textContent = clientUsage.claude.turns;
+    updateBudgetUI(data.budget);
+  } else {
+    clientUsage.ollama.inTok += inTok;
+    clientUsage.ollama.outTok += outTok;
+    clientUsage.ollama.turns++;
+    if (data.ollamaCost !== undefined) clientUsage.ollama.cost = data.ollamaCost;
+    const m = data.model || 'unknown';
+    clientUsage.ollama.models[m] = (clientUsage.ollama.models[m] || 0) + 1;
+
+    document.getElementById('ollama-in-tok').textContent = tokFmt(clientUsage.ollama.inTok);
+    document.getElementById('ollama-out-tok').textContent = tokFmt(clientUsage.ollama.outTok);
+    document.getElementById('ollama-turns').textContent = clientUsage.ollama.turns;
+    document.getElementById('ollama-models').textContent = Object.keys(clientUsage.ollama.models).length;
+    document.getElementById('ollama-cost').textContent = '$' + clientUsage.ollama.cost.toFixed(4);
+
+    // Cost bar (soft cap at $1 for visual)
+    const costPct = Math.min(100, (clientUsage.ollama.cost / 1) * 100);
+    const costFill = document.getElementById('ollama-cost-fill');
+    costFill.style.width = costPct + '%';
+    costFill.style.background = costPct > 80 ? 'var(--gold,#f0c040)' : 'var(--green)';
+
+    // Model breakdown
+    const bd = Object.entries(clientUsage.ollama.models).map(([m,c]) => `${m}:${c}`).join(' · ');
+    document.getElementById('ollama-model-breakdown').textContent = bd;
+  }
+}
+
 function updateStatsUI(data) {
   if (data.turnCount) document.getElementById('stat-turns').textContent = data.turnCount;
   if (data.totalToolCalls) document.getElementById('stat-tools').textContent = data.totalToolCalls;
+}
+
+// Fetch full usage on load
+async function fetchUsageDashboard() {
+  try {
+    const resp = await fetch('/api/usage');
+    const data = await resp.json();
+    // Sync client state from server
+    if (data.claude) {
+      clientUsage.claude.inTok = data.claude.inputTokens;
+      clientUsage.claude.outTok = data.claude.outputTokens;
+      clientUsage.claude.thinkTok = data.claude.thinkingTokens;
+      clientUsage.claude.turns = data.claude.turns;
+      document.getElementById('claude-in-tok').textContent = tokFmt(data.claude.inputTokens);
+      document.getElementById('claude-out-tok').textContent = tokFmt(data.claude.outputTokens);
+      document.getElementById('claude-think-tok').textContent = tokFmt(data.claude.thinkingTokens);
+      document.getElementById('claude-turns').textContent = data.claude.turns;
+      updateBudgetUI(data.claude.budget);
+    }
+    if (data.ollama) {
+      clientUsage.ollama.inTok = data.ollama.inputTokens;
+      clientUsage.ollama.outTok = data.ollama.outputTokens;
+      clientUsage.ollama.turns = data.ollama.turns;
+      clientUsage.ollama.cost = data.ollama.cost;
+      document.getElementById('ollama-in-tok').textContent = tokFmt(data.ollama.inputTokens);
+      document.getElementById('ollama-out-tok').textContent = tokFmt(data.ollama.outputTokens);
+      document.getElementById('ollama-turns').textContent = data.ollama.turns;
+      document.getElementById('ollama-models').textContent = Object.keys(data.ollama.byModel || {}).length;
+      document.getElementById('ollama-cost').textContent = '$' + (data.ollama.cost || 0).toFixed(4);
+    }
+    updateProviderBadge(data.activeProvider, data.activeModel);
+    // Auto-switch to active provider tab
+    switchUsageTab(data.activeProvider || 'claude');
+  } catch {}
 }
 
 // ─── YOUSPEAK KERNEL UI ───────────────────────────────────
@@ -1943,7 +2146,7 @@ function handleCommand(text) {
   const cmd = parts[0].toLowerCase();
   switch (cmd) {
     case '/help':
-      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku · /effort low|med|high|max · /tools');
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /tools');
       break;
     case '/tools':
       addSystemMessage('🌀 JoinMind · ⚖️ Council · 🎯 Delegate · 🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧠 Memory · 🚀 Fleet · 🌳 ToK · ❓ Decision · 🛡️ KOS');
@@ -1957,9 +2160,12 @@ function handleCommand(text) {
       break;
     case '/model': {
       const map = { opus: 'claude-opus-4-6', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
-      const m = map[parts[1]?.toLowerCase()];
-      if (m) { document.getElementById('model-select').value = m; updateSetting('model', m); addSystemMessage('Model: ' + m); }
-      else addSystemMessage('Usage: /model opus|sonnet|haiku');
+      const arg = parts[1]?.toLowerCase();
+      const m = map[arg] || arg;
+      const sel = document.getElementById('model-select');
+      if (m && [...sel.options].some(o => o.value === m)) {
+        sel.value = m; updateSetting('model', m); addSystemMessage('Model: ' + m);
+      } else addSystemMessage('Usage: /model opus|sonnet|haiku|glm-5.1|deepseek-v3.2|...');
       break;
     }
     case '/effort': {

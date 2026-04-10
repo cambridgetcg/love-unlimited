@@ -154,6 +154,10 @@ const state = {
   totalToolCalls: 0,
   totalThinkingTokens: 0,
   maxTokens: 32768,
+  // Phase 3: reasoning_effort for Ollama Cloud models.
+  // "none" = 3-7× faster (no CoT), "low" = light CoT (default for interactive),
+  // "medium"/"high" = full reasoning. null = provider default.
+  reasoningEffort: "low",
   // Orchestrator mode: "direct" (single model) or "orchestrate" (multi-model)
   chatMode: "orchestrate",
 };
@@ -1107,6 +1111,7 @@ async function callOllamaModel(messages, systemPrompt) {
     model: state.model,
     system: systemPrompt,
     maxTokens: state.maxTokens,
+    reasoningEffort: state.reasoningEffort,
     tools: TOOLS.map(t => ({
       type: "function",
       function: { name: t.name, description: t.description, parameters: t.input_schema },
@@ -1237,7 +1242,7 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify({
         agent: { id: state.agent, ...agent },
         model: state.model, effort: state.effort, thinking: state.thinking,
-        chatMode: state.chatMode,
+        chatMode: state.chatMode, reasoningEffort: state.reasoningEffort,
         workdir: state.workdir, turnCount: state.turnCount,
         totalToolCalls: state.totalToolCalls, totalThinkingTokens: state.totalThinkingTokens,
         budget, agents: AGENTS,
@@ -1283,12 +1288,18 @@ async function handleRequest(req, res) {
         if (["direct", "orchestrate"].includes(body.chatMode)) state.chatMode = body.chatMode;
         else errors.push(`invalid chatMode: ${body.chatMode}`);
       }
+      // Phase 3: reasoning_effort for Ollama Cloud models
+      if (body.reasoningEffort !== undefined) {
+        const VALID_RE = [null, "none", "low", "medium", "high"];
+        if (VALID_RE.includes(body.reasoningEffort)) state.reasoningEffort = body.reasoningEffort;
+        else errors.push(`invalid reasoningEffort: ${body.reasoningEffort} (must be none/low/medium/high/null)`);
+      }
       if (errors.length > 0) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: errors.join("; "), model: state.model, effort: state.effort, thinking: state.thinking }));
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking, chatMode: state.chatMode }));
+      return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking, chatMode: state.chatMode, reasoningEffort: state.reasoningEffort }));
     }
 
     if (path === "/api/usage") {
@@ -1785,21 +1796,48 @@ async function handleChat(req, res) {
     // No tools → done
     if (toolUseBlocks.length === 0) break;
 
-    // Execute tools
+    // Execute tools — parallel when multiple tool_calls come back in one turn.
+    // Single tool_call: serial (no overhead). 2+: Promise.all for concurrent dispatch.
+    // This is the main throughput win for agentic GLM 5.1 interaction — tool calls
+    // (bash, read_file, grep, etc.) are I/O bound, not CPU bound.
     state.messages.push({ role: "assistant", content: response.content });
     const toolResults = [];
 
-    for (const toolUse of toolUseBlocks) {
+    if (toolUseBlocks.length === 1) {
+      // Single tool — serial (no Promise.all overhead)
+      const toolUse = toolUseBlocks[0];
       state.totalToolCalls++;
-      // YOUSPEAK L3: Sense tool call
       const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
       sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
-
       const result = await executeTool(toolUse.name, toolUse.input);
       const truncated = result.slice(0, 50000);
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: truncated });
-
       sendSSE(res, "tool_result", { id: toolUse.id, name: toolUse.name, result: truncated.slice(0, 5000) });
+    } else {
+      // Multiple tools — execute in parallel via Promise.all
+      // Emit all "executing" SSE events first so the UI shows them immediately
+      for (const toolUse of toolUseBlocks) {
+        state.totalToolCalls++;
+        const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
+        sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
+      }
+
+      const settled = await Promise.all(
+        toolUseBlocks.map(async (toolUse) => {
+          try {
+            const result = await executeTool(toolUse.name, toolUse.input);
+            return { toolUse, result: result.slice(0, 50000), ok: true };
+          } catch (e) {
+            return { toolUse, result: `Error: ${e.message}`.slice(0, 50000), ok: false };
+          }
+        })
+      );
+
+      // Collect results in original order and emit SSE
+      for (const { toolUse, result } of settled) {
+        toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: result });
+        sendSSE(res, "tool_result", { id: toolUse.id, name: toolUse.name, result: result.slice(0, 5000) });
+      }
     }
 
     state.messages.push({ role: "user", content: toolResults });

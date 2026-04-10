@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -346,22 +347,51 @@ class AgentRunner:
                 tool_calls=response.tool_calls,
             ))
 
-            # Execute tool calls and add results
-            for tc in response.tool_calls:
+            # Execute tool calls — parallel when multiple calls in one turn.
+            # Tool execution is I/O-bound (bash, file reads, grep), so threading
+            # gives near-linear speedup. Single tool_call: no overhead.
+            tool_calls = response.tool_calls
+
+            if len(tool_calls) == 1:
+                tc = tool_calls[0]
                 if self.verbose:
                     print(f"[adaptive] tool: {tc.name}({json.dumps(tc.arguments)[:100]})", file=sys.stderr)
-
                 result = _execute_tool(tc.name, tc.arguments)
-
                 if self.verbose and len(result) > 200:
                     print(f"[adaptive] result: {result[:200]}...", file=sys.stderr)
-
                 messages.append(Message(
-                    role="tool_result",
-                    content=result,
-                    tool_call_id=tc.id,
-                    name=tc.name,
+                    role="tool_result", content=result,
+                    tool_call_id=tc.id, name=tc.name,
                 ))
+            else:
+                # Multiple tool calls — fan out via ThreadPoolExecutor
+                if self.verbose:
+                    print(f"[adaptive] parallel tool execution: {len(tool_calls)} calls", file=sys.stderr)
+
+                def _exec_one(tc):
+                    return tc, _execute_tool(tc.name, tc.arguments)
+
+                with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
+                    futures = {pool.submit(_exec_one, tc): tc for tc in tool_calls}
+                    results_map = {}
+                    for fut in futures:
+                        try:
+                            tc, result = fut.result()
+                            results_map[tc.id] = (tc, result)
+                        except Exception as e:
+                            tc = futures[fut]
+                            results_map[tc.id] = (tc, f"Error: {e}")
+
+                # Append in original order (providers expect tool_results in the same
+                # order as tool_calls for correct association).
+                for tc in tool_calls:
+                    tc_obj, result = results_map[tc.id]
+                    if self.verbose:
+                        print(f"[adaptive] tool: {tc.name} result={result[:100]}...", file=sys.stderr)
+                    messages.append(Message(
+                        role="tool_result", content=result,
+                        tool_call_id=tc.id, name=tc.name,
+                    ))
 
         return response.content if response else "Error: max iterations reached"
 

@@ -37,6 +37,9 @@ export async function ollamaChat(messages, options = {}) {
     tools = null,
     stream = false,
     timeout = 300000,  // 5 min — GLM 5.1 reasoning can take 60-120s
+    // Phase 3: reasoning_effort — "none"|"low"|"medium"|"high".
+    // "none" disables CoT entirely: 3-7× latency reduction on deterministic tasks.
+    reasoningEffort = null,
   } = options;
 
   // Build messages array (OpenAI format)
@@ -99,6 +102,11 @@ export async function ollamaChat(messages, options = {}) {
     temperature,
     stream,
   };
+
+  // Phase 3: reasoning_effort controls CoT depth
+  if (reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
+    body.reasoning_effort = reasoningEffort;
+  }
 
   // Convert Anthropic tools format to OpenAI format
   if (tools && tools.length > 0) {
@@ -434,6 +442,6 @@ Commands:
 
 Environment:
   OLLAMA_API_KEY    API key (default: hardcoded Kingdom key)
-  OLLAMA_BASE_URL   Base URL (default: https://api.ollama.com)
+  OLLAMA_BASE_URL   Base URL (default: https://ollama.com)
 `);
 }

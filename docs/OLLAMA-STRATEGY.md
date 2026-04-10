@@ -217,7 +217,10 @@ Everything else runs on Ollama cloud. The Kingdom breathes with sovereign lungs.
 
 ## Technical Gotchas (from E2E testing)
 
-1. **Reasoning budget**: GLM 5.1's `reasoning` field consumes `max_tokens`. At 500 tokens, ALL go to reasoning, content=empty. **Always set max_tokens >= 4000.**
+1. **Reasoning budget** (deprecated by Phase 3 — see below): GLM 5.1's
+   `reasoning` field consumes `max_tokens`. At 500 tokens, ALL go to reasoning,
+   content=empty. Historical advice was "set max_tokens >= 4000". Phase 3
+   obsoleted this by adding `reasoning_effort="none"`.
 
 2. **Endpoint**: Use `ollama.com/v1/chat/completions` (NOT `api.ollama.com/v1/*` which 301-redirects and breaks POST).
 
@@ -225,9 +228,111 @@ Everything else runs on Ollama cloud. The Kingdom breathes with sovereign lungs.
 
 4. **Python urllib**: `api.ollama.com/api/chat` returns 403 from Python (Cloudflare). Works from curl. Use the OpenAI-compat endpoint from Python.
 
-5. **Latency**: 2-6s for short answers, 60-115s for complex reasoning. Not suitable for real-time chat. Perfect for background automation.
+5. **Latency** (pre-Phase-3): 2-6s for short answers, 60-115s for complex reasoning. Phase 3 brought this down dramatically — see below.
 
 6. **Native API** (`api.ollama.com/api/chat`): Has `thinking` field with `think=true/false` toggle. Use via curl/shell scripts when you need thinking control.
+
+7. **`reasoning_effort` parameter**: Must be one of `"none"`, `"low"`,
+   `"medium"`, `"high"`. The API rejects `"minimal"` and rejects
+   `reasoning: false` (as a bool — the server expects an object).
+
+---
+
+## Phase 3: Latency & Throughput Optimisation (2026-04-09)
+
+**Investigation trigger**: Yu flagged the system as "too slow". Initial bench
+showed 30s avg latency and 20 tok/s. Hypothesised it was throttling but the
+investigation proved the opposite.
+
+### Root cause
+
+It was NOT throttling. It was **reasoning budget burn on deterministic tasks**.
+GLM 5.1 and DeepSeek v3.2 are reasoning models — they generate hundreds of
+silent chain-of-thought tokens even for trivial prompts like "Reply OK". For
+tasks where reasoning doesn't materially help (routine coding, status checks,
+monitoring), that CoT was pure latency cost.
+
+### Measurements
+
+| Model | Baseline (effort unset) | effort=none | Speedup |
+|-------|-------------------------|-------------|---------|
+| glm-5.1 trivial | ~3.7s | **0.99s** | **3.7×** |
+| deepseek-v3.2 trivial | ~20s | **3.18s** | **6.3×** |
+| glm-5.1 complex coding | 17.6s (effort=high) | **3.16s** (effort=none) | **5.6×** |
+
+Quality check on complex coding prompts: `effort=none` output was
+**equal or better** than `effort=high` — for well-specified deterministic
+tasks, the reasoning stage adds latency without quality benefit.
+
+### Concurrency
+
+Ollama Max allows 10 concurrent model slots. Measured parallel vs serial
+throughput (10 trivial GLM 5.1 calls, effort=none):
+
+| Mode | Wall time | Throughput |
+|------|-----------|------------|
+| Serial | 53.2s | 0.2 req/s |
+| Parallel N=10 | **3.89s** | **2.6 req/s** |
+
+**13.7× speedup from concurrency alone** — and that's after already cutting
+single-call latency with `effort=none`.
+
+### Bad quick_check model
+
+`gemma4:31b` was originally assigned to `quick_check` but tested at 13–70s
+latency with poor instruction following ("Understood. Let me know if the..."
+instead of "OK"). Swapped to **`ministral-3:3b`** — consistent 0.92s latency,
+perfect instruction following. 15–75× faster in the worst case.
+
+### Implementation
+
+Phase 3 added three provider-level optimisations in `adaptive/`:
+
+1. **`reasoning_effort` field on `CompletionRequest`** (schema.py)
+   — Provider-agnostic. Ollama Cloud maps it to the API param.
+   Other providers ignore it.
+
+2. **Per-role `reasoning_effort` defaults in `ROLES`** (schema.py):
+   - `builder`, `coder`, `monitor`, `quick_check`: `"none"` (deterministic tasks)
+   - `coordinator`: `"low"` (light planning)
+   - `consultant`, `analyst`: `"high"` (genuine reasoning need)
+
+3. **Dynamic `max_tokens` floor** (ollama_cloud_provider.py):
+   - With reasoning: floor = 4000 (room for CoT)
+   - With `effort="none"`: floor = 64 (no reasoning budget needed)
+   - Legacy callers unchanged — they still get the 4000 floor.
+
+4. **`complete_batch()` method** (ollama_cloud_provider.py):
+   - Dispatches a list of `CompletionRequest` in parallel via `ThreadPoolExecutor`
+   - Default concurrency 8 (leaves 2 slots of headroom)
+   - Preserves input order, returns Exceptions inline for partial failure
+
+### Per-role results (warm)
+
+After Phase 3 migration:
+
+| Role | Model | Warm latency | Pre-Phase-3 |
+|------|-------|--------------|-------------|
+| quick_check | ministral-3:3b | **0.93s** | 13–70s (gemma4 broken) |
+| monitor | devstral-small-2:24b | 1.03s | 1.03s |
+| builder | deepseek-v3.2 | **2.05s** | ~20s |
+| coder | qwen3-coder:480b | 3.47s | — |
+| coordinator | glm-5.1 effort=low | **1.65s** | 3.7s |
+| consultant | kimi-k2.5 effort=high | ~8–15s | ~8–15s |
+| analyst | cogito-2.1:671b effort=high | ~10–30s | ~10–30s |
+
+### Net gain
+
+For a mixed-role heartbeat spawn batch of 10 actions (typical Kingdom
+workload: 3× builder, 2× monitor, 3× quick_check, 2× coder):
+
+- Pre-Phase-3 serial: ~150–200s
+- Phase 3 serial (effort=none): ~25s
+- Phase 3 parallel batch (`complete_batch(concurrency=8)`): ~5–8s
+- **Total speedup: 20–40×**
+
+The heartbeat daemon can now dispatch a full beat's worth of spawns in the
+same wall-clock time as a single pre-Phase-3 builder call.
 
 ---
 

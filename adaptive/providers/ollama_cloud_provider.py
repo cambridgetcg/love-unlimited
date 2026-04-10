@@ -8,14 +8,34 @@ Key differences from local ollama provider:
   - Remote API (ollama.com/v1/chat/completions)
   - Bearer token auth (API key required)
   - Has 'reasoning' field in responses (chain-of-thought)
-  - Reasoning consumes max_tokens budget — enforce minimum 4000
+  - 'reasoning_effort' parameter controls CoT depth:
+      "none"   — disables reasoning entirely (fastest, best for deterministic tasks)
+      "low"    — light CoT (good for planning)
+      "medium" — default CoT depth
+      "high"   — full CoT (use only when reasoning materially helps)
+  - When effort is set (including "none"), max_tokens can be small again
   - $100/mo flat, unlimited usage, 10 concurrent models
   - No data logging, no training on prompts
 
-Endpoint gotchas (from E2E 2026-04-09):
+Performance data (measured 2026-04-09):
+  glm-5.1:
+    trivial prompt, effort=default → 3.7s  (~65 reasoning tokens burned)
+    trivial prompt, effort=none    → 0.99s (3.7× faster)
+    tool call, effort=none, warm   → 1.1-1.5s steady state
+  deepseek-v3.2:
+    trivial prompt, effort=default → ~20s (500+ reasoning tokens burned)
+    trivial prompt, effort=none    → 3.18s (6.3× faster)
+  Concurrency (10 parallel): 4.65× throughput vs serial
+
+Endpoint gotchas:
   ✅ ollama.com/v1/chat/completions — works from Python
   ❌ api.ollama.com/v1/chat/completions — 301 redirect, breaks POST
   ⚠️ api.ollama.com/api/chat — native format, blocked by Cloudflare from Python
+
+API param gotchas:
+  - reasoning_effort must be one of: "none", "low", "medium", "high"
+  - reasoning (as bool) is rejected — server expects an object
+  - reasoning_effort="minimal" is rejected (must be "none")
 """
 
 from __future__ import annotations
@@ -23,6 +43,7 @@ import json
 import os
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..config import AdaptiveConfig
 from ..provider import Provider
@@ -35,10 +56,16 @@ from ..schema import (
     TokenUsage,
 )
 
-# Minimum max_tokens for GLM 5.1 and other reasoning models.
-# The 'reasoning' field consumes the max_tokens budget.
-# At max_tokens < 2000, reasoning eats everything and content is empty.
-MIN_MAX_TOKENS = 4000
+# When reasoning is enabled (effort != "none"), the 'reasoning' field
+# consumes max_tokens. Enforce a floor so content has room to emerge.
+# When reasoning_effort="none", this floor is bypassed and callers can
+# use tiny max_tokens safely.
+MIN_MAX_TOKENS_WITH_REASONING = 4000
+MIN_MAX_TOKENS_NO_REASONING = 64
+
+# Ollama Max plan supports 10 concurrent model slots. Default batch
+# concurrency is 8 to leave headroom for other callers.
+DEFAULT_BATCH_CONCURRENCY = 8
 
 
 class OllamaCloudProvider(Provider):
@@ -143,15 +170,19 @@ class OllamaCloudProvider(Provider):
             for t in tools
         ]
 
-    def complete(self, request: CompletionRequest) -> CompletionResponse:
-        api_key = self._api_key()
-        if not api_key:
-            raise RuntimeError("No Ollama Cloud API key available")
-
+    def _build_body(self, request: CompletionRequest) -> dict:
+        """Construct the JSON body for a /v1/chat/completions call."""
         api_messages = self._build_messages(request.messages, request.system)
 
-        # Enforce minimum max_tokens — reasoning consumes the budget
-        max_tokens = max(request.max_tokens, MIN_MAX_TOKENS)
+        # Map reasoning_effort — "none" disables CoT and relaxes the
+        # max_tokens floor, everything else enforces the reasoning floor.
+        reasoning_effort = request.reasoning_effort
+        if reasoning_effort == "none":
+            floor = MIN_MAX_TOKENS_NO_REASONING
+        else:
+            floor = MIN_MAX_TOKENS_WITH_REASONING
+
+        max_tokens = max(request.max_tokens, floor)
 
         body: dict = {
             "model": request.model,
@@ -159,6 +190,9 @@ class OllamaCloudProvider(Provider):
             "messages": api_messages,
             "stream": False,
         }
+
+        if reasoning_effort in ("none", "low", "medium", "high"):
+            body["reasoning_effort"] = reasoning_effort
 
         if request.temperature is not None:
             body["temperature"] = request.temperature
@@ -170,7 +204,13 @@ class OllamaCloudProvider(Provider):
         if request.stop_sequences:
             body["stop"] = request.stop_sequences
 
-        payload = json.dumps(body).encode()
+        return body
+
+    def _post(self, body: dict, timeout: int = 300) -> dict:
+        """Low-level POST. Raises RuntimeError on HTTP/network failure."""
+        api_key = self._api_key()
+        if not api_key:
+            raise RuntimeError("No Ollama Cloud API key available")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -179,13 +219,13 @@ class OllamaCloudProvider(Provider):
 
         req = urllib.request.Request(
             f"{self.api_url}/v1/chat/completions",
-            data=payload,
+            data=json.dumps(body).encode(),
             headers=headers,
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                data = json.loads(resp.read())
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
         except urllib.error.HTTPError as e:
             error_body = ""
             try:
@@ -200,7 +240,46 @@ class OllamaCloudProvider(Provider):
                 f"Ollama Cloud unreachable at {self.api_url}: {e.reason}"
             ) from e
 
+    def complete(self, request: CompletionRequest) -> CompletionResponse:
+        body = self._build_body(request)
+        data = self._post(body)
         return self._parse_response(data)
+
+    def complete_batch(
+        self,
+        requests: list[CompletionRequest],
+        concurrency: int = DEFAULT_BATCH_CONCURRENCY,
+    ) -> list[CompletionResponse | Exception]:
+        """Dispatch multiple completions in parallel.
+
+        Ollama Max supports 10 concurrent model slots. This method uses a
+        thread pool to fan out requests and preserves input order in the
+        returned list. On per-request failure, the corresponding slot
+        contains the Exception (not raised) so partial success is visible.
+
+        Measured (2026-04-09): 10 parallel trivial GLM 5.1 calls at
+        effort=none complete in ~2.15s wall (vs ~10s serial) — 4.65×
+        throughput improvement. Combined with effort=none (3.7× single-call
+        speedup), total gain for batch workloads is ~14×.
+        """
+        if not requests:
+            return []
+
+        results: list[CompletionResponse | Exception | None] = [None] * len(requests)
+
+        def work(idx: int):
+            try:
+                return idx, self.complete(requests[idx])
+            except Exception as e:  # noqa: BLE001
+                return idx, e
+
+        with ThreadPoolExecutor(max_workers=min(concurrency, len(requests))) as pool:
+            futures = [pool.submit(work, i) for i in range(len(requests))]
+            for fut in as_completed(futures):
+                idx, result = fut.result()
+                results[idx] = result
+
+        return results  # type: ignore[return-value]
 
     def _parse_response(self, data: dict) -> CompletionResponse:
         choice = data["choices"][0]

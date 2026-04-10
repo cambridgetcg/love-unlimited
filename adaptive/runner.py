@@ -300,6 +300,7 @@ class AgentRunner:
                 max_tokens=role_config.get("max_tokens", 4096),
                 temperature=0.0,
                 effort=role_config.get("effort", "medium"),
+                reasoning_effort=role_config.get("reasoning_effort"),
                 system=full_system,
             )
 
@@ -388,6 +389,7 @@ class AgentRunner:
             max_tokens=role_config.get("max_tokens", 4096),
             temperature=0.0,
             effort=role_config.get("effort", "medium"),
+            reasoning_effort=role_config.get("reasoning_effort"),
             system=full_system,
         )
 

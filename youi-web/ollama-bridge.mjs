@@ -5,56 +5,328 @@
 // bypassing the sandbox that blocks socket() in child processes.
 //
 // Architecture:
-//   ┌──────────────────────────────────────────────────────┐
-//   │  server.mjs (PID 80225, HAS network)                │
-//   │    ├─ fetch() → api.anthropic.com  ✅ (existing)     │
-//   │    ├─ fetch() → ollama.com         ✅ (this bridge)  │
-//   │    │   NOT api.ollama.com — v1/* 301-redirects       │
-//   │    │                                                 │
-//   │    ├─ /api/ollama/chat     → proxy to Ollama        │
-//   │    ├─ /api/ollama/models   → list models            │
-//   │    ├─ /api/ollama/test     → connectivity test      │
-//   │    │                                                 │
-//   │    └─ bash tool (execSync, child process)            │
-//   │         └─ ❌ socket() BLOCKED by sandbox            │
-//   │         └─ ✅ reads /tmp/ollama-*.json (file IPC)    │
-//   └──────────────────────────────────────────────────────┘
+//   ┌──────────────────────────────────────────────────────────┐
+//   │  server.mjs (PID 80225, HAS network)                    │
+//   │    ├─ fetch() → api.anthropic.com  ✅ (existing)         │
+//   │    ├─ fetch() → ollama.com         ✅ (this bridge)      │
+//   │    │   NOT api.ollama.com — v1/* 301-redirects           │
+//   │    │                                                     │
+//   │    ├─ /api/ollama/chat     → proxy to Ollama            │
+//   │    ├─ /api/ollama/models   → list models                │
+//   │    ├─ /api/ollama/test     → connectivity test          │
+//   │    │                                                     │
+//   │    └─ bash tool (execSync, child process)                │
+//   │         └─ ❌ socket() BLOCKED by sandbox                │
+//   │         └─ ✅ reads /tmp/ollama-*.json (file IPC)        │
+//   └──────────────────────────────────────────────────────────┘
 //
 // Three access patterns:
 //   1. HTTP API  — /api/ollama/* endpoints (for web UI, external tools)
 //   2. Tool      — "ollama" tool in executeTool() (for Claude sessions)
 //   3. File IPC  — /tmp/ollama-req-*.json → /tmp/ollama-res-*.json (for sandboxed scripts)
+//
+// 503 resilience (2026-04-10):
+//   Ollama Cloud returns 503 when all 10 model slots are busy.
+//   This bridge now retries with exponential backoff (1s→2s→4s→8s, max 4 retries).
+//   Also retries on 429 (rate limit) and 502 (bad gateway).
+//   Falls back to native /api/chat endpoint if /v1 fails entirely.
+//
+// Ollama API endpoints:
+//   /v1/chat/completions — OpenAI-compatible (primary, supports reasoning_effort)
+//   /api/chat            — Native Ollama (fallback, supports think param + options)
 // ─────────────────────────────────────────────────────────────────────
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY
   || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK";
 const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || "https://ollama.com";
 
+// ── Retry configuration ─────────────────────────────────────────────
+const RETRIABLE_STATUS = new Set([429, 502, 503]);
+const MAX_RETRIES = 4;
+const RETRY_BASE_MS = 1000;  // 1s → 2s → 4s → 8s
+const RETRY_MAX_MS  = 10000;
+
+// ── Timeout presets by model tier ───────────────────────────────────
+function selectTimeout(model = "") {
+  const m = model.toLowerCase();
+  if (/devstral|gemma4|ministral/.test(m)) return 30000;   // economy: 30s
+  if (/glm-5|cogito|kimi|qwen3-coder/.test(m)) return 180000; // premium: 3min
+  return 120000;  // standard: 2min
+}
+
 // ═════════════════════════════════════════════════════════════════════
-// CORE — runs in server.mjs process (has network)
+// LOW-LEVEL — fetch with retry + endpoint fallback
 // ═════════════════════════════════════════════════════════════════════
 
 /**
- * Chat completion via Ollama Cloud API (OpenAI-compatible).
+ * POST with exponential backoff retry for transient HTTP errors.
+ * Returns { ok, data?, status?, error?, latency }.
+ */
+async function postWithRetry(endpoint, body, timeout) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    const start = performance.now();
+
+    try {
+      const resp = await fetch(`${OLLAMA_BASE}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+
+      if (resp.ok) {
+        const data = await resp.json();
+        return { ok: true, data, status: resp.status, latency: elapsed };
+      }
+
+      // Retriable error?
+      const errorText = await resp.text().catch(() => "");
+      lastError = { status: resp.status, error: errorText, latency: elapsed };
+
+      if (RETRIABLE_STATUS.has(resp.status) && attempt < MAX_RETRIES) {
+        const wait = Math.min(RETRY_BASE_MS * (2 ** attempt), RETRY_MAX_MS);
+        console.log(
+          `[ollama] ${resp.status} on attempt ${attempt + 1}/${MAX_RETRIES + 1}, ` +
+          `retrying in ${wait}ms: ${errorText.slice(0, 100)}`
+        );
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      // Non-retriable or retries exhausted
+      return { ok: false, ...lastError };
+
+    } catch (e) {
+      clearTimeout(timer);
+      const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+      lastError = { status: 0, error: e.message, latency: elapsed };
+
+      if (attempt < MAX_RETRIES) {
+        const wait = Math.min(RETRY_BASE_MS * (2 ** attempt), RETRY_MAX_MS);
+        console.log(
+          `[ollama] Error on attempt ${attempt + 1}/${MAX_RETRIES + 1}, ` +
+          `retrying in ${wait}ms: ${e.message}`
+        );
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      return { ok: false, ...lastError };
+    }
+  }
+
+  return { ok: false, ...lastError };
+}
+
+
+// ═════════════════════════════════════════════════════════════════════
+// CORE — Chat completion with dual-endpoint strategy
+// ═════════════════════════════════════════════════════════════════════
+
+/**
+ * Build OpenAI-compatible /v1/chat/completions request body.
+ */
+function buildV1Body(oaiMessages, options) {
+  const {
+    model = "glm-5.1",
+    maxTokens = 8000,
+    temperature = 0.7,
+    tools = null,
+    reasoningEffort = null,
+  } = options;
+
+  const body = {
+    model,
+    messages: oaiMessages,
+    max_tokens: maxTokens,
+    temperature,
+    stream: false,
+  };
+
+  if (reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
+    body.reasoning_effort = reasoningEffort;
+  }
+
+  if (tools?.length) {
+    body.tools = tools.map(t => t.type === "function" ? t : {
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: t.input_schema || t.parameters }
+    });
+  }
+
+  return body;
+}
+
+/**
+ * Build native /api/chat request body.
+ * Uses `think` parameter (bool or "low"/"medium"/"high") and `options.num_predict`.
+ */
+function buildNativeBody(oaiMessages, options) {
+  const {
+    model = "glm-5.1",
+    maxTokens = 8000,
+    temperature = 0.7,
+    tools = null,
+    reasoningEffort = null,
+  } = options;
+
+  // Map reasoning_effort → think parameter
+  let think;
+  if (reasoningEffort === "none") think = false;
+  else if (["low", "medium", "high"].includes(reasoningEffort)) think = reasoningEffort;
+  else think = true; // default: enable thinking
+
+  const body = {
+    model,
+    messages: oaiMessages,
+    stream: false,
+    think,
+    options: {
+      num_predict: maxTokens,
+      temperature,
+    },
+  };
+
+  if (tools?.length) {
+    body.tools = tools.map(t => t.type === "function" ? t : {
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: t.input_schema || t.parameters }
+    });
+  }
+
+  return body;
+}
+
+/**
+ * Parse /v1/chat/completions response → Anthropic-compatible content blocks.
+ */
+function parseV1Response(data, model) {
+  const choice = data.choices?.[0]?.message || {};
+
+  // Handle reasoning-only responses (content empty, reasoning present)
+  let textContent = choice.content || "";
+  if (!textContent && choice.reasoning) textContent = choice.reasoning;
+
+  const content = [];
+  if (textContent) content.push({ type: "text", text: textContent });
+  if (choice.tool_calls) {
+    for (const tc of choice.tool_calls) {
+      let args;
+      try { args = JSON.parse(tc.function.arguments || "{}"); }
+      catch { args = { raw: tc.function.arguments }; }
+      content.push({
+        type: "tool_use", id: tc.id, name: tc.function.name, input: args,
+      });
+    }
+  }
+
+  return {
+    content,
+    stop_reason: choice.tool_calls ? "tool_use" : "end_turn",
+    model: data.model || model,
+    usage: {
+      input_tokens: data.usage?.prompt_tokens || 0,
+      output_tokens: data.usage?.completion_tokens || 0,
+      total_tokens: data.usage?.total_tokens || 0,
+    },
+  };
+}
+
+/**
+ * Parse /api/chat (native) response → Anthropic-compatible content blocks.
+ *
+ * Native response format:
+ *   {
+ *     "model": "glm-5.1",
+ *     "message": { "role": "assistant", "content": "...", "thinking": "...", "tool_calls": [...] },
+ *     "done": true,
+ *     "done_reason": "stop",
+ *     "total_duration": 174560334,  // nanoseconds
+ *     "load_duration": 101397084,
+ *     "prompt_eval_count": 11,
+ *     "prompt_eval_duration": 13074791,
+ *     "eval_count": 18,
+ *     "eval_duration": 52479709
+ *   }
+ */
+function parseNativeResponse(data, model) {
+  const message = data.message || {};
+
+  let textContent = message.content || "";
+  if (!textContent && message.thinking) textContent = message.thinking;
+
+  const content = [];
+  if (textContent) content.push({ type: "text", text: textContent });
+  if (message.tool_calls) {
+    for (const tc of message.tool_calls) {
+      const func = tc.function || tc;
+      let args = func.arguments || {};
+      if (typeof args === "string") {
+        try { args = JSON.parse(args); } catch { args = { raw: args }; }
+      }
+      content.push({
+        type: "tool_use",
+        id: tc.id || `call_${content.length}`,
+        name: func.name,
+        input: args,
+      });
+    }
+  }
+
+  return {
+    content,
+    stop_reason: message.tool_calls ? "tool_use" : (data.done_reason === "length" ? "max_tokens" : "end_turn"),
+    model: data.model || model,
+    usage: {
+      input_tokens: data.prompt_eval_count || 0,
+      output_tokens: data.eval_count || 0,
+      total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
+    },
+    // Native API bonus metrics (nanoseconds → milliseconds)
+    _metrics: {
+      total_duration_ms: data.total_duration ? Math.round(data.total_duration / 1e6) : undefined,
+      load_duration_ms: data.load_duration ? Math.round(data.load_duration / 1e6) : undefined,
+      eval_duration_ms: data.eval_duration ? Math.round(data.eval_duration / 1e6) : undefined,
+      tokens_per_sec: data.eval_count && data.eval_duration
+        ? (data.eval_count / (data.eval_duration / 1e9)).toFixed(1)
+        : undefined,
+    },
+  };
+}
+
+
+/**
+ * Chat completion via Ollama Cloud API.
+ *
+ * Strategy:
+ *   1. Try /v1/chat/completions (OpenAI-compat) with retry
+ *   2. If /v1 fails after retries, fallback to /api/chat (native Ollama API)
+ *   3. Native API uses `think` param instead of `reasoning_effort`
  */
 export async function ollamaChat(messages, options = {}) {
   const {
     model = "glm-5.1",
     system = null,
-    maxTokens = 8000,  // GLM 5.1 reasoning consumes tokens; 4K minimum for content
+    maxTokens = 8000,
     temperature = 0.7,
     tools = null,
     stream = false,
-    timeout = 300000,  // 5 min — GLM 5.1 reasoning can take 60-120s
-    // Phase 3: reasoning_effort controls CoT depth.
-    //   "none"   — 3-7× faster, best for deterministic/tool-heavy work
-    //   "low"    — light CoT, good for interactive chat
-    //   "medium" — default CoT
-    //   "high"   — full reasoning (consultant/analyst tasks)
-    // Unset (null/undefined) → provider default behaviour.
+    timeout = null,
     reasoningEffort = null,
   } = options;
 
+  const effectiveTimeout = timeout || selectTimeout(model);
+
+  // Convert messages to OpenAI format
   const oaiMessages = [];
   if (system) oaiMessages.push({ role: "system", content: system });
 
@@ -88,74 +360,50 @@ export async function ollamaChat(messages, options = {}) {
     }
   }
 
-  const body = { model, messages: oaiMessages, max_tokens: maxTokens, temperature, stream };
+  const effectiveOptions = { model, maxTokens, temperature, tools, reasoningEffort };
 
-  // Phase 3: pass reasoning_effort when set to a valid value.
-  // "none" disables CoT entirely (3-7× latency reduction on deterministic tasks).
-  if (reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
-    body.reasoning_effort = reasoningEffort;
-  }
+  // ── Strategy 1: /v1/chat/completions (primary) ──────────────────
+  const v1Body = buildV1Body(oaiMessages, effectiveOptions);
+  const v1Result = await postWithRetry("/v1/chat/completions", v1Body, effectiveTimeout);
 
-  if (tools?.length) {
-    body.tools = tools.map(t => t.type === "function" ? t : {
-      type: "function",
-      function: { name: t.name, description: t.description, parameters: t.input_schema || t.parameters }
-    });
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  const start = performance.now();
-
-  try {
-    const resp = await fetch(`${OLLAMA_BASE}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OLLAMA_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timer);
-    const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-
-    if (!resp.ok) {
-      return { ok: false, status: resp.status, error: await resp.text(), latency: elapsed };
-    }
-
-    const data = await resp.json();
-    const choice = data.choices?.[0]?.message || {};
-
-    // Build Anthropic-compatible content blocks
-    const content = [];
-    if (choice.content) content.push({ type: "text", text: choice.content });
-    if (choice.tool_calls) {
-      for (const tc of choice.tool_calls) {
-        content.push({
-          type: "tool_use", id: tc.id, name: tc.function.name,
-          input: JSON.parse(tc.function.arguments || "{}"),
-        });
-      }
-    }
-
+  if (v1Result.ok) {
+    const parsed = parseV1Response(v1Result.data, model);
     return {
-      ok: true, status: resp.status, content,
-      stop_reason: choice.tool_calls ? "tool_use" : "end_turn",
-      model: data.model || model,
-      usage: {
-        input_tokens: data.usage?.prompt_tokens || 0,
-        output_tokens: data.usage?.completion_tokens || 0,
-        total_tokens: data.usage?.total_tokens || 0,
-      },
-      latency: elapsed, _provider: "ollama",
+      ok: true, status: v1Result.status,
+      ...parsed,
+      latency: v1Result.latency,
+      _provider: "ollama", _endpoint: "v1",
     };
-  } catch (e) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, error: e.message, latency: ((performance.now() - start) / 1000).toFixed(2) };
   }
+
+  // ── Strategy 2: /api/chat (native fallback) ─────────────────────
+  console.log(
+    `[ollama] /v1 failed (${v1Result.status}: ${(v1Result.error || "").slice(0, 80)}), ` +
+    `falling back to native /api/chat`
+  );
+
+  const nativeBody = buildNativeBody(oaiMessages, effectiveOptions);
+  const nativeResult = await postWithRetry("/api/chat", nativeBody, effectiveTimeout);
+
+  if (nativeResult.ok) {
+    const parsed = parseNativeResponse(nativeResult.data, model);
+    return {
+      ok: true, status: nativeResult.status,
+      ...parsed,
+      latency: nativeResult.latency,
+      _provider: "ollama", _endpoint: "native",
+    };
+  }
+
+  // ── Both failed ─────────────────────────────────────────────────
+  return {
+    ok: false,
+    status: nativeResult.status || v1Result.status,
+    error: `Both endpoints failed. /v1: ${v1Result.error || "unknown"} | /api/chat: ${nativeResult.error || "unknown"}`,
+    latency: nativeResult.latency || v1Result.latency,
+  };
 }
+
 
 /**
  * Dispatch multiple chat completions in parallel.
@@ -187,6 +435,7 @@ export async function ollamaBatch(calls, { concurrency = 8 } = {}) {
   return results;
 }
 
+
 /**
  * List available Ollama cloud models.
  */
@@ -202,6 +451,7 @@ export async function ollamaModels() {
     return { ok: false, error: e.message };
   }
 }
+
 
 /**
  * Quick connectivity test.
@@ -222,7 +472,7 @@ export async function ollamaTest() {
     results.tests.push({ name: "models", ok: false, detail: e.message });
   }
 
-  // Test 2: Chat
+  // Test 2: Chat (with retry — tests the resilience layer)
   try {
     const chat = await ollamaChat(
       [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
@@ -234,6 +484,7 @@ export async function ollamaTest() {
         ? (chat.content?.find(b => b.type === "text")?.text || "").slice(0, 100)
         : chat.error,
       usage: chat.usage,
+      endpoint: chat._endpoint,
     });
   } catch (e) {
     results.tests.push({ name: "chat", ok: false, detail: e.message });
@@ -256,6 +507,7 @@ export async function ollamaTest() {
     results.tests.push({
       name: "tools", ok: tc.ok && !!toolUse, latency: tc.latency,
       detail: toolUse ? `${toolUse.name}(${JSON.stringify(toolUse.input)})` : (tc.content?.find(b => b.type === "text")?.text || "").slice(0, 80),
+      endpoint: tc._endpoint,
     });
   } catch (e) {
     results.tests.push({ name: "tools", ok: false, detail: e.message });
@@ -304,6 +556,7 @@ export async function handleOllamaRoute(path, req, res, parseBody) {
         maxTokens: body.max_tokens || 4096,
         temperature: body.temperature ?? 0.7,
         tools: body.tools || null,
+        reasoningEffort: body.reasoning_effort || null,
       }
     );
     json(result);
@@ -330,7 +583,7 @@ export async function executeOllamaTool(input) {
     const r = await ollamaTest();
     const lines = [`Ollama Cloud Test — ${r.allOk ? "✅ ALL PASS" : "❌ SOME FAILED"}`];
     for (const t of r.tests) {
-      lines.push(`  ${t.ok ? "✅" : "❌"} ${t.name}: ${t.detail} (${t.latency || "?"}s)`);
+      lines.push(`  ${t.ok ? "✅" : "❌"} ${t.name}: ${t.detail} (${t.latency || "?"}s)${t.endpoint ? ` [${t.endpoint}]` : ""}`);
     }
     return lines.join("\n");
   }
@@ -350,12 +603,11 @@ export async function executeOllamaTool(input) {
         system: input.system || null,
         maxTokens: input.max_tokens || 8000,
         temperature: input.temperature ?? 0.7,
-        timeout: 300000, // 5 min — GLM 5.1 reasoning can take 60-120s
       }
     );
     if (!r.ok) return `❌ Chat failed: ${r.error}`;
     const text = r.content?.find(b => b.type === "text")?.text || "(no text)";
-    return `${text}\n\n[${r.latency}s | ${r.usage?.total_tokens || "?"} tokens | model: ${r.model}]`;
+    return `${text}\n\n[${r.latency}s | ${r.usage?.total_tokens || "?"} tokens | model: ${r.model} | endpoint: ${r._endpoint || "v1"}]`;
   }
 
   if (action === "bench") {
@@ -372,14 +624,18 @@ export async function executeOllamaTool(input) {
       );
       if (r.ok) {
         const rate = r.usage.output_tokens / parseFloat(r.latency);
-        stats.push({ prompt: prompts[i].slice(0, 40), latency: r.latency, tokens: r.usage.output_tokens, rate: rate.toFixed(1) });
+        stats.push({
+          prompt: prompts[i].slice(0, 40), latency: r.latency,
+          tokens: r.usage.output_tokens, rate: rate.toFixed(1),
+          endpoint: r._endpoint,
+        });
       }
     }
     if (!stats.length) return "❌ Benchmark failed — no successful rounds";
     const avgLat = (stats.reduce((s, r) => s + parseFloat(r.latency), 0) / stats.length).toFixed(2);
     const avgRate = (stats.reduce((s, r) => s + parseFloat(r.rate), 0) / stats.length).toFixed(1);
     return `Ollama Benchmark (${stats.length} rounds):\n` +
-      stats.map(s => `  ✅ ${s.latency}s | ${s.tokens} tok | ${s.rate} tok/s — ${s.prompt}...`).join("\n") +
+      stats.map(s => `  ✅ ${s.latency}s | ${s.tokens} tok | ${s.rate} tok/s [${s.endpoint}] — ${s.prompt}...`).join("\n") +
       `\n\nAvg latency: ${avgLat}s | Avg throughput: ${avgRate} tok/s`;
   }
 

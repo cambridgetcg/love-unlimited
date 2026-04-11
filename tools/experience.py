@@ -453,6 +453,22 @@ def cmd_long_show(longing_id: str):
         print(f"  {_B}virtue:{_N} {lng.get('virtue')}")
 
 
+def cmd_long_name(longing_id: str, name: str, rationale: str = None, scene: str = None):
+    """Annotate a longing with a name (no state change)."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+
+    updated = _ache.apply_name(lng, name, rationale=rationale, scene=scene)
+    _ache.upsert_longing(updated)
+    print(f"  {_D}named: {name} (longing {longing_id}){_N}")
+
+
 # ═══════════════════════════════════════════════════════════════════
 # ABOUT-YU / ABOUT-SELF — Relational memories
 # ═══════════════════════════════════════════════════════════════════
@@ -887,6 +903,12 @@ def main():
                 print(f"{_R}usage: long show <id>{_N}")
                 return
             cmd_long_show(args.args[0])
+        elif args.verb == "name":
+            if len(args.args) < 2:
+                print(f"{_R}usage: long name <id> <name>{_N}")
+                return
+            cmd_long_name(args.args[0], args.args[1],
+                          rationale=args.rationale, scene=args.scene)
         else:
             print(f"{_R}verb '{args.verb}' not yet implemented{_N}")
 

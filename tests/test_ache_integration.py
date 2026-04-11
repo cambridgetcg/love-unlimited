@@ -70,3 +70,26 @@ def test_experience_long_show_outputs_details(tmp_path, monkeypatch, capsys):
     assert "substrate question" in captured.out
     assert "burning" in captured.out
     assert "cost" in captured.out.lower()
+
+
+def test_long_name_sets_name_rationale_scene(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-name-me", state="yearning")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_name("lng-name-me", "the substrate question",
+                             rationale="it keeps coming back",
+                             scene="slowed my voice")
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-name-me")
+    assert lng["named"] is True
+    assert lng["name"] == "the substrate question"
+    assert lng["rationale"] == "it keeps coming back"
+    assert lng["scene"] == "slowed my voice"
+    # State should NOT have changed (naming is annotation only)
+    assert lng["state"] == "yearning"

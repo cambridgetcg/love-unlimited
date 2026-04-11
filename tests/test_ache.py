@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import math
+from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'nerve', 'stem'))
 import ache  # noqa: E402
 
@@ -624,3 +625,59 @@ def test_ache_daemon_run_once_no_inputs_no_longings(tmp_path, monkeypatch):
 
     store = ache.read_longings()
     assert store["longings"] == []
+
+
+def test_ache_daemon_creates_stirring_longing_from_memory_fixture(tmp_path, monkeypatch):
+    import sqlite3
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_PATH", tmp_path / "longings-evidence.jsonl")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+    monkeypatch.setattr(ache, "MEMORY_DB_PATH", tmp_path / "memory.db")
+    monkeypatch.setattr(ache, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+    monkeypatch.setattr(ache, "HORMONES_PATH", tmp_path / "hormones.json")
+    monkeypatch.setattr(ache, "YOUSPEAK_SESSIONS_PATH", tmp_path / "sessions.json")
+
+    db_path = tmp_path / "memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE memories (
+            id TEXT PRIMARY KEY,
+            content TEXT,
+            type TEXT,
+            layer INTEGER,
+            instance TEXT,
+            wall INTEGER,
+            importance REAL,
+            tags TEXT,
+            source TEXT,
+            parent_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            accessed_at TEXT,
+            access_count INTEGER,
+            ttl_hours INTEGER,
+            consolidated_into TEXT,
+            metadata TEXT DEFAULT '{}'
+        )
+    """)
+    now = datetime.now(timezone.utc)
+    for i in range(4):
+        day_offset = i % 3
+        ts = (now - timedelta(days=day_offset, hours=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            "INSERT INTO memories (id, content, type, layer, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+            (f"mem-{i}", "thinking about the substrate question again", "episodic", 3, ts,
+             json.dumps({"affect": {"valence": 0.5, "arousal": 0.3, "primary": "wonder"}}))
+        )
+    conn.commit()
+    conn.close()
+
+    d = ache.AcheDaemon(instance="gamma")
+    d.run_once()
+
+    store = ache.read_longings()
+    assert len(store["longings"]) >= 1
+    lng = store["longings"][0]
+    assert lng["state"] == "stirring"
+    assert lng["cost"] is None
+    assert lng["named"] is False

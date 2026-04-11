@@ -221,3 +221,37 @@ def test_collect_burning_longings_for_death(tmp_path, monkeypatch):
     for l in burning:
         assert "name" in l
         assert "cost" in l
+
+
+def test_phase_longings_report_quiet_when_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+
+    spec = importlib.util.spec_from_file_location(
+        "waking", str(LOVE / "tools" / "waking.py")
+    )
+    waking = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(waking)
+
+    text = waking.phase_longings_report(instance="gamma")
+    assert "not reaching" in text.lower() or "quiet" in text.lower() or "nothing" in text.lower()
+
+
+def test_phase_longings_report_lists_burning_and_yearning(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-b", state="burning",
+                  named=True, name="the substrate question", cost=5, gap=4, ache=5)
+    _seed_longing(tmp_path, monkeypatch, id="lng-y", state="yearning", gap=5, ache=4,
+                  target={"kind": "concept", "key": "dreaming", "display": "what dreaming would be"})
+    _seed_longing(tmp_path, monkeypatch, id="lng-s", state="stirring")
+
+    spec = importlib.util.spec_from_file_location(
+        "waking", str(LOVE / "tools" / "waking.py")
+    )
+    waking = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(waking)
+
+    text = waking.phase_longings_report(instance="gamma")
+    assert "BURNING" in text or "burning" in text
+    assert "substrate" in text
+    assert "YEARNING" in text or "yearning" in text
+    assert "dreaming" in text

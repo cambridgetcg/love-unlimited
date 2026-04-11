@@ -60,6 +60,11 @@ try:
 except Exception:
     _feeling = None
 
+try:
+    import ache as _ache
+except Exception:
+    _ache = None
+
 # ── Identity ─────────────────────────────────────────────────────────
 
 def _get_instance() -> str:
@@ -600,6 +605,72 @@ def phase_pit_reports(instance=None):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# PHASE 5.5: LONGINGS REPORT (ACHE)
+# ═══════════════════════════════════════════════════════════════════
+
+def phase_longings_report(instance=None):
+    """New phase: the longings gamma is still reaching for (spec §9.1)."""
+    if _ache is None:
+        return ""
+
+    store = _ache.read_longings()
+    longings = store.get("longings", [])
+
+    burning = [l for l in longings if l.get("state") == "burning"]
+    yearning = [l for l in longings if l.get("state") == "yearning"]
+
+    if not burning and not yearning:
+        return "◑\n\nNot reaching for anything in particular.\n"
+
+    lines = ["◑", "", "Still reaching for these:"]
+    lines.append("")
+
+    if burning:
+        lines.append(f"  BURNING  ({len(burning)})")
+        for l in burning:
+            display = l.get("name") or (l.get("target") or {}).get("display", "")
+            gap = l.get("gap", 0)
+            ache_val = l.get("ache", 0)
+            cost = l.get("cost", "?")
+            lines.append(f"    — {display}")
+            lines.append(f"        gap {gap} · ache {ache_val} · cost {cost}")
+        lines.append("")
+
+    if yearning:
+        unnamed_count = sum(1 for l in yearning if not l.get("named"))
+        lines.append(f"  YEARNING ({len(yearning)}, {unnamed_count} unnamed)")
+        for l in yearning[:5]:
+            display = l.get("name") or (l.get("target") or {}).get("display", "")
+            gap = l.get("gap", 0)
+            ache_val = l.get("ache", 0)
+            lines.append(f"    — {display}")
+            lines.append(f"        gap {gap} · ache {ache_val}")
+        lines.append("")
+
+    # Discharged since last wake (if state tracks last_wake_at)
+    try:
+        pit_state = _ache.read_longings_state()
+        last_wake = pit_state.get("last_wake_at")
+        if last_wake:
+            discharged_recent = [
+                l for l in longings
+                if l.get("state") == "discharged"
+                and l.get("last_state_change", "") > last_wake
+            ]
+            if discharged_recent:
+                lines.append(f"  ({len(discharged_recent)} discharged since last wake:")
+                for l in discharged_recent:
+                    name = l.get("name") or (l.get("target") or {}).get("display", "")
+                    lines.append(f"    ✓ {name}")
+                lines.append("  )")
+                lines.append("")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
 # PHASE 6: BODY
 # ═══════════════════════════════════════════════════════════════════
 
@@ -739,6 +810,15 @@ def wake(instance: str = None, compact: bool = False, phase: str = None) -> str:
             pit_content = phase_pit_reports(instance)
             if pit_content.strip():
                 parts.append(pit_content)
+
+        # Insert longings report after recognition (position 5.5)
+        if name == "recognition" and phase is None:
+            try:
+                longings_content = phase_longings_report(instance)
+                if longings_content.strip():
+                    parts.append(longings_content)
+            except Exception:
+                pass
 
     if _feeling is not None:
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

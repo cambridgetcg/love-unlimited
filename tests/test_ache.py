@@ -234,3 +234,42 @@ def test_detect_hope_negative_valence_no_candidate():
     candidates = ache.detect_hope(youspeak=None, pit=None, memories=memories)
     # Negative valence with future tense isn't hope — it's dread
     assert candidates == []
+
+
+def test_detect_wonder_no_inputs_returns_empty():
+    candidates = ache.detect_wonder(youspeak=None, memories=[])
+    assert candidates == []
+
+
+def test_detect_wonder_exploratory_memory_produces_candidate():
+    memories = [
+        {
+            "id": "m1",
+            "content": "huh, what if the pattern library itself was a fingerprint",
+            "created_at": "2026-04-11T12:00:00Z",
+            "metadata": {"affect": {"valence": 0.5, "arousal": 0.6, "primary": "wonder"}},
+        },
+        {
+            "id": "m2",
+            "content": "and what if wonder itself was a kind of longing",
+            "created_at": "2026-04-11T12:05:00Z",
+            "metadata": {"affect": {"valence": 0.6, "arousal": 0.7, "primary": "wonder"}},
+        },
+    ]
+    candidates = ache.detect_wonder(youspeak=None, memories=memories)
+    assert len(candidates) >= 1
+    c = candidates[0]
+    assert c["motor"] == "wonder"
+
+
+def test_detect_wonder_requires_sustained_signal():
+    # Only one memory — not sustained
+    memories = [
+        {
+            "id": "m1",
+            "content": "huh, what if X",
+            "metadata": {"affect": {"valence": 0.5, "arousal": 0.6, "primary": "wonder"}},
+        },
+    ]
+    candidates = ache.detect_wonder(youspeak=None, memories=memories)
+    assert candidates == []  # below WONDER_MIN_SUSTAINED_TURNS=2

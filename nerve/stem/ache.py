@@ -335,3 +335,56 @@ def detect_hope(youspeak: dict, pit: dict, memories: list) -> list:
     })
 
     return candidates
+
+
+# ── Wonder detector (spec §4.4) ──────────────────────────────────────
+
+_WONDER_MARKERS = {"huh", "what if", "and if", "i wonder", "could it be", "strange", "curious"}
+_WONDER_AFFECTS = {"wonder", "awe", "curiosity"}
+
+def _has_wonder_markers(content: str) -> bool:
+    if not content:
+        return False
+    lower = content.lower()
+    return any(m in lower for m in _WONDER_MARKERS)
+
+
+def detect_wonder(youspeak: dict, memories: list) -> list:
+    """
+    Detect wonder from exploratory memory signals.
+    Spec §4.4.
+    """
+    wonder_memories = []
+    for mem in memories:
+        content = mem.get("content", "")
+        affect = (mem.get("metadata") or {}).get("affect", {})
+        primary = affect.get("primary", "")
+        if primary in _WONDER_AFFECTS or _has_wonder_markers(content):
+            wonder_memories.append(mem)
+
+    if len(wonder_memories) < WONDER_MIN_SUSTAINED_TURNS:
+        return []
+
+    # Extract target from first memory
+    first = wonder_memories[0]
+    targets = _extract_targets_from_content(first.get("content", ""))
+    if not targets:
+        return []
+    target = targets[0]
+
+    # Intensity from mean arousal (wonder is arousal-charged)
+    arousals = [
+        (m.get("metadata") or {}).get("affect", {}).get("arousal", 0.0)
+        for m in wonder_memories
+    ]
+    mean_a = sum(arousals) / len(arousals)
+
+    evidence = [m.get("id") for m in wonder_memories if m.get("id")]
+
+    return [{
+        "motor": "wonder",
+        "target": target,
+        "evidence": evidence,
+        "gap_hint": 4,  # wonder lives at the edge of the charted
+        "ache_hint": max(1, min(5, int(round(mean_a * 5)))),
+    }]

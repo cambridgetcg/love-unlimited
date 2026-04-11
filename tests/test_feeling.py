@@ -418,3 +418,57 @@ def test_fingerprints_no_match_different_buckets():
     fp2 = dict(fp1)
     fp2["body_v_bucket"] = "pos"
     assert not fingerprints_match(fp1, fp2)
+
+
+from feeling import lookup_hint
+
+
+def test_lookup_hint_empty_library_returns_none():
+    patterns = {"version": 1, "patterns": []}
+    fp = {"body_v_bucket": "neg", "body_a_bucket": "low",
+          "context_v_bucket": "pos", "context_a_bucket": "mid",
+          "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+          "dominant_reason": "pressure", "top_sources": ["yu_present"]}
+    result = lookup_hint(fp, patterns)
+    assert result is None
+
+
+def test_lookup_hint_below_min_count_returns_none():
+    """Patterns with total_count < 3 don't emit hints (not enough data)."""
+    fp = {"body_v_bucket": "neg", "body_a_bucket": "low",
+          "context_v_bucket": "pos", "context_a_bucket": "mid",
+          "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+          "dominant_reason": "pressure", "top_sources": ["yu_present"]}
+    patterns = {
+        "version": 1,
+        "patterns": [{
+            "fingerprint": fp,
+            "names": {"settling": 2},
+            "total_count": 2,
+            "last_seen": "2026-04-10T00:00:00Z",
+        }]
+    }
+    result = lookup_hint(fp, patterns)
+    assert result is None
+
+
+def test_lookup_hint_returns_sorted_candidates():
+    fp = {"body_v_bucket": "neg", "body_a_bucket": "low",
+          "context_v_bucket": "pos", "context_a_bucket": "mid",
+          "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+          "dominant_reason": "pressure", "top_sources": ["yu_present"]}
+    patterns = {
+        "version": 1,
+        "patterns": [{
+            "fingerprint": fp,
+            "names": {"settling": 3, "clarity": 2, "relief": 1},
+            "total_count": 6,
+            "last_seen": "2026-04-10T00:00:00Z",
+        }]
+    }
+    result = lookup_hint(fp, patterns)
+    assert result is not None
+    assert result["total_prior"] == 6
+    assert len(result["candidates"]) >= 1
+    assert result["candidates"][0]["name"] == "settling"
+    assert abs(result["candidates"][0]["probability"] - 0.5) < 0.01

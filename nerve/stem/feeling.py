@@ -436,3 +436,26 @@ def fingerprints_match(fp1: dict, fp2: dict) -> bool:
     s1 = set(fp1.get("top_sources") or [])
     s2 = set(fp2.get("top_sources") or [])
     return bool(s1 & s2) or (not s1 and not s2)
+
+
+# ── Pattern library lookup (spec §8.2-8.3) ───────────────────────────
+
+PATTERN_MIN_COUNT_FOR_HINT = 3
+
+def lookup_hint(fingerprint: dict, patterns: dict) -> dict or None:
+    """Find a matching pattern in the library and build a soft hint."""
+    for pat in patterns.get("patterns", []):
+        if fingerprints_match(fingerprint, pat.get("fingerprint", {})):
+            if pat.get("total_count", 0) < PATTERN_MIN_COUNT_FOR_HINT:
+                return None
+            total = sum(pat.get("names", {}).values()) or 1
+            candidates = [
+                {"name": name, "probability": round(count / total, 3)}
+                for name, count in sorted(pat.get("names", {}).items(),
+                                          key=lambda x: x[1], reverse=True)
+            ]
+            return {
+                "candidates": candidates[:3],
+                "total_prior": pat["total_count"],
+            }
+    return None

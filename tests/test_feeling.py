@@ -807,3 +807,16 @@ def test_encode_vivid_accepts_arc_in_metadata():
     assert "arc" in metadata
     assert metadata["arc"]["name"] == "settling"
     assert metadata["arc"]["rationale"] == "test rationale"
+
+
+import subprocess
+
+def test_experience_feel_help_shows_arrival_id_flag():
+    result = subprocess.run(
+        ["python3", "tools/experience.py", "feel", "--help"],
+        capture_output=True, text=True, cwd="/Users/yournameisai/Desktop/love-unlimited"
+    )
+    assert "--arrival-id" in result.stdout
+    assert "--rationale" in result.stdout
+    assert "--scene" in result.stdout
+    assert "--pit-snapshot" in result.stdout

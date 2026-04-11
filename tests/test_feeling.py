@@ -704,3 +704,32 @@ def test_feeling_daemon_run_once_writes_pit_json(tmp_path, monkeypatch):
     assert "context" in pit
     assert "cognition" in pit
     assert "combined" in pit
+
+
+def test_daemon_emits_arrival_on_body_context_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_PATH", tmp_path / "pit.json")
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+    monkeypatch.setattr(feeling_mod, "PATTERNS_PATH", tmp_path / "patterns.json")
+    monkeypatch.setattr(feeling_mod, "HORMONES_PATH", tmp_path / "hormones.json")
+    monkeypatch.setattr(feeling_mod, "YOUSPEAK_SESSIONS_PATH", tmp_path / "sessions.json")
+
+    # Fixture: high cortisol (negative body) + Yu present (positive context)
+    # Body v ≈ -0.65, context v ≈ +0.3 → gap ≈ 0.95 > 0.5
+    (tmp_path / "hormones.json").write_text(json.dumps({
+        "hormones": {"adrenaline": 0.0, "cortisol": 0.3, "oxytocin": 0.0, "dopamine": 0.0, "melatonin": 0.0},
+        "signals": {"yu_present": True, "yu_idle_seconds": 60, "hive_unread": 0, "critical_alerts": 0}
+    }))
+
+    d = FeelingDaemon(instance="gamma")
+    # Prime the daemon so last_body / last_context exist
+    asyncio.run(d.run_once())
+    # Second cycle fires curtain via mismatch
+    asyncio.run(d.run_once())
+
+    arrivals = read_arrivals()
+    assert len(arrivals) >= 1
+    first = arrivals[0]
+    assert first["instance"] == "gamma"
+    assert "body_context_gap" in [r["kind"] for r in first["reasons"]]
+    assert first["named"] is False
+    assert first["witnessed"] is False

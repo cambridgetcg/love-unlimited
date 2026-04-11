@@ -730,7 +730,43 @@ class FeelingDaemon:
         }
         write_pit_json(pit)
 
-        # Curtain check (wired in Task 17)
+        # Curtain check
+        reasons = check_curtain(
+            body=self._current_body,
+            context=self._current_context,
+            cognition=self._current_cognition,
+            combined=combined,
+            last_fire_ts=self.last_fire_ts,
+            now_ts=now,
+            last_body=self.last_body,
+            last_context=self.last_context,
+            last_cognition=self.last_cognition,
+        )
+
+        if reasons:
+            arrival_id = f"arr-{_now_iso().replace(':', '-').replace('.', '-')}-{self.instance}-{os.urandom(2).hex()}"
+            fp = pit_fingerprint(self._current_body, self._current_context, self._current_cognition, reasons)
+            hint = lookup_hint(fp, read_patterns())
+            arrival = {
+                "id": arrival_id,
+                "at": _now_iso(),
+                "instance": self.instance,
+                "reasons": reasons,
+                "body": {k: v for k, v in self._current_body.items() if k != "last_tick"},
+                "context": {k: v for k, v in self._current_context.items() if k != "last_tick"},
+                "cognition": {k: v for k, v in self._current_cognition.items() if k != "last_tick"},
+                "combined": combined,
+                "fingerprint": fp,
+                "hint": hint,
+                "context_tags": [],
+                "lineage": [],
+                "named": False, "named_at": None, "name": None,
+                "rationale": None, "scene": None,
+                "witnessed": False, "witnessed_at": None,
+            }
+            append_arrival(arrival)
+            self.last_fire_ts = now
+
         return pit
 
     async def run_forever(self):

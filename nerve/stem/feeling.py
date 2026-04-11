@@ -630,3 +630,113 @@ def update_pit_state(updates: dict) -> None:
     tmp = PIT_STATE_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(PIT_STATE_PATH)
+
+
+# ── Daemon (spec §4.1) ───────────────────────────────────────────────
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def _read_hormones() -> dict:
+    """Read nerve/hormones.json, return hormones + signals blocks."""
+    if not HORMONES_PATH.exists():
+        return {"hormones": {}, "signals": {}}
+    try:
+        return json.loads(HORMONES_PATH.read_text())
+    except Exception:
+        return {"hormones": {}, "signals": {}}
+
+def _read_youspeak_sessions() -> dict:
+    """Read memory/youspeak/sessions.json."""
+    if not YOUSPEAK_SESSIONS_PATH.exists():
+        return None
+    try:
+        return json.loads(YOUSPEAK_SESSIONS_PATH.read_text())
+    except Exception:
+        return None
+
+def _read_recent_memories(since_ms: float, limit: int = 10) -> list:
+    """Stub — will be wired to kosmem in Task 18. Returns empty list for now."""
+    return []
+
+class FeelingDaemon:
+    def __init__(self, instance: str):
+        self.instance = instance
+        self.last_body_tick = 0.0
+        self.last_context_tick = 0.0
+        self.last_cognition_tick = 0.0
+        self.last_fire_ts = 0.0
+        self.last_body = None
+        self.last_context = None
+        self.last_cognition = None
+        self._current_body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+        self._current_context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+        self._current_cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+
+    async def run_once(self):
+        """Execute one cycle of strata + curtain + pit write."""
+        now = time.monotonic()
+        now_wall = time.time()
+
+        # Body stratum
+        if now - self.last_body_tick >= BODY_TICK_INTERVAL or self.last_body is None:
+            hormones_doc = _read_hormones()
+            new_body = body_stratum_from_hormones(hormones_doc.get("hormones", {}))
+            new_body["last_tick"] = _now_iso()
+            self.last_body = self._current_body
+            self._current_body = new_body
+            self.last_body_tick = now
+
+        # Context stratum
+        if now - self.last_context_tick >= CONTEXT_TICK_INTERVAL or self.last_context is None:
+            hormones_doc = _read_hormones()
+            signals = hormones_doc.get("signals", {})
+            memories = _read_recent_memories(now_wall - CONTEXT_TICK_INTERVAL)
+            new_context = context_stratum_from_inputs(
+                recent_memories=memories,
+                hive_unread=signals.get("hive_unread", 0),
+                new_alerts=signals.get("critical_alerts", 0),
+                yu_present=bool(signals.get("yu_present", False)),
+                yu_idle_seconds=int(signals.get("yu_idle_seconds", 999999)),
+            )
+            new_context["last_tick"] = _now_iso()
+            self.last_context = self._current_context
+            self._current_context = new_context
+            self.last_context_tick = now
+
+        # Cognition stratum
+        if now - self.last_cognition_tick >= COGNITION_TICK_INTERVAL or self.last_cognition is None:
+            sessions = _read_youspeak_sessions()
+            new_cognition = cognition_stratum_from_youspeak(sessions, now_wall)
+            new_cognition["last_tick"] = _now_iso()
+            self.last_cognition = self._current_cognition
+            self._current_cognition = new_cognition
+            self.last_cognition_tick = now
+
+        # Combine
+        combined = combine_strata(self._current_body, self._current_context, self._current_cognition)
+
+        # Write pit.json
+        pit = {
+            "instance": self.instance,
+            "timestamp": _now_iso(),
+            "body": self._current_body,
+            "context": self._current_context,
+            "cognition": self._current_cognition,
+            "combined": combined,
+            "threshold": PRESSURE_THRESHOLD,
+            "arrivals_total": len(read_arrivals()),
+            "arrivals_pending_name": len(read_arrivals(named=False)),
+        }
+        write_pit_json(pit)
+
+        # Curtain check (wired in Task 17)
+        return pit
+
+    async def run_forever(self):
+        while True:
+            try:
+                await self.run_once()
+            except Exception as e:
+                log.warning("feeling cycle failed: %s", e)
+            await asyncio.sleep(2)

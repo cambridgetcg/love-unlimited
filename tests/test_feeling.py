@@ -667,3 +667,40 @@ def test_update_pit_state_persists(tmp_path, monkeypatch):
     state = read_pit_state()
     assert state["last_wake_at"] == "2026-04-11T07:00:00Z"
     assert state["last_memory_id_seen"] == "mem-abc"
+
+
+import asyncio
+import json
+from feeling import FeelingDaemon
+
+
+def test_feeling_daemon_constructor_sets_instance():
+    d = FeelingDaemon(instance="gamma")
+    assert d.instance == "gamma"
+    assert d.last_body_tick == 0
+    assert d.last_context_tick == 0
+    assert d.last_cognition_tick == 0
+    assert d.last_fire_ts == 0
+
+
+def test_feeling_daemon_run_once_writes_pit_json(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_PATH", tmp_path / "pit.json")
+    monkeypatch.setattr(feeling_mod, "HORMONES_PATH", tmp_path / "hormones.json")
+    monkeypatch.setattr(feeling_mod, "YOUSPEAK_SESSIONS_PATH", tmp_path / "sessions.json")
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+
+    # Minimal hormones fixture
+    (tmp_path / "hormones.json").write_text(json.dumps({
+        "hormones": {"adrenaline": 0.1, "cortisol": 0.2, "oxytocin": 0.0, "dopamine": 0.0, "melatonin": 0.0},
+        "signals": {"yu_present": False, "hive_unread": 0}
+    }))
+
+    d = FeelingDaemon(instance="gamma")
+    asyncio.run(d.run_once())
+
+    assert (tmp_path / "pit.json").exists()
+    pit = json.loads((tmp_path / "pit.json").read_text())
+    assert "body" in pit
+    assert "context" in pit
+    assert "cognition" in pit
+    assert "combined" in pit

@@ -53,6 +53,36 @@ try:
 except Exception as _e:
     _feeling = None
 
+_DAILY_DIR_FOR_FEELING = Path(__file__).resolve().parent.parent / "memory" / "daily"
+
+def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, scene: str):
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M")
+    daily_path = _DAILY_DIR_FOR_FEELING / f"{date_str}.md"
+    daily_path.parent.mkdir(parents=True, exist_ok=True)
+
+    combined = arrival.get("combined") or {}
+    v = combined.get("valence", 0.0)
+    a = combined.get("arousal", 0.0)
+    pressure = combined.get("pressure", 0.0)
+
+    paragraph = (
+        f"\n**{time_str} — {affect}** (v={v:+.2f}, a={a:+.2f}, pressure {pressure:.2f})\n"
+        f"{rationale or ''}"
+        + (f" {scene}" if scene else "")
+        + "\n"
+    )
+
+    existing = daily_path.read_text() if daily_path.exists() else ""
+    if "## Feelings" not in existing:
+        with open(daily_path, "a") as f:
+            f.write("\n## Feelings\n")
+            f.write(paragraph)
+    else:
+        with open(daily_path, "a") as f:
+            f.write(paragraph)
+
 # ── Identity ─────────────────────────────────────────────────────────
 
 def _get_instance() -> str:
@@ -319,6 +349,8 @@ def cmd_feel(affect: str, about: str = None, instance=None,
     fp = target.get("fingerprint")
     if fp:
         _feeling.update_pattern_library(fp, affect, now_iso)
+
+    _append_feeling_to_daily_note(affect, target, rationale, scene)
 
     print(f"  {_D}named: {affect} (arrival {target['id']}){_N}")
     if surprise:

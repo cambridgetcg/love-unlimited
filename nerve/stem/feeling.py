@@ -328,10 +328,6 @@ def check_curtain(
     last_context: dict = None,
     last_cognition: dict = None,
 ) -> list or None:
-    """
-    Decide whether an arrival should fire.
-    Returns list of reason dicts, or None if no trigger.
-    """
     reasons = []
     always_fire = False
 
@@ -339,7 +335,33 @@ def check_curtain(
     if combined["pressure"] >= PRESSURE_THRESHOLD:
         reasons.append({"kind": "pressure", "value": round(combined["pressure"], 3)})
 
-    # min_interval gate (bypassed only by always_fire mismatches)
+    # Body shift
+    if last_body:
+        body_delta = math.sqrt(
+            (body["valence"] - last_body["valence"])**2 +
+            (body["arousal"] - last_body["arousal"])**2
+        )
+        if body_delta >= SHIFT_THRESHOLD:
+            reasons.append({"kind": "body_shift", "value": round(body_delta, 3)})
+
+    # Context shift
+    if last_context:
+        context_delta = math.sqrt(
+            (context["valence"] - last_context["valence"])**2 +
+            (context["arousal"] - last_context["arousal"])**2
+        )
+        if context_delta >= SHIFT_THRESHOLD:
+            reasons.append({"kind": "context_shift", "value": round(context_delta, 3)})
+
+    # Cognition shift — suppressed when current cognition is silent
+    if last_cognition and cognition.get("state") == "active":
+        cognition_delta = math.sqrt(
+            (cognition["valence"] - last_cognition["valence"])**2 +
+            (cognition["arousal"] - last_cognition["arousal"])**2
+        )
+        if cognition_delta >= SHIFT_THRESHOLD:
+            reasons.append({"kind": "cognition_shift", "value": round(cognition_delta, 3)})
+
     too_soon = (now_ts - last_fire_ts) < MIN_ARRIVAL_INTERVAL_SECONDS
 
     if not reasons:

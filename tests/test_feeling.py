@@ -261,3 +261,50 @@ def test_curtain_respects_min_interval_on_pressure():
     # Last fire was 30 seconds ago — inside 90s min interval
     reasons = check_curtain(body, context, cognition, combined, last_fire_ts=970, now_ts=1000)
     assert reasons is None  # suppressed by min_interval
+
+
+def test_curtain_body_shift_fires():
+    last_body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    body = {"valence": -0.3, "arousal": 0.3, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": -0.15, "arousal": 0.15, "pressure": 0.21}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=last_body, last_context=context, last_cognition=cognition)
+    assert reasons is not None
+    assert any(r["kind"] == "body_shift" for r in reasons)
+
+
+def test_curtain_context_shift_fires():
+    last_context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.3, "arousal": 0.3, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": 0.15, "arousal": 0.15, "pressure": 0.21}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=last_context, last_cognition=cognition)
+    assert reasons is not None
+    assert any(r["kind"] == "context_shift" for r in reasons)
+
+
+def test_curtain_cognition_shift_suppressed_when_silent():
+    last_cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.3, "arousal": 0.3, "sources": [], "state": "silent"}  # still silent
+    combined = {"valence": 0.0, "arousal": 0.0, "pressure": 0.0}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=last_cognition)
+    assert reasons is None  # cognition silent → no shift trigger
+
+
+def test_curtain_cognition_shift_fires_when_active():
+    last_cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "active"}
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.3, "arousal": 0.3, "sources": [], "state": "active"}
+    combined = {"valence": 0.1, "arousal": 0.1, "pressure": 0.14}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=last_cognition)
+    assert reasons is not None
+    assert any(r["kind"] == "cognition_shift" for r in reasons)

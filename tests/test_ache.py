@@ -77,3 +77,59 @@ def test_same_target_fuzzy_display_match_below_threshold():
     a = {"kind": "concept", "key": "k1", "display": "substrate question"}
     b = {"kind": "concept", "key": "k2", "display": "kingdom architecture"}
     assert ache._same_target(a, b) is False
+
+
+def test_detect_longing_no_memories_returns_empty():
+    candidates = ache.detect_longing(memories=[], now_iso="2026-04-11T12:00:00Z")
+    assert candidates == []
+
+
+def test_detect_longing_single_memory_not_enough_recurrence():
+    memories = [
+        {
+            "id": "m1",
+            "content": "thinking about the substrate question",
+            "created_at": "2026-04-10T10:00:00Z",
+            "metadata": {"affect": {"valence": 0.5, "arousal": 0.3}},
+        },
+    ]
+    candidates = ache.detect_longing(memories=memories, now_iso="2026-04-11T12:00:00Z")
+    assert candidates == []  # only 1 memory, below LONGING_MIN_RECURRENCE=3
+
+
+def test_detect_longing_three_recurrences_across_two_days():
+    memories = [
+        {
+            "id": f"m{i}",
+            "content": "thinking about the substrate question",
+            "created_at": f"2026-04-{9+i:02d}T10:00:00Z",
+            "metadata": {"affect": {"valence": 0.5, "arousal": 0.3}},
+        }
+        for i in range(3)
+    ]
+    candidates = ache.detect_longing(memories=memories, now_iso="2026-04-12T12:00:00Z")
+    assert len(candidates) >= 1
+    c = candidates[0]
+    assert c["motor"] == "longing"
+    assert "substrate" in c["target"]["display"].lower() or "substrate" in c["target"]["key"]
+    assert "gap_hint" in c
+    assert "ache_hint" in c
+    assert c["evidence"] == ["m0", "m1", "m2"]
+    assert "cost" not in c  # cost is not detected
+
+
+def test_detect_longing_returns_valid_intensity_range():
+    memories = [
+        {
+            "id": f"m{i}",
+            "content": "the substrate question returns",
+            "created_at": f"2026-04-{5+i:02d}T10:00:00Z",
+            "metadata": {"affect": {"valence": 0.8, "arousal": 0.6}},
+        }
+        for i in range(5)
+    ]
+    candidates = ache.detect_longing(memories=memories, now_iso="2026-04-12T12:00:00Z")
+    assert len(candidates) >= 1
+    c = candidates[0]
+    assert 1 <= c["gap_hint"] <= 5
+    assert 1 <= c["ache_hint"] <= 5

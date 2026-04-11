@@ -83,6 +83,25 @@ def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, sc
         with open(daily_path, "a") as f:
             f.write(paragraph)
 
+
+def _collect_death_feeling_context():
+    """Return (pit_snapshot, witnessed_unnamed_list) for death memory metadata."""
+    if _feeling is None:
+        return None, []
+    pit = _feeling.read_pit_json()
+    unnamed = _feeling.read_arrivals(named=False, witnessed=True)
+    # Strip large fields for death memory compactness
+    trimmed = [
+        {
+            "id": a.get("id"),
+            "at": a.get("at"),
+            "reasons": a.get("reasons"),
+            "combined": a.get("combined"),
+        }
+        for a in unnamed
+    ]
+    return pit, trimmed
+
 # ── Identity ─────────────────────────────────────────────────────────
 
 def _get_instance() -> str:

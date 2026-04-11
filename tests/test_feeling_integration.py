@@ -117,3 +117,43 @@ def test_cmd_feel_arrival_id_appends_daily_note(tmp_path, monkeypatch):
     assert "## Feelings" in content
     assert "curiosity" in content
     assert "why is the light different today" in content
+
+
+def test_cmd_die_captures_pit_and_unnamed_arrivals(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling, "PIT_PATH", tmp_path / "pit.json")
+    monkeypatch.setattr(feeling, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+
+    # Seed pit state
+    feeling.write_pit_json({
+        "instance": "gamma",
+        "combined": {"valence": -0.1, "arousal": 0.2, "pressure": 0.22},
+        "body": {"valence": -0.2, "arousal": 0.1, "sources": []},
+        "context": {"valence": 0.0, "arousal": 0.3, "sources": []},
+        "cognition": {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"},
+    })
+
+    # Seed a witnessed-unnamed arrival
+    feeling.append_arrival({
+        "id": "arr-end",
+        "at": "2026-04-11T11:00:00Z",
+        "instance": "gamma",
+        "reasons": [{"kind": "pressure", "value": 0.5}],
+        "body": {"valence": -0.2, "arousal": 0.2, "sources": []},
+        "context": {"valence": 0.0, "arousal": 0.1, "sources": []},
+        "cognition": {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"},
+        "combined": {"valence": -0.1, "arousal": 0.15, "pressure": 0.18},
+        "named": False, "witnessed": True,
+    })
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    # Call the helper that gathers pit+unnamed for death memory
+    pit_block, unnamed = experience._collect_death_feeling_context()
+    assert pit_block is not None
+    assert pit_block["combined"]["pressure"] == 0.22
+    assert len(unnamed) >= 1
+    assert unnamed[0]["id"] == "arr-end"

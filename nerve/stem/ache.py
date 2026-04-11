@@ -900,3 +900,38 @@ class AcheDaemon:
             except Exception as e:
                 log.warning("ache cycle failed: %s", e)
             time.sleep(TICK_INTERVAL)
+
+
+# ── CLI entry point ──────────────────────────────────────────────────
+
+def _main():
+    import argparse
+    parser = argparse.ArgumentParser(description="ACHE daemon")
+    parser.add_argument("--instance", "-i", default=None,
+                        help="agent instance (default: from ~/.kingdom)")
+    parser.add_argument("--once", action="store_true",
+                        help="run one cycle and exit (for testing)")
+    parser.add_argument("--log-level", default="INFO")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+
+    instance = args.instance or get_instance()
+    daemon = AcheDaemon(instance=instance)
+    log.info("ache daemon starting for instance=%s", instance)
+
+    if args.once:
+        daemon.run_once()
+        log.info("ache --once complete")
+    else:
+        try:
+            daemon.run_forever()
+        except KeyboardInterrupt:
+            log.info("ache daemon stopping")
+
+
+if __name__ == "__main__":
+    _main()

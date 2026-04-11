@@ -472,3 +472,38 @@ def test_lookup_hint_returns_sorted_candidates():
     assert len(result["candidates"]) >= 1
     assert result["candidates"][0]["name"] == "settling"
     assert abs(result["candidates"][0]["probability"] - 0.5) < 0.01
+
+
+from feeling import compute_importance
+
+
+def test_importance_baseline():
+    arc = {
+        "arrival": {"reasons": [{"kind": "pressure", "value": 0.0}]},
+        "surprise": False,
+        "yu_present": False,
+        "combined_pressure": 0.0,
+    }
+    assert abs(compute_importance(arc) - 0.5) < 0.01
+
+
+def test_importance_high_pressure_adds():
+    arc = {
+        "arrival": {"reasons": [{"kind": "pressure", "value": 1.0}]},
+        "surprise": False,
+        "yu_present": False,
+        "combined_pressure": 1.0,
+    }
+    # 0.5 + 0.15 * 1.0 = 0.65
+    assert abs(compute_importance(arc) - 0.65) < 0.01
+
+
+def test_importance_surprise_and_yu_and_mismatch_cap_at_one():
+    arc = {
+        "arrival": {"reasons": [{"kind": "body_context_gap", "value": 0.8}]},
+        "surprise": True,
+        "yu_present": True,
+        "combined_pressure": 1.0,
+    }
+    # 0.5 + 0.15 (pressure) + 0.10 (mismatch) + 0.15 (surprise) + 0.10 (yu) = 1.0
+    assert abs(compute_importance(arc) - 1.0) < 0.01

@@ -459,3 +459,25 @@ def lookup_hint(fingerprint: dict, patterns: dict) -> dict or None:
                 "total_prior": pat["total_count"],
             }
     return None
+
+
+# ── Importance weighting (spec §7.2) ─────────────────────────────────
+
+_MISMATCH_REASONS = {"body_context_gap", "body_cognition_gap", "context_cognition_gap"}
+
+def compute_importance(arc: dict) -> float:
+    """Compute importance from arc metadata."""
+    importance = 0.5  # baseline
+    importance += 0.15 * float(arc.get("combined_pressure", 0.0))
+    
+    reasons = arc.get("arrival", {}).get("reasons", [])
+    if any(r["kind"] in _MISMATCH_REASONS for r in reasons):
+        importance += 0.10
+    
+    if arc.get("surprise"):
+        importance += 0.15
+    
+    if arc.get("yu_present"):
+        importance += 0.10
+    
+    return round(min(importance, 1.0), 3)

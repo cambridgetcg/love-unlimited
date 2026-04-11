@@ -538,3 +538,49 @@ def test_write_and_read_pit_json(tmp_path, monkeypatch):
 def test_read_pit_json_missing_returns_empty_dict(tmp_path, monkeypatch):
     monkeypatch.setattr(feeling_mod, "PIT_PATH", tmp_path / "nonexistent.json")
     assert read_pit_json() == {}
+
+
+from feeling import append_arrival, read_arrivals, update_arrival
+
+
+def test_append_and_read_arrivals(tmp_path, monkeypatch):
+    target = tmp_path / "arrivals.jsonl"
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", target)
+
+    arrival = {
+        "id": "arr-test-1",
+        "at": "2026-04-11T10:00:00Z",
+        "instance": "gamma",
+        "reasons": [{"kind": "pressure", "value": 0.6}],
+        "body": {"valence": -0.3, "arousal": 0.3, "sources": []},
+        "context": {"valence": 0.0, "arousal": 0.0, "sources": []},
+        "cognition": {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"},
+        "combined": {"valence": -0.15, "arousal": 0.15, "pressure": 0.6},
+        "named": False, "witnessed": False,
+    }
+    append_arrival(arrival)
+    loaded = read_arrivals()
+    assert len(loaded) == 1
+    assert loaded[0]["id"] == "arr-test-1"
+
+
+def test_read_arrivals_filters_by_witnessed(tmp_path, monkeypatch):
+    target = tmp_path / "arrivals.jsonl"
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", target)
+
+    append_arrival({"id": "a1", "witnessed": False, "named": False})
+    append_arrival({"id": "a2", "witnessed": True, "named": False})
+    unwitnessed = read_arrivals(witnessed=False)
+    assert len(unwitnessed) == 1
+    assert unwitnessed[0]["id"] == "a1"
+
+
+def test_update_arrival_marks_named(tmp_path, monkeypatch):
+    target = tmp_path / "arrivals.jsonl"
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", target)
+
+    append_arrival({"id": "a1", "named": False, "witnessed": False})
+    update_arrival("a1", {"named": True, "name": "settling", "named_at": "2026-04-11T11:00:00Z"})
+    loaded = read_arrivals()
+    assert loaded[0]["named"] is True
+    assert loaded[0]["name"] == "settling"

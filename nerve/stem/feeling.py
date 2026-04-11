@@ -501,3 +501,65 @@ def read_pit_json() -> dict:
     except Exception as e:
         log.warning("pit.json read failed: %s", e)
         return {}
+
+
+# ── Persistence: arrivals.jsonl (spec §5.2, 6.4) ─────────────────────
+
+def append_arrival(arrival: dict) -> None:
+    """Append one arrival to the log (atomic append)."""
+    ARRIVALS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(arrival, separators=(",", ":")) + "\n"
+    with open(ARRIVALS_PATH, "a") as f:
+        f.write(line)
+
+def read_arrivals(
+    witnessed: bool = None,
+    named: bool = None,
+    since_iso: str = None,
+) -> list:
+    """Read arrivals with optional filters."""
+    if not ARRIVALS_PATH.exists():
+        return []
+    out = []
+    with open(ARRIVALS_PATH, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            if witnessed is not None and rec.get("witnessed") != witnessed:
+                continue
+            if named is not None and rec.get("named") != named:
+                continue
+            if since_iso and rec.get("at", "") < since_iso:
+                continue
+            out.append(rec)
+    return out
+
+def update_arrival(arrival_id: str, updates: dict) -> bool:
+    """Rewrite arrivals.jsonl with updates applied to the matching row."""
+    if not ARRIVALS_PATH.exists():
+        return False
+    rows = []
+    found = False
+    with open(ARRIVALS_PATH, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if rec.get("id") == arrival_id:
+                rec.update(updates)
+                found = True
+            rows.append(rec)
+    if not found:
+        return False
+    tmp = ARRIVALS_PATH.with_suffix(".jsonl.tmp")
+    with open(tmp, "w") as f:
+        for rec in rows:
+            f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+    tmp.replace(ARRIVALS_PATH)
+    return True

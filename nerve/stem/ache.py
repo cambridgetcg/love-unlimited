@@ -731,3 +731,172 @@ def update_longings_state(updates: dict) -> None:
     tmp = LONGINGS_STATE_PATH.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, indent=2))
     tmp.replace(LONGINGS_STATE_PATH)
+
+
+# ── Input readers ────────────────────────────────────────────────────
+
+def _read_recent_memories_from_db(days: int = 14, limit: int = 500) -> list:
+    """Read episodic (layer=3) memories from memory.db in the last N days."""
+    import sqlite3
+    if not MEMORY_DB_PATH.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(MEMORY_DB_PATH), timeout=2)
+        conn.row_factory = sqlite3.Row
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cur = conn.execute(
+            "SELECT id, content, metadata, created_at FROM memories "
+            "WHERE layer = 3 AND created_at > ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (cutoff, limit)
+        )
+        out = []
+        for row in cur.fetchall():
+            try:
+                md = json.loads(row["metadata"] or "{}")
+            except Exception:
+                md = {}
+            out.append({
+                "id": row["id"],
+                "content": row["content"],
+                "metadata": md,
+                "created_at": row["created_at"],
+            })
+        conn.close()
+        return out
+    except Exception as e:
+        log.warning("memory.db read failed: %s", e)
+        return []
+
+
+def _read_feeling_arrivals() -> list:
+    """Read FEELING arrivals as one of ACHE's inputs."""
+    if not ARRIVALS_PATH.exists():
+        return []
+    out = []
+    try:
+        for line in ARRIVALS_PATH.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+def _read_hormones_json() -> dict:
+    if not HORMONES_PATH.exists():
+        return {}
+    try:
+        return json.loads(HORMONES_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _read_youspeak_sessions_json() -> dict:
+    if not YOUSPEAK_SESSIONS_PATH.exists():
+        return {}
+    try:
+        return json.loads(YOUSPEAK_SESSIONS_PATH.read_text())
+    except Exception:
+        return {}
+
+
+# ── Daemon (spec §3) ─────────────────────────────────────────────────
+
+class AcheDaemon:
+    def __init__(self, instance: str):
+        self.instance = instance
+        self.last_tick_ts = 0.0
+        self._tick_state_by_longing = {}
+
+    def run_once(self) -> dict:
+        """Execute one tick."""
+        now_iso = _now_iso()
+
+        memories = _read_recent_memories_from_db()
+        youspeak = _read_youspeak_sessions_json()
+        pit = None
+
+        candidates = []
+        try:
+            candidates.extend(detect_longing(memories, now_iso))
+        except Exception as e:
+            log.warning("detect_longing failed: %s", e)
+        try:
+            candidates.extend(detect_love(memories))
+        except Exception as e:
+            log.warning("detect_love failed: %s", e)
+        try:
+            candidates.extend(detect_hope(youspeak, pit, memories))
+        except Exception as e:
+            log.warning("detect_hope failed: %s", e)
+        try:
+            candidates.extend(detect_wonder(youspeak, memories))
+        except Exception as e:
+            log.warning("detect_wonder failed: %s", e)
+
+        store = read_longings()
+        longings_list = store["longings"]
+
+        for cand in candidates:
+            result = match_or_create(cand, longings_list, now_iso, instance=self.instance)
+            if result["op"] == "create":
+                longings_list.append(result["longing"])
+                append_evidence({
+                    "at": now_iso,
+                    "longing_id": result["longing"]["id"],
+                    "motor": cand["motor"],
+                    "detector": cand["motor"] + "_detector",
+                    "memory_ids": cand.get("evidence", []),
+                    "delta": {"gap": cand["gap_hint"], "ache": cand["ache_hint"]},
+                })
+            elif result["op"] == "update":
+                for i, lng in enumerate(longings_list):
+                    if lng.get("id") == result["longing_id"]:
+                        lng.update(result["updates"])
+                        longings_list[i] = lng
+                        if lng.get("gap", 0) >= 3 and lng.get("ache", 0) >= 3:
+                            ts = self._tick_state_by_longing.setdefault(lng["id"], {"stirring_ticks_at_threshold": 0})
+                            ts["stirring_ticks_at_threshold"] += 1
+                        else:
+                            self._tick_state_by_longing.pop(lng["id"], None)
+                        append_evidence({
+                            "at": now_iso,
+                            "longing_id": lng["id"],
+                            "motor": cand["motor"],
+                            "detector": cand["motor"] + "_detector",
+                            "memory_ids": cand.get("evidence", []),
+                            "delta": result["updates"],
+                        })
+                        break
+
+        for i, lng in enumerate(longings_list):
+            tick_state = self._tick_state_by_longing.get(lng["id"], {})
+            stepped = step_state_machine(lng, now_iso, tick_state)
+            longings_list[i] = stepped
+
+        for i, lng in enumerate(longings_list):
+            if lng.get("state") != "burning":
+                continue
+            discharged, _count = detect_discharge(lng, memories, now_iso)
+            if discharged:
+                longings_list[i] = apply_discharge(lng, now_iso, reason="auto: 2-of-3 signals")
+
+        store["longings"] = longings_list
+        write_longings(store)
+
+        self.last_tick_ts = time.time()
+        return {"ticks": 1, "longings_count": len(longings_list)}
+
+    def run_forever(self):
+        while True:
+            try:
+                self.run_once()
+            except Exception as e:
+                log.warning("ache cycle failed: %s", e)
+            time.sleep(TICK_INTERVAL)

@@ -602,3 +602,25 @@ def test_update_longings_state_persists(tmp_path, monkeypatch):
     state = ache.read_longings_state()
     assert state["last_memory_id_seen"] == "mem-abc"
     assert state["first_run_seed_completed"] is True
+
+
+def test_ache_daemon_constructor():
+    d = ache.AcheDaemon(instance="gamma")
+    assert d.instance == "gamma"
+    assert d.last_tick_ts == 0
+
+
+def test_ache_daemon_run_once_no_inputs_no_longings(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_PATH", tmp_path / "longings-evidence.jsonl")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+    monkeypatch.setattr(ache, "MEMORY_DB_PATH", tmp_path / "memory.db")
+    monkeypatch.setattr(ache, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+    monkeypatch.setattr(ache, "HORMONES_PATH", tmp_path / "hormones.json")
+    monkeypatch.setattr(ache, "YOUSPEAK_SESSIONS_PATH", tmp_path / "sessions.json")
+
+    d = ache.AcheDaemon(instance="gamma")
+    d.run_once()
+
+    store = ache.read_longings()
+    assert store["longings"] == []

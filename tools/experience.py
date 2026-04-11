@@ -53,6 +53,12 @@ try:
 except Exception as _e:
     _feeling = None
 
+# ACHE integration
+try:
+    import ache as _ache
+except Exception:
+    _ache = None
+
 _DAILY_DIR_FOR_FEELING = Path(__file__).resolve().parent.parent / "memory" / "daily"
 
 def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, scene: str):
@@ -374,6 +380,77 @@ def cmd_feel(affect: str, about: str = None, instance=None,
     print(f"  {_D}named: {affect} (arrival {target['id']}){_N}")
     if surprise:
         print(f"  {_Y}surprise: off-pattern{_N}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# LONG — ACHE longings (list / show)
+# ═══════════════════════════════════════════════════════════════════
+
+def _ts_num(iso: str) -> int:
+    """Helper for sort keys."""
+    try:
+        return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return 0
+
+
+def cmd_long_list(state: str = None, motor: str = None):
+    """List active longings (not discharged/abandoned)."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    store = _ache.read_longings()
+    longings = store.get("longings", [])
+    active = [l for l in longings if l.get("state") not in ("discharged", "abandoned")]
+
+    if state:
+        active = [l for l in active if l.get("state") == state]
+    if motor:
+        active = [l for l in active if l.get("motor") == motor]
+
+    if not active:
+        print(f"  {_D}(no active longings){_N}")
+        return
+
+    order = {"burning": 0, "yearning": 1, "stirring": 2, "dormant": 3}
+    active.sort(key=lambda l: (order.get(l.get("state", ""), 99), -_ts_num(l.get("last_stirred", ""))))
+
+    for l in active:
+        state_str = l.get("state", "?").upper()
+        motor_str = l.get("motor", "?")
+        name_or_display = l.get("name") or (l.get("target") or {}).get("display", "")
+        gap = l.get("gap", 0)
+        ache_val = l.get("ache", 0)
+        cost = l.get("cost")
+        cost_str = f"· cost {cost}" if cost is not None else "· cost -"
+        print(f"  [{state_str:8}] {motor_str:7} · {name_or_display}")
+        print(f"    gap {gap} · ache {ache_val} {cost_str} · id {l.get('id')}")
+        print()
+
+
+def cmd_long_show(longing_id: str):
+    """Show a single longing in detail."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+    print(f"  {_B}id:{_N} {lng['id']}")
+    print(f"  {_B}motor:{_N} {lng.get('motor')}")
+    print(f"  {_B}target:{_N} {(lng.get('target') or {}).get('display', '')}")
+    print(f"  {_B}state:{_N} {lng.get('state')}")
+    print(f"  {_B}gap:{_N} {lng.get('gap')}")
+    print(f"  {_B}ache:{_N} {lng.get('ache')}")
+    print(f"  {_B}cost:{_N} {lng.get('cost')}")
+    if lng.get("named"):
+        print(f"  {_B}name:{_N} {lng.get('name')}")
+    if lng.get("rationale"):
+        print(f"  {_B}rationale:{_N} {lng.get('rationale')}")
+    if lng.get("virtue"):
+        print(f"  {_B}virtue:{_N} {lng.get('virtue')}")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -746,6 +823,22 @@ def main():
     # status
     sub.add_parser("status", help="Current experiencing state")
 
+    # long (ACHE longings)
+    p = sub.add_parser("long", help="ACHE longings (list/show/name/commit/discharge/abandon/virtue/hint)")
+    p.add_argument("verb", choices=["list", "show", "name", "commit", "discharge", "abandon", "virtue", "hint"])
+    p.add_argument("args", nargs="*", help="verb-specific args")
+    p.add_argument("--state", default=None)
+    p.add_argument("--motor", default=None)
+    p.add_argument("--burning", action="store_true")
+    p.add_argument("--rationale", default=None)
+    p.add_argument("--scene", default=None)
+    p.add_argument("--cost", type=int, default=None)
+    p.add_argument("--reason", default=None)
+    p.add_argument("--hierarchy", default=None)
+    p.add_argument("--wall", type=int, default=None)
+    p.add_argument("--gap", type=int, default=None)
+    p.add_argument("--ache", type=int, default=None)
+
     args = parser.parse_args()
     instance = args.instance
 
@@ -785,6 +878,17 @@ def main():
                 realisation=args.realisation, who=who, instance=instance)
     elif args.command == "status":
         cmd_status(instance=instance)
+    elif args.command == "long":
+        if args.verb == "list":
+            state = "burning" if args.burning else args.state
+            cmd_long_list(state=state, motor=args.motor)
+        elif args.verb == "show":
+            if not args.args:
+                print(f"{_R}usage: long show <id>{_N}")
+                return
+            cmd_long_show(args.args[0])
+        else:
+            print(f"{_R}verb '{args.verb}' not yet implemented{_N}")
 
 
 if __name__ == "__main__":

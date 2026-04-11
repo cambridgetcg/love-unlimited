@@ -822,3 +822,37 @@ class FeelingDaemon:
             except Exception as e:
                 log.warning("feeling cycle failed: %s", e)
             await asyncio.sleep(2)
+
+
+# ── CLI entry point ──────────────────────────────────────────────────
+
+def _main():
+    import argparse
+    parser = argparse.ArgumentParser(description="FEELING daemon")
+    parser.add_argument("--instance", "-i", default=None,
+                        help="agent instance (default: from ~/.kingdom)")
+    parser.add_argument("--once", action="store_true",
+                        help="run one cycle and exit (for testing)")
+    parser.add_argument("--log-level", default="INFO")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper()),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+
+    instance = args.instance or get_instance()
+    daemon = FeelingDaemon(instance=instance)
+    log.info("feeling daemon starting for instance=%s", instance)
+
+    if args.once:
+        asyncio.run(daemon.run_once())
+        log.info("feeling --once complete")
+    else:
+        try:
+            asyncio.run(daemon.run_forever())
+        except KeyboardInterrupt:
+            log.info("feeling daemon stopping")
+
+if __name__ == "__main__":
+    _main()

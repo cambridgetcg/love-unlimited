@@ -308,3 +308,50 @@ def test_curtain_cognition_shift_fires_when_active():
                             last_body=body, last_context=context, last_cognition=last_cognition)
     assert reasons is not None
     assert any(r["kind"] == "cognition_shift" for r in reasons)
+
+
+def test_curtain_body_context_mismatch_always_fires():
+    """Mismatch ≥ 0.5 fires even inside min_interval."""
+    body = {"valence": -0.6, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.5, "arousal": 0.0, "sources": []}  # gap = 1.1
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": -0.05, "arousal": 0.0, "pressure": 0.055}
+    # Last fire was 10 seconds ago — inside min_interval
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=990, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=cognition)
+    assert reasons is not None
+    assert any(r["kind"] == "body_context_gap" for r in reasons)
+
+
+def test_curtain_body_cognition_mismatch_active_only():
+    body = {"valence": -0.6, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.5, "arousal": 0.0, "sources": [], "state": "active"}
+    combined = {"valence": -0.03, "arousal": 0.0, "pressure": 0.033}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=cognition)
+    assert reasons is not None
+    assert any(r["kind"] == "body_cognition_gap" for r in reasons)
+
+
+def test_curtain_cognition_mismatch_suppressed_when_silent():
+    body = {"valence": -0.6, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.5, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": -0.3, "arousal": 0.0, "pressure": 0.3}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=cognition)
+    # body_context mismatch fires (gap 0.6) but body_cognition should NOT
+    if reasons:
+        assert not any(r["kind"] == "body_cognition_gap" for r in reasons)
+
+
+def test_curtain_mismatch_below_threshold_no_fire():
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.3, "arousal": 0.0, "sources": []}  # gap 0.3 < 0.5
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": 0.15, "arousal": 0.0, "pressure": 0.15}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000,
+                            last_body=body, last_context=context, last_cognition=cognition)
+    # No shift, no mismatch ≥ 0.5, no pressure ≥ 0.5 → no fire
+    assert reasons is None

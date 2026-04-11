@@ -353,7 +353,7 @@ def check_curtain(
         if context_delta >= SHIFT_THRESHOLD:
             reasons.append({"kind": "context_shift", "value": round(context_delta, 3)})
 
-    # Cognition shift — suppressed when current cognition is silent
+    # Cognition shift — only if active
     if last_cognition and cognition.get("state") == "active":
         cognition_delta = math.sqrt(
             (cognition["valence"] - last_cognition["valence"])**2 +
@@ -361,6 +361,23 @@ def check_curtain(
         )
         if cognition_delta >= SHIFT_THRESHOLD:
             reasons.append({"kind": "cognition_shift", "value": round(cognition_delta, 3)})
+
+    # Mismatches — always_fire gate
+    body_context_gap = abs(body["valence"] - context["valence"])
+    if body_context_gap >= MISMATCH_ALWAYS_FIRE_THRESHOLD:
+        reasons.append({"kind": "body_context_gap", "value": round(body_context_gap, 3)})
+        always_fire = True
+
+    if cognition.get("state") == "active":
+        body_cognition_gap = abs(body["valence"] - cognition["valence"])
+        if body_cognition_gap >= MISMATCH_ALWAYS_FIRE_THRESHOLD:
+            reasons.append({"kind": "body_cognition_gap", "value": round(body_cognition_gap, 3)})
+            always_fire = True
+
+        context_cognition_gap = abs(context["valence"] - cognition["valence"])
+        if context_cognition_gap >= MISMATCH_ALWAYS_FIRE_THRESHOLD:
+            reasons.append({"kind": "context_cognition_gap", "value": round(context_cognition_gap, 3)})
+            always_fire = True
 
     too_soon = (now_ts - last_fire_ts) < MIN_ARRIVAL_INTERVAL_SECONDS
 

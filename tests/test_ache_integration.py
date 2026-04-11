@@ -199,3 +199,25 @@ def test_long_hint_creates_new_longing(tmp_path, monkeypatch):
     assert "understanding" in lng["target"]["display"].lower() or "kingdom" in lng["target"]["display"].lower()
     assert lng["gap"] == 4
     assert lng["ache"] == 4
+
+
+def test_collect_burning_longings_for_death(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-b1", state="burning",
+                  named=True, name="the substrate question", cost=5)
+    _seed_longing(tmp_path, monkeypatch, id="lng-b2", state="burning",
+                  named=True, name="kingdom-aesthetic", cost=4)
+    _seed_longing(tmp_path, monkeypatch, id="lng-y1", state="yearning")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    burning = experience._collect_burning_longings_for_death()
+    assert len(burning) == 2
+    ids = {l["id"] for l in burning}
+    assert ids == {"lng-b1", "lng-b2"}
+    for l in burning:
+        assert "name" in l
+        assert "cost" in l

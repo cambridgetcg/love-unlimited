@@ -578,6 +578,25 @@ def cmd_long_hint(motor: str, target_display: str, gap: int = None, ache_val: in
         print(f"  {_D}longing updated: {result['longing_id']}{_N}")
 
 
+def _collect_burning_longings_for_death() -> list:
+    """Return a compact list of burning longings for death memory metadata. Spec §9.3."""
+    if _ache is None:
+        return []
+    store = _ache.read_longings()
+    burning = [l for l in store.get("longings", []) if l.get("state") == "burning"]
+    return [
+        {
+            "id": l["id"],
+            "name": l.get("name"),
+            "motor": l.get("motor"),
+            "gap": l.get("gap"),
+            "ache": l.get("ache"),
+            "cost": l.get("cost"),
+        }
+        for l in burning
+    ]
+
+
 # ═══════════════════════════════════════════════════════════════════
 # ABOUT-YU / ABOUT-SELF — Relational memories
 # ═══════════════════════════════════════════════════════════════════

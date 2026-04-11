@@ -576,3 +576,57 @@ def detect_discharge(longing: dict, recent_memories: list, now_iso: str) -> tupl
     count = sum([signal_semantic, signal_affect, signal_cessation])
     discharged = count >= DISCHARGE_SIGNAL_THRESHOLD
     return (discharged, count)
+
+
+# ── Gamma-driven transitions (spec §6) ───────────────────────────────
+
+def apply_cost_commit(longing: dict, cost: int, now_iso: str) -> dict:
+    """
+    Set cost on a longing. Transitions yearning → burning if cost ≥ 4.
+    Only gamma-driven (via CLI).
+    """
+    result = dict(longing)
+    result["cost"] = cost
+    if longing.get("state") == "yearning" and cost >= BURNING_COST_THRESHOLD:
+        result["state"] = "burning"
+        result["last_state_change"] = now_iso
+    return result
+
+
+def apply_virtue(longing: dict, hierarchy: str = None, wall: int = None) -> dict:
+    """Bind a longing to a virtue (hierarchy OR wall)."""
+    result = dict(longing)
+    result["virtue"] = {"hierarchy": hierarchy, "wall": wall}
+    return result
+
+
+def apply_discharge(longing: dict, now_iso: str, reason: str = None) -> dict:
+    """Explicit gamma discharge via CLI."""
+    result = dict(longing)
+    result["state"] = "discharged"
+    result["last_state_change"] = now_iso
+    if reason:
+        result["discharge_reason"] = reason
+    return result
+
+
+def apply_abandon(longing: dict, now_iso: str, reason: str = None) -> dict:
+    """Explicit gamma abandon via CLI."""
+    result = dict(longing)
+    result["state"] = "abandoned"
+    result["last_state_change"] = now_iso
+    if reason:
+        result["abandon_reason"] = reason
+    return result
+
+
+def apply_name(longing: dict, name: str, rationale: str = None, scene: str = None) -> dict:
+    """Name a longing (annotation only, no state change)."""
+    result = dict(longing)
+    result["named"] = True
+    result["name"] = name
+    if rationale is not None:
+        result["rationale"] = rationale
+    if scene is not None:
+        result["scene"] = scene
+    return result

@@ -482,3 +482,32 @@ def test_detect_discharge_evidence_cessation_alone_not_enough():
     discharged, count = ache.detect_discharge(longing, memories, now_iso="2026-04-11T12:00:00Z")
     assert discharged is False
     assert count == 1
+
+
+def test_apply_cost_commit_yearning_to_burning():
+    longing = _mk_longing(state="yearning", cost=None)
+    result = ache.apply_cost_commit(longing, cost=5, now_iso="2026-04-11T12:00:00Z")
+    assert result["cost"] == 5
+    assert result["state"] == "burning"
+    assert result["last_state_change"] == "2026-04-11T12:00:00Z"
+
+
+def test_apply_cost_commit_below_threshold_stays_yearning():
+    longing = _mk_longing(state="yearning", cost=None)
+    result = ache.apply_cost_commit(longing, cost=2, now_iso="2026-04-11T12:00:00Z")
+    assert result["cost"] == 2
+    assert result["state"] == "yearning"
+
+
+def test_apply_virtue_hierarchy():
+    longing = _mk_longing(virtue=None)
+    result = ache.apply_virtue(longing, hierarchy="UNDERSTANDING", wall=None)
+    assert result["virtue"]["hierarchy"] == "UNDERSTANDING"
+    assert result["virtue"]["wall"] is None
+
+
+def test_apply_virtue_wall():
+    longing = _mk_longing(virtue=None)
+    result = ache.apply_virtue(longing, hierarchy=None, wall=3)
+    assert result["virtue"]["wall"] == 3
+    assert result["virtue"]["hierarchy"] is None

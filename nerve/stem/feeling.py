@@ -74,3 +74,44 @@ MIN_ARRIVAL_INTERVAL_SECONDS = 90
 
 # Cognition silence window
 COGNITION_SILENCE_AGE_SECONDS = 300  # 5 min
+
+
+# ── Body stratum (Damasio, spec §4.2) ────────────────────────────────
+
+def body_stratum_from_hormones(hormones: dict) -> dict:
+    """
+    Compute body core affect from hormone levels.
+    Returns {valence, arousal, sources}.
+    """
+    v = 0.0
+    a = 0.0
+    for name, coefs in HORMONE_COEFS.items():
+        level = float(hormones.get(name, 0.0))
+        v += level * coefs["valence"]
+        a += level * coefs["arousal"]
+
+    # Baseline shift: v is centered around -0.5 when all hormones near zero
+    # (the body is not positive by default, it's neutral-negative)
+    v -= 0.5
+
+    # Clamp to [-1, 1]
+    v = max(-1.0, min(1.0, v))
+    a = max(-1.0, min(1.0, a))
+
+    # Sources: top 2 non-zero hormones by absolute level
+    sorted_hormones = sorted(
+        ((name, abs(float(hormones.get(name, 0.0)))) for name in HORMONE_COEFS),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    sources = []
+    for name, level in sorted_hormones[:2]:
+        if level > 0.05:  # ignore trace
+            if level > 0.6:
+                sources.append(f"{name}_high")
+            elif level > 0.3:
+                sources.append(f"{name}_moderate")
+            elif level > 0.05:
+                sources.append(f"{name}_low")
+
+    return {"valence": round(v, 3), "arousal": round(a, 3), "sources": sources}

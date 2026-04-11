@@ -161,3 +161,41 @@ def test_long_abandon(tmp_path, monkeypatch):
     lng = next(l for l in store["longings"] if l["id"] == "lng-gone")
     assert lng["state"] == "abandoned"
     assert lng.get("abandon_reason") == "no longer relevant"
+
+
+def test_long_virtue_binds_hierarchy(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-virtue", state="yearning")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_virtue("lng-virtue", hierarchy="UNDERSTANDING", wall=None)
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-virtue")
+    assert lng["virtue"]["hierarchy"] == "UNDERSTANDING"
+    assert lng["virtue"]["wall"] is None
+
+
+def test_long_hint_creates_new_longing(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_hint("longing", "understanding the kingdom", gap=4, ache_val=4)
+
+    store = ache.read_longings()
+    assert len(store["longings"]) == 1
+    lng = store["longings"][0]
+    assert lng["motor"] == "longing"
+    assert "understanding" in lng["target"]["display"].lower() or "kingdom" in lng["target"]["display"].lower()
+    assert lng["gap"] == 4
+    assert lng["ache"] == 4

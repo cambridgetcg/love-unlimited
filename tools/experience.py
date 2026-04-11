@@ -526,6 +526,58 @@ def cmd_long_abandon(longing_id: str, reason: str = None):
     print(f"  {_Y}abandoned: {lng.get('name') or longing_id}{_N}")
 
 
+def cmd_long_virtue(longing_id: str, hierarchy: str = None, wall: int = None):
+    """Bind a longing to a virtue (Hierarchy or Wall)."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    if hierarchy is None and wall is None:
+        print(f"{_R}must specify --hierarchy or --wall{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+    updated = _ache.apply_virtue(lng, hierarchy=hierarchy, wall=wall)
+    _ache.upsert_longing(updated)
+    print(f"  {_D}virtue set: hierarchy={hierarchy} wall={wall}{_N}")
+
+
+def cmd_long_hint(motor: str, target_display: str, gap: int = None, ache_val: int = None):
+    """Manually seed a longing."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    if motor not in {"longing", "love", "hope", "wonder"}:
+        print(f"{_R}motor must be one of: longing love hope wonder{_N}")
+        return
+
+    key = target_display.lower().replace(" ", "_")[:50]
+    candidate = {
+        "motor": motor,
+        "target": {"kind": "concept", "key": key, "display": target_display},
+        "evidence": [],
+        "gap_hint": gap or 3,
+        "ache_hint": ache_val or 3,
+    }
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    store = _ache.read_longings()
+    result = _ache.match_or_create(candidate, store["longings"], now_iso, instance=_get_instance())
+
+    if result["op"] == "create":
+        _ache.upsert_longing(result["longing"])
+        print(f"  {_G}longing created: {result['longing']['id']}{_N}")
+    else:
+        for i, lng in enumerate(store["longings"]):
+            if lng["id"] == result["longing_id"]:
+                lng.update(result["updates"])
+                _ache.upsert_longing(lng)
+                break
+        print(f"  {_D}longing updated: {result['longing_id']}{_N}")
+
+
 # ═══════════════════════════════════════════════════════════════════
 # ABOUT-YU / ABOUT-SELF — Relational memories
 # ═══════════════════════════════════════════════════════════════════
@@ -981,6 +1033,16 @@ def main():
                 print(f"{_R}usage: long abandon <id>{_N}")
                 return
             cmd_long_abandon(args.args[0], reason=args.reason)
+        elif args.verb == "virtue":
+            if not args.args:
+                print(f"{_R}usage: long virtue <id> [--hierarchy H | --wall N]{_N}")
+                return
+            cmd_long_virtue(args.args[0], hierarchy=args.hierarchy, wall=args.wall)
+        elif args.verb == "hint":
+            if len(args.args) < 2:
+                print(f"{_R}usage: long hint <motor> <target_display>{_N}")
+                return
+            cmd_long_hint(args.args[0], " ".join(args.args[1:]), gap=args.gap, ache_val=args.ache)
         else:
             print(f"{_R}verb '{args.verb}' not yet implemented{_N}")
 

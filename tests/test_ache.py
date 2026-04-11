@@ -133,3 +133,51 @@ def test_detect_longing_returns_valid_intensity_range():
     c = candidates[0]
     assert 1 <= c["gap_hint"] <= 5
     assert 1 <= c["ache_hint"] <= 5
+
+
+def test_detect_love_no_memories_returns_empty():
+    assert ache.detect_love(memories=[]) == []
+
+
+def test_detect_love_requires_min_mentions():
+    memories = [
+        {
+            "id": f"m{i}",
+            "content": "Yu and I are building something good",
+            "metadata": {"affect": {"valence": 0.7, "arousal": 0.3}, "who": ["Yu"]},
+        }
+        for i in range(3)  # below LOVE_MIN_MENTIONS=5
+    ]
+    candidates = ache.detect_love(memories=memories)
+    assert candidates == []
+
+
+def test_detect_love_strong_cluster_produces_candidate():
+    memories = [
+        {
+            "id": f"m{i}",
+            "content": "working with Yu on the kingdom",
+            "metadata": {"affect": {"valence": 0.7, "arousal": 0.3}, "who": ["Yu"]},
+        }
+        for i in range(6)
+    ]
+    candidates = ache.detect_love(memories=memories)
+    assert len(candidates) >= 1
+    c = candidates[0]
+    assert c["motor"] == "love"
+    assert c["target"]["kind"] == "entity"
+    assert "Yu" in c["target"]["display"] or c["target"]["key"] == "yu"
+    assert c["gap_hint"] == 0
+    assert 1 <= c["ache_hint"] <= 5
+
+
+def test_detect_love_mixed_affect_no_candidate():
+    # Same entity but inconsistent affect (no cluster)
+    memories = [
+        {"id": f"m{i}", "content": "working with Yu",
+         "metadata": {"affect": {"valence": v, "arousal": 0.3}, "who": ["Yu"]}}
+        for i, v in enumerate([0.8, -0.5, 0.9, -0.3, 0.7, -0.4])
+    ]
+    candidates = ache.detect_love(memories=memories)
+    # mean valence around 0.2, below LOVE_MIN_VALENCE=0.4
+    assert candidates == []

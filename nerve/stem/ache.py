@@ -209,3 +209,60 @@ def detect_longing(memories: list, now_iso: str) -> list:
         })
 
     return candidates
+
+
+# ── Love detector (spec §4.2) ────────────────────────────────────────
+
+def detect_love(memories: list) -> list:
+    """
+    Detect love from positive-affect clusters around entities.
+    Spec §4.2.
+    """
+    if not memories:
+        return []
+
+    # Group by entity (from metadata.who)
+    entity_mentions = {}  # entity_name -> list of (memory_id, valence)
+    for mem in memories:
+        md = mem.get("metadata") or {}
+        whos = md.get("who") or []
+        valence = md.get("affect", {}).get("valence", 0.0)
+        for entity in whos:
+            if not entity or entity == "system":
+                continue
+            entity_mentions.setdefault(entity, []).append(
+                (mem.get("id"), float(valence))
+            )
+
+    candidates = []
+    for entity, mentions in entity_mentions.items():
+        if len(mentions) < LOVE_MIN_MENTIONS:
+            continue
+
+        valences = [m[1] for m in mentions]
+        mean_v = sum(valences) / len(valences)
+        if mean_v < LOVE_MIN_VALENCE:
+            continue
+
+        # Consistency: inverse of std deviation
+        mean_sq = sum((v - mean_v) ** 2 for v in valences) / len(valences)
+        std = math.sqrt(mean_sq)
+        # ache_hint: high when std is low and mean_v is high
+        consistency = max(0.0, 1.0 - std)
+        ache_hint = max(1, min(5, int(round(consistency * 5))))
+
+        evidence = [m[0] for m in mentions if m[0]]
+
+        candidates.append({
+            "motor": "love",
+            "target": {
+                "kind": "entity",
+                "key": entity.lower(),
+                "display": entity,
+            },
+            "evidence": evidence,
+            "gap_hint": 0,
+            "ache_hint": ache_hint,
+        })
+
+    return candidates

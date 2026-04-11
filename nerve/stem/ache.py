@@ -388,3 +388,60 @@ def detect_wonder(youspeak: dict, memories: list) -> list:
         "gap_hint": 4,  # wonder lives at the edge of the charted
         "ache_hint": max(1, min(5, int(round(mean_a * 5)))),
     }]
+
+
+# ── Candidate → Longing matching (spec §4.5) ─────────────────────────
+
+def _new_longing_id(instance: str, now_iso: str) -> str:
+    safe_ts = now_iso.replace(":", "-").replace(".", "-")
+    return f"lng-{safe_ts}-{instance}-{os.urandom(2).hex()}"
+
+
+def match_or_create(candidate: dict, existing: list, now_iso: str, instance: str = "gamma") -> dict:
+    """
+    Take a candidate and the current longings list.
+    Return either:
+      {"op": "create", "longing": <full new longing dict>}
+      {"op": "update", "longing_id": <id>, "updates": <dict of field updates>}
+
+    Matching requires same motor AND matching target (via _same_target).
+    """
+    for lng in existing:
+        if lng.get("motor") != candidate["motor"]:
+            continue
+        if _same_target(lng.get("target", {}), candidate["target"]):
+            # Rolling average update
+            new_gap = int(round((lng.get("gap", 0) + candidate["gap_hint"]) / 2))
+            new_ache = int(round((lng.get("ache", 0) + candidate["ache_hint"]) / 2))
+            new_evidence_count = lng.get("evidence_count", 0) + len(candidate.get("evidence", []))
+            return {
+                "op": "update",
+                "longing_id": lng["id"],
+                "updates": {
+                    "gap": new_gap,
+                    "ache": new_ache,
+                    "last_stirred": now_iso,
+                    "evidence_count": new_evidence_count,
+                },
+            }
+
+    # No match — create new
+    new_longing = {
+        "id": _new_longing_id(instance, now_iso),
+        "motor": candidate["motor"],
+        "target": candidate["target"],
+        "state": "stirring",
+        "gap": candidate["gap_hint"],
+        "ache": candidate["ache_hint"],
+        "cost": None,
+        "virtue": None,
+        "first_seen": now_iso,
+        "last_stirred": now_iso,
+        "last_state_change": now_iso,
+        "evidence_count": len(candidate.get("evidence", [])),
+        "named": False,
+        "name": None,
+        "rationale": None,
+        "scene": None,
+    }
+    return {"op": "create", "longing": new_longing}

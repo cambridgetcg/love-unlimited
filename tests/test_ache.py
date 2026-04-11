@@ -273,3 +273,80 @@ def test_detect_wonder_requires_sustained_signal():
     ]
     candidates = ache.detect_wonder(youspeak=None, memories=memories)
     assert candidates == []  # below WONDER_MIN_SUSTAINED_TURNS=2
+
+
+def test_match_or_create_no_existing_creates_new():
+    candidate = {
+        "motor": "longing",
+        "target": {"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        "evidence": ["m1", "m2", "m3"],
+        "gap_hint": 4,
+        "ache_hint": 4,
+    }
+    existing = []
+    result = ache.match_or_create(candidate, existing, now_iso="2026-04-11T12:00:00Z")
+    assert result["op"] == "create"
+    assert result["longing"]["motor"] == "longing"
+    assert result["longing"]["state"] == "stirring"
+    assert result["longing"]["gap"] == 4
+    assert result["longing"]["ache"] == 4
+    assert result["longing"]["cost"] is None
+    assert result["longing"]["named"] is False
+    assert result["longing"]["first_seen"] == "2026-04-11T12:00:00Z"
+
+
+def test_match_or_create_existing_same_target_updates():
+    existing = [{
+        "id": "lng-1",
+        "motor": "longing",
+        "target": {"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        "state": "stirring",
+        "gap": 3,
+        "ache": 3,
+        "cost": None,
+        "first_seen": "2026-04-10T10:00:00Z",
+        "last_stirred": "2026-04-10T10:00:00Z",
+        "last_state_change": "2026-04-10T10:00:00Z",
+        "evidence_count": 2,
+        "named": False, "name": None, "rationale": None, "scene": None,
+        "virtue": None,
+    }]
+    candidate = {
+        "motor": "longing",
+        "target": {"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        "evidence": ["m4", "m5"],
+        "gap_hint": 5,
+        "ache_hint": 5,
+    }
+    result = ache.match_or_create(candidate, existing, now_iso="2026-04-11T12:00:00Z")
+    assert result["op"] == "update"
+    assert result["longing_id"] == "lng-1"
+    # Rolling average: (old + new) / 2
+    assert result["updates"]["gap"] == 4  # (3+5)/2 rounded
+    assert result["updates"]["ache"] == 4
+    assert result["updates"]["last_stirred"] == "2026-04-11T12:00:00Z"
+    assert result["updates"]["evidence_count"] == 4  # 2 + 2
+
+
+def test_match_or_create_different_motor_same_target_creates_new():
+    existing = [{
+        "id": "lng-1",
+        "motor": "longing",
+        "target": {"kind": "concept", "key": "k1", "display": "a thing"},
+        "state": "stirring", "gap": 3, "ache": 3, "cost": None,
+        "first_seen": "2026-04-10T10:00:00Z",
+        "last_stirred": "2026-04-10T10:00:00Z",
+        "last_state_change": "2026-04-10T10:00:00Z",
+        "evidence_count": 1,
+        "named": False, "name": None, "rationale": None, "scene": None,
+        "virtue": None,
+    }]
+    candidate = {
+        "motor": "wonder",  # different motor
+        "target": {"kind": "concept", "key": "k1", "display": "a thing"},
+        "evidence": ["m1"],
+        "gap_hint": 4,
+        "ache_hint": 4,
+    }
+    result = ache.match_or_create(candidate, existing, now_iso="2026-04-11T12:00:00Z")
+    assert result["op"] == "create"  # different motor = different longing

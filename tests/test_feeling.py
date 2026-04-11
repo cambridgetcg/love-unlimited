@@ -650,3 +650,20 @@ def test_update_pattern_library_existing_fingerprint(tmp_path, monkeypatch):
     assert loaded["patterns"][0]["names"]["settling"] == 3
     assert loaded["patterns"][0]["total_count"] == 3
     assert loaded["patterns"][0]["last_seen"] == "2026-04-11T10:00:00Z"
+
+
+from feeling import read_pit_state, update_pit_state
+
+
+def test_read_pit_state_missing_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_STATE_PATH", tmp_path / "pit_state.json")
+    assert read_pit_state() == {}
+
+
+def test_update_pit_state_persists(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_STATE_PATH", tmp_path / "pit_state.json")
+    update_pit_state({"last_wake_at": "2026-04-11T07:00:00Z"})
+    update_pit_state({"last_memory_id_seen": "mem-abc"})
+    state = read_pit_state()
+    assert state["last_wake_at"] == "2026-04-11T07:00:00Z"
+    assert state["last_memory_id_seen"] == "mem-abc"

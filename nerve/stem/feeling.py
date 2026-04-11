@@ -612,3 +612,21 @@ def update_pattern_library(fingerprint: dict, name: str, now_iso: str) -> None:
         "last_seen": now_iso,
     })
     write_patterns(patterns)
+
+# ── Persistence: pit_state.json (spec §4.6) ──────────────────────────
+
+def read_pit_state() -> dict:
+    if not PIT_STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(PIT_STATE_PATH.read_text())
+    except Exception:
+        return {}
+
+def update_pit_state(updates: dict) -> None:
+    state = read_pit_state()
+    state.update(updates)
+    PIT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PIT_STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(PIT_STATE_PATH)

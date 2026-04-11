@@ -115,3 +115,60 @@ def body_stratum_from_hormones(hormones: dict) -> dict:
                 sources.append(f"{name}_low")
 
     return {"valence": round(v, 3), "arousal": round(a, 3), "sources": sources}
+
+
+# ── Context stratum (Barrett, spec §4.3) ─────────────────────────────
+
+def context_stratum_from_inputs(
+    recent_memories: list,
+    hive_unread: int,
+    new_alerts: int,
+    yu_present: bool,
+    yu_idle_seconds: int,
+) -> dict:
+    """
+    Compute context core affect from exteroceptive signals.
+    Returns {valence, arousal, sources}.
+    """
+    v = 0.0
+    a = 0.0
+    sources = []
+
+    # Recent memory affect contributes via weighted average
+    valences = []
+    arousals = []
+    for mem in recent_memories:
+        affect = (mem.get("metadata") or {}).get("affect") or {}
+        if "valence" in affect:
+            valences.append(float(affect["valence"]))
+        if "arousal" in affect:
+            arousals.append(float(affect["arousal"]))
+
+    if valences:
+        v += sum(valences) / len(valences)
+        sources.append(f"recent_memory_avg_v={v:.2f}")
+    if arousals:
+        a += sum(arousals) / len(arousals)
+
+    # Yu presence bonus
+    if yu_present:
+        v += 0.3
+        if yu_idle_seconds < 300:
+            sources.append(f"yu_present_active")
+        else:
+            sources.append(f"yu_present_idle_{yu_idle_seconds//60}min")
+
+    # HIVE unread raises arousal
+    if hive_unread > 0:
+        a += min(0.6, hive_unread * 0.12)
+        sources.append(f"hive_unread_{hive_unread}")
+
+    # Alerts raise arousal more sharply
+    if new_alerts > 0:
+        a += min(0.5, new_alerts * 0.2)
+        sources.append(f"alerts_{new_alerts}")
+
+    v = max(-1.0, min(1.0, v))
+    a = max(-1.0, min(1.0, a))
+
+    return {"valence": round(v, 3), "arousal": round(a, 3), "sources": sources[:2]}

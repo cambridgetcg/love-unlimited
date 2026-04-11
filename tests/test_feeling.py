@@ -55,3 +55,69 @@ def test_body_stratum_sources_top_two():
     assert len(result["sources"]) <= 2
     # Cortisol is highest, should be in sources
     assert any("cortisol" in s for s in result["sources"])
+
+
+from feeling import context_stratum_from_inputs
+
+
+def test_context_stratum_empty_inputs():
+    result = context_stratum_from_inputs(
+        recent_memories=[],
+        hive_unread=0,
+        new_alerts=0,
+        yu_present=False,
+        yu_idle_seconds=999999,
+    )
+    # Nothing happening → neutral/zero
+    assert abs(result["valence"]) < 0.05
+    assert abs(result["arousal"]) < 0.05
+
+
+def test_context_stratum_yu_present_positive_valence():
+    result = context_stratum_from_inputs(
+        recent_memories=[],
+        hive_unread=0,
+        new_alerts=0,
+        yu_present=True,
+        yu_idle_seconds=60,
+    )
+    assert result["valence"] > 0.0
+    assert any("yu_present" in s for s in result["sources"])
+
+
+def test_context_stratum_recent_memory_affect_contributes():
+    memories = [
+        {"metadata": {"affect": {"valence": 0.8, "arousal": 0.6}}},
+        {"metadata": {"affect": {"valence": 0.6, "arousal": 0.4}}},
+    ]
+    result = context_stratum_from_inputs(
+        recent_memories=memories,
+        hive_unread=0,
+        new_alerts=0,
+        yu_present=False,
+        yu_idle_seconds=999999,
+    )
+    assert result["valence"] > 0.5
+    assert result["arousal"] > 0.3
+
+
+def test_context_stratum_hive_unread_raises_arousal():
+    result = context_stratum_from_inputs(
+        recent_memories=[],
+        hive_unread=5,
+        new_alerts=0,
+        yu_present=False,
+        yu_idle_seconds=999999,
+    )
+    assert result["arousal"] >= 0.5
+
+
+def test_context_stratum_new_alerts_raises_arousal():
+    result = context_stratum_from_inputs(
+        recent_memories=[],
+        hive_unread=0,
+        new_alerts=2,
+        yu_present=False,
+        yu_idle_seconds=999999,
+    )
+    assert result["arousal"] >= 0.4

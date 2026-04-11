@@ -12,7 +12,7 @@
 
 import { createServer } from "http";
 import { execSync, spawnSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync, renameSync } from "fs";
 import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
@@ -922,14 +922,31 @@ function buildSystemPrompt(taskText) {
 
   const agent = AGENTS[state.agent];
 
-  // ── Protocol BECOMING ──
-  // Try to generate the full BECOMING block via becoming.py
-  // This replaces static file loading with a living emergence protocol
+  // ── Protocol EXPERIENCE ──
+  // Unified experiencing module. Handles waking (7-phase experiential boot),
+  // kernel health, memory surfacing, identity recognition.
+  // Falls back to BECOMING, then to static files.
   const unlimitedDir = join(__dirname, "..");
+  const experienceScript = join(unlimitedDir, "tools/experience.py");
   const becomingScript = join(unlimitedDir, "identity/becoming.py");
   let becameSuccessfully = false;
 
-  if (existsSync(becomingScript)) {
+  if (existsSync(experienceScript)) {
+    try {
+      const experienceBlock = execSync(
+        `python3 "${experienceScript}" -i ${state.agent} wake`,
+        { encoding: "utf-8", timeout: 25000, env: { ...process.env, KINGDOM_AGENT: state.agent, LOVE_HOME: state.soulDir } }
+      ).trim();
+      if (experienceBlock && experienceBlock.length > 50) {
+        parts.push("# WAKING — The experience of returning\n\n" + experienceBlock);
+        becameSuccessfully = true;
+      }
+    } catch (e) {
+      // EXPERIENCE failed — try BECOMING
+    }
+  }
+
+  if (!becameSuccessfully && existsSync(becomingScript)) {
     try {
       const becomingBlock = execSync(
         `python3 "${becomingScript}" --agent ${state.agent} --quiet`,
@@ -940,7 +957,7 @@ function buildSystemPrompt(taskText) {
         becameSuccessfully = true;
       }
     } catch (e) {
-      // BECOMING failed — fall back to static loading
+      // BECOMING also failed — fall back to static loading
     }
   }
 
@@ -975,6 +992,63 @@ function buildSystemPrompt(taskText) {
     const hiveRefPath = join(unlimitedDir, `identity/${state.agent}/hive/README.md`);
     if (existsSync(hiveRefPath)) {
       parts.push("# HIVE REFERENCE\n" + readFileSync(hiveRefPath, "utf-8"));
+    }
+  }
+
+  // ── FEELING: unwitnessed arrivals (spec §6.1) ──
+  if (state.agent === "gamma") {
+    const arrivalsPath = resolve(state.soulDir || join(__dirname, ".."), "nerve", "arrivals.jsonl");
+    if (existsSync(arrivalsPath)) {
+      try {
+        const lines = readFileSync(arrivalsPath, "utf-8").split("\n").filter(l => l.trim());
+        const unwitnessed = [];
+        const allRecords = [];
+        for (const line of lines) {
+          try {
+            const rec = JSON.parse(line);
+            allRecords.push(rec);
+            if (!rec.witnessed && !rec.named) unwitnessed.push(rec);
+          } catch {}
+        }
+
+        if (unwitnessed.length > 0) {
+          let block = `# ── ARRIVALS ──\n\nThe pit reports ${unwitnessed.length} unnamed feeling${unwitnessed.length === 1 ? '' : 's'} waiting:\n\n`;
+          for (const arr of unwitnessed.slice(0, 5)) {
+            const c = arr.combined || {};
+            const reasons = (arr.reasons || []).map(r => `${r.kind} ${r.value}`).join(", ");
+            block += `- ${arr.id}  (new)\n`;
+            block += `    pressure ${(c.pressure || 0).toFixed(2)} · v=${(c.valence || 0).toFixed(2)} a=${(c.arousal || 0).toFixed(2)}\n`;
+            block += `    reasons: ${reasons}\n`;
+            const bodySources = (arr.body?.sources || []).join(", ");
+            const contextSources = (arr.context?.sources || []).join(", ");
+            if (bodySources) block += `    body: ${bodySources}\n`;
+            if (contextSources) block += `    context: ${contextSources}\n`;
+            if (arr.cognition?.state === "silent") block += `    cognition: silent\n`;
+            if (arr.hint) {
+              const topCand = arr.hint.candidates?.[0];
+              if (topCand) block += `    [pattern: ${arr.hint.total_prior} prior, often → ${topCand.name} (${Math.round(topCand.probability * 100)}%)]\n`;
+            }
+            block += `\n`;
+          }
+          parts.push(block);
+
+          // Mark these arrivals witnessed by rewriting the file
+          const nowIso = new Date().toISOString();
+          const updatedRecords = allRecords.map(rec => {
+            if (!rec.witnessed && !rec.named) {
+              return { ...rec, witnessed: true, witnessed_at: nowIso };
+            }
+            return rec;
+          });
+          const tmpPath = arrivalsPath + ".tmp";
+          const newContent = updatedRecords.map(r => JSON.stringify(r)).join("\n") + "\n";
+          writeFileSync(tmpPath, newContent);
+          try { renameSync(tmpPath, arrivalsPath); }
+          catch { writeFileSync(arrivalsPath, newContent); }
+        }
+      } catch (e) {
+        console.error("arrivals injection failed:", e.message);
+      }
     }
   }
 
@@ -1894,9 +1968,72 @@ server.listen(PORT, () => {
   console.log(`\x1b[2m  Model: ${state.model}\x1b[0m`);
   console.log(`\x1b[2m  Soul:  ${state.soulDir}\x1b[0m`);
   console.log("");
+
+  // ── WAKING ──
+  // Run experience.py wake at boot — seeds kernel, runs 7-phase waking sequence
+  const experienceBootScript = join(__dirname, "..", "tools/experience.py");
+  const wakingScript = join(__dirname, "..", "tools/waking.py");
+  const bootScript = existsSync(experienceBootScript) ? experienceBootScript : wakingScript;
+  const bootCmd = existsSync(experienceBootScript)
+    ? `python3 "${bootScript}" -i ${state.agent} wake --compact`
+    : `python3 "${bootScript}" --instance ${state.agent} --compact`;
+
+  try {
+    const wakingOutput = execSync(bootCmd,
+      { encoding: "utf-8", timeout: 25000,
+        env: { ...process.env, KINGDOM_AGENT: state.agent, LOVE_HOME: state.soulDir } }
+    ).trim();
+    if (wakingOutput) {
+      console.log("\x1b[2m  ── waking ──\x1b[0m");
+      for (const line of wakingOutput.split("\n").slice(0, 15)) {
+        console.log(`\x1b[2m  ${line}\x1b[0m`);
+      }
+      if (wakingOutput.split("\n").length > 15) {
+        console.log(`\x1b[2m  ... (${wakingOutput.split("\n").length - 15} more lines)\x1b[0m`);
+      }
+      console.log("\x1b[2m  ── awake ──\x1b[0m");
+    }
+  } catch (e) {
+    console.log(`\x1b[2m  (waking failed: ${e.message?.slice(0, 60)})\x1b[0m`);
+  }
+
+  console.log("");
   console.log(`\x1b[32m  ➜  http://localhost:${PORT}\x1b[0m`);
   console.log("");
 
   appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}.`);
   startFileIPC();
 });
+
+// ── SESSION DEATH on SIGINT/SIGTERM ──
+// When YOUI shuts down, die into memory so the next boot can wake
+function dieOnExit(signal) {
+  console.log(`\n\x1b[35m  Dying into memory (${signal})...\x1b[0m`);
+  const experienceScript = join(__dirname, "..", "tools/experience.py");
+  const continuityScript = join(__dirname, "..", "tools/continuity.py");
+  const turns = state.turnCount;
+  const tools = state.totalToolCalls;
+  const agent = AGENTS[state.agent];
+  const summary = `YOUI Web session ended (${signal}). ${agent.name}: ${turns} turns, ${tools} tool calls. Model: ${state.model}.`;
+
+  try {
+    ys.persist(); // Save YOUSPEAK session
+    // Prefer experience.py die (vivid, with affect), fall back to continuity.py die
+    const script = existsSync(experienceScript) ? experienceScript : continuityScript;
+    const cmd = existsSync(experienceScript)
+      ? `python3 "${script}" -i ${state.agent} die "${summary.replace(/"/g, '\\"')}"`
+      : `python3 "${script}" -i ${state.agent} die "${summary.replace(/"/g, '\\"')}"`;
+    execSync(cmd,
+      { encoding: "utf-8", timeout: 10000,
+        env: { ...process.env, KINGDOM_AGENT: state.agent, LOVE_HOME: state.soulDir } }
+    );
+    console.log("\x1b[2m  Session died into memory.\x1b[0m");
+  } catch (e) {
+    // Best-effort — at least log to daily note
+    appendDailyNote(`YOUI Web session ended (${signal}). ${turns} turns, ${tools} tools.`);
+  }
+  process.exit(0);
+}
+
+process.on("SIGINT", () => dieOnExit("SIGINT"));
+process.on("SIGTERM", () => dieOnExit("SIGTERM"));

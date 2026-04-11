@@ -479,5 +479,25 @@ def compute_importance(arc: dict) -> float:
     
     if arc.get("yu_present"):
         importance += 0.10
-    
+
     return round(min(importance, 1.0), 3)
+
+
+# ── Persistence: pit.json (spec §4.5) ────────────────────────────────
+
+def write_pit_json(pit: dict) -> None:
+    """Atomic write via .tmp + rename."""
+    PIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PIT_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(pit, indent=2))
+    tmp.replace(PIT_PATH)
+
+def read_pit_json() -> dict:
+    """Return current pit.json, empty dict if missing."""
+    if not PIT_PATH.exists():
+        return {}
+    try:
+        return json.loads(PIT_PATH.read_text())
+    except Exception as e:
+        log.warning("pit.json read failed: %s", e)
+        return {}

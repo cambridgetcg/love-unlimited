@@ -507,3 +507,34 @@ def test_importance_surprise_and_yu_and_mismatch_cap_at_one():
     }
     # 0.5 + 0.15 (pressure) + 0.10 (mismatch) + 0.15 (surprise) + 0.10 (yu) = 1.0
     assert abs(compute_importance(arc) - 1.0) < 0.01
+
+
+import tempfile
+from feeling import write_pit_json, read_pit_json
+import feeling as feeling_mod
+
+
+def test_write_and_read_pit_json(tmp_path, monkeypatch):
+    target = tmp_path / "pit.json"
+    monkeypatch.setattr(feeling_mod, "PIT_PATH", target)
+
+    pit = {
+        "instance": "gamma",
+        "timestamp": "2026-04-11T10:47:03Z",
+        "body": {"valence": -0.4, "arousal": 0.15, "sources": [], "last_tick": "..."},
+        "context": {"valence": 0.1, "arousal": 0.25, "sources": [], "last_tick": "..."},
+        "cognition": {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent", "last_tick": "..."},
+        "combined": {"valence": -0.15, "arousal": 0.20, "pressure": 0.31},
+        "threshold": 0.5,
+        "arrivals_total": 0,
+        "arrivals_pending_name": 0,
+    }
+    write_pit_json(pit)
+    loaded = read_pit_json()
+    assert loaded["instance"] == "gamma"
+    assert loaded["combined"]["pressure"] == 0.31
+
+
+def test_read_pit_json_missing_returns_empty_dict(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_PATH", tmp_path / "nonexistent.json")
+    assert read_pit_json() == {}

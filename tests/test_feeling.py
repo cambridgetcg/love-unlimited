@@ -733,3 +733,45 @@ def test_daemon_emits_arrival_on_body_context_mismatch(tmp_path, monkeypatch):
     assert "body_context_gap" in [r["kind"] for r in first["reasons"]]
     assert first["named"] is False
     assert first["witnessed"] is False
+
+
+def test_read_recent_memories_returns_list_structure(tmp_path, monkeypatch):
+    # Point kosmem at an empty in-memory db to keep the test hermetic
+    import sqlite3
+    db_path = tmp_path / "memory.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE memories (
+            id TEXT PRIMARY KEY,
+            content TEXT,
+            type TEXT,
+            layer INTEGER,
+            instance TEXT,
+            wall INTEGER,
+            importance REAL,
+            tags TEXT,
+            source TEXT,
+            parent_id TEXT,
+            created_at TEXT,
+            updated_at TEXT,
+            accessed_at TEXT,
+            access_count INTEGER,
+            ttl_hours INTEGER,
+            consolidated_into TEXT,
+            metadata TEXT DEFAULT '{}'
+        )
+    """)
+    conn.execute(
+        "INSERT INTO memories (id, content, type, layer, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+        ("mem-1", "test", "episodic", 3, "2026-04-11T10:00:00Z",
+         json.dumps({"affect": {"valence": 0.5, "arousal": 0.3}}))
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(feeling_mod, "_MEMORY_DB_PATH_FOR_FEELING", db_path)
+
+    memories = feeling_mod._read_recent_memories(since_iso="2026-04-11T00:00:00Z", limit=10)
+    assert isinstance(memories, list)
+    assert len(memories) >= 1
+    assert memories[0]["metadata"]["affect"]["valence"] == 0.5

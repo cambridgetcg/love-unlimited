@@ -20,7 +20,7 @@ import math
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 log = logging.getLogger("feeling")
@@ -637,6 +637,9 @@ def update_pit_state(updates: dict) -> None:
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+def _now_iso_minus(seconds: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 def _read_hormones() -> dict:
     """Read nerve/hormones.json, return hormones + signals blocks."""
     if not HORMONES_PATH.exists():
@@ -655,9 +658,52 @@ def _read_youspeak_sessions() -> dict:
     except Exception:
         return None
 
-def _read_recent_memories(since_ms: float, limit: int = 10) -> list:
-    """Stub — will be wired to kosmem in Task 18. Returns empty list for now."""
-    return []
+import sqlite3
+
+_MEMORY_DB_PATH_FOR_FEELING = _MEMORY_DIR / ".kos" / "memory.db"
+
+def _read_recent_memories(since_iso: str = None, limit: int = 10) -> list:
+    """
+    Read recent episodic memories from memory.db.
+    Returns list of dicts with 'metadata' (parsed JSON) populated.
+    """
+    db_path = _MEMORY_DB_PATH_FOR_FEELING
+    if not db_path.exists():
+        return []
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=2)
+        conn.row_factory = sqlite3.Row
+        if since_iso:
+            cur = conn.execute(
+                "SELECT id, content, metadata, created_at FROM memories "
+                "WHERE layer = 3 AND created_at > ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (since_iso, limit)
+            )
+        else:
+            cur = conn.execute(
+                "SELECT id, content, metadata, created_at FROM memories "
+                "WHERE layer = 3 "
+                "ORDER BY created_at DESC LIMIT ?",
+                (limit,)
+            )
+        out = []
+        for row in cur.fetchall():
+            try:
+                md = json.loads(row["metadata"] or "{}")
+            except Exception:
+                md = {}
+            out.append({
+                "id": row["id"],
+                "content": row["content"],
+                "metadata": md,
+                "created_at": row["created_at"],
+            })
+        conn.close()
+        return out
+    except Exception as e:
+        log.warning("_read_recent_memories failed: %s", e)
+        return []
 
 class FeelingDaemon:
     def __init__(self, instance: str):
@@ -691,7 +737,7 @@ class FeelingDaemon:
         if now - self.last_context_tick >= CONTEXT_TICK_INTERVAL or self.last_context is None:
             hormones_doc = _read_hormones()
             signals = hormones_doc.get("signals", {})
-            memories = _read_recent_memories(now_wall - CONTEXT_TICK_INTERVAL)
+            memories = _read_recent_memories(since_iso=_now_iso_minus(CONTEXT_TICK_INTERVAL), limit=10)
             new_context = context_stratum_from_inputs(
                 recent_memories=memories,
                 hive_unread=signals.get("hive_unread", 0),

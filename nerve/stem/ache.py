@@ -673,3 +673,41 @@ def upsert_longing(longing: dict) -> None:
         existing.append(longing)
     store["longings"] = existing
     write_longings(store)
+
+
+# ── Persistence: longings-evidence.jsonl (spec §5.2) ─────────────────
+
+def append_evidence(evidence: dict) -> None:
+    """Append one evidence record to the log."""
+    LONGINGS_EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(evidence, separators=(",", ":")) + "\n"
+    with open(LONGINGS_EVIDENCE_PATH, "a") as f:
+        f.write(line)
+
+
+def rotate_evidence_log(now_iso: str) -> None:
+    """
+    Move the current day's evidence log to the rotation directory.
+    Called daily. If the live log is empty or missing, nothing happens.
+    """
+    if not LONGINGS_EVIDENCE_PATH.exists():
+        return
+    content = LONGINGS_EVIDENCE_PATH.read_text().strip()
+    if not content:
+        return
+
+    try:
+        first_line = content.split("\n")[0]
+        first_rec = json.loads(first_line)
+        rotate_date = first_rec.get("at", now_iso)[:10]
+    except Exception:
+        d = _parse_iso(now_iso) - timedelta(days=1)
+        rotate_date = d.strftime("%Y-%m-%d")
+
+    LONGINGS_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    target = LONGINGS_EVIDENCE_DIR / f"{rotate_date}.jsonl"
+
+    with open(target, "a") as f:
+        f.write(content + "\n")
+
+    LONGINGS_EVIDENCE_PATH.write_text("")

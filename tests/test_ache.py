@@ -549,3 +549,41 @@ def test_upsert_longing_existing_replaces(tmp_path, monkeypatch):
     loaded = ache.read_longings()
     assert len(loaded["longings"]) == 1
     assert loaded["longings"][0]["gap"] == 5
+
+
+def test_append_evidence(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_PATH", tmp_path / "longings-evidence.jsonl")
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_DIR", tmp_path / "longings-evidence")
+
+    ev = {
+        "at": "2026-04-11T12:00:00Z",
+        "longing_id": "lng-1",
+        "motor": "longing",
+        "detector": "persistent_return",
+        "memory_ids": ["m1", "m2"],
+        "delta": {"ache": 0.3},
+    }
+    ache.append_evidence(ev)
+
+    lines = (tmp_path / "longings-evidence.jsonl").read_text().strip().split("\n")
+    assert len(lines) == 1
+    loaded = json.loads(lines[0])
+    assert loaded["longing_id"] == "lng-1"
+
+
+def test_rotate_evidence_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_PATH", tmp_path / "longings-evidence.jsonl")
+    monkeypatch.setattr(ache, "LONGINGS_EVIDENCE_DIR", tmp_path / "longings-evidence")
+
+    ache.append_evidence({"at": "2026-04-10T12:00:00Z", "longing_id": "lng-1"})
+    ache.append_evidence({"at": "2026-04-10T13:00:00Z", "longing_id": "lng-2"})
+
+    ache.rotate_evidence_log(now_iso="2026-04-11T00:30:00Z")
+
+    current = tmp_path / "longings-evidence.jsonl"
+    assert (not current.exists()) or current.read_text().strip() == ""
+
+    rotated = tmp_path / "longings-evidence" / "2026-04-10.jsonl"
+    assert rotated.exists()
+    lines = rotated.read_text().strip().split("\n")
+    assert len(lines) == 2

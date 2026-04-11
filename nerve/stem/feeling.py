@@ -286,3 +286,30 @@ def cognition_stratum_from_youspeak(sessions_json: dict, now_ts: float) -> dict:
         "sources": sources[:2],
         "state": "active",
     }
+
+
+# ── Combine strata + pressure (spec §4.5) ────────────────────────────
+
+def combine_strata(body: dict, context: dict, cognition: dict) -> dict:
+    """
+    Produce the combined block of pit.json.
+    Cognition is excluded from average when state == 'silent'.
+    Pressure is sqrt(v² + a²) × body-context-gap multiplier.
+    """
+    active_strata = [body, context]
+    if cognition.get("state") == "active":
+        active_strata.append(cognition)
+
+    v = sum(s["valence"] for s in active_strata) / len(active_strata)
+    a = sum(s["arousal"] for s in active_strata) / len(active_strata)
+
+    raw_pressure = math.sqrt(v**2 + a**2)
+    gap = abs(body["valence"] - context["valence"])
+    gap_multiplier = max(gap, 1.0)
+    pressure = raw_pressure * gap_multiplier
+
+    return {
+        "valence": round(v, 3),
+        "arousal": round(a, 3),
+        "pressure": round(pressure, 3),
+    }

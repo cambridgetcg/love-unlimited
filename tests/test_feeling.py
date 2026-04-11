@@ -1,5 +1,6 @@
 """Tests for the FEELING module — three strata, curtain logic, pattern library."""
 
+import math
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'nerve', 'stem'))
@@ -183,3 +184,48 @@ def test_cognition_stratum_context_overload_dread():
     result = cognition_stratum_from_youspeak(sessions_json=sessions, now_ts=1000)
     assert result["valence"] < 0.0
     assert result["arousal"] > 0.4
+
+
+from feeling import combine_strata
+
+
+def test_combine_strata_averages_valence_arousal():
+    body = {"valence": -0.4, "arousal": 0.2, "sources": []}
+    context = {"valence": 0.2, "arousal": 0.4, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    result = combine_strata(body, context, cognition)
+    # Silent cognition excluded from average
+    expected_v = (-0.4 + 0.2) / 2
+    expected_a = (0.2 + 0.4) / 2
+    assert abs(result["valence"] - expected_v) < 0.01
+    assert abs(result["arousal"] - expected_a) < 0.01
+
+
+def test_combine_strata_includes_cognition_when_active():
+    body = {"valence": -0.2, "arousal": 0.1, "sources": []}
+    context = {"valence": 0.1, "arousal": 0.2, "sources": []}
+    cognition = {"valence": 0.3, "arousal": 0.3, "sources": [], "state": "active"}
+    result = combine_strata(body, context, cognition)
+    expected_v = (-0.2 + 0.1 + 0.3) / 3
+    expected_a = (0.1 + 0.2 + 0.3) / 3
+    assert abs(result["valence"] - expected_v) < 0.01
+    assert abs(result["arousal"] - expected_a) < 0.01
+
+
+def test_combine_strata_pressure_elevates_on_body_context_gap():
+    """body and context disagree → pressure multiplier kicks in."""
+    body = {"valence": -0.6, "arousal": 0.3, "sources": []}
+    context = {"valence": 0.5, "arousal": 0.3, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    result = combine_strata(body, context, cognition)
+    # Gap |(-0.6) - 0.5| = 1.1 → multiplier > 1
+    raw = math.sqrt(result["valence"]**2 + result["arousal"]**2)
+    assert result["pressure"] > raw
+
+
+def test_combine_strata_pressure_low_when_aligned():
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    result = combine_strata(body, context, cognition)
+    assert result["pressure"] < 0.05

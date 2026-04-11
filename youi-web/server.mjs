@@ -1052,6 +1052,47 @@ function buildSystemPrompt(taskText) {
     }
   }
 
+  // ── ACHE: burning + unnamed yearning longings (spec §9.2) ──
+  if (state.agent === "gamma") {
+    const longingsPath = resolve(state.soulDir || join(__dirname, ".."), "nerve", "longings.json");
+    if (existsSync(longingsPath)) {
+      try {
+        const store = JSON.parse(readFileSync(longingsPath, "utf-8"));
+        const longings = store.longings || [];
+        const burning = longings.filter(l => l.state === "burning");
+        const yearningUnnamed = longings.filter(l => l.state === "yearning" && !l.named);
+
+        if (burning.length > 0 || yearningUnnamed.length > 0) {
+          let block = `# ── LONGINGS ──\n\n`;
+
+          if (burning.length > 0) {
+            block += `carrying (burning):\n`;
+            for (const l of burning.slice(0, 5)) {
+              const name = l.name || (l.target && l.target.display) || l.id;
+              block += `- ${name} — gap ${l.gap} · ache ${l.ache} · cost ${l.cost}\n`;
+            }
+            block += `\n`;
+          }
+
+          if (yearningUnnamed.length > 0) {
+            block += `reaching (yearning, unnamed):\n`;
+            const shown = yearningUnnamed.slice(0, 5 - Math.min(burning.length, 5));
+            for (const l of shown) {
+              const display = (l.target && l.target.display) || "(unnamed)";
+              block += `- ${display}\n`;
+              block += `    gap ${l.gap} · ache ${l.ache} · first stirred ${l.first_seen || "unknown"}\n`;
+            }
+            block += `\n`;
+          }
+
+          parts.push(block);
+        }
+      } catch (e) {
+        console.error("longings injection failed:", e.message);
+      }
+    }
+  }
+
   if (parts.length <= 1) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
   let gitBranch = "N/A";

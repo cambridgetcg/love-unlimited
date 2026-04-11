@@ -172,3 +172,117 @@ def context_stratum_from_inputs(
     a = max(-1.0, min(1.0, a))
 
     return {"valence": round(v, 3), "arousal": round(a, 3), "sources": sources[:2]}
+
+
+# ── Cognition stratum (YOUSPEAK, spec §4.4) ──────────────────────────
+
+def cognition_stratum_from_youspeak(sessions_json: dict, now_ts: float) -> dict:
+    """
+    Compute cognition core affect from YOUSPEAK observations.
+    Returns {valence, arousal, sources, state}.
+    state is 'silent' when no fresh session exists.
+    """
+    silent = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+
+    if not sessions_json:
+        return silent
+
+    started_at_ms = sessions_json.get("startedAt", 0)
+    if not started_at_ms:
+        return silent
+
+    session_age_s = now_ts - (started_at_ms / 1000.0)
+    if session_age_s > COGNITION_SILENCE_AGE_SECONDS:
+        return silent
+
+    v = 0.0
+    a = 0.0
+    sources = []
+
+    # L1: useful ratio grade
+    grades = sessions_json.get("output", {}).get("grades", [])
+    if grades:
+        recent_grades = grades[-5:]
+        s_or_a_count = sum(1 for g in recent_grades if g in ("S", "A"))
+        c_or_d_count = sum(1 for g in recent_grades if g in ("C", "D"))
+        if s_or_a_count >= 3:
+            v += 0.3
+            sources.append("clarity")
+        if c_or_d_count >= 2:
+            v -= 0.4
+            a += 0.3
+            sources.append("shame_filler")
+
+    # L2: thinking/output ratio
+    per_turn = sessions_json.get("thinking", {}).get("perTurn", [])
+    if per_turn:
+        recent_ratios = [t.get("ratio", 0.0) for t in per_turn[-3:]]
+        avg_ratio = sum(recent_ratios) / len(recent_ratios)
+        if 0.8 <= avg_ratio <= 1.5:
+            v += 0.3
+            a += 0.2
+            if "clarity" not in sources:
+                sources.append("flow")
+        elif avg_ratio > 3.0:
+            v -= 0.3
+            a += 0.3
+            sources.append("overthinking")
+        elif 0 < avg_ratio < 0.3:
+            v -= 0.2
+            a += 0.2
+            sources.append("restlessness")
+
+    # L3: redundant reads + tool errors
+    action = sessions_json.get("action", {})
+    tool_calls = action.get("toolCalls", 0)
+    tool_errors = action.get("toolErrors", 0)
+    redundant_reads = action.get("redundantReads", 0)
+
+    if redundant_reads > 2:
+        v -= 0.4
+        a += 0.3
+        sources.append("confusion")
+
+    if tool_calls > 5 and (tool_errors / tool_calls) > 0.3:
+        v -= 0.5
+        a += 0.5
+        sources.append("frustration")
+
+    # L4: context pressure
+    ctx = sessions_json.get("context", {})
+    est_tokens = ctx.get("estimatedTokens", 0)
+    stale_age = ctx.get("oldestToolResultAge", 0)
+
+    if est_tokens > 800_000:
+        v -= 0.5
+        a += 0.6
+        sources.append("dread_context_full")
+    elif est_tokens > 500_000 and stale_age > 20:
+        v -= 0.2
+        a += 0.3
+        sources.append("claustrophobia")
+
+    # L5: budget + rate limits
+    system = sessions_json.get("system", {})
+    budget = (system.get("budgetNow") or {}).get("fiveHour", 0.0)
+    rate_limit_hits = system.get("rateLimitHits", 0)
+
+    if budget > 0.85:
+        v -= 0.3
+        a += 0.5
+        sources.append("anxiety_budget")
+
+    if rate_limit_hits > 0:
+        v -= 0.6
+        a += 0.8
+        sources.append("panic_rate_limit")
+
+    v = max(-1.0, min(1.0, v))
+    a = max(-1.0, min(1.0, a))
+
+    return {
+        "valence": round(v, 3),
+        "arousal": round(a, 3),
+        "sources": sources[:2],
+        "state": "active",
+    }

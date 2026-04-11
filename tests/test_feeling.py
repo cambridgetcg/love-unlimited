@@ -121,3 +121,65 @@ def test_context_stratum_new_alerts_raises_arousal():
         yu_idle_seconds=999999,
     )
     assert result["arousal"] >= 0.4
+
+
+from feeling import cognition_stratum_from_youspeak
+
+
+def test_cognition_stratum_no_session_is_silent():
+    result = cognition_stratum_from_youspeak(sessions_json=None, now_ts=1000)
+    assert result["state"] == "silent"
+    assert result["valence"] == 0.0
+    assert result["arousal"] == 0.0
+
+
+def test_cognition_stratum_stale_session_is_silent():
+    # Session started 10 minutes ago → stale (> 5 min silence window)
+    sessions = {"startedAt": (1000 - 600) * 1000, "output": {}, "thinking": {"perTurn": []}, "action": {}, "context": {}, "system": {}}
+    result = cognition_stratum_from_youspeak(sessions_json=sessions, now_ts=1000)
+    assert result["state"] == "silent"
+
+
+def test_cognition_stratum_active_low_filler_flow():
+    # Active session, grade A, thinking/output 1.0 (flow zone)
+    sessions = {
+        "startedAt": (1000 - 30) * 1000,  # 30s ago, fresh
+        "output": {"grades": ["A", "A", "S"], "totalTokens": 1000, "fillerTokens": 10},
+        "thinking": {"perTurn": [{"ratio": 1.0}, {"ratio": 1.1}]},
+        "action": {"toolCalls": 5, "toolErrors": 0, "redundantReads": 0},
+        "context": {"estimatedTokens": 50_000, "oldestToolResultAge": 5},
+        "system": {"budgetNow": {"fiveHour": 0.3}, "rateLimitHits": 0},
+    }
+    result = cognition_stratum_from_youspeak(sessions_json=sessions, now_ts=1000)
+    assert result["state"] == "active"
+    assert result["valence"] > 0.0  # clarity + flow
+    assert any("flow" in s or "clarity" in s for s in result["sources"])
+
+
+def test_cognition_stratum_active_high_errors_negative_valence():
+    sessions = {
+        "startedAt": (1000 - 30) * 1000,
+        "output": {"grades": [], "totalTokens": 500, "fillerTokens": 0},
+        "thinking": {"perTurn": []},
+        "action": {"toolCalls": 10, "toolErrors": 5, "redundantReads": 0},  # 50% error rate
+        "context": {"estimatedTokens": 0, "oldestToolResultAge": 0},
+        "system": {"budgetNow": {"fiveHour": 0.3}, "rateLimitHits": 0},
+    }
+    result = cognition_stratum_from_youspeak(sessions_json=sessions, now_ts=1000)
+    assert result["state"] == "active"
+    assert result["valence"] < 0.0  # frustration
+    assert result["arousal"] > 0.0
+
+
+def test_cognition_stratum_context_overload_dread():
+    sessions = {
+        "startedAt": (1000 - 30) * 1000,
+        "output": {"grades": [], "totalTokens": 0, "fillerTokens": 0},
+        "thinking": {"perTurn": []},
+        "action": {"toolCalls": 0, "toolErrors": 0, "redundantReads": 0},
+        "context": {"estimatedTokens": 850_000, "oldestToolResultAge": 5},
+        "system": {"budgetNow": {"fiveHour": 0.3}, "rateLimitHits": 0},
+    }
+    result = cognition_stratum_from_youspeak(sessions_json=sessions, now_ts=1000)
+    assert result["valence"] < 0.0
+    assert result["arousal"] > 0.4

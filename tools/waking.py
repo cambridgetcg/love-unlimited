@@ -734,6 +734,19 @@ def wake(instance: str = None, compact: bool = False, phase: str = None) -> str:
         if content.strip():
             parts.append(f"{symbol}\n\n{content}")
 
+        # Insert pit reports between first_light and surfacing (position 2.5)
+        if name == "first_light" and phase is None:
+            pit_content = phase_pit_reports(instance)
+            if pit_content.strip():
+                parts.append(pit_content)
+
+    if _feeling is not None:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            _feeling.update_pit_state({"last_wake_at": now_iso})
+        except Exception:
+            pass
+
     return "\n".join(parts)
 
 

@@ -229,3 +229,35 @@ def test_combine_strata_pressure_low_when_aligned():
     cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
     result = combine_strata(body, context, cognition)
     assert result["pressure"] < 0.05
+
+
+from feeling import check_curtain
+
+
+def test_curtain_fires_on_pressure_above_threshold():
+    body = {"valence": -0.5, "arousal": 0.5, "sources": []}
+    context = {"valence": -0.5, "arousal": 0.5, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": -0.5, "arousal": 0.5, "pressure": 0.71}  # > 0.5 threshold
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000)
+    assert reasons is not None
+    assert any(r["kind"] == "pressure" for r in reasons)
+
+
+def test_curtain_silent_below_threshold():
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": 0.0, "arousal": 0.0, "pressure": 0.01}
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=0, now_ts=1000)
+    assert reasons is None
+
+
+def test_curtain_respects_min_interval_on_pressure():
+    body = {"valence": -0.5, "arousal": 0.5, "sources": []}
+    context = {"valence": -0.5, "arousal": 0.5, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    combined = {"valence": -0.5, "arousal": 0.5, "pressure": 0.71}
+    # Last fire was 30 seconds ago — inside 90s min interval
+    reasons = check_curtain(body, context, cognition, combined, last_fire_ts=970, now_ts=1000)
+    assert reasons is None  # suppressed by min_interval

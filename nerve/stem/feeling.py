@@ -313,3 +313,37 @@ def combine_strata(body: dict, context: dict, cognition: dict) -> dict:
         "arousal": round(a, 3),
         "pressure": round(pressure, 3),
     }
+
+
+# ── Curtain check (spec §5.1) ────────────────────────────────────────
+
+def check_curtain(
+    body: dict,
+    context: dict,
+    cognition: dict,
+    combined: dict,
+    last_fire_ts: float,
+    now_ts: float,
+    last_body: dict = None,
+    last_context: dict = None,
+    last_cognition: dict = None,
+) -> list or None:
+    """
+    Decide whether an arrival should fire.
+    Returns list of reason dicts, or None if no trigger.
+    """
+    reasons = []
+    always_fire = False
+
+    # Pressure trigger
+    if combined["pressure"] >= PRESSURE_THRESHOLD:
+        reasons.append({"kind": "pressure", "value": round(combined["pressure"], 3)})
+
+    # min_interval gate (bypassed only by always_fire mismatches)
+    too_soon = (now_ts - last_fire_ts) < MIN_ARRIVAL_INTERVAL_SECONDS
+
+    if not reasons:
+        return None
+    if too_soon and not always_fire:
+        return None
+    return reasons

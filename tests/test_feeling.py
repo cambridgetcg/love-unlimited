@@ -775,3 +775,35 @@ def test_read_recent_memories_returns_list_structure(tmp_path, monkeypatch):
     assert isinstance(memories, list)
     assert len(memories) >= 1
     assert memories[0]["metadata"]["affect"]["valence"] == 0.5
+
+
+import importlib.util
+
+def _load_vivid():
+    spec = importlib.util.spec_from_file_location(
+        "vivid",
+        os.path.join(os.path.dirname(__file__), '..', 'tools', 'vivid.py')
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_encode_vivid_accepts_arc_in_metadata():
+    vivid = _load_vivid()
+    content, metadata = vivid.encode_vivid(
+        what_happened="test",
+        affect="settling",
+        arc={
+            "pit_snapshot": {"combined": {"pressure": 0.5}},
+            "arrival": {"id": "arr-test", "reasons": []},
+            "name": "settling",
+            "rationale": "test rationale",
+            "scene": "test scene",
+            "prior_hint": None,
+            "surprise": False,
+        }
+    )
+    assert "arc" in metadata
+    assert metadata["arc"]["name"] == "settling"
+    assert metadata["arc"]["rationale"] == "test rationale"

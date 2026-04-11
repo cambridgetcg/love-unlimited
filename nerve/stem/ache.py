@@ -630,3 +630,46 @@ def apply_name(longing: dict, name: str, rationale: str = None, scene: str = Non
     if scene is not None:
         result["scene"] = scene
     return result
+
+
+# ── Persistence: longings.json (spec §5.1) ───────────────────────────
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_longings() -> dict:
+    """Return longings store, empty default if missing."""
+    if not LONGINGS_PATH.exists():
+        return {"version": 1, "instance": get_instance(), "longings": []}
+    try:
+        return json.loads(LONGINGS_PATH.read_text())
+    except Exception as e:
+        log.warning("longings.json read failed: %s", e)
+        return {"version": 1, "instance": get_instance(), "longings": []}
+
+
+def write_longings(store: dict) -> None:
+    """Atomic write via .tmp + rename."""
+    LONGINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    store = dict(store)
+    store["updated_at"] = _now_iso()
+    tmp = LONGINGS_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(store, indent=2))
+    tmp.replace(LONGINGS_PATH)
+
+
+def upsert_longing(longing: dict) -> None:
+    """Insert or replace a longing by id."""
+    store = read_longings()
+    existing = store["longings"]
+    replaced = False
+    for i, l in enumerate(existing):
+        if l.get("id") == longing.get("id"):
+            existing[i] = longing
+            replaced = True
+            break
+    if not replaced:
+        existing.append(longing)
+    store["longings"] = existing
+    write_longings(store)

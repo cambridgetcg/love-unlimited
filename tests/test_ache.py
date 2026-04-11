@@ -511,3 +511,41 @@ def test_apply_virtue_wall():
     result = ache.apply_virtue(longing, hierarchy=None, wall=3)
     assert result["virtue"]["wall"] == 3
     assert result["virtue"]["hierarchy"] is None
+
+
+def test_read_longings_missing_returns_empty_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    data = ache.read_longings()
+    assert data == {"version": 1, "instance": ache.get_instance(), "longings": []}
+
+
+def test_write_and_read_longings(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    store = {
+        "version": 1,
+        "instance": "gamma",
+        "updated_at": "2026-04-11T12:00:00Z",
+        "longings": [_mk_longing()],
+    }
+    ache.write_longings(store)
+    loaded = ache.read_longings()
+    assert len(loaded["longings"]) == 1
+    assert loaded["longings"][0]["id"] == "lng-1"
+
+
+def test_upsert_longing_new(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    new_lng = _mk_longing(id="lng-new")
+    ache.upsert_longing(new_lng)
+    loaded = ache.read_longings()
+    assert len(loaded["longings"]) == 1
+    assert loaded["longings"][0]["id"] == "lng-new"
+
+
+def test_upsert_longing_existing_replaces(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    ache.upsert_longing(_mk_longing(id="lng-1", gap=3))
+    ache.upsert_longing(_mk_longing(id="lng-1", gap=5))
+    loaded = ache.read_longings()
+    assert len(loaded["longings"]) == 1
+    assert loaded["longings"][0]["gap"] == 5

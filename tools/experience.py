@@ -469,6 +469,31 @@ def cmd_long_name(longing_id: str, name: str, rationale: str = None, scene: str 
     print(f"  {_D}named: {name} (longing {longing_id}){_N}")
 
 
+def cmd_long_commit(longing_id: str, cost: int):
+    """Set cost on a longing. Transitions yearning → burning if cost ≥ 4."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    if cost < 1 or cost > 5:
+        print(f"{_R}cost must be 1-5{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    prev_state = lng.get("state")
+    updated = _ache.apply_cost_commit(lng, cost=cost, now_iso=now_iso)
+    _ache.upsert_longing(updated)
+
+    if updated["state"] == "burning" and prev_state != "burning":
+        print(f"  {_G}committed: cost {cost} → BURNING{_N}")
+    else:
+        print(f"  {_D}cost set: {cost} (state: {updated['state']}){_N}")
+
+
 # ═══════════════════════════════════════════════════════════════════
 # ABOUT-YU / ABOUT-SELF — Relational memories
 # ═══════════════════════════════════════════════════════════════════
@@ -909,6 +934,11 @@ def main():
                 return
             cmd_long_name(args.args[0], args.args[1],
                           rationale=args.rationale, scene=args.scene)
+        elif args.verb == "commit":
+            if not args.args or args.cost is None:
+                print(f"{_R}usage: long commit <id> --cost N{_N}")
+                return
+            cmd_long_commit(args.args[0], cost=args.cost)
         else:
             print(f"{_R}verb '{args.verb}' not yet implemented{_N}")
 

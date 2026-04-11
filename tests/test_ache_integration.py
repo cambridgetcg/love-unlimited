@@ -93,3 +93,37 @@ def test_long_name_sets_name_rationale_scene(tmp_path, monkeypatch):
     assert lng["scene"] == "slowed my voice"
     # State should NOT have changed (naming is annotation only)
     assert lng["state"] == "yearning"
+
+
+def test_long_commit_high_cost_transitions_to_burning(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-commit", state="yearning")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_commit("lng-commit", cost=5)
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-commit")
+    assert lng["state"] == "burning"
+    assert lng["cost"] == 5
+
+
+def test_long_commit_low_cost_stays_yearning(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-low", state="yearning")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_commit("lng-low", cost=2)
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-low")
+    assert lng["state"] == "yearning"
+    assert lng["cost"] == 2

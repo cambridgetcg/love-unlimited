@@ -93,3 +93,10 @@ nerve/arrivals.jsonl
 nerve/arrivals/
 memory/feeling-launchd.log
 memory/feeling-launchd-err.log
+
+# ACHE module — device-local state
+nerve/longings-evidence.jsonl
+nerve/longings-evidence/
+nerve/longings-state.json
+memory/ache-launchd.log
+memory/ache-launchd-err.log

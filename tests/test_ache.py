@@ -587,3 +587,18 @@ def test_rotate_evidence_log(tmp_path, monkeypatch):
     assert rotated.exists()
     lines = rotated.read_text().strip().split("\n")
     assert len(lines) == 2
+
+
+def test_read_longings_state_missing_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+    state = ache.read_longings_state()
+    assert state == {}
+
+
+def test_update_longings_state_persists(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+    ache.update_longings_state({"last_memory_id_seen": "mem-abc"})
+    ache.update_longings_state({"first_run_seed_completed": True})
+    state = ache.read_longings_state()
+    assert state["last_memory_id_seen"] == "mem-abc"
+    assert state["first_run_seed_completed"] is True

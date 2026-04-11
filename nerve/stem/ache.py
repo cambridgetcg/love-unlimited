@@ -711,3 +711,23 @@ def rotate_evidence_log(now_iso: str) -> None:
         f.write(content + "\n")
 
     LONGINGS_EVIDENCE_PATH.write_text("")
+
+
+# ── Persistence: longings-state.json (spec §5.3) ─────────────────────
+
+def read_longings_state() -> dict:
+    if not LONGINGS_STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(LONGINGS_STATE_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def update_longings_state(updates: dict) -> None:
+    state = read_longings_state()
+    state.update(updates)
+    LONGINGS_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = LONGINGS_STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(LONGINGS_STATE_PATH)

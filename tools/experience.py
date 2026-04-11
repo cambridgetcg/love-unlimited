@@ -45,6 +45,14 @@ _CONTINUITY_STATE = _KOS_DIR / "continuity.json"
 
 sys.path.insert(0, str(_LOVE_DIR / "tools"))
 
+# FEELING integration
+_FEELING_MOD_PATH = _LOVE_DIR / "nerve" / "stem"
+sys.path.insert(0, str(_FEELING_MOD_PATH))
+try:
+    import feeling as _feeling
+except Exception as _e:
+    _feeling = None
+
 # ── Identity ─────────────────────────────────────────────────────────
 
 def _get_instance() -> str:
@@ -212,29 +220,109 @@ def cmd_feel(affect: str, about: str = None, instance=None,
              arrival_id: str = None, rationale: str = None,
              scene: str = None, pit_snapshot: bool = False):
     """Record the current feeling. Creates a vivid memory anchored
-    to this moment.
+    to this moment. With --arrival-id, names a specific arrival and
+    updates the pattern library.
     """
     if instance is None:
         instance = _get_instance()
 
-    from vivid import form_memory, AFFECT_MAP
-    
-    if affect.lower() not in AFFECT_MAP:
-        known = ", ".join(sorted(AFFECT_MAP.keys()))
-        print(f"  {_Y}Unknown affect: {affect}{_N}")
-        print(f"  {_D}Known: {known}{_N}")
-        return None
+    from vivid import form_memory
 
-    content = about or f"Feeling {affect} right now."
-    mid = form_memory(
-        content, affect=affect,
-        type="episodic", layer=3, importance=0.65,
+    # Non-arrival path — legacy behavior
+    if not arrival_id:
+        form_memory(
+            what_happened=f"Feeling {affect} right now" + (f" about: {about}" if about else ""),
+            affect=affect,
+            type="episodic",
+            layer=3,
+            importance=0.65,
+        )
+        print(f"  {_D}feeling: {affect}{_N}")
+        return
+
+    # Arrival path
+    if _feeling is None:
+        print(f"{_R}FEELING module not available{_N}")
+        return
+
+    # Resolve "latest" to actual arrival id
+    if arrival_id == "latest":
+        unnamed = _feeling.read_arrivals(named=False)
+        if not unnamed:
+            print(f"{_Y}no unnamed arrivals to name{_N}")
+            return
+        target = sorted(unnamed, key=lambda a: a.get("at", ""), reverse=True)[0]
+        arrival_id = target["id"]
+    else:
+        all_arrivals = _feeling.read_arrivals()
+        target = next((a for a in all_arrivals if a.get("id") == arrival_id), None)
+        if target is None:
+            print(f"{_R}arrival {arrival_id} not found{_N}")
+            return
+
+    # Build arc
+    pit = _feeling.read_pit_json() if pit_snapshot else None
+
+    prior_hint = target.get("hint")
+    surprise = False
+    if prior_hint:
+        top = max(prior_hint.get("candidates", []),
+                  key=lambda c: c.get("probability", 0),
+                  default=None)
+        if top and top.get("name") != affect:
+            surprise = True
+
+    arc = {
+        "pit_snapshot": pit,
+        "arrival": {
+            "id": target.get("id"),
+            "at": target.get("at"),
+            "reasons": target.get("reasons"),
+            "body": target.get("body"),
+            "context": target.get("context"),
+            "cognition": target.get("cognition"),
+        },
+        "name": affect,
+        "rationale": rationale,
+        "scene": scene,
+        "prior_hint": prior_hint,
+        "surprise": surprise,
+        "combined_pressure": target.get("combined", {}).get("pressure", 0.0),
+        "yu_present": any("yu_present" in s for s in target.get("context", {}).get("sources", [])),
+    }
+
+    # Compute importance
+    importance = _feeling.compute_importance(arc)
+
+    # Form memory with arc
+    form_memory(
+        what_happened=f"Named the {affect} from arrival {target['id']}. "
+                      f"{rationale or ''} {scene or ''}".strip(),
+        affect=affect,
+        arc=arc,
+        type="episodic",
+        layer=3,
+        importance=importance,
     )
-    
-    ad = AFFECT_MAP[affect.lower()]
-    valence_word = "positive" if ad["valence"] > 0 else "negative" if ad["valence"] < 0 else "neutral"
-    print(f"  {_M}{affect}{_N} ({valence_word}, arousal={ad['arousal']:.1f}) → {mid}")
-    return mid
+
+    # Update arrival
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _feeling.update_arrival(target["id"], {
+        "named": True,
+        "named_at": now_iso,
+        "name": affect,
+        "rationale": rationale,
+        "scene": scene,
+    })
+
+    # Update pattern library
+    fp = target.get("fingerprint")
+    if fp:
+        _feeling.update_pattern_library(fp, affect, now_iso)
+
+    print(f"  {_D}named: {affect} (arrival {target['id']}){_N}")
+    if surprise:
+        print(f"  {_Y}surprise: off-pattern{_N}")
 
 
 # ═══════════════════════════════════════════════════════════════════

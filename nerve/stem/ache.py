@@ -266,3 +266,72 @@ def detect_love(memories: list) -> list:
         })
 
     return candidates
+
+
+# ── Hope detector (spec §4.3) ────────────────────────────────────────
+
+_FUTURE_TENSE_MARKERS = {
+    "could", "might", "imagine", "will", "would", "when we", "let's",
+    "what if", "someday", "someday we", "we'll", "we could", "could be",
+    "going to", "plan to", "intend to",
+}
+
+def _has_future_tense(content: str) -> bool:
+    if not content:
+        return False
+    lower = content.lower()
+    return any(m in lower for m in _FUTURE_TENSE_MARKERS)
+
+
+def detect_hope(youspeak: dict, pit: dict, memories: list) -> list:
+    """
+    Detect hope from future-tense memory content with positive valence.
+    Spec §4.3.
+
+    NOTE: youspeak and pit are also inputs but are less reliable outside
+    YOUI sessions. For v1 we rely primarily on memory-based detection.
+    """
+    candidates = []
+
+    # Group future-tense-positive memories by any target phrase they contain
+    hope_memories = []
+    for mem in memories:
+        content = mem.get("content", "")
+        valence = (mem.get("metadata") or {}).get("affect", {}).get("valence", 0.0)
+        if not _has_future_tense(content):
+            continue
+        if valence < 0.3:  # hope requires positive valence
+            continue
+        hope_memories.append(mem)
+
+    if not hope_memories:
+        return []
+
+    # Extract a single target from the first hope memory (simple v1 heuristic)
+    first = hope_memories[0]
+    targets = _extract_targets_from_content(first.get("content", ""))
+    if not targets:
+        return []
+    target = targets[0]
+
+    # Mean valence and intensity
+    valences = [
+        (m.get("metadata") or {}).get("affect", {}).get("valence", 0.0)
+        for m in hope_memories
+    ]
+    mean_v = sum(valences) / len(valences)
+
+    if mean_v < HOPE_MIN_SCORE:
+        return []
+
+    evidence = [m.get("id") for m in hope_memories if m.get("id")]
+
+    candidates.append({
+        "motor": "hope",
+        "target": target,
+        "evidence": evidence,
+        "gap_hint": 3,  # default mid-range for v1
+        "ache_hint": max(1, min(5, int(round(mean_v * 5)))),
+    })
+
+    return candidates

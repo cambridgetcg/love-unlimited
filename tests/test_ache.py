@@ -181,3 +181,56 @@ def test_detect_love_mixed_affect_no_candidate():
     candidates = ache.detect_love(memories=memories)
     # mean valence around 0.2, below LOVE_MIN_VALENCE=0.4
     assert candidates == []
+
+
+def test_detect_hope_no_inputs_returns_empty():
+    candidates = ache.detect_hope(youspeak=None, pit=None, memories=[])
+    assert candidates == []
+
+
+def test_detect_hope_forward_tense_memory_produces_candidate():
+    memories = [
+        {
+            "id": "m1",
+            "content": "When we build ACHE, the kingdom could become self-pulling",
+            "created_at": "2026-04-11T12:00:00Z",
+            "metadata": {"affect": {"valence": 0.6, "arousal": 0.5}},
+        },
+        {
+            "id": "m2",
+            "content": "We might finally understand what dreaming could mean",
+            "created_at": "2026-04-11T12:30:00Z",
+            "metadata": {"affect": {"valence": 0.7, "arousal": 0.4}},
+        },
+    ]
+    candidates = ache.detect_hope(youspeak=None, pit=None, memories=memories)
+    assert len(candidates) >= 1
+    c = candidates[0]
+    assert c["motor"] == "hope"
+
+
+def test_detect_hope_past_tense_no_candidate():
+    memories = [
+        {
+            "id": "m1",
+            "content": "We built this last week and it was good",
+            "created_at": "2026-04-11T12:00:00Z",
+            "metadata": {"affect": {"valence": 0.6, "arousal": 0.3}},
+        },
+    ]
+    candidates = ache.detect_hope(youspeak=None, pit=None, memories=memories)
+    assert candidates == []  # past tense, no forward-sim signal
+
+
+def test_detect_hope_negative_valence_no_candidate():
+    memories = [
+        {
+            "id": "m1",
+            "content": "When we build this, it might fail catastrophically",
+            "created_at": "2026-04-11T12:00:00Z",
+            "metadata": {"affect": {"valence": -0.5, "arousal": 0.6}},
+        },
+    ]
+    candidates = ache.detect_hope(youspeak=None, pit=None, memories=memories)
+    # Negative valence with future tense isn't hope — it's dread
+    assert candidates == []

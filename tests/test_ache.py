@@ -681,3 +681,64 @@ def test_ache_daemon_creates_stirring_longing_from_memory_fixture(tmp_path, monk
     assert lng["state"] == "stirring"
     assert lng["cost"] is None
     assert lng["named"] is False
+
+
+def test_seed_from_virtuemaxxing_creates_longings(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+
+    vm_state = tmp_path / "vm-state.json"
+    vm_state.write_text(json.dumps({
+        "longings": {
+            "1": {
+                "wall": 1,
+                "virtue": "humility",
+                "gap": 4,
+                "ache": 4,
+                "cost": 3,
+                "reflection": "still learning to receive feedback",
+                "assessed_at": "2026-04-10T10:00:00Z",
+            },
+            "3": {
+                "wall": 3,
+                "virtue": "honesty",
+                "gap": 2,
+                "ache": 3,
+                "cost": 4,
+                "reflection": "",
+                "assessed_at": "2026-04-09T10:00:00Z",
+            },
+        }
+    }))
+    monkeypatch.setattr(ache, "VIRTUEMAXXING_STATE_PATH", vm_state)
+
+    ache.seed_from_virtuemaxxing(instance="gamma")
+
+    store = ache.read_longings()
+    assert len(store["longings"]) == 2
+
+    first = next(l for l in store["longings"] if l["virtue"]["wall"] == 1)
+    assert first["motor"] == "longing"
+    assert first["gap"] == 4
+    assert first["ache"] == 4
+    assert first["cost"] == 3
+    assert first["target"]["kind"] == "wall"
+    assert first["state"] in {"stirring", "yearning"}
+
+    state = ache.read_longings_state()
+    assert state["first_run_seed_completed"] is True
+
+
+def test_seed_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setattr(ache, "LONGINGS_PATH", tmp_path / "longings.json")
+    monkeypatch.setattr(ache, "LONGINGS_STATE_PATH", tmp_path / "longings-state.json")
+
+    vm_state = tmp_path / "vm-state.json"
+    vm_state.write_text(json.dumps({"longings": {"1": {"wall": 1, "virtue": "humility", "gap": 3, "ache": 3, "cost": 3}}}))
+    monkeypatch.setattr(ache, "VIRTUEMAXXING_STATE_PATH", vm_state)
+
+    ache.seed_from_virtuemaxxing(instance="gamma")
+    ache.seed_from_virtuemaxxing(instance="gamma")
+
+    store = ache.read_longings()
+    assert len(store["longings"]) == 1

@@ -935,3 +935,76 @@ def _main():
 
 if __name__ == "__main__":
     _main()
+
+
+# ── First-run virtuemaxxing seed (spec §9.4) ─────────────────────────
+
+def _vm_intensity_to_state(gap: int, ache: int, cost: int) -> str:
+    """Map virtuemaxxing gap/ache/cost to an ACHE state."""
+    if gap >= 3 and ache >= 3 and cost >= BURNING_COST_THRESHOLD:
+        return "burning"
+    if gap >= 3 and ache >= 3:
+        return "yearning"
+    if gap > 0 or ache > 0:
+        return "stirring"
+    return "dormant"
+
+
+def seed_from_virtuemaxxing(instance: str) -> None:
+    """
+    One-time seed of longings.json from virtuemaxxing's state store.
+    Idempotent: checks longings-state.first_run_seed_completed flag.
+    Spec §9.4.
+    """
+    state = read_longings_state()
+    if state.get("first_run_seed_completed"):
+        return
+
+    if not VIRTUEMAXXING_STATE_PATH.exists():
+        update_longings_state({"first_run_seed_completed": True})
+        return
+
+    try:
+        vm = json.loads(VIRTUEMAXXING_STATE_PATH.read_text())
+    except Exception as e:
+        log.warning("virtuemaxxing state read failed: %s", e)
+        update_longings_state({"first_run_seed_completed": True})
+        return
+
+    vm_longings = vm.get("longings", {}) or {}
+    now_iso = _now_iso()
+
+    for wall_key, vm_lng in vm_longings.items():
+        wall_num = vm_lng.get("wall")
+        virtue_name = vm_lng.get("virtue", "")
+        gap = vm_lng.get("gap", 0)
+        ache_val = vm_lng.get("ache", 0)
+        cost = vm_lng.get("cost")
+        reflection = vm_lng.get("reflection", "")
+        assessed_at = vm_lng.get("assessed_at", now_iso)
+
+        longing = {
+            "id": _new_longing_id(instance, now_iso),
+            "motor": "longing",
+            "target": {
+                "kind": "wall",
+                "key": f"wall_{wall_num}",
+                "display": f"Wall {wall_num} — {virtue_name}",
+            },
+            "state": _vm_intensity_to_state(gap, ache_val, cost or 0),
+            "gap": gap,
+            "ache": ache_val,
+            "cost": cost,
+            "virtue": {"hierarchy": None, "wall": wall_num},
+            "first_seen": assessed_at,
+            "last_stirred": assessed_at,
+            "last_state_change": assessed_at,
+            "evidence_count": 1,
+            "named": bool(reflection),
+            "name": virtue_name if reflection else None,
+            "rationale": reflection or None,
+            "scene": None,
+        }
+        upsert_longing(longing)
+
+    update_longings_state({"first_run_seed_completed": True})

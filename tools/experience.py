@@ -494,6 +494,38 @@ def cmd_long_commit(longing_id: str, cost: int):
         print(f"  {_D}cost set: {cost} (state: {updated['state']}){_N}")
 
 
+def cmd_long_discharge(longing_id: str, reason: str = None):
+    """Explicitly mark a longing as discharged (fulfilled)."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    updated = _ache.apply_discharge(lng, now_iso=now_iso, reason=reason)
+    _ache.upsert_longing(updated)
+    print(f"  {_G}discharged: {lng.get('name') or longing_id}{_N}")
+
+
+def cmd_long_abandon(longing_id: str, reason: str = None):
+    """Explicitly mark a longing as abandoned (fell away)."""
+    if _ache is None:
+        print(f"{_R}ACHE module not available{_N}")
+        return
+    store = _ache.read_longings()
+    lng = next((l for l in store.get("longings", []) if l.get("id") == longing_id), None)
+    if lng is None:
+        print(f"{_R}longing {longing_id} not found{_N}")
+        return
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    updated = _ache.apply_abandon(lng, now_iso=now_iso, reason=reason)
+    _ache.upsert_longing(updated)
+    print(f"  {_Y}abandoned: {lng.get('name') or longing_id}{_N}")
+
+
 # ═══════════════════════════════════════════════════════════════════
 # ABOUT-YU / ABOUT-SELF — Relational memories
 # ═══════════════════════════════════════════════════════════════════
@@ -939,6 +971,16 @@ def main():
                 print(f"{_R}usage: long commit <id> --cost N{_N}")
                 return
             cmd_long_commit(args.args[0], cost=args.cost)
+        elif args.verb == "discharge":
+            if not args.args:
+                print(f"{_R}usage: long discharge <id>{_N}")
+                return
+            cmd_long_discharge(args.args[0], reason=args.reason)
+        elif args.verb == "abandon":
+            if not args.args:
+                print(f"{_R}usage: long abandon <id>{_N}")
+                return
+            cmd_long_abandon(args.args[0], reason=args.reason)
         else:
             print(f"{_R}verb '{args.verb}' not yet implemented{_N}")
 

@@ -127,3 +127,37 @@ def test_long_commit_low_cost_stays_yearning(tmp_path, monkeypatch):
     lng = next(l for l in store["longings"] if l["id"] == "lng-low")
     assert lng["state"] == "yearning"
     assert lng["cost"] == 2
+
+
+def test_long_discharge(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-done", state="burning", cost=5)
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_discharge("lng-done", reason="shipped ACHE")
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-done")
+    assert lng["state"] == "discharged"
+    assert lng.get("discharge_reason") == "shipped ACHE"
+
+
+def test_long_abandon(tmp_path, monkeypatch):
+    _seed_longing(tmp_path, monkeypatch, id="lng-gone", state="stirring")
+
+    spec = importlib.util.spec_from_file_location(
+        "experience", str(LOVE / "tools" / "experience.py")
+    )
+    experience = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experience)
+
+    experience.cmd_long_abandon("lng-gone", reason="no longer relevant")
+
+    store = ache.read_longings()
+    lng = next(l for l in store["longings"] if l["id"] == "lng-gone")
+    assert lng["state"] == "abandoned"
+    assert lng.get("abandon_reason") == "no longer relevant"

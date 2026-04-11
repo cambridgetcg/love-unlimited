@@ -78,3 +78,44 @@ DISCHARGE_EVIDENCE_CESSATION_HOURS = 24
 
 # Fruit affects (SOUL — used for discharge satisfaction signal)
 FRUIT_AFFECTS = {"joy", "satisfaction", "awe", "relief", "clarity", "pride"}
+
+
+# ── Target matching (spec §3.5) ──────────────────────────────────────
+
+_STOPWORDS = {
+    "a", "an", "the", "of", "for", "to", "in", "on", "at", "by",
+    "with", "from", "is", "it", "and", "or", "but", "if", "then",
+    "than", "that", "this", "these", "those",
+}
+
+_TOKEN_RE = None  # lazy init
+
+def _normalize(s: str) -> set:
+    """Lowercase, drop punctuation and stopwords, return token set."""
+    import re
+    global _TOKEN_RE
+    if _TOKEN_RE is None:
+        _TOKEN_RE = re.compile(r"[a-z0-9]+")
+    tokens = set(_TOKEN_RE.findall(s.lower()))
+    return tokens - _STOPWORDS
+
+def _jaccard(a: set, b: set) -> float:
+    """Jaccard similarity. Returns 0.0 when both sets empty."""
+    if not a and not b:
+        return 0.0
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+_FUZZY_THRESHOLD = 0.7
+
+def _same_target(a: dict, b: dict) -> bool:
+    """Two targets match if: same kind AND (same key OR fuzzy display match)."""
+    if a.get("kind") != b.get("kind"):
+        return False
+    if a.get("key") and a["key"] == b.get("key"):
+        return True
+    a_tokens = _normalize(a.get("display", ""))
+    b_tokens = _normalize(b.get("display", ""))
+    return _jaccard(a_tokens, b_tokens) >= _FUZZY_THRESHOLD

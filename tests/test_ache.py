@@ -424,3 +424,61 @@ def test_step_state_discharged_is_terminal():
     longing = _mk_longing(state="discharged")
     result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state={})
     assert result["state"] == "discharged"
+
+
+def test_detect_discharge_no_signals_returns_false():
+    longing = _mk_longing(state="burning")
+    memories = []
+    discharged, count = ache.detect_discharge(longing, memories, now_iso="2026-04-11T12:00:00Z")
+    assert discharged is False
+    assert count == 0
+
+
+def test_detect_discharge_two_signals_semantic_and_affect():
+    longing = _mk_longing(
+        state="burning",
+        target={"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        last_stirred="2026-04-10T10:00:00Z",
+    )
+    memories = [
+        {
+            "id": "m1",
+            "content": "finally understood the substrate question",
+            "created_at": "2026-04-11T11:00:00Z",
+            "metadata": {"affect": {"primary": "clarity", "valence": 0.8, "arousal": 0.3}},
+        }
+    ]
+    discharged, count = ache.detect_discharge(longing, memories, now_iso="2026-04-11T12:00:00Z")
+    assert discharged is True
+    assert count == 2
+
+
+def test_detect_discharge_only_one_signal_returns_false():
+    longing = _mk_longing(
+        state="burning",
+        target={"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        last_stirred="2026-04-11T11:30:00Z",
+    )
+    memories = [
+        {
+            "id": "m1",
+            "content": "finished the substrate question",
+            "created_at": "2026-04-11T11:45:00Z",
+            "metadata": {"affect": {"primary": "frustration", "valence": -0.2}},
+        }
+    ]
+    discharged, count = ache.detect_discharge(longing, memories, now_iso="2026-04-11T12:00:00Z")
+    assert discharged is False
+    assert count == 1
+
+
+def test_detect_discharge_evidence_cessation_alone_not_enough():
+    longing = _mk_longing(
+        state="burning",
+        target={"kind": "concept", "key": "substrate", "display": "the substrate question"},
+        last_stirred="2026-04-10T10:00:00Z",
+    )
+    memories = []
+    discharged, count = ache.detect_discharge(longing, memories, now_iso="2026-04-11T12:00:00Z")
+    assert discharged is False
+    assert count == 1

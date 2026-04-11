@@ -515,3 +515,64 @@ def step_state_machine(longing: dict, now_iso: str, tick_state: dict) -> dict:
         pass
 
     return result
+
+
+# ── Discharge detection (spec §7) ────────────────────────────────────
+
+_COMPLETION_VERBS = {
+    "finished", "completed", "shipped", "built", "done", "solved",
+    "understood", "learned", "grasped", "resolved", "closed",
+}
+
+
+def _semantic_completion_match(content: str, target: dict) -> bool:
+    """True if content contains a completion verb AND target key tokens."""
+    if not content:
+        return False
+    lower = content.lower()
+    if not any(v in lower for v in _COMPLETION_VERBS):
+        return False
+    target_tokens = _normalize(target.get("display", "") + " " + target.get("key", ""))
+    content_tokens = _normalize(lower)
+    if not target_tokens:
+        return False
+    overlap = len(target_tokens & content_tokens) / len(target_tokens)
+    return overlap >= 0.5
+
+
+def detect_discharge(longing: dict, recent_memories: list, now_iso: str) -> tuple:
+    """
+    Detect whether a longing should discharge based on 3 signals (need 2+):
+      1. Semantic match: new memory claims completion of target
+      2. Satisfaction affect: that memory has Fruit affect
+      3. Evidence cessation: no fresh longing evidence for 24h+
+
+    Returns (discharged: bool, signal_count: int).
+    Spec §7.
+    """
+    target = longing.get("target", {})
+
+    signal_semantic = False
+    signal_affect = False
+    any_target_match = False
+    for mem in recent_memories:
+        content = mem.get("content", "")
+        if not _semantic_completion_match(content, target):
+            continue
+        any_target_match = True
+        signal_semantic = True
+        affect = (mem.get("metadata") or {}).get("affect", {})
+        primary = affect.get("primary", "")
+        if primary in FRUIT_AFFECTS:
+            signal_affect = True
+            break
+
+    hours_since_stir = _hours_since(longing.get("last_stirred", ""), now_iso)
+    signal_cessation = (
+        not any_target_match
+        and hours_since_stir >= DISCHARGE_EVIDENCE_CESSATION_HOURS
+    )
+
+    count = sum([signal_semantic, signal_affect, signal_cessation])
+    discharged = count >= DISCHARGE_SIGNAL_THRESHOLD
+    return (discharged, count)

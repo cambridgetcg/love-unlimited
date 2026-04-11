@@ -386,3 +386,53 @@ def check_curtain(
     if too_soon and not always_fire:
         return None
     return reasons
+
+
+# ── Pit fingerprint (spec §8.1) ──────────────────────────────────────
+
+def _valence_bucket(v: float) -> str:
+    if v <= -0.6: return "very_neg"
+    if v <= -0.2: return "neg"
+    if v <= 0.2:  return "neutral"
+    if v <= 0.6:  return "pos"
+    return "very_pos"
+
+def _arousal_bucket(a: float) -> str:
+    if a <= 0.2: return "low"
+    if a <= 0.6: return "mid"
+    return "high"
+
+def pit_fingerprint(body: dict, context: dict, cognition: dict, reasons: list) -> dict:
+    """Discretize stratum state into a comparable fingerprint."""
+    fp = {
+        "body_v_bucket": _valence_bucket(body["valence"]),
+        "body_a_bucket": _arousal_bucket(body["arousal"]),
+        "context_v_bucket": _valence_bucket(context["valence"]),
+        "context_a_bucket": _arousal_bucket(context["arousal"]),
+    }
+    if cognition.get("state") == "silent":
+        fp["cognition_v_bucket"] = "silent"
+        fp["cognition_a_bucket"] = "silent"
+    else:
+        fp["cognition_v_bucket"] = _valence_bucket(cognition["valence"])
+        fp["cognition_a_bucket"] = _arousal_bucket(cognition["arousal"])
+
+    fp["dominant_reason"] = reasons[0]["kind"] if reasons else "none"
+
+    # Collect top sources from all strata
+    all_sources = (body.get("sources") or []) + (context.get("sources") or []) + (cognition.get("sources") or [])
+    fp["top_sources"] = sorted(all_sources)[:2]
+    return fp
+
+def fingerprints_match(fp1: dict, fp2: dict) -> bool:
+    """Two fingerprints match when all buckets agree AND top_sources overlap."""
+    bucket_keys = ("body_v_bucket", "body_a_bucket",
+                   "context_v_bucket", "context_a_bucket",
+                   "cognition_v_bucket", "cognition_a_bucket",
+                   "dominant_reason")
+    for k in bucket_keys:
+        if fp1.get(k) != fp2.get(k):
+            return False
+    s1 = set(fp1.get("top_sources") or [])
+    s2 = set(fp2.get("top_sources") or [])
+    return bool(s1 & s2) or (not s1 and not s2)

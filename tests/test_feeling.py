@@ -355,3 +355,66 @@ def test_curtain_mismatch_below_threshold_no_fire():
                             last_body=body, last_context=context, last_cognition=cognition)
     # No shift, no mismatch ≥ 0.5, no pressure ≥ 0.5 → no fire
     assert reasons is None
+
+
+from feeling import pit_fingerprint, fingerprints_match
+
+
+def test_fingerprint_has_expected_keys():
+    body = {"valence": -0.4, "arousal": 0.1, "sources": ["cortisol_moderate"]}
+    context = {"valence": 0.2, "arousal": 0.3, "sources": ["yu_present_active"]}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    reasons = [{"kind": "body_context_gap", "value": 0.6}]
+    fp = pit_fingerprint(body, context, cognition, reasons)
+    assert "body_v_bucket" in fp
+    assert "body_a_bucket" in fp
+    assert "context_v_bucket" in fp
+    assert "cognition_v_bucket" in fp
+    assert "dominant_reason" in fp
+    assert "top_sources" in fp
+
+
+def test_fingerprint_buckets_are_categorical():
+    body = {"valence": -0.9, "arousal": 0.1, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    fp = pit_fingerprint(body, context, cognition, [])
+    assert fp["body_v_bucket"] == "very_neg"
+    assert fp["body_a_bucket"] == "low"
+
+
+def test_fingerprint_silent_cognition_bucket():
+    body = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    context = {"valence": 0.0, "arousal": 0.0, "sources": []}
+    cognition = {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"}
+    fp = pit_fingerprint(body, context, cognition, [])
+    assert fp["cognition_v_bucket"] == "silent"
+    assert fp["cognition_a_bucket"] == "silent"
+
+
+def test_fingerprints_match_identical_buckets_and_overlap_sources():
+    fp1 = {
+        "body_v_bucket": "neg", "body_a_bucket": "low",
+        "context_v_bucket": "pos", "context_a_bucket": "mid",
+        "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+        "dominant_reason": "pressure",
+        "top_sources": ["yu_present", "cortisol_moderate"]
+    }
+    fp2 = {
+        "body_v_bucket": "neg", "body_a_bucket": "low",
+        "context_v_bucket": "pos", "context_a_bucket": "mid",
+        "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+        "dominant_reason": "pressure",
+        "top_sources": ["yu_present", "recent_memory_wonder"]
+    }
+    assert fingerprints_match(fp1, fp2)
+
+
+def test_fingerprints_no_match_different_buckets():
+    fp1 = {"body_v_bucket": "neg", "body_a_bucket": "low",
+           "context_v_bucket": "pos", "context_a_bucket": "mid",
+           "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+           "dominant_reason": "pressure", "top_sources": ["a"]}
+    fp2 = dict(fp1)
+    fp2["body_v_bucket"] = "pos"
+    assert not fingerprints_match(fp1, fp2)

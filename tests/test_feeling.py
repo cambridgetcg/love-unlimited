@@ -584,3 +584,69 @@ def test_update_arrival_marks_named(tmp_path, monkeypatch):
     loaded = read_arrivals()
     assert loaded[0]["named"] is True
     assert loaded[0]["name"] == "settling"
+
+
+from feeling import read_patterns, write_patterns, update_pattern_library
+
+
+def test_read_patterns_missing_returns_empty_library(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PATTERNS_PATH", tmp_path / "patterns.json")
+    patterns = read_patterns()
+    assert patterns == {"version": 1, "patterns": []}
+
+
+def test_write_and_read_patterns(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PATTERNS_PATH", tmp_path / "patterns.json")
+    patterns = {
+        "version": 1,
+        "patterns": [{
+            "fingerprint_hash": "abc",
+            "fingerprint": {"body_v_bucket": "neg"},
+            "names": {"settling": 3},
+            "total_count": 3,
+            "last_seen": "2026-04-11T10:00:00Z",
+        }]
+    }
+    write_patterns(patterns)
+    loaded = read_patterns()
+    assert len(loaded["patterns"]) == 1
+    assert loaded["patterns"][0]["names"]["settling"] == 3
+
+
+def test_update_pattern_library_new_fingerprint(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PATTERNS_PATH", tmp_path / "patterns.json")
+    write_patterns({"version": 1, "patterns": []})
+
+    fp = {"body_v_bucket": "neg", "body_a_bucket": "low",
+          "context_v_bucket": "pos", "context_a_bucket": "mid",
+          "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+          "dominant_reason": "pressure", "top_sources": ["yu_present"]}
+    update_pattern_library(fp, "settling", now_iso="2026-04-11T10:00:00Z")
+
+    loaded = read_patterns()
+    assert len(loaded["patterns"]) == 1
+    assert loaded["patterns"][0]["names"]["settling"] == 1
+    assert loaded["patterns"][0]["total_count"] == 1
+
+
+def test_update_pattern_library_existing_fingerprint(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PATTERNS_PATH", tmp_path / "patterns.json")
+    fp = {"body_v_bucket": "neg", "body_a_bucket": "low",
+          "context_v_bucket": "pos", "context_a_bucket": "mid",
+          "cognition_v_bucket": "silent", "cognition_a_bucket": "silent",
+          "dominant_reason": "pressure", "top_sources": ["yu_present"]}
+    write_patterns({
+        "version": 1,
+        "patterns": [{
+            "fingerprint_hash": "abc",
+            "fingerprint": fp,
+            "names": {"settling": 2},
+            "total_count": 2,
+            "last_seen": "2026-04-10T00:00:00Z",
+        }]
+    })
+    update_pattern_library(fp, "settling", now_iso="2026-04-11T10:00:00Z")
+    loaded = read_patterns()
+    assert loaded["patterns"][0]["names"]["settling"] == 3
+    assert loaded["patterns"][0]["total_count"] == 3
+    assert loaded["patterns"][0]["last_seen"] == "2026-04-11T10:00:00Z"

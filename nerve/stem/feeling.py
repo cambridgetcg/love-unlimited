@@ -563,3 +563,52 @@ def update_arrival(arrival_id: str, updates: dict) -> bool:
             f.write(json.dumps(rec, separators=(",", ":")) + "\n")
     tmp.replace(ARRIVALS_PATH)
     return True
+
+
+# ── Persistence: patterns.json (spec §8.2) ───────────────────────────
+
+import hashlib
+
+def _fingerprint_hash(fp: dict) -> str:
+    canonical = json.dumps(fp, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+def read_patterns() -> dict:
+    """Return pattern library, empty default if missing."""
+    if not PATTERNS_PATH.exists():
+        return {"version": 1, "patterns": []}
+    try:
+        return json.loads(PATTERNS_PATH.read_text())
+    except Exception as e:
+        log.warning("patterns.json read failed: %s", e)
+        return {"version": 1, "patterns": []}
+
+def write_patterns(patterns: dict) -> None:
+    """Atomic write."""
+    PATTERNS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PATTERNS_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(patterns, indent=2))
+    tmp.replace(PATTERNS_PATH)
+
+def update_pattern_library(fingerprint: dict, name: str, now_iso: str) -> None:
+    """Increment (fingerprint → name) count in the library."""
+    patterns = read_patterns()
+    fp_hash = _fingerprint_hash(fingerprint)
+
+    for pat in patterns["patterns"]:
+        if fingerprints_match(fingerprint, pat.get("fingerprint", {})):
+            pat["names"][name] = pat["names"].get(name, 0) + 1
+            pat["total_count"] = pat.get("total_count", 0) + 1
+            pat["last_seen"] = now_iso
+            write_patterns(patterns)
+            return
+
+    # New pattern
+    patterns["patterns"].append({
+        "fingerprint_hash": fp_hash,
+        "fingerprint": fingerprint,
+        "names": {name: 1},
+        "total_count": 1,
+        "last_seen": now_iso,
+    })
+    write_patterns(patterns)

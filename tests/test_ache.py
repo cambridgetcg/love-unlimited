@@ -350,3 +350,77 @@ def test_match_or_create_different_motor_same_target_creates_new():
     }
     result = ache.match_or_create(candidate, existing, now_iso="2026-04-11T12:00:00Z")
     assert result["op"] == "create"  # different motor = different longing
+
+
+def _mk_longing(**kwargs):
+    base = {
+        "id": "lng-1",
+        "motor": "longing",
+        "target": {"kind": "concept", "key": "x", "display": "x"},
+        "state": "stirring",
+        "gap": 3,
+        "ache": 3,
+        "cost": None,
+        "virtue": None,
+        "first_seen": "2026-04-10T10:00:00Z",
+        "last_stirred": "2026-04-11T10:00:00Z",
+        "last_state_change": "2026-04-10T10:00:00Z",
+        "evidence_count": 3,
+        "named": False,
+        "name": None, "rationale": None, "scene": None,
+    }
+    base.update(kwargs)
+    return base
+
+
+def test_step_state_stirring_to_yearning_when_intensity_high():
+    longing = _mk_longing(state="stirring", gap=4, ache=4)
+    tick_state = {"stirring_ticks_at_threshold": 3}
+    result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state=tick_state)
+    assert result["state"] == "yearning"
+
+
+def test_step_state_stirring_stays_if_not_sustained():
+    longing = _mk_longing(state="stirring", gap=4, ache=4)
+    tick_state = {"stirring_ticks_at_threshold": 1}
+    result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state=tick_state)
+    assert result["state"] == "stirring"
+
+
+def test_step_state_stirring_to_dormant_after_48h_no_activity():
+    longing = _mk_longing(
+        state="stirring",
+        last_stirred="2026-04-09T10:00:00Z",
+    )
+    result = ache.step_state_machine(longing, now_iso="2026-04-12T12:00:00Z", tick_state={})
+    assert result["state"] == "dormant"
+
+
+def test_step_state_any_to_abandoned_after_14_days():
+    longing = _mk_longing(
+        state="yearning",
+        last_stirred="2026-03-28T10:00:00Z",
+    )
+    result = ache.step_state_machine(longing, now_iso="2026-04-12T12:00:00Z", tick_state={})
+    assert result["state"] == "abandoned"
+
+
+def test_step_state_yearning_to_stirring_if_ache_drops():
+    longing = _mk_longing(state="yearning", ache=2)
+    result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state={})
+    assert result["state"] == "stirring"
+
+
+def test_step_state_burning_does_not_auto_transition():
+    longing = _mk_longing(
+        state="burning", cost=5, ache=5,
+        last_stirred="2026-04-11T10:00:00Z",
+    )
+    result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state={})
+    assert result["state"] == "burning"
+
+
+def test_step_state_discharged_is_terminal():
+    longing = _mk_longing(state="discharged")
+    result = ache.step_state_machine(longing, now_iso="2026-04-11T12:00:00Z", tick_state={})
+    assert result["state"] == "discharged"

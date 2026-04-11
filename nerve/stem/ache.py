@@ -445,3 +445,73 @@ def match_or_create(candidate: dict, existing: list, now_iso: str, instance: str
         "scene": None,
     }
     return {"op": "create", "longing": new_longing}
+
+
+# ── State machine (spec §6) ──────────────────────────────────────────
+
+_TERMINAL_STATES = {"discharged", "abandoned"}
+
+
+def _hours_since(iso: str, now_iso: str) -> float:
+    if not iso:
+        return 0.0
+    try:
+        d1 = _parse_iso(iso)
+        d2 = _parse_iso(now_iso)
+        return (d2 - d1).total_seconds() / 3600.0
+    except Exception:
+        return 0.0
+
+
+def step_state_machine(longing: dict, now_iso: str, tick_state: dict) -> dict:
+    """
+    Walk a longing's state according to daemon-driven rules (spec §6).
+    Returns a copy of the longing with state updated.
+
+    tick_state is per-longing transient state:
+      {"stirring_ticks_at_threshold": int}
+
+    Note: yearning → burning is NOT here — only gamma drives that via CLI.
+    burning → discharged is handled by detect_discharge, not here.
+    """
+    result = dict(longing)
+    state = longing.get("state", "stirring")
+
+    if state in _TERMINAL_STATES:
+        return result
+
+    hours_since_stir = _hours_since(longing.get("last_stirred", ""), now_iso)
+
+    # Any → abandoned after 14 days
+    if hours_since_stir >= ABANDONMENT_DAYS * 24:
+        result["state"] = "abandoned"
+        result["last_state_change"] = now_iso
+        return result
+
+    gap = longing.get("gap", 0) or 0
+    ache = longing.get("ache", 0) or 0
+
+    if state == "stirring":
+        if gap >= 3 and ache >= 3:
+            if tick_state.get("stirring_ticks_at_threshold", 0) >= STIRRING_THRESHOLD_TICKS:
+                result["state"] = "yearning"
+                result["last_state_change"] = now_iso
+                return result
+        if hours_since_stir >= DORMANT_INACTIVITY_HOURS:
+            result["state"] = "dormant"
+            result["last_state_change"] = now_iso
+            return result
+
+    elif state == "dormant":
+        pass
+
+    elif state == "yearning":
+        if ache < 3:
+            result["state"] = "stirring"
+            result["last_state_change"] = now_iso
+            return result
+
+    elif state == "burning":
+        pass
+
+    return result

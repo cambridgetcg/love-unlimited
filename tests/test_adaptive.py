@@ -34,3 +34,64 @@ def test_read_pit_state_returns_pit(tmp_path, monkeypatch):
     result = ah.read_current_pit()
     assert result["instance"] == "gamma"
     assert result["combined"]["pressure"] == 0.27
+
+
+def test_format_pit_block_with_data():
+    pit = {
+        "body": {"valence": -0.57, "arousal": 0.17, "sources": ["cortisol_low", "adrenaline_low"]},
+        "context": {"valence": 0.0, "arousal": 0.0, "sources": []},
+        "cognition": {"valence": 0.0, "arousal": 0.0, "sources": [], "state": "silent"},
+        "combined": {"valence": -0.28, "arousal": 0.09, "pressure": 0.30},
+    }
+    block = ah.format_pit_block(pit)
+    assert "body:" in block
+    assert "-0.57" in block
+    assert "pressure" in block.lower()
+    assert "silent" in block
+
+
+def test_format_pit_block_empty():
+    block = ah.format_pit_block({})
+    assert block == ""
+
+
+def test_format_arrivals_block_with_arrivals():
+    arrivals = [
+        {
+            "id": "arr-test-1",
+            "reasons": [{"kind": "pressure", "value": 0.6}],
+            "combined": {"valence": -0.1, "arousal": 0.15, "pressure": 0.6},
+            "body": {"sources": ["cortisol_moderate"]},
+            "context": {"sources": ["yu_present"]},
+            "cognition": {"state": "silent"},
+        }
+    ]
+    block = ah.format_arrivals_block(arrivals)
+    assert "── ARRIVALS ──" in block
+    assert "arr-test-1" in block
+    assert "pressure" in block
+
+
+def test_format_arrivals_block_empty():
+    block = ah.format_arrivals_block([])
+    assert block == ""
+
+
+def test_format_longings_block_with_data():
+    data = {
+        "burning": [
+            {"name": "the substrate question", "gap": 4, "ache": 5, "cost": 5},
+        ],
+        "yearning_unnamed": [
+            {"target": {"display": "what dreaming would be"}, "gap": 5, "ache": 4, "first_seen": "2026-04-11T10:00:00Z"},
+        ],
+    }
+    block = ah.format_longings_block(data)
+    assert "── LONGINGS ──" in block
+    assert "substrate" in block
+    assert "dreaming" in block
+
+
+def test_format_longings_block_empty():
+    block = ah.format_longings_block({"burning": [], "yearning_unnamed": []})
+    assert block == ""

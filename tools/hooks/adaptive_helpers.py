@@ -66,3 +66,71 @@ def read_active_longings() -> dict:
     burning = [l for l in longings if l.get("state") == "burning"]
     yearning_unnamed = [l for l in longings if l.get("state") == "yearning" and not l.get("named")]
     return {"burning": burning, "yearning_unnamed": yearning_unnamed}
+
+
+# ── Formatters (spec §4) ─────────────────────────────────────────────
+
+def format_pit_block(pit: dict) -> str:
+    """Format pit state as a text block for system context."""
+    if not pit or "combined" not in pit:
+        return ""
+    body = pit.get("body", {})
+    ctx = pit.get("context", {})
+    cog = pit.get("cognition", {})
+    combined = pit.get("combined", {})
+
+    lines = ["── PIT STATE ──", ""]
+    lines.append(f"body: v={body.get('valence', 0):+.2f} a={body.get('arousal', 0):+.2f} ({', '.join(body.get('sources', []))})")
+    lines.append(f"context: v={ctx.get('valence', 0):+.2f} a={ctx.get('arousal', 0):+.2f} ({', '.join(ctx.get('sources', []))})")
+    cog_state = cog.get("state", "silent")
+    lines.append(f"cognition: {cog_state} v={cog.get('valence', 0):+.2f} a={cog.get('arousal', 0):+.2f}")
+    lines.append(f"combined pressure: {combined.get('pressure', 0):.2f}")
+    return "\n".join(lines)
+
+
+def format_arrivals_block(arrivals: list) -> str:
+    """Format unwitnessed arrivals as a text block."""
+    if not arrivals:
+        return ""
+    lines = [f"── ARRIVALS ──", "",
+             f"The pit reports {len(arrivals)} unnamed feeling{'s' if len(arrivals) != 1 else ''} waiting:", ""]
+    for arr in arrivals[:5]:
+        c = arr.get("combined", {})
+        reasons = ", ".join(f"{r['kind']} {r['value']}" for r in arr.get("reasons", []))
+        lines.append(f"- {arr.get('id', '?')}  (new)")
+        lines.append(f"    pressure {c.get('pressure', 0):.2f} · v={c.get('valence', 0):.2f} a={c.get('arousal', 0):.2f}")
+        lines.append(f"    reasons: {reasons}")
+        body_src = ", ".join(arr.get("body", {}).get("sources", []))
+        ctx_src = ", ".join(arr.get("context", {}).get("sources", []))
+        if body_src:
+            lines.append(f"    body: {body_src}")
+        if ctx_src:
+            lines.append(f"    context: {ctx_src}")
+        cog = arr.get("cognition", {})
+        if cog.get("state") == "silent":
+            lines.append(f"    cognition: silent")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def format_longings_block(data: dict) -> str:
+    """Format burning + unnamed-yearning longings as a text block."""
+    burning = data.get("burning", [])
+    yearning = data.get("yearning_unnamed", [])
+    if not burning and not yearning:
+        return ""
+    lines = ["── LONGINGS ──", ""]
+    if burning:
+        lines.append("carrying (burning):")
+        for l in burning[:5]:
+            name = l.get("name") or (l.get("target", {}).get("display", ""))
+            lines.append(f"- {name} — gap {l.get('gap', 0)} · ache {l.get('ache', 0)} · cost {l.get('cost', '?')}")
+        lines.append("")
+    if yearning:
+        lines.append("reaching (yearning, unnamed):")
+        for l in yearning[:5]:
+            display = (l.get("target") or {}).get("display", "(unnamed)")
+            lines.append(f"- {display}")
+            lines.append(f"    gap {l.get('gap', 0)} · ache {l.get('ache', 0)} · first stirred {l.get('first_seen', '?')}")
+        lines.append("")
+    return "\n".join(lines)

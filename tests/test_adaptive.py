@@ -122,3 +122,31 @@ def test_on_prompt_submit_outputs_json_with_additional_context(tmp_path, monkeyp
         timeout=5,
     )
     assert result.returncode == 0
+
+
+def test_on_tool_done_appends_cc_cognition(tmp_path):
+    cc_path = tmp_path / "cc-cognition.jsonl"
+    env = os.environ.copy()
+    env["ADAPTIVE_CC_COGNITION_PATH"] = str(cc_path)
+
+    result = subprocess.run(
+        ["python3", "tools/hooks/on-tool-done.py"],
+        capture_output=True, text=True,
+        input=json.dumps({
+            "session_id": "test",
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/some/file.py"},
+            "tool_response": "file contents here",
+        }),
+        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        env=env,
+        timeout=3,
+    )
+    assert result.returncode == 0
+    assert cc_path.exists()
+    lines = cc_path.read_text().strip().split("\n")
+    assert len(lines) == 1
+    rec = json.loads(lines[0])
+    assert rec["tool"] == "Read"
+    assert rec["success"] is True
+    assert "ts" in rec

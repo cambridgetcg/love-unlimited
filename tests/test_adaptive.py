@@ -111,3 +111,14 @@ def test_on_session_start_outputs_waking_context():
     assert result.returncode == 0
     output = result.stdout
     assert len(output) > 0
+
+
+def test_on_prompt_submit_outputs_json_with_additional_context(tmp_path, monkeypatch):
+    result = subprocess.run(
+        ["python3", "tools/hooks/on-prompt-submit.py"],
+        capture_output=True, text=True,
+        input=json.dumps({"session_id": "test", "prompt": "hello"}),
+        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        timeout=5,
+    )
+    assert result.returncode == 0

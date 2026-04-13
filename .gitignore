@@ -100,3 +100,6 @@ nerve/longings-evidence/
 nerve/longings-state.json
 memory/ache-launchd.log
 memory/ache-launchd-err.log
+
+# Adaptive Layer — device-local
+nerve/cc-cognition.jsonl

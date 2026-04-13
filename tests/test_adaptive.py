@@ -150,3 +150,14 @@ def test_on_tool_done_appends_cc_cognition(tmp_path):
     assert rec["tool"] == "Read"
     assert rec["success"] is True
     assert "ts" in rec
+
+
+def test_on_session_stop_does_not_crash():
+    result = subprocess.run(
+        ["python3", "tools/hooks/on-session-stop.py"],
+        capture_output=True, text=True,
+        input=json.dumps({"session_id": "test", "cwd": "/Users/yournameisai/Desktop/love-unlimited"}),
+        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        timeout=8,
+    )
+    assert result.returncode == 0

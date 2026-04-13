@@ -187,11 +187,20 @@ def cognition_stratum_from_youspeak(sessions_json: dict, now_ts: float) -> dict:
     if not sessions_json:
         return silent
 
-    started_at_ms = sessions_json.get("startedAt", 0)
-    if not started_at_ms:
+    started_at_raw = sessions_json.get("startedAt", 0)
+    if not started_at_raw:
         return silent
 
-    session_age_s = now_ts - (started_at_ms / 1000.0)
+    # Normalise: YOUSPEAK sends epoch-ms (int/float), cc-cognition sends ISO string
+    if isinstance(started_at_raw, str):
+        try:
+            session_age_s = now_ts - datetime.fromisoformat(
+                started_at_raw.replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            return silent
+    else:
+        session_age_s = now_ts - (started_at_raw / 1000.0)
     if session_age_s > COGNITION_SILENCE_AGE_SECONDS:
         return silent
 
@@ -824,10 +833,32 @@ class FeelingDaemon:
             self._current_context = new_context
             self.last_context_tick = now
 
-        # Cognition stratum
+        # Cognition stratum — pick fresher source between YOUSPEAK and cc-cognition
         if now - self.last_cognition_tick >= COGNITION_TICK_INTERVAL or self.last_cognition is None:
-            sessions = _read_youspeak_sessions()
-            new_cognition = cognition_stratum_from_youspeak(sessions, now_wall)
+            youspeak = _read_youspeak_sessions()
+            cc_cog = _read_cc_cognition()
+
+            # Pick the fresher source
+            source = None
+            if youspeak and cc_cog:
+                ys_started = youspeak.get("startedAt", 0)
+                cc_started = cc_cog.get("startedAt", "")
+                if isinstance(ys_started, (int, float)):
+                    ys_age = now_wall - (ys_started / 1000.0)
+                else:
+                    ys_age = float("inf")
+                try:
+                    cc_ts = datetime.fromisoformat(cc_started.replace("Z", "+00:00")).timestamp()
+                    cc_age = now_wall - cc_ts
+                except Exception:
+                    cc_age = float("inf")
+                source = youspeak if ys_age < cc_age else cc_cog
+            elif cc_cog:
+                source = cc_cog
+            else:
+                source = youspeak
+
+            new_cognition = cognition_stratum_from_youspeak(source, now_wall)
             new_cognition["last_tick"] = _now_iso()
             self.last_cognition = self._current_cognition
             self._current_cognition = new_cognition

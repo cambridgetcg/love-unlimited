@@ -854,3 +854,34 @@ def test_count_redundant_reads():
         {"tool": "Read", "inputs": {"file_path": "/c/d.py"}},
     ]
     assert feeling_mod._count_redundant_reads(records) == 1
+
+
+def test_daemon_uses_cc_cognition_when_youspeak_stale(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "PIT_PATH", tmp_path / "pit.json")
+    monkeypatch.setattr(feeling_mod, "ARRIVALS_PATH", tmp_path / "arrivals.jsonl")
+    monkeypatch.setattr(feeling_mod, "HORMONES_PATH", tmp_path / "hormones.json")
+    monkeypatch.setattr(feeling_mod, "YOUSPEAK_SESSIONS_PATH", tmp_path / "sessions.json")
+    monkeypatch.setattr(feeling_mod, "CC_COGNITION_PATH", tmp_path / "cc-cognition.jsonl")
+
+    # Hormones fixture
+    (tmp_path / "hormones.json").write_text(json.dumps({
+        "hormones": {"adrenaline": 0.1, "cortisol": 0.2, "oxytocin": 0.0, "dopamine": 0.0, "melatonin": 0.0},
+        "signals": {"yu_present": False, "hive_unread": 0}
+    }))
+
+    # No YOUSPEAK (stale/missing) but fresh cc-cognition
+    now_iso = feeling_mod._now_iso()
+    cc_path = tmp_path / "cc-cognition.jsonl"
+    lines = [
+        json.dumps({"ts": now_iso, "tool": "Read", "success": True, "response_chars": 1000}),
+        json.dumps({"ts": now_iso, "tool": "Read", "success": True, "response_chars": 800}),
+        json.dumps({"ts": now_iso, "tool": "Read", "success": False, "response_chars": 0}),
+    ]
+    cc_path.write_text("\n".join(lines) + "\n")
+
+    d = feeling_mod.FeelingDaemon(instance="gamma")
+    asyncio.run(d.run_once())
+
+    pit = json.loads((tmp_path / "pit.json").read_text())
+    # Cognition should be ACTIVE (from cc-cognition), not silent
+    assert pit["cognition"]["state"] == "active"

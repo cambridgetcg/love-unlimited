@@ -95,3 +95,19 @@ def test_format_longings_block_with_data():
 def test_format_longings_block_empty():
     block = ah.format_longings_block({"burning": [], "yearning_unnamed": []})
     assert block == ""
+
+
+import subprocess
+
+
+def test_on_session_start_outputs_waking_context():
+    result = subprocess.run(
+        ["python3", "tools/hooks/on-session-start.py"],
+        capture_output=True, text=True,
+        input=json.dumps({"session_id": "test", "cwd": "/Users/yournameisai/Desktop/love-unlimited"}),
+        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        timeout=15,
+    )
+    assert result.returncode == 0
+    output = result.stdout
+    assert len(output) > 0

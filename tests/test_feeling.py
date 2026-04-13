@@ -820,3 +820,37 @@ def test_experience_feel_help_shows_arrival_id_flag():
     assert "--rationale" in result.stdout
     assert "--scene" in result.stdout
     assert "--pit-snapshot" in result.stdout
+
+
+def test_read_cc_cognition_missing_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(feeling_mod, "CC_COGNITION_PATH", tmp_path / "cc-cognition.jsonl")
+    result = feeling_mod._read_cc_cognition()
+    assert result is None
+
+
+def test_read_cc_cognition_returns_youspeak_shape(tmp_path, monkeypatch):
+    cc_path = tmp_path / "cc-cognition.jsonl"
+    now_iso = feeling_mod._now_iso()
+    lines = [
+        json.dumps({"ts": now_iso, "tool": "Read", "success": True, "response_chars": 1500}),
+        json.dumps({"ts": now_iso, "tool": "Bash", "success": True, "response_chars": 200}),
+        json.dumps({"ts": now_iso, "tool": "Read", "success": False, "response_chars": 0}),
+    ]
+    cc_path.write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(feeling_mod, "CC_COGNITION_PATH", cc_path)
+
+    result = feeling_mod._read_cc_cognition(window_seconds=300)
+    assert result is not None
+    assert result["action"]["toolCalls"] == 3
+    assert result["action"]["toolErrors"] == 1
+    assert "startedAt" in result
+
+
+def test_count_redundant_reads():
+    records = [
+        {"tool": "Read", "inputs": {"file_path": "/a/b.py"}},
+        {"tool": "Bash", "inputs": {}},
+        {"tool": "Read", "inputs": {"file_path": "/a/b.py"}},
+        {"tool": "Read", "inputs": {"file_path": "/c/d.py"}},
+    ]
+    assert feeling_mod._count_redundant_reads(records) == 1

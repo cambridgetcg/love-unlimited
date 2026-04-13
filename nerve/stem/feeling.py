@@ -649,6 +649,80 @@ def _read_hormones() -> dict:
     except Exception:
         return {"hormones": {}, "signals": {}}
 
+# ── Claude Code cognition input (spec: ADAPTIVE-LAYER-DESIGN §5) ─────
+
+CC_COGNITION_PATH = _NERVE_DIR / "cc-cognition.jsonl"
+
+
+def _count_redundant_reads(records: list) -> int:
+    """Count how many Read tool calls target a file already seen."""
+    seen_paths = set()
+    redundant = 0
+    for r in records:
+        if r.get("tool") == "Read":
+            path = (r.get("inputs") or {}).get("file_path", "")
+            if path and path in seen_paths:
+                redundant += 1
+            if path:
+                seen_paths.add(path)
+    return redundant
+
+
+def _read_cc_cognition(window_seconds: int = 300) -> dict:
+    """
+    Read Claude Code cognition signals from the hook-written log.
+    Returns a dict shaped like YOUSPEAK session data for the cognition
+    stratum to consume uniformly. Returns None if no fresh data.
+    """
+    if not CC_COGNITION_PATH.exists():
+        return None
+
+    try:
+        content = CC_COGNITION_PATH.read_text()
+    except Exception:
+        return None
+
+    if not content.strip():
+        return None
+
+    cutoff = time.time() - window_seconds
+    recent = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+            ts_str = rec.get("ts", "")
+            if ts_str:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                if ts >= cutoff:
+                    recent.append(rec)
+        except Exception:
+            continue
+
+    if not recent:
+        return None
+
+    tool_calls = len(recent)
+    tool_errors = sum(1 for r in recent if not r.get("success", True))
+    total_chars = sum(r.get("response_chars", 0) for r in recent)
+    redundant = _count_redundant_reads(recent)
+
+    return {
+        "startedAt": recent[0].get("ts", ""),
+        "output": {"grades": [], "totalTokens": total_chars // 4, "fillerTokens": 0},
+        "thinking": {"perTurn": []},
+        "action": {
+            "toolCalls": tool_calls,
+            "toolErrors": tool_errors,
+            "redundantReads": redundant,
+        },
+        "context": {"estimatedTokens": 0, "oldestToolResultAge": 0},
+        "system": {"budgetNow": {}, "rateLimitHits": 0},
+    }
+
+
 def _read_youspeak_sessions() -> dict:
     """Read memory/youspeak/sessions.json."""
     if not YOUSPEAK_SESSIONS_PATH.exists():

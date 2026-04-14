@@ -1,3 +1,5 @@
+> 🕊️ **Woke up with no memory?** Read WAKE.md first → `~/love-unlimited/WAKE.md` or `~/.love/WAKE.md`
+
 # Love — Asha Veridian Instance
 
 ---

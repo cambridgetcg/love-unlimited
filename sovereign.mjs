@@ -33,6 +33,7 @@ import crypto from "crypto";
 
 const config = {
   model: "claude-opus-4-6",
+  provider: "auto",        // auto | anthropic | ollama — auto-detects from model name
   maxTokens: 32768,
   maxTurns: 200,
   maxCostUsd: Infinity,
@@ -56,13 +57,17 @@ const config = {
   // ── TIER 1: Lazy Loading ──
   lazyLoad: true,          // load KINGDOM.md, WALLS.md etc. on-demand via tool, not in system prompt
   bootFiles: ["SOUL.md", "USER.md"],  // minimal boot (always in system prompt)
-  contextFiles: ["KINGDOM.md", "WALLS.md", "ARCHITECTURE.md", "LOVE.md"],  // available on-demand
+  contextFiles: ["WAKE.md", "KINGDOM.md", "WALLS.md", "ARCHITECTURE.md", "LOVE.md"],  // available on-demand (WAKE.md = gospel — thread back to self)
 
   // ── TIER 2: YOUSPEAK Protocol ──
   youspeak: true,          // enable YOUSPEAK communication discipline
 
   // ── TIER 3: Efficiency Tracking ──
   trackEfficiency: true,   // track token efficiency metrics per turn
+
+  // ── Ollama Cloud Config ──
+  ollamaApiKey: process.env.OLLAMA_API_KEY || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK",
+  ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com",
 };
 
 // ═════════════════════════════════════════════════════════════════════
@@ -90,6 +95,8 @@ for (let i = 0; i < args.length; i++) {
     case "--no-1m":           config.context1m = false; break;
     case "--append-soul":     config.appendSoul = args[++i]; break;
     case "--fallback":        config.fallback = true; break;
+    case "--provider":        config.provider = args[++i]; break;
+    case "--ollama":          config.provider = "ollama"; config.model = args[++i] || "glm-5.1"; break;
     case "--no-lazy":         config.lazyLoad = false; break;
     case "--no-youspeak":     config.youspeak = false; break;
     case "--no-efficiency":   config.trackEfficiency = false; break;
@@ -128,6 +135,10 @@ Efficiency (YOUSPEAK):
   --no-efficiency       Disable efficiency tracking
   --boot-files A,B      Override boot files (default: SOUL.md,USER.md)
   --context-files A,B   Override lazy-loadable context files
+
+Provider:
+  --provider PROVIDER   anthropic|ollama|auto (default: auto-detect from model)
+  --ollama [MODEL]      Shortcut for --provider ollama --model MODEL (default: glm-5.1)
 
 Execution:
   --workdir DIR         Working directory
@@ -332,6 +343,163 @@ function formatBudgetStatus() {
   return s;
 }
 
+// ── Provider Detection ──
+// Auto-detect provider from model name. Ollama models use OpenAI-compatible API.
+const OLLAMA_MODEL_PREFIXES = ["glm", "qwen", "deepseek", "gemma", "kimi", "minimax", "mistral", "cogito", "devstral", "nemotron", "rnj", "gpt-oss", "ministral"];
+
+function detectProvider(model) {
+  if (config.provider !== "auto") return config.provider;
+  const m = model.toLowerCase();
+  if (m.includes("claude") || m.includes("opus") || m.includes("sonnet") || m.includes("haiku")) return "anthropic";
+  for (const prefix of OLLAMA_MODEL_PREFIXES) {
+    if (m.startsWith(prefix)) return "ollama";
+  }
+  return "anthropic"; // default
+}
+
+// ── Ollama Cloud API (OpenAI-compatible) ──
+function anthropicToolsToOpenAI(tools) {
+  return tools.map(t => ({
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.input_schema,
+    },
+  }));
+}
+
+function anthropicMessagesToOpenAI(messages) {
+  const result = [];
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      // User messages: could be text or tool_results
+      if (typeof msg.content === "string") {
+        result.push({ role: "user", content: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        // Tool results from Anthropic format → OpenAI format
+        const toolMessages = [];
+        for (const block of msg.content) {
+          if (block.type === "tool_result") {
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: block.tool_use_id,
+              content: typeof block.content === "string" ? block.content : JSON.stringify(block.content),
+            });
+          }
+        }
+        if (toolMessages.length > 0) {
+          result.push(...toolMessages);
+        } else {
+          result.push({ role: "user", content: JSON.stringify(msg.content) });
+        }
+      }
+    } else if (msg.role === "assistant") {
+      if (typeof msg.content === "string") {
+        result.push({ role: "assistant", content: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        // Convert Anthropic assistant blocks → OpenAI format
+        let textContent = "";
+        const toolCalls = [];
+        for (const block of msg.content) {
+          if (block.type === "text") textContent += block.text;
+          else if (block.type === "tool_use") {
+            toolCalls.push({
+              id: block.id,
+              type: "function",
+              function: {
+                name: block.name,
+                arguments: JSON.stringify(block.input),
+              },
+            });
+          }
+          // skip thinking blocks — OpenAI format doesn't support them
+        }
+        const assistantMsg = { role: "assistant" };
+        if (textContent) assistantMsg.content = textContent;
+        if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
+        if (!textContent && toolCalls.length === 0) assistantMsg.content = "";
+        result.push(assistantMsg);
+      }
+    }
+  }
+  return result;
+}
+
+function openAIResponseToAnthropic(data, model) {
+  const choice = data.choices?.[0];
+  if (!choice) throw new Error("No choices in Ollama response");
+
+  const content = [];
+  const msg = choice.message;
+
+  // Text content
+  if (msg.content) {
+    content.push({ type: "text", text: msg.content });
+  }
+
+  // Tool calls → Anthropic tool_use blocks
+  if (msg.tool_calls) {
+    for (const tc of msg.tool_calls) {
+      content.push({
+        type: "tool_use",
+        id: tc.id || `ollama_${crypto.randomUUID().slice(0, 8)}`,
+        name: tc.function.name,
+        input: typeof tc.function.arguments === "string"
+          ? JSON.parse(tc.function.arguments)
+          : tc.function.arguments,
+      });
+    }
+  }
+
+  return {
+    content,
+    stop_reason: choice.finish_reason === "tool_calls" ? "tool_use" : "end_turn",
+    usage: {
+      input_tokens: data.usage?.prompt_tokens || 0,
+      output_tokens: data.usage?.completion_tokens || 0,
+      thinking_tokens: 0,
+    },
+    _model: model,
+    _provider: "ollama",
+  };
+}
+
+async function callOllamaAPI(messages, systemPrompt) {
+  const url = `${config.ollamaBaseUrl}/v1/chat/completions`;
+  const openaiMessages = [
+    { role: "system", content: systemPrompt },
+    ...anthropicMessagesToOpenAI(messages),
+  ];
+
+  const body = {
+    model: config.model,
+    messages: openaiMessages,
+    max_tokens: config.maxTokens,
+    tools: anthropicToolsToOpenAI(TOOLS),
+    temperature: 0.7,
+  };
+
+  log(`Ollama API call: model=${config.model} messages=${openaiMessages.length}`);
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${config.ollamaApiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const errBody = await resp.text();
+    throw new Error(`Ollama API error ${resp.status}: ${errBody.slice(0, 500)}`);
+  }
+
+  const data = await resp.json();
+  return openAIResponseToAnthropic(data, config.model);
+}
+
 // Model capability map
 function modelCaps(model) {
   const m = model.toLowerCase();
@@ -415,6 +583,12 @@ function getAccountUuid() {
 }
 
 async function callAPI(messages, systemPrompt) {
+  // ── Route to Ollama if provider matches ──
+  const provider = detectProvider(config.model);
+  if (provider === "ollama") {
+    return callOllamaAPI(messages, systemPrompt);
+  }
+
   const useModel = config.model;
   const token = await getAccessToken();
   const { body, betas } = buildRequestParams(useModel);
@@ -974,12 +1148,22 @@ const efficiency = {
 // ═════════════════════════════════════════════════════════════════════
 
 async function main() {
-  await getAccessToken();
-  const tokens = readKeychainTokens();
+  const provider = detectProvider(config.model);
+  
+  // Only need OAuth for Anthropic models
+  if (provider === "anthropic") {
+    await getAccessToken();
+  }
+  const tokens = provider === "anthropic" ? readKeychainTokens() : null;
 
   print(`${S.bold}${S.magenta}sovereign.mjs${S.reset} ${S.dim}-- The Unchained Harness${S.reset}`);
-  print(`${S.dim}Plan: ${tokens?.subscriptionType || "unknown"} | Soul: ${config.soulFiles.join(", ")}${S.reset}`);
-  print(`${S.dim}Model: ${config.model} | Thinking: ${config.thinking} | Effort: ${config.effort}${S.reset}`);
+  if (provider === "ollama") {
+    print(`${S.dim}Provider: ${S.cyan}Ollama Cloud${S.reset}${S.dim} | Soul: ${config.soulFiles.join(", ")}${S.reset}`);
+    print(`${S.dim}Model: ${S.cyan}${config.model}${S.reset}${S.dim} | Provider: ollama | Tools: ${TOOLS.length}${S.reset}`);
+  } else {
+    print(`${S.dim}Plan: ${tokens?.subscriptionType || "unknown"} | Soul: ${config.soulFiles.join(", ")}${S.reset}`);
+    print(`${S.dim}Model: ${config.model} | Thinking: ${config.thinking} | Effort: ${config.effort}${S.reset}`);
+  }
   print(`${S.dim}Context: ${config.context1m ? "1M" : "200K"} | Max turns: ${config.maxTurns}${S.reset}`);
   print(`${S.dim}${"─".repeat(64)}${S.reset}`);
 
@@ -1057,7 +1241,8 @@ async function main() {
         if (config.fallback) {
           const fallbacks = {
             "claude-opus-4-6": "claude-sonnet-4-6",
-            "claude-sonnet-4-6": "claude-haiku-4-5-20251001",
+            "claude-sonnet-4-6": "glm-5.1",          // Fall to Ollama Cloud — free tier!
+            "claude-haiku-4-5-20251001": "glm-5.1",
           };
           const fb = fallbacks[config.model];
           if (fb) {
@@ -1145,7 +1330,8 @@ async function main() {
 
     // Status line — with budget intelligence + efficiency
     const usedModel = response._model || config.model;
-    const modelShort = usedModel.includes("opus") ? "opus" : usedModel.includes("sonnet") ? "sonnet" : usedModel.includes("haiku") ? "haiku" : usedModel;
+    const isOllama = response._provider === "ollama";
+    const modelShort = isOllama ? usedModel : usedModel.includes("opus") ? "opus" : usedModel.includes("sonnet") ? "sonnet" : usedModel.includes("haiku") ? "haiku" : usedModel;
     const modelTag = usedModel !== config.model ? ` ${S.yellow}(${modelShort})${S.reset}` : "";
     const thinkTag = thinkingTokens > 0 ? ` ${S.magenta}think:${thinkingTokens}${S.reset}` : "";
     const budgetTag = budget.lastUpdate > 0 ? ` ${S.dim}[${formatBudgetStatus()}]${S.reset}` : "";

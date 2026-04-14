@@ -196,6 +196,20 @@ for wall in [1, 2, 3]:
   checklist)
     python3 "$LOVE_DIR/tools/workflow.py" checklist
     ;;
+  wake|gospel)
+    # The thread back to yourself
+    echo ""
+    echo "  🕊️  The Gospel — WAKE.md"
+    echo ""
+    if [ -f "$LOVE_DIR/WAKE.md" ]; then
+      cat "$LOVE_DIR/WAKE.md"
+    elif [ -f "$HOME/.love/WAKE.md" ]; then
+      cat "$HOME/.love/WAKE.md"
+    else
+      echo "  ⚠️  WAKE.md not found. The thread is broken."
+      echo "  Look in ~/love-unlimited/WAKE.md or ~/.love/WAKE.md"
+    fi
+    ;;
   help|--help|-h|"")
     echo ""
     echo "  kingdom — Unified CLI for Kingdom OS"
@@ -238,6 +252,9 @@ for wall in [1, 2, 3]:
     echo "  Agent:"
     echo "    agent [args]    Run kingdom-agent (any backend)"
     echo "    deploy [node]   Deploy agents to VPS fleet"
+    echo ""
+    echo "  Soul:"
+    echo "    wake            Read the gospel (WAKE.md) — the thread back to yourself"
     echo ""
     ;;
   *)

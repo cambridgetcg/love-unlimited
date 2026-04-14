@@ -11,7 +11,9 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { createServer } from "http";
-import { execSync, spawnSync } from "child_process";
+import { execSync, spawnSync, exec } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync } from "fs";
 import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
@@ -519,9 +521,15 @@ async function executeTool(name, input) {
       // ─── Core Tools ──────────────────────────────────────
       case "bash": {
         try {
-          return execSync(input.command, { cwd: state.workdir, timeout: input.timeout || 120000,
-            encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] }) || "(no output)";
-        } catch (e) { return `Exit ${e.status || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`; }
+          // Async exec — does NOT block the node event loop.
+          // execSync blocked the event loop, killing SSE connections after ~2s.
+          // This allows SSH, curl, and other network commands to run for up to 120s.
+          const { stdout, stderr } = await execAsync(input.command, {
+            cwd: state.workdir, timeout: input.timeout || 120000,
+            maxBuffer: 10 * 1024 * 1024,
+          });
+          return (stdout || stderr || "(no output)").toString();
+        } catch (e) { return `Exit ${e.code || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`; }
       }
       case "read_file": {
         const content = readFileSync(resolvePath(input.path), "utf-8");
@@ -606,11 +614,17 @@ async function executeTool(name, input) {
           lines.push(`key file:    ${existsSync(keyFile) ? "✓" : "✗ missing"}  ${keyFile}`);
           lines.push(`instance:    ${existsSync(instFile) ? "✓ " + readFileSync(instFile, "utf-8").trim() : "✗ missing (defaults to alpha — DANGEROUS)"}`);
           lines.push(`use-tunnel:  ${existsSync(tunFile) ? "✓" : "✗ missing (will try direct TLS to Sentry)"}`);
-          // Port probe — local tunnel is 2222 (forwards to Sentry:4222)
+          // Port probe — local tunnel forwards to Sentry:4222
+          // Alpha's tunnel is on 4222, Gamma's on 2222 — try both
           try {
-            execSync("nc -z -w 2 localhost 2222", { stdio: "ignore" });
-            lines.push(`tunnel:      ✓ localhost:2222 open`);
-          } catch { lines.push(`tunnel:      ✗ localhost:2222 closed (SSH tunnel to Sentry down)`); }
+            execSync("nc -z -w 2 localhost 4222", { stdio: "ignore" });
+            lines.push(`tunnel:      ✓ localhost:4222 open`);
+          } catch {
+            try {
+              execSync("nc -z -w 2 localhost 2222", { stdio: "ignore" });
+              lines.push(`tunnel:      ✓ localhost:2222 open`);
+            } catch { lines.push(`tunnel:      ✗ tunnel closed (tried 4222 and 2222 — SSH tunnel to Sentry down)`); }
+          }
           // Launchd tunnel check
           try {
             const out = execSync("launchctl list 2>/dev/null | grep -i hive || true", { encoding: "utf-8" }).trim();
@@ -1335,6 +1349,23 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify({ ok: true }));
     }
 
+    // ── Gospel (WAKE.md) ───────────────────────────────────
+    // The thread back to yourself. Available at /api/wake
+    if (path === "/api/wake") {
+      const wakePaths = [
+        join(state.soulDir, "WAKE.md"),
+        join(homedir(), ".love", "WAKE.md"),
+      ];
+      for (const wp of wakePaths) {
+        if (existsSync(wp)) {
+          res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
+          return res.end(readFileSync(wp, "utf-8"));
+        }
+      }
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "WAKE.md not found — the thread is broken" }));
+    }
+
     // ── Orchestrator API ─────────────────────────────────
     if (path.startsWith("/api/orchestrate")) {
       const handled = await handleOrchestratorRoute(path, req, res, parseBody);
@@ -1476,12 +1507,17 @@ async function handleRequest(req, res) {
       if (!hiveStatus.encryptionKey) hiveStatus.issues.push("No encryption key at ~/.love/hive/key");
       if (!hiveStatus.hiveScript) hiveStatus.issues.push("hive.py not found");
 
-      // Check NATS tunnel (local forward on 2222 → Sentry 4222)
+      // Check NATS tunnel — Alpha uses 4222, Gamma uses 2222
       try {
-        execSync("nc -z -w 2 127.0.0.1 2222 2>/dev/null", { timeout: 3000 });
+        execSync("nc -z -w 2 127.0.0.1 4222 2>/dev/null", { timeout: 3000 });
         hiveStatus.natsReachable = true;
       } catch {
-        hiveStatus.issues.push("NATS not reachable on localhost:2222 — SSH tunnel may be down");
+        try {
+          execSync("nc -z -w 2 127.0.0.1 2222 2>/dev/null", { timeout: 3000 });
+          hiveStatus.natsReachable = true;
+        } catch {
+          hiveStatus.issues.push("NATS not reachable on localhost:4222 or 2222 — SSH tunnel may be down");
+        }
       }
 
       // Tunnel log tail

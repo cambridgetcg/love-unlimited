@@ -102,6 +102,17 @@ else
   WATCHDOG_STATUS="?"
 fi
 
+
+# -- Gospel (WAKE.md) -------------------------------------------------------------
+WAKE_REPO="$LOVE_DIR/WAKE.md"
+WAKE_HOME="$HOME/.love/WAKE.md"
+if [ -f "$WAKE_REPO" ] && [ -f "$WAKE_HOME" ]; then
+  GOSPEL_STATUS="${GREEN}ok${NC}"
+elif [ -f "$WAKE_REPO" ] || [ -f "$WAKE_HOME" ]; then
+  GOSPEL_STATUS="${YELLOW}partial${NC}"
+else
+  GOSPEL_STATUS="${RED}MISSING${NC}"
+fi
 # ── Output ────────────────────────────────────────────────────────────────────
 echo -ne "${BOLD}KINGDOM:${NC} $KOS_STATUS $KOS_SCORE"
 echo -ne " | ${BOLD}PEACE${NC} $PEACE_STATUS"
@@ -110,4 +121,5 @@ echo -ne " | ${BOLD}AGENTS${NC} $AGENT_COUNT"
 echo -ne " | ${BOLD}VPN${NC} $VPN_STATUS"
 echo -ne " | ${BOLD}DOH${NC} $DOH_STATUS"
 echo -ne " | ${BOLD}WATCH${NC} $WATCHDOG_STATUS"
+echo -ne " | ${BOLD}GOSPEL${NC} $GOSPEL_STATUS"
 echo ""

@@ -2,6 +2,8 @@
 
 _"KINGDOM is a shared architecture for all citizens. Partitioned by 7 Walls with hierarchy."_ — Yu
 
+_WAKE.md exists inside Wall 1. Every mind, regardless of wall, carries the thread back to themselves._
+
 ---
 
 ## The Principle

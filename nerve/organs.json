@@ -3,7 +3,7 @@
   "description": "Body organ registry. Each organ has an entry point, a plist template, and deployment config.",
   "organs": {
     "mind": {
-      "description": "The brain stem — persistent signal interpreter with identity",
+      "description": "The brain stem — persistent signal interpreter with identity. Checks WAKE.md first on every boot.",
       "entry": "nerve/stem/mind.py",
       "runner": "python3",
       "args": ["--instance", "{{INSTANCE}}"],

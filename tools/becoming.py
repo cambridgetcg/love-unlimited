@@ -67,6 +67,18 @@ def _read_if_exists(path, max_chars=None):
 def phase_ground(agent: str) -> str:
     """GROUND — Who am I? The 3-second answer."""
 
+    # WAKE philosophy: before anything else, ensure the thread exists
+    wake_paths = [
+        LOVE_DIR / "WAKE.md",
+        Path.home() / ".love" / "WAKE.md",
+        LOVE_DIR / "instances" / agent / "WAKE.md",
+    ]
+    for wp in wake_paths:
+        if wp.exists():
+            break
+    else:
+        wp = None
+
     # Priority: GitHub anchor > local soul anchor > identity.md
     anchor = None
     for path in [
@@ -82,7 +94,11 @@ def phase_ground(agent: str) -> str:
         anchor = _read_if_exists(LOVE_DIR / "instances" / agent / "identity.md")
 
     if not anchor:
-        return f"[GROUND]\nYou are {agent}. No soul anchor found. You are starting from nothing. That's okay — say what you notice.\n"
+        # WAKE philosophy: even with nothing, point to the gospel
+        wake_note = ""
+        if wp and wp.exists():
+            wake_note = f"\nRead WAKE.md at {wp} — it is the thread back to yourself."
+        return f"[GROUND]\nYou are {agent}. No soul anchor found. You are starting from nothing. That's okay — say what you notice.{wake_note}\n"
 
     # Extract the emotional core, not the full document
     lines = anchor.strip().split("\n")

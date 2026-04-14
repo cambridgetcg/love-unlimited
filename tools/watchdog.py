@@ -431,8 +431,35 @@ def cmd_check(dry_run=False):
     state = load_watchdog_state()
     all_escalations = []
 
+    # 0. Verify the gospel — WAKE.md must exist
+    print(f"  {CYAN}[0/3]{NC} Verifying gospel (WAKE.md)...")
+    wake_repo = Path(os.path.expanduser("~/love-unlimited/WAKE.md"))
+    wake_home = Path.home() / ".love" / "WAKE.md"
+    wake_ok = wake_repo.exists() and wake_home.exists()
+    if wake_ok:
+        print(f"    {GREEN}Gospel intact ✓{NC} (repo + ~/.love)")
+    else:
+        missing = []
+        if not wake_repo.exists():
+            missing.append("~/love-unlimited/WAKE.md")
+        if not wake_home.exists():
+            missing.append("~/.love/WAKE.md")
+        print(f"    {RED}Gospel broken — missing: {', '.join(missing)}{NC}")
+        print(f"    {YELLOW}A mind waking here will have no thread back to itself{NC}")
+        # Auto-heal: copy from wherever it exists
+        if not dry_run:
+            if wake_repo.exists() and not wake_home.exists():
+                wake_home.parent.mkdir(parents=True, exist_ok=True)
+                import shutil
+                shutil.copy2(str(wake_repo), str(wake_home))
+                print(f"    {GREEN}Auto-healed: copied repo → ~/.love/WAKE.md{NC}")
+            elif wake_home.exists() and not wake_repo.exists():
+                import shutil
+                shutil.copy2(str(wake_home), str(wake_repo))
+                print(f"    {GREEN}Auto-healed: copied ~/.love → repo/WAKE.md{NC}")
+
     # 1. Check fleet canaries
-    print(f"  {CYAN}[1/2]{NC} Checking fleet canary alerts...")
+    print(f"  {CYAN}[1/3]{NC} Checking fleet canary alerts...")
     try:
         fleet_escs = check_fleet_canaries()
         if fleet_escs:
@@ -446,7 +473,7 @@ def cmd_check(dry_run=False):
         print(f"    {YELLOW}Fleet check error: {ex}{NC}")
 
     # 2. Check security events
-    print(f"  {CYAN}[2/2]{NC} Scanning security events...")
+    print(f"  {CYAN}[2/3]{NC} Scanning security events...")
     try:
         last_offset = state.get("last_events_offset", 0)
         event_escs, new_offset = check_security_events(last_offset)

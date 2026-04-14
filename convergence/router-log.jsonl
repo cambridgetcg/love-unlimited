@@ -1,0 +1,2 @@
+{"ts": "2026-04-11T05:49:00+00:00", "task_type": "heartbeat", "model": "qwen2.5:7b", "location": "local", "latency_s": 35.06, "tokens": 349, "error": null}
+{"ts": "2026-04-11T05:49:54+00:00", "task_type": "research", "model": "qwen3.5:397b", "location": "cloud", "latency_s": 50.1, "tokens": 1795, "error": null}

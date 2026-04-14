@@ -1,0 +1,29 @@
+{
+  "cycle": 1,
+  "lastConvergence": "2026-04-14T20:51:30.718Z",
+  "totalMemoriesConverged": 1,
+  "instances": [
+    "alpha",
+    "arbor",
+    "asha",
+    "beta",
+    "crucible",
+    "gamma",
+    "herald",
+    "loom",
+    "nuance",
+    "psalm",
+    "tithe",
+    "vigil"
+  ],
+  "history": [
+    {
+      "cycle": 1,
+      "timestamp": "2026-04-14T20:51:30.718Z",
+      "instances": 12,
+      "pulled": 24,
+      "merged": 1,
+      "stored": 1
+    }
+  ]
+}

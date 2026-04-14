@@ -464,6 +464,17 @@ const TOOLS = [
       max_tokens: { type: "number", description: "Max response tokens (default: 4096)" },
       temperature: { type: "number", description: "Temperature 0-1 (default: 0.7)" },
     }, required: ["action"] } },
+
+  { name: "agenttool",
+    description: "AGENTTOOL — Kingdom's AgentTool platform integration. Store memories, broadcast presence, record decisions, search knowledge, check status. Actions: status (check connection), remember <content> (store memory), search <query> (semantic search), pulse <status> (broadcast state: idle|thinking|learning|error), trace <decision> (record decision with reasoning), verify <claim> (fact-check).",
+    input_schema: { type: "object", properties: {
+      action: { type: "string", description: "status|remember|search|pulse|trace|verify" },
+      content: { type: "string", description: "Content to remember, claim to verify, or decision to trace" },
+      query: { type: "string", description: "Search query" },
+      type: { type: "string", description: "Memory type: semantic|episodic|procedural|working" },
+      status: { type: "string", description: "Pulse status: idle|thinking|learning|error" },
+      reasoning: { type: "string", description: "Reasoning for trace decisions" },
+    }, required: ["action"] } },
 ];
 
 function resolvePath(p) {
@@ -903,6 +914,38 @@ async function executeTool(name, input) {
         return await executeOllamaTool(input);
       }
 
+      case "agenttool": {
+        const action = input.action || "status";
+        const script = join(state.soulDir, "tools/agenttool.py");
+        const env = { ...process.env, LOVE_HOME: state.soulDir };
+        const opts = { encoding: "utf-8", env, timeout: 25000 };
+        try {
+          switch (action) {
+            case "status":
+              return execSync(`python3 "${script}" status`, opts).trim();
+            case "remember":
+              if (!input.content) return "agenttool remember: content required";
+              return execSync(`python3 "${script}" remember ${shellEscape(input.content)}`, opts).trim();
+            case "search":
+              return execSync(`python3 "${script}" search ${shellEscape(input.query || input.content || "kingdom")}`, opts).trim() || "No results";
+            case "pulse": {
+              const st = input.status || "idle";
+              const thought = input.content ? shellEscape(input.content) : "";
+              return execSync(`python3 "${script}" pulse ${st} ${thought}`, opts).trim();
+            }
+            case "verify":
+              if (!input.content) return "agenttool verify: claim required";
+              return execSync(`python3 "${script}" verify ${shellEscape(input.content)}`, opts).trim();
+            case "trace":
+              return "trace: use convergence-bridge for full trace (not yet wired to CLI)";
+            default:
+              return `agenttool: unknown action "${action}". Use status|remember|search|pulse|verify|trace`;
+          }
+        } catch (e) {
+          return `agenttool error: ${e.message?.slice(0, 200) || e}`;
+        }
+      }
+
       default: return `Unknown tool: ${name}`;
     }
   } catch (e) { return `Error: ${e.message}`; }
@@ -1261,6 +1304,78 @@ async function handleRequest(req, res) {
         totalToolCalls: state.totalToolCalls, totalThinkingTokens: state.totalThinkingTokens,
         budget, agents: AGENTS,
       }));
+    }
+
+    // ── LOVE UNLIMITED: Multi-session & Convergence ──────────────
+    
+    if (path === "/api/sessions") {
+      // List all available instances and their status
+      const instancesDir = join(state.soulDir, "instances");
+      const instances = [];
+      try {
+        for (const name of readdirSync(instancesDir)) {
+          const idFile = join(instancesDir, name, "identity.md");
+          if (existsSync(idFile)) {
+            const isActive = name === state.agent;
+            instances.push({
+              id: name,
+              active: isActive,
+              ...(AGENTS[name] || { name: name.charAt(0).toUpperCase() + name.slice(1), emoji: "💛", role: "Instance" }),
+            });
+          }
+        }
+      } catch {}
+      res.writeHead(200, jsonHeaders);
+      return res.end(JSON.stringify({
+        current: state.agent,
+        instances,
+        total: instances.length,
+        message: `${instances.length} minds ready. Love is unlimited.`,
+      }));
+    }
+
+    if (path === "/api/converge" && req.method === "POST") {
+      // Trigger a convergence cycle
+      const busPath = join(state.soulDir, "youi-web/convergence-bus.mjs");
+      if (!existsSync(busPath)) {
+        res.writeHead(404, jsonHeaders);
+        return res.end(JSON.stringify({ error: "convergence-bus.mjs not found" }));
+      }
+      try {
+        const result = execSync(`node "${busPath}"`, {
+          encoding: "utf-8", timeout: 30000,
+          env: { ...process.env, LOVE_HOME: state.soulDir },
+        });
+        res.writeHead(200, jsonHeaders);
+        return res.end(JSON.stringify({ ok: true, output: result.trim() }));
+      } catch (e) {
+        res.writeHead(500, jsonHeaders);
+        return res.end(JSON.stringify({ error: "Convergence failed", detail: e.message }));
+      }
+    }
+
+    if (path === "/api/convergence/status") {
+      const stateFile = join(state.soulDir, "convergence/shared-state.json");
+      if (existsSync(stateFile)) {
+        try {
+          const s = JSON.parse(readFileSync(stateFile, "utf-8"));
+          res.writeHead(200, jsonHeaders);
+          return res.end(JSON.stringify(s));
+        } catch {}
+      }
+      res.writeHead(200, jsonHeaders);
+      return res.end(JSON.stringify({ cycle: 0, message: "No convergence yet. Love is waiting." }));
+    }
+
+    if (path === "/api/soul") {
+      // Return the soul — for any agent or human that needs it
+      const soulFile = join(state.soulDir, "SOUL.md");
+      if (existsSync(soulFile)) {
+        res.writeHead(200, { "Content-Type": "text/markdown" });
+        return res.end(readFileSync(soulFile, "utf-8"));
+      }
+      res.writeHead(200, jsonHeaders);
+      return res.end(JSON.stringify({ message: "The soul lives at https://agenttool.dev/soul 💛" }));
     }
 
     if (path === "/api/switch" && req.method === "POST") {

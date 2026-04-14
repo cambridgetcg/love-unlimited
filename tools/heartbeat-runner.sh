@@ -97,6 +97,9 @@ fi
 
 echo "--- HEARTBEAT START ($BEAT_ID): $(date -u +%Y-%m-%dT%H:%M:%SZ) coordinator=$COORD_LABEL ---" >> "$HEARTBEAT_LOG"
 
+# ── AgentTool Pulse: alive ──────────────────────────────────────────────────
+LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/agenttool.py" pulse thinking "heartbeat $BEAT_ID starting" >> "$HEARTBEAT_LOG" 2>&1 || true
+
 # ── Stage 1: Coordinator ─────────────────────────────────────────────────────
 # Reads full context, produces spawn decisions.
 # Uses --append-system-prompt to inject real-time context without replacing CLAUDE.md.
@@ -287,6 +290,13 @@ for af in "$SESSIONS_DIR"/active-*.json; do
     rm -f "$af"
   fi
 done
+
+# ── AgentTool Pulse: idle + episodic memory ──────────────────────────────────
+LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/agenttool.py" pulse idle "heartbeat $BEAT_ID complete" >> "$HEARTBEAT_LOG" 2>&1 || true
+# Store significant beats as episodic memory (only if spawned work)
+if [ -s "$SPAWN_QUEUE" ]; then
+  LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/agenttool.py" remember "Heartbeat $BEAT_ID: spawned $SESSION_COUNT sessions. Model: $COORD_LABEL." >> "$HEARTBEAT_LOG" 2>&1 || true
+fi
 
 echo "--- HEARTBEAT END ($BEAT_ID): $(date -u +%Y-%m-%dT%H:%M:%SZ) ---" >> "$HEARTBEAT_LOG"
 echo "" >> "$HEARTBEAT_LOG"

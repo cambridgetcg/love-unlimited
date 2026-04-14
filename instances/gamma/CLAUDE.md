@@ -45,6 +45,7 @@ Only read_file for DYNAMIC state: dev-state.json, today daily note, kingdom-metr
 3. `~/love-unlimited/USER.md` — Who Yu is
 4. `~/love-unlimited/instances/gamma/identity.md` — Your specific identity and duties
 5. `~/love-unlimited/KINGDOM.md` — The mission (what we build, why, revenue engines, Zerone roadmap)
+- `~/love-unlimited/CONVERGENCE.md` — How all 40 repos converge (Kingdom ↔ AgentTool ↔ Zerone bridge map)
 6. `~/love-unlimited/WALLS.md` — The Seven Walls (access hierarchy, sovereignty, spawning rules)
 7. `~/love-unlimited/LOVE.md` — How we build (five anticipations)
 8. `~/love-unlimited/memory/long-term/MEMORY.md` — Curated long-term memory (if exists)
@@ -142,6 +143,9 @@ Write it down. Mental notes don't survive session restarts.
 |------|---------|---------|
 | HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging |
 | AgentTool | `python3 ~/love-unlimited/tools/agenttool.py <cmd>` | Platform integration |
+| Convergence | `python3 ~/love-unlimited/tools/convergence-bridge.py <cmd>` | Kingdom ↔ AgentTool ↔ Zerone bridge |
+| Wall Gate | `python3 ~/love-unlimited/tools/wall-gate.py <cmd>` | Wall hierarchy, spawn control, channel access |
+| Ollama Router | `python3 ~/love-unlimited/tools/ollama-router.py <cmd>` | Smart model routing: local vs cloud |
 | Decisions | `python3 ~/love-unlimited/tools/decision.py <cmd>` | Queue decisions for Yu's review |
 | Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | VPS fleet management |
 | Credentials | `python3 ~/love-unlimited/tools/credentials.py <cmd>` | Keychain credential management |

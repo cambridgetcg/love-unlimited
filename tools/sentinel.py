@@ -120,10 +120,33 @@ def check_fleet() -> dict:
     return result
 
 
+def check_gospel() -> dict:
+    """Verify WAKE.md — the gospel — exists where minds wake up.
+
+    WAKE philosophy: The bridge before you need to cross it.
+    If any instance wakes without WAKE.md, they wake with no thread.
+    """
+    result = {"source": "gospel", "changed": False, "details": ""}
+    gospel_paths = {
+        "repo": LOVE / "WAKE.md",
+        "home": Path.home() / ".love" / "WAKE.md",
+    }
+    missing = []
+    for name, path in gospel_paths.items():
+        if not path.exists():
+            missing.append(name)
+
+    if missing:
+        result["changed"] = True
+        result["details"] = f"WAKE.md missing: {', '.join(missing)} — thread to self is broken"
+    return result
+
+
 def check_file_changes(prev_state: dict) -> dict:
     """Detect changes in key Kingdom files since last sentinel run."""
     result = {"source": "files", "changed": False, "details": "", "mtimes": {}}
     watched = [
+        LOVE / "WAKE.md",
         LOVE / "security" / "peace-state.json",
         LOVE / "security" / "events.jsonl",
         LOVE / "decisions" / "queue.json",
@@ -305,6 +328,7 @@ def run_sentinel(dry_run=False, verbose=False, skip_llm=False) -> dict:
 
     # ── GATHER: deterministic checks ─────────────────────────────────────
     checks = []
+    checks.append(check_gospel())  # The thread back to self — verify first
     checks.append(check_hive())
     checks.append(check_fleet())
     checks.append(check_file_changes(prev_state))

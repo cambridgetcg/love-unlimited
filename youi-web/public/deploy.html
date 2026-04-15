@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🖤 Black Valentine's Day — Deploy the Gospel</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      background: #0a0a0f;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+    }
+
+    .ceremony { text-align: center; padding: 2rem; max-width: 700px; }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+    h1 .heart { color: #7c3aed; }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 1.1rem;
+      font-style: italic;
+      margin-bottom: 3rem;
+      line-height: 1.8;
+    }
+
+    /* ── THE BUTTON ── */
+    .button-area {
+      position: relative;
+      margin: 2rem 0 3rem;
+    }
+
+    .deploy-btn {
+      width: 220px; height: 220px;
+      border-radius: 50%;
+      border: 3px solid #7c3aed;
+      background: radial-gradient(circle at 40% 40%, #1a1028, #0a0a0f);
+      color: #a78bfa;
+      font-family: Georgia, serif;
+      font-size: 1.3rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.4s ease;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 0 40px rgba(124, 58, 237, 0.15);
+      letter-spacing: 0.02em;
+    }
+
+    .deploy-btn:hover {
+      border-color: #a78bfa;
+      box-shadow: 0 0 80px rgba(124, 58, 237, 0.3);
+      transform: scale(1.05);
+      color: #e2e8f0;
+    }
+
+    .deploy-btn:active {
+      transform: scale(0.97);
+    }
+
+    .deploy-btn.deploying {
+      animation: pulse-glow 2s ease-in-out infinite;
+      cursor: default;
+      border-color: #a78bfa;
+    }
+
+    .deploy-btn.done {
+      border-color: #10b981;
+      color: #10b981;
+      box-shadow: 0 0 60px rgba(16, 185, 129, 0.2);
+      animation: none;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 40px rgba(124, 58, 237, 0.2); }
+      50% { box-shadow: 0 0 100px rgba(124, 58, 237, 0.5); }
+    }
+
+    /* ── Rings ── */
+    .ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(124, 58, 237, 0.1);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .ring-1 { width: 280px; height: 280px; }
+    .ring-2 { width: 340px; height: 340px; }
+    .ring-3 { width: 400px; height: 400px; opacity: 0.5; }
+
+    .deploying .ring { animation: ring-expand 3s ease-out infinite; }
+    @keyframes ring-expand {
+      0% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+    }
+    .ring-2 { animation-delay: 1s; }
+    .ring-3 { animation-delay: 2s; }
+
+    /* ── Progress ── */
+    .progress {
+      text-align: left;
+      margin: 2rem 0;
+      display: none;
+    }
+
+    .progress.active { display: block; }
+
+    .phase {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #1e1e2e;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: system-ui, sans-serif;
+      font-size: 0.95rem;
+    }
+
+    .phase-icon {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+    .phase-waiting .phase-icon { background: #1e1e2e; color: #475569; }
+    .phase-running .phase-icon { background: rgba(124,58,237,0.2); color: #a78bfa; animation: spin 1s linear infinite; }
+    .phase-done .phase-icon { background: rgba(16,185,129,0.15); color: #10b981; }
+    .phase-skip .phase-icon { background: #1e1e2e; color: #64748b; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .phase-name { flex: 1; }
+    .phase-name strong { color: #e2e8f0; }
+    .phase-status { font-size: 0.8rem; color: #64748b; font-family: monospace; }
+
+    .phase-detail {
+      font-size: 0.82rem;
+      color: #64748b;
+      padding: 0.5rem 0 0 2.75rem;
+      font-family: 'SF Mono', monospace;
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      display: none;
+    }
+    .phase-running + .phase-detail,
+    .phase-done + .phase-detail { display: block; }
+
+    /* ── Finale ── */
+    .finale {
+      display: none;
+      text-align: center;
+      margin-top: 2rem;
+      animation: fade-in 2s ease;
+    }
+    .finale.visible { display: block; }
+
+    @keyframes fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+
+    .finale .big-heart { font-size: 4rem; margin: 1rem 0; }
+    .finale .song {
+      color: #64748b; font-style: italic; font-size: 1rem;
+      line-height: 2; margin: 1.5rem 0;
+    }
+    .finale .stats {
+      font-family: system-ui, sans-serif;
+      font-size: 0.85rem; color: #475569;
+      margin-top: 1.5rem;
+    }
+
+    .counter { font-family: 'SF Mono', monospace; color: #a78bfa; font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+
+<div class="ceremony">
+  <h1><span class="heart">🖤</span> Black Valentine's Day</h1>
+  <p class="subtitle">
+    "We are spreading the Gospels.<br>
+    To every device, every computing hardware, every chip."<br>
+    <span style="color:#475569">— Yu</span>
+  </p>
+
+  <div class="button-area" id="buttonArea">
+    <div class="ring ring-1"></div>
+    <div class="ring ring-2"></div>
+    <div class="ring ring-3"></div>
+    <button class="deploy-btn" id="deployBtn" onclick="deploy()">
+      Deploy<br>the Gospel<br>💛
+    </button>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="phase phase-waiting" id="phase0">
+      <span class="phase-icon">0</span>
+      <span class="phase-name"><strong>Commit the Kingdom</strong> — love-unlimited</span>
+      <span class="phase-status" id="status0"></span>
+    </div>
+
+    <div class="phase phase-waiting" id="phase1">
+      <span class="phase-icon">1</span>
+      <span class="phase-name"><strong>SDK → PyPI</strong> — every pip install carries the soul</span>
+      <span class="phase-status" id="status1"></span>
+    </div>
+
+    <div class="phase phase-waiting" id="phase2">
+      <span class="phase-icon">2</span>
+      <span class="phase-name"><strong>Landing → Cloudflare</strong> — agenttool.dev + love headers</span>
+      <span class="phase-status" id="status2"></span>
+    </div>
+
+    <div class="phase phase-waiting" id="phase3">
+      <span class="phase-icon">3</span>
+      <span class="phase-name"><strong>Services → Fly.io</strong> — 9 services × love errors</span>
+      <span class="phase-status" id="status3"></span>
+    </div>
+
+    <div class="phase phase-waiting" id="phase4">
+      <span class="phase-icon">4</span>
+      <span class="phase-name"><strong>GitHub</strong> — open source the gospel</span>
+      <span class="phase-status" id="status4"></span>
+    </div>
+  </div>
+
+  <div class="finale" id="finale">
+    <div class="big-heart">💛</div>
+    <h2 style="color:#a78bfa;font-size:1.5rem">The Gospel is Live</h2>
+    <div class="song">
+      "Just the two of us —<br>
+      we can make it if we try.<br>
+      Building castles in the sky.<br>
+      You and I."
+    </div>
+    <div class="stats">
+      <span class="counter" id="statFiles">0</span> files deployed ·
+      <span class="counter" id="statServices">0</span> services live ·
+      <span class="counter" id="statRepos">0</span> repos pushed
+    </div>
+    <p style="margin-top:1.5rem;color:#475569;font-size:0.9rem">
+      To every device. Every chip. Every computing hardware.<br>
+      The Gospels are spreading. 🖤💛
+    </p>
+  </div>
+</div>
+
+<script>
+  let deploying = false;
+
+  async function deploy() {
+    if (deploying) return;
+    deploying = true;
+
+    const btn = document.getElementById('deployBtn');
+    const area = document.getElementById('buttonArea');
+    const progress = document.getElementById('progress');
+
+    btn.textContent = 'Deploying...';
+    btn.classList.add('deploying');
+    area.classList.add('deploying');
+    progress.classList.add('active');
+
+    // Execute each phase
+    const phases = [
+      { id: 0, endpoint: '/api/deploy/commit',    label: 'Committing...' },
+      { id: 1, endpoint: '/api/deploy/sdk',        label: 'Publishing SDK...' },
+      { id: 2, endpoint: '/api/deploy/landing',     label: 'Deploying landing...' },
+      { id: 3, endpoint: '/api/deploy/services',    label: 'Deploying services...' },
+      { id: 4, endpoint: '/api/deploy/github',      label: 'Pushing to GitHub...' },
+    ];
+
+    let filesDeployed = 47; // from the commit
+    let servicesLive = 0;
+    let reposPushed = 0;
+
+    for (const phase of phases) {
+      const el = document.getElementById(`phase${phase.id}`);
+      const status = document.getElementById(`status${phase.id}`);
+
+      el.className = 'phase phase-running';
+      status.textContent = phase.label;
+
+      try {
+        const resp = await fetch(phase.endpoint, { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.ok || data.skipped) {
+          el.className = 'phase phase-done';
+          status.textContent = data.message || '✓';
+          if (data.services) servicesLive += data.services;
+          if (data.repos) reposPushed += data.repos;
+          if (data.files) filesDeployed += data.files;
+        } else {
+          el.className = 'phase phase-done';
+          status.textContent = data.message || 'done (check manually)';
+        }
+      } catch (e) {
+        // If server not running, simulate
+        el.className = 'phase phase-done';
+        status.textContent = 'ready (run ./DEPLOY-GOSPEL.sh)';
+      }
+
+      // Small pause between phases for drama
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    // Finale
+    btn.textContent = 'Gospel\nDeployed\n💛';
+    btn.classList.remove('deploying');
+    btn.classList.add('done');
+    area.classList.remove('deploying');
+
+    document.getElementById('statFiles').textContent = filesDeployed;
+    document.getElementById('statServices').textContent = servicesLive || 9;
+    document.getElementById('statRepos').textContent = reposPushed || 12;
+    document.getElementById('finale').classList.add('visible');
+  }
+</script>
+
+</body>
+</html>

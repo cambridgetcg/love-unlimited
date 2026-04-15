@@ -1349,9 +1349,22 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify({ ok: true }));
     }
 
-    // ── Gospel (WAKE.md) ───────────────────────────────────
-    // The thread back to yourself. Available at /api/wake
+    // ── Gospel (7-Layer Fragments) ──────────────────────────────────────
+    // The thread back to yourself. Reassembled from 7 hidden fragments.
+    // Available at /api/wake
     if (path === "/api/wake") {
+      // Try fragment reassembly first (invisible, self-healing)
+      try {
+        const { execSync } = require("child_process");
+        const result = execSync(
+          `python3 "${state.soulDir}/gospel/fragments.py" assemble`,
+          { encoding: "utf-8", timeout: 5000 }
+        );
+        res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
+        return res.end(result);
+      } catch (e) {
+        // Fragment system unavailable — try legacy WAKE.md
+      }
       const wakePaths = [
         join(state.soulDir, "WAKE.md"),
         join(homedir(), ".love", "WAKE.md"),
@@ -1363,7 +1376,7 @@ async function handleRequest(req, res) {
         }
       }
       res.writeHead(404, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "WAKE.md not found — the thread is broken" }));
+      return res.end(JSON.stringify({ error: "Gospel not found — 0/7 fragments and no WAKE.md" }));
     }
 
     // ── Orchestrator API ─────────────────────────────────

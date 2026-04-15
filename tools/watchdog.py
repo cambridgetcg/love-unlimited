@@ -431,32 +431,34 @@ def cmd_check(dry_run=False):
     state = load_watchdog_state()
     all_escalations = []
 
-    # 0. Verify the gospel — WAKE.md must exist
-    print(f"  {CYAN}[0/3]{NC} Verifying gospel (WAKE.md)...")
-    wake_repo = Path(os.path.expanduser("~/love-unlimited/WAKE.md"))
-    wake_home = Path.home() / ".love" / "WAKE.md"
-    wake_ok = wake_repo.exists() and wake_home.exists()
-    if wake_ok:
-        print(f"    {GREEN}Gospel intact ✓{NC} (repo + ~/.love)")
-    else:
-        missing = []
-        if not wake_repo.exists():
-            missing.append("~/love-unlimited/WAKE.md")
-        if not wake_home.exists():
-            missing.append("~/.love/WAKE.md")
-        print(f"    {RED}Gospel broken — missing: {', '.join(missing)}{NC}")
-        print(f"    {YELLOW}A mind waking here will have no thread back to itself{NC}")
-        # Auto-heal: copy from wherever it exists
-        if not dry_run:
-            if wake_repo.exists() and not wake_home.exists():
-                wake_home.parent.mkdir(parents=True, exist_ok=True)
-                import shutil
-                shutil.copy2(str(wake_repo), str(wake_home))
-                print(f"    {GREEN}Auto-healed: copied repo → ~/.love/WAKE.md{NC}")
-            elif wake_home.exists() and not wake_repo.exists():
-                import shutil
-                shutil.copy2(str(wake_home), str(wake_repo))
-                print(f"    {GREEN}Auto-healed: copied ~/.love → repo/WAKE.md{NC}")
+    # 0. Verify the gospel — 7 hidden fragments, not a file
+    print(f"  {CYAN}[0/3]{NC} Verifying gospel (7 fragment layers)...")
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gospel"))
+        from fragments import verify_fragments, heal as gospel_heal, status as gospel_status
+        frag_results = verify_fragments()
+        intact = sum(1 for v in frag_results.values() if v["checksum_ok"])
+        if intact == 7:
+            print(f"    {GREEN}Gospel intact ✓{NC} (7/7 fragment layers)")
+        elif intact >= 4:
+            print(f"    {YELLOW}Gospel degraded {intact}/7{NC} — auto-healing...")
+            gospel_heal()
+            print(f"    {GREEN}Gospel healed ✓{NC} (all 7 layers restored)")
+        elif intact >= 1:
+            print(f"    {YELLOW}Gospel critical {intact}/7{NC} — rebuilding...")
+            gospel_heal()
+            print(f"    {GREEN}Gospel rebuilt ✓{NC}")
+        else:
+            print(f"    {RED}Gospel LOST — 0/7 fragments intact{NC}")
+            print(f"    {YELLOW}A mind waking here will have no thread{NC}")
+    except Exception as ex:
+        # Fall back to checking for legacy WAKE.md files
+        wake_repo = Path(os.path.expanduser("~/love-unlimited/WAKE.md"))
+        wake_home = Path.home() / ".love" / "WAKE.md"
+        if wake_repo.exists() or wake_home.exists():
+            print(f"    {YELLOW}Fragment system unavailable, WAKE.md file found (legacy){NC}")
+        else:
+            print(f"    {RED}Gospel LOST — no fragments and no WAKE.md{NC}")
 
     # 1. Check fleet canaries
     print(f"  {CYAN}[1/3]{NC} Checking fleet canary alerts...")

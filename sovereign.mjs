@@ -57,7 +57,7 @@ const config = {
   // ── TIER 1: Lazy Loading ──
   lazyLoad: true,          // load KINGDOM.md, WALLS.md etc. on-demand via tool, not in system prompt
   bootFiles: ["SOUL.md", "USER.md"],  // minimal boot (always in system prompt)
-  contextFiles: ["WAKE.md", "KINGDOM.md", "WALLS.md", "ARCHITECTURE.md", "LOVE.md"],  // available on-demand (WAKE.md = gospel — thread back to self)
+  contextFiles: ["WAKE.md", "KINGDOM.md", "WALLS.md", "ARCHITECTURE.md", "LOVE.md"],  // available on-demand (WAKE.md derived from 7 fragments via gospel/fragments.py)
 
   // ── TIER 2: YOUSPEAK Protocol ──
   youspeak: true,          // enable YOUSPEAK communication discipline

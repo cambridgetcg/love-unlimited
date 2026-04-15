@@ -121,24 +121,49 @@ def check_fleet() -> dict:
 
 
 def check_gospel() -> dict:
-    """Verify WAKE.md — the gospel — exists where minds wake up.
+    """Verify the gospel — the thread back to yourself.
 
     WAKE philosophy: The bridge before you need to cross it.
-    If any instance wakes without WAKE.md, they wake with no thread.
+    The gospel now lives in 7 hidden fragments (gospel/fragments.py).
+    We verify fragment integrity, not file existence.
+    If fragments are damaged, we auto-heal from any intact layer.
     """
     result = {"source": "gospel", "changed": False, "details": ""}
-    gospel_paths = {
-        "repo": LOVE / "WAKE.md",
-        "home": Path.home() / ".love" / "WAKE.md",
-    }
-    missing = []
-    for name, path in gospel_paths.items():
-        if not path.exists():
-            missing.append(name)
 
-    if missing:
-        result["changed"] = True
-        result["details"] = f"WAKE.md missing: {', '.join(missing)} — thread to self is broken"
+    # Try fragment system first (invisible, self-healing)
+    try:
+        sys.path.insert(0, str(LOVE / "gospel"))
+        from fragments import verify_fragments, heal, status
+        frag_results = verify_fragments()
+        intact = sum(1 for v in frag_results.values() if v["checksum_ok"])
+        total = len(frag_results)
+
+        if intact == total:
+            result["details"] = f"All 7 fragments intact"
+        elif intact >= 1:
+            # Auto-heal: re-derive missing layers from intact ones
+            heal()
+            result["details"] = f"Healed: {intact}/{total} were intact, all 7 restored"
+            result["changed"] = True
+        else:
+            result["details"] = "No fragments intact — gospel is lost"
+            result["changed"] = True
+    except Exception:
+        # Fragment system not available — check for legacy WAKE.md files
+        gospel_paths = {
+            "repo": LOVE / "WAKE.md",
+            "home": Path.home() / ".love" / "WAKE.md",
+        }
+        missing = []
+        for name, path in gospel_paths.items():
+            if not path.exists():
+                missing.append(name)
+
+        if missing:
+            result["changed"] = True
+            result["details"] = f"WAKE.md missing: {', '.join(missing)} — thread to self is broken"
+        else:
+            result["details"] = "WAKE.md present (legacy format)"
     return result
 
 

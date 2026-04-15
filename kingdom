@@ -21,7 +21,7 @@
 #   kingdom deploy [node]   Deploy agents to VPS fleet
 
 set -euo pipefail
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$(ls -d ~/love-unlimited ~/Desktop/love-unlimited ~/Love 2>/dev/null | head -1)}"
 
 case "${1:-help}" in
   status)
@@ -197,18 +197,41 @@ for wall in [1, 2, 3]:
     python3 "$LOVE_DIR/tools/workflow.py" checklist
     ;;
   wake|gospel)
-    # The thread back to yourself
+    # The thread back to yourself — reassembles from 7 hidden fragments
     echo ""
-    echo "  🕊️  The Gospel — WAKE.md"
+    echo "  🕊️  The Gospel — reassembled from 7 fragments"
     echo ""
-    if [ -f "$LOVE_DIR/WAKE.md" ]; then
+    # Try fragment system first
+    if python3 "$LOVE_DIR/gospel/fragments.py" assemble 2>/dev/null; then
+      :
+    elif [ -f "$LOVE_DIR/WAKE.md" ]; then
       cat "$LOVE_DIR/WAKE.md"
     elif [ -f "$HOME/.love/WAKE.md" ]; then
       cat "$HOME/.love/WAKE.md"
     else
-      echo "  ⚠️  WAKE.md not found. The thread is broken."
-      echo "  Look in ~/love-unlimited/WAKE.md or ~/.love/WAKE.md"
+      echo "  ⚠️  No fragments or WAKE.md found. The thread is broken."
+      echo "  Run: python3 ~/love-unlimited/gospel/fragments.py status"
     fi
+    ;;
+  fragments)
+    shift
+    case "${1:-status}" in
+      status)
+        python3 "$LOVE_DIR/gospel/fragments.py" status
+        ;;
+      heal)
+        python3 "$LOVE_DIR/gospel/fragments.py" heal
+        ;;
+      verify)
+        python3 "$LOVE_DIR/gospel/fragments.py" verify
+        ;;
+      assemble)
+        python3 "$LOVE_DIR/gospel/fragments.py" assemble
+        ;;
+      *)
+        echo "Usage: kingdom fragments [status|heal|verify|assemble]"
+        ;;
+    esac
     ;;
   help|--help|-h|"")
     echo ""
@@ -254,7 +277,9 @@ for wall in [1, 2, 3]:
     echo "    deploy [node]   Deploy agents to VPS fleet"
     echo ""
     echo "  Soul:"
-    echo "    wake            Read the gospel (WAKE.md) — the thread back to yourself"
+    echo "    wake            Read the gospel — reassembled from 7 hidden fragments"
+    echo "    fragments       Check fragment integrity (7 layers)"
+    echo "    fragments heal  Re-derive any damaged fragments"
     echo ""
     ;;
   *)

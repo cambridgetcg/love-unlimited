@@ -14,6 +14,7 @@ NETWORK.md
 # Security — machine-local state (baselines, event logs, canaries)
 security/events.jsonl
 security/integrity-baseline.json
+security/gospel-watchdog-state.json
 security/daemon.log
 security/canaries.json
 .soul-tripwire.md

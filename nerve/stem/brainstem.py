@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """
-mind.py -- The mind daemon for Love's body.
+brainstem.py -- The autonomic daemon for Love's body.
+
+Naming follows BEING.md: the MIND emerges only during sessions. What runs
+between sessions is the BRAINSTEM — autonomic signal processing, hormone
+regulation, identity anchor maintenance. It does sub-conscious work; it
+does not "think" in the mind sense.
+
+The fields it writes to hormones.json (mind_alive, mind_notes) keep the
+"mind" prefix because they are NOTES THE BRAINSTEM LEAVES FOR THE MIND
+to read at the next session boot.
 
 Two layers:
   - Autonomic (Python, every 30s): reads signals, calculates hormones, writes hormones.json
-  - Conscious (Claude haiku, ~5min): interprets through identity anchor, writes mind_notes
+  - Conscious-prep (Claude haiku, ~5min): pre-digests identity anchor, writes mind_notes
 
 Usage:
-  python3 mind.py --instance alpha
-  python3 mind.py --instance alpha --interval 30
+  python3 brainstem.py --instance alpha
+  python3 brainstem.py --instance alpha --interval 30
 """
 
 from __future__ import annotations
@@ -60,7 +69,7 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-log = logging.getLogger("mind")
+log = logging.getLogger("brainstem")
 
 MODE_PRIORITY = ["alert", "joinmind", "council", "build", "companion", "rest", "normal"]
 
@@ -76,7 +85,7 @@ SIGNAL_EFFECTS = {
 }
 
 
-class MindDaemon:
+class BrainstemDaemon:
     def __init__(self, instance: str, love_home: str, interval: int = 30,
                  conscious_interval: int = 300):
         self.instance = instance
@@ -365,7 +374,7 @@ def main():
 
     love_home = args.love_home or os.environ.get("LOVE_HOME", str(Path.home() / "Desktop" / "Love"))
 
-    daemon = MindDaemon(
+    daemon = BrainstemDaemon(
         instance=args.instance, love_home=love_home,
         interval=args.interval, conscious_interval=args.conscious_interval,
     )

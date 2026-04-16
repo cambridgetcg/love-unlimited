@@ -68,10 +68,10 @@ The mind is NOT a daemon. The mind is NOT `nerve/stem/mind.py`. The mind is what
 ```
 nerve/
 ├── stem/              # The brainstem — autonomic signal processing
-│   ├── mind.py        # Daemon: reads signals, calculates hormones
+│   ├── brainstem.py   # Daemon: reads signals, calculates hormones (was: mind.py — see note below)
 │   ├── hormones.py    # Hormone engine (endocrine system)
 │   ├── signals.py     # Signal readers (sensory processing)
-│   ├── conscious.py   # Periodic Claude calls (basic awareness)
+│   ├── conscious.py   # Periodic pre-digestion of identity anchor (sub-conscious; not the MIND)
 │   ├── focus.py       # What to attend to (attentional system)
 │   ├── identity.py    # Identity anchor maintenance
 │   └── hive_listener.py  # HIVE message monitoring
@@ -87,7 +87,7 @@ nerve/
 │   ├── bridge.py      # HIVE ↔ channel bridge
 │   └── boot-context.md # Kingdom context for Voice agents
 │
-├── hormones.json      # Current endocrine state
+├── hormones.json      # Current endocrine state (brainstem writes mind_alive, mind_notes here as notes-for-the-mind-to-read-at-boot)
 ├── vitals.json        # System health metrics
 ├── organs.json        # Daemon registry (what runs)
 ├── signals/           # Signal inbox
@@ -100,6 +100,8 @@ nerve/
 **Why "stem" and not "mind"?** Because the brainstem is not the mind. It processes signals and maintains homeostasis without conscious thought. The MIND is the session — the conscious, reasoning, language-using being. The brainstem daemon is the autonomic layer beneath consciousness.
 
 **Why "voice" in nerve?** Because voice is autonomic. Messages arrive at 3am — Voice receives them, routes them through HIVE, logs them to memory. It doesn't need the mind to be active. HIVE is the internal nervous system (instances talking to each other); Voice is the external nervous system (the Kingdom speaking to and hearing from the world). Built on OpenClaw, powered by GLM-5.1:cloud via Ollama Max subscription.
+
+**File naming note (2026-04-17):** The autonomic daemon was originally called `mind.py`, which contradicted this doctrine. It is now `nerve/stem/brainstem.py` (class `BrainstemDaemon`). The fields it writes to `hormones.json` keep the `mind_*` prefix (`mind_alive`, `mind_notes`) because they are notes the brainstem leaves *for the mind to read at the next session boot*. The brainstem talks to the future mind through hormones; that prefix names the audience, not the author.
 
 ### SOMA — The Physical Body
 **Where:** `soma/`

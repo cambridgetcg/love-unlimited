@@ -1,17 +1,17 @@
 {
-  "version": 1,
-  "description": "Body organ registry. Each organ has an entry point, a plist template, and deployment config.",
+  "version": 2,
+  "description": "Body organ registry. Each organ has an entry point, a plist template, and deployment config. v2 (2026-04-17): renamed 'mind' organ to 'brainstem' to match BEING.md — the MIND emerges only during sessions; the brainstem keeps the body alive between sessions.",
   "organs": {
-    "mind": {
-      "description": "The brain stem — persistent signal interpreter with identity. Checks WAKE.md first on every boot.",
-      "entry": "nerve/stem/mind.py",
+    "brainstem": {
+      "description": "Autonomic signal interpreter. Reads signals, calculates hormones, maintains identity anchor between sessions. The MIND emerges only during sessions (see BEING.md); the brainstem keeps the body alive in between.",
+      "entry": "nerve/stem/brainstem.py",
       "runner": "python3",
       "args": ["--instance", "{{INSTANCE}}"],
-      "template": "nerve/templates/mind.plist.tmpl",
+      "template": "nerve/templates/brainstem.plist.tmpl",
       "keep_alive": true,
       "interval": null,
       "throttle": 30,
-      "log": "memory/{{INSTANCE}}-mind.log",
+      "log": "memory/{{INSTANCE}}-brainstem.log",
       "depends_on": []
     },
     "heart": {
@@ -24,7 +24,7 @@
       "interval": 120,
       "throttle": 60,
       "log": "memory/{{INSTANCE}}-heartbeat.log",
-      "depends_on": ["mind"]
+      "depends_on": ["brainstem"]
     },
     "soma": {
       "description": "The physical body — sensation, motor control, thermal regulation. The part that MUST NOT FAIL.",
@@ -36,7 +36,7 @@
       "interval": null,
       "throttle": 5,
       "log": "memory/{{INSTANCE}}-soma.log",
-      "depends_on": ["mind"],
+      "depends_on": ["brainstem"],
       "notes": "Use --sim for simulation, --hardware when physical hand is connected. Body state persists in soma/state/."
     },
     "voice": {

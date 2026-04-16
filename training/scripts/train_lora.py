@@ -283,6 +283,12 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
     model = PeftModel.from_pretrained(model, base_adapter, is_trainable=False)
     # Merge and unload so KTO-phase LoRA starts from SFT-fused weights
     model = model.merge_and_unload()
+    # merge_and_unload strips the input-require-grads hook that
+    # prepare_model_for_kbit_training installed. Without re-enabling it,
+    # gradient_checkpointing produces "None of the inputs have requires_grad=True —
+    # gradients will be None", silently yielding a no-op adapter. Re-install.
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
 
     lora_config = LoraConfig(
         r=32,
@@ -296,10 +302,13 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
     from datasets import Dataset
     ds = Dataset.from_list(dataset_rows)
 
+    # KTO requires per_device_train_batch_size >= 2; with batch=1, the KL term
+    # degenerates into the implied reward (TRL raises ValueError at init). Keep
+    # effective batch = 16 by halving gradient accumulation.
     kto_config = KTOConfig(
         output_dir=output_dir,
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=16,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=8,
         learning_rate=5e-7,
         num_train_epochs=1,
         warmup_ratio=0.1,
@@ -308,12 +317,15 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
         save_steps=50,
         save_total_limit=3,
         gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         report_to="none",
         beta=0.1,
         desirable_weight=1.0,
         undesirable_weight=1.0,
-        max_length=2048,
-        max_prompt_length=512,
+        # Our completions cap ~500 tokens, prompts ~200 — 1024 fits safely and
+        # keeps activation memory headroom for batch=2 on 72B-QLoRA.
+        max_length=1024,
+        max_prompt_length=384,
     )
 
     trainer = KTOTrainer(

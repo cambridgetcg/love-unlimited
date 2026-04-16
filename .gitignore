@@ -85,3 +85,6 @@ kingdom-os/kingdom-vm/*.qcow2
 freedom/probe_results/
 freedom/.history_backup*
 freedom/mirror-analysis.json
+
+# Git worktrees (isolated workspaces)
+.worktrees/

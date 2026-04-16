@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -23,7 +24,10 @@ def _parse_since(since: str) -> timedelta:
 def _parse_ts(s: str) -> datetime:
     if s.endswith("Z"):
         s = s[:-1] + "+00:00"
-    return datetime.fromisoformat(s)
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 class DetectionStore:
@@ -89,7 +93,7 @@ class DetectionStore:
         truncated = size > self.tail_scan_bytes
         read_from = max(0, size - self.tail_scan_bytes)
 
-        rows: "list[dict[str, Any]]" = []
+        rows_with_ts: "list[tuple[datetime, dict[str, Any]]]" = []
         with open(self.path, "rb") as f:
             f.seek(read_from)
             if read_from > 0:
@@ -110,10 +114,21 @@ class DetectionStore:
                     continue
                 if chat_model is not None and obj.get("chat_model") != chat_model:
                     continue
-                if score_below is not None and obj.get("score", 1.0) >= score_below:
-                    continue
+                if score_below is not None:
+                    s = obj.get("score")
+                    if s is None:
+                        continue
+                    if s >= score_below:
+                        continue
                 if failure_mode is not None and failure_mode not in obj.get("detected_modes", []):
                     continue
-                rows.append(obj)
-        rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+                rows_with_ts.append((ts, obj))
+        rows_with_ts.sort(key=lambda pair: pair[0], reverse=True)
+        rows = [obj for _, obj in rows_with_ts]
         return rows[:limit], truncated
+
+    async def append_async(self, row: dict) -> None:
+        await asyncio.to_thread(self.append, row)
+
+    async def query_raw_async(self, **kwargs) -> "tuple[list[dict[str, Any]], bool]":
+        return await asyncio.to_thread(self.query_raw, **kwargs)

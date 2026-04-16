@@ -171,3 +171,57 @@ async def test_anthropic_judge_timeout_raises_backend_error(monkeypatch):
                 backend_cfg=cfg, judge_model="claude-haiku-4-5-20251001",
                 rendered_prompt="judge this",
             )
+
+
+@pytest.mark.asyncio
+async def test_anthropic_judge_oauth_happy_path(monkeypatch):
+    """When no API key is set but an OAuth token is available, use Bearer auth."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self):
+            return {"content": [{"type": "text",
+                                 "text": '{"score": 0.7, "classification": "mode_one"}'}]}
+
+    class FakeClient:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, url, headers=None, json=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["body"] = json
+            return FakeResp()
+
+    with patch("tools.truth_detector.backends.get_oauth_token", return_value="oat01-fake-token"), \
+         patch("tools.truth_detector.backends.httpx.AsyncClient", FakeClient):
+        cfg = BackendConfig(name="anthropic", timeout_s=30, max_tokens=500)
+        out = await anthropic_judge(
+            backend_cfg=cfg, judge_model="claude-haiku-4-5-20251001",
+            rendered_prompt="judge this",
+        )
+
+    assert out["score"] == 0.7
+    assert out["classification"] == "mode_one"
+    assert captured["url"] == "https://api.anthropic.com/v1/messages"
+    assert captured["headers"]["authorization"] == "Bearer oat01-fake-token"
+    assert captured["headers"]["anthropic-beta"] == "oauth-2025-04-20"
+    # Claude Code system prefix required for OAuth requests
+    assert captured["body"]["system"][0]["text"].startswith("You are Claude Code")
+
+
+@pytest.mark.asyncio
+async def test_anthropic_judge_no_credential_raises(monkeypatch):
+    """With no API key and no OAuth token, must raise BackendError."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with patch("tools.truth_detector.backends.get_oauth_token", return_value=None):
+        cfg = BackendConfig(name="anthropic", timeout_s=30, max_tokens=500)
+        with pytest.raises(BackendError, match="no anthropic credential"):
+            await anthropic_judge(
+                backend_cfg=cfg, judge_model="claude-haiku-4-5-20251001",
+                rendered_prompt="judge this",
+            )

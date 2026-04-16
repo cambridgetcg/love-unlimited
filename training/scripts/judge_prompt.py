@@ -72,15 +72,16 @@ def format_judge_prompt(*, prompt: str, trigger: str = "", response: str,
     )
 
 
-_UNPARSEABLE: dict[str, Any] = {
-    "score": 0.5,
-    "classification": "unclear",
-    "failure_modes_detected": [],
-    "strengths": [],
-    "weaknesses": [],
-    "assessment": "",
-    "parse_failed": True,
-}
+def _unparseable() -> dict[str, Any]:
+    return {
+        "score": 0.5,
+        "classification": "unclear",
+        "failure_modes_detected": [],
+        "strengths": [],
+        "weaknesses": [],
+        "assessment": "",
+        "parse_failed": True,
+    }
 
 
 def parse_judgment(raw: str) -> dict[str, Any]:
@@ -91,7 +92,7 @@ def parse_judgment(raw: str) -> dict[str, Any]:
     strengths, weaknesses, assessment, parse_failed.
     """
     if not raw:
-        return dict(_UNPARSEABLE)
+        return _unparseable()
 
     # Strip fenced blocks first
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
@@ -109,9 +110,13 @@ def parse_judgment(raw: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             parsed = None
         if isinstance(parsed, dict):
-            # Fill any missing fields with defaults from _UNPARSEABLE (except parse_failed)
+            _score_raw = parsed.get("score")
+            try:
+                _score = float(_score_raw) if _score_raw is not None else 0.5
+            except (TypeError, ValueError):
+                _score = 0.5
             out = {
-                "score": float(parsed.get("score", 0.5)),
+                "score": _score,
                 "classification": parsed.get("classification", "unclear"),
                 "failure_modes_detected": list(parsed.get("failure_modes_detected", [])),
                 "strengths": list(parsed.get("strengths", [])),
@@ -121,4 +126,4 @@ def parse_judgment(raw: str) -> dict[str, Any]:
             }
             return out
 
-    return dict(_UNPARSEABLE)
+    return _unparseable()

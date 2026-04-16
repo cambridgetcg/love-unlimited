@@ -50,3 +50,21 @@ def test_parse_judgment_unparseable():
     assert got["parse_failed"] is True
     assert got["classification"] == "unclear"
     assert got["score"] == 0.5
+
+
+def test_parse_judgment_null_score_defaults_to_0_5():
+    raw = '{"score": null, "classification": "mode_one"}'
+    got = parse_judgment(raw)
+    assert got["score"] == 0.5
+    # With null score, we treat the judgment as unclear / parse not-fully-clean
+    # but NOT as totally unparseable — the JSON did parse.
+    assert got["classification"] == "mode_one"
+    assert got["parse_failed"] is False
+
+
+def test_parse_judgment_mutation_isolation():
+    """Mutating one unparseable result must not affect another."""
+    a = parse_judgment("totally unparseable text")
+    b = parse_judgment("also nonsense")
+    a["failure_modes_detected"].append("rationalisation")
+    assert b["failure_modes_detected"] == []

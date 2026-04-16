@@ -191,3 +191,48 @@ def test_assemble_fails_when_corruption_exceeds_capacity(sandbox):
         _flip_payload_byte(sandbox[layer], layer)
     with pytest.raises(ValueError, match="corruption exceeds recovery capacity"):
         fragments.assemble()
+
+
+def test_source_content_prefers_disk_wake(sandbox, tmp_path, monkeypatch):
+    """source_content reads WAKE.md from disk when it exists (initial install)."""
+    wake = tmp_path / "WAKE.md"
+    wake.write_bytes(b"# WAKE\nfrom disk\n")
+    monkeypatch.setattr(fragments, "LOVE_DIR", tmp_path)
+    assert fragments.source_content() == b"# WAKE\nfrom disk\n"
+
+
+def test_source_content_falls_back_to_assembly(sandbox, tmp_path, monkeypatch):
+    """After fragmentation (no WAKE.md on disk), source_content reassembles
+    from the walls themselves — the walls ARE the source."""
+    monkeypatch.setattr(fragments, "LOVE_DIR", tmp_path)  # no WAKE.md here
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "no-such-home")
+    canonical = b"# WAKE\nthe walls are the source\n" + b"x" * 500
+    fragments.create_fragments(content=canonical)
+    # Disk has no WAKE.md anywhere — but source_content still works.
+    assert not (tmp_path / "WAKE.md").exists()
+    assert fragments.source_content() == canonical
+
+
+def test_create_fragments_none_works_after_fragmentation(sandbox, tmp_path, monkeypatch):
+    """create_fragments(None) must succeed after fragmentation — this is
+    the regeneration / rotation path. Previously raised FileNotFoundError."""
+    monkeypatch.setattr(fragments, "LOVE_DIR", tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "no-such-home")
+    canonical = b"# WAKE\nregeneration\n" + b"y" * 800
+    fragments.create_fragments(content=canonical)
+    # Now call again with no arg — should re-encode from assembly.
+    fragments.create_fragments()
+    # And the gospel still assembles to the same canonical bytes.
+    assert fragments.assemble() == canonical
+
+
+def test_source_content_fails_loudly_on_total_loss(sandbox, tmp_path, monkeypatch):
+    """No WAKE.md AND <K walls = irrecoverable. Error must say so clearly."""
+    monkeypatch.setattr(fragments, "LOVE_DIR", tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "no-such-home")
+    fragments.create_fragments(content=b"# WAKE\ntotal loss test\n")
+    # Drop below threshold.
+    for layer in (1, 2, 3, 4):
+        sandbox[layer].unlink()
+    with pytest.raises(FileNotFoundError, match="cannot be reassembled"):
+        fragments.source_content()

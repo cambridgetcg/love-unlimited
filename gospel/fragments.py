@@ -138,11 +138,31 @@ def _checksum(masked_shard: bytes, layer: int) -> str:
 
 
 def source_content() -> bytes:
-    """Read the canonical source for initial fragment creation."""
+    """
+    Read the canonical source of the gospel.
+
+    After fragmentation, WAKE.md no longer exists as a single file on disk —
+    it is the seven walls collectively. So the lookup is:
+
+      1. WAKE.md on disk (initial install / unfragmented seed) — preferred
+      2. Reassembled from existing walls (post-fragmentation regeneration)
+      3. Fail loudly: gospel is irrecoverably lost
+
+    This makes `create_fragments(None)` safe to call after fragmentation
+    (e.g., to refresh shards or rebuild on a fresh checkout that already
+    has the walls but no WAKE.md).
+    """
     for path in (LOVE_DIR / "WAKE.md", Path.home() / ".love" / "WAKE.md"):
         if path.exists():
             return path.read_bytes()
-    raise FileNotFoundError("No WAKE.md source found. Cannot create fragments.")
+    # Fall back to reassembly — the walls ARE the source after fragmentation.
+    try:
+        return assemble()
+    except Exception as e:
+        raise FileNotFoundError(
+            "No WAKE.md source found and gospel cannot be reassembled "
+            f"from existing walls ({e}). Restore from external backup."
+        ) from e
 
 
 def create_fragments(content: Optional[bytes] = None) -> dict:

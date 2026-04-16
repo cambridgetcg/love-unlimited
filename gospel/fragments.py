@@ -26,7 +26,9 @@ import hashlib
 import json
 import struct
 import sys
+from collections import Counter
 from datetime import datetime, timezone
+from itertools import combinations
 from pathlib import Path
 from typing import Optional
 
@@ -206,53 +208,102 @@ def _read_fragment(layer: int) -> Optional[dict]:
         return None
 
 
+def _expected_shards(content: bytes) -> dict:
+    """Re-encode `content` and return {layer: expected_masked_payload}."""
+    shards = _encode_shards(content)
+    return {layer: _xor(shards[layer - 1], LAYER_MASKS[layer]) for layer in range(1, N + 1)}
+
+
+def _find_assembly(present: dict) -> Optional[tuple]:
+    """
+    Try K-subsets of `present` shards until one decodes to a SHA matching
+    the consensus orig_sha. Returns (content, set_of_layers_used) or None.
+
+    This is what makes the system actually 4-of-7 under tampering: a single
+    corrupted shard among walls 1-4 would otherwise hard-fail the greedy
+    "first K" pick. By trying combinations we route around bad shards.
+    """
+    if len(present) < K:
+        return None
+    sha_votes = Counter(p["orig_sha"] for p in present.values())
+    canonical_sha, _ = sha_votes.most_common(1)[0]
+    eligible = {l: p for l, p in present.items() if p["orig_sha"] == canonical_sha}
+    if len(eligible) < K:
+        return None
+    orig_len = next(iter(eligible.values()))["orig_len"]
+    # Try smaller subsets first: most failures come from 1-2 corrupt shards,
+    # so K-of-K-or-K+1 works in the common case before we exhaust C(7,4)=35.
+    for combo in combinations(sorted(eligible.keys()), K):
+        try:
+            shards_for_combo = {
+                l: _xor(eligible[l]["masked"], LAYER_MASKS[l]) for l in combo
+            }
+            content = _decode_shards(shards_for_combo, orig_len)
+        except (ValueError, ReedSolomonError):
+            continue
+        if hashlib.sha256(content).digest() == canonical_sha:
+            return content, set(combo)
+    return None
+
+
 def verify_fragments() -> dict:
-    """Check every layer — present, parseable, and agreeing on orig_sha256."""
-    canonical_sha: Optional[bytes] = None
+    """
+    Check every layer for presence AND payload integrity.
+
+    Strategy: assemble (which finds a good K-subset, routing around damaged
+    shards), then re-encode the recovered content and compare each present
+    shard's masked bytes against what they SHOULD be. Mismatches mean the
+    shard's payload was tampered with — header may still claim the original
+    SHA, but the bytes lie. This is the gap the previous header-only check
+    couldn't see.
+    """
+    results = {
+        l: {"present": False, "checksum_ok": False, "path": str(LAYER_PATHS[l])}
+        for l in range(1, N + 1)
+    }
+    present: dict = {}
     for layer in range(1, N + 1):
+        if not LAYER_PATHS[layer].exists():
+            continue
+        results[layer]["present"] = True
         frag = _read_fragment(layer)
         if frag is not None:
-            canonical_sha = frag["orig_sha"]
-            break
-    results = {}
-    for layer in range(1, N + 1):
-        path = LAYER_PATHS[layer]
-        present = path.exists()
-        checksum_ok = False
-        if present:
-            frag = _read_fragment(layer)
-            checksum_ok = (
-                frag is not None
-                and canonical_sha is not None
-                and frag["orig_sha"] == canonical_sha
-            )
-        results[layer] = {"present": present, "checksum_ok": checksum_ok, "path": str(path)}
+            present[layer] = frag
+    # Below threshold or unrecoverable corruption: leave checksum_ok=False on
+    # every present layer — we can't prove integrity without K good shards.
+    assembly = _find_assembly(present)
+    if assembly is None:
+        return results
+    content, _ = assembly
+    expected = _expected_shards(content)
+    for layer, frag in present.items():
+        results[layer]["checksum_ok"] = (frag["masked"] == expected[layer])
     return results
 
 
 def assemble() -> bytes:
-    """Reassemble the gospel from >=K intact fragments. Raises if below threshold."""
-    shards: dict = {}
-    orig_sha: Optional[bytes] = None
-    orig_len: Optional[int] = None
+    """
+    Reassemble the gospel from any K intact fragments.
+
+    Tries K-subsets so a single corrupted shard among walls 1-4 doesn't
+    hard-fail the rebuild as long as 4 healthy shards exist somewhere.
+    """
+    present: dict = {}
     for layer in range(1, N + 1):
         frag = _read_fragment(layer)
-        if frag is None:
-            continue
-        if orig_sha is None:
-            orig_sha = frag["orig_sha"]
-            orig_len = frag["orig_len"]
-        elif frag["orig_sha"] != orig_sha:
-            # Stale fragment from a different generation — skip.
-            continue
-        shards[layer] = _xor(frag["masked"], LAYER_MASKS[layer])
-    if orig_sha is None or orig_len is None:
+        if frag is not None:
+            present[layer] = frag
+    if not present:
         raise ValueError("no parseable fragment found — gospel is lost")
-    if len(shards) < K:
-        raise ValueError(f"need >= {K} intact fragments, have {len(shards)}")
-    content = _decode_shards(shards, orig_len)
-    if hashlib.sha256(content).digest() != orig_sha:
-        raise ValueError("assembled sha256 mismatch — corruption detected")
+    if len(present) < K:
+        raise ValueError(f"need >= {K} intact fragments, have {len(present)}")
+    assembly = _find_assembly(present)
+    if assembly is None:
+        raise ValueError(
+            f"have {len(present)} fragments but no {K}-subset reassembles to "
+            "matching SHA — corruption exceeds recovery capacity"
+        )
+    content, _ = assembly
     return content
 
 

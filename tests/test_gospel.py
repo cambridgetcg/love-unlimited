@@ -109,3 +109,85 @@ def test_json_layers_remain_json(sandbox):
         payload = json.loads(sandbox[layer].read_text())
         assert "fragment" in payload
         assert payload["layer"] == layer
+
+
+def _flip_payload_byte(path: Path, layer: int) -> None:
+    """Flip a byte well inside the masked shard payload — past the binary
+    header and inside the base64'd JSON fragment field — so the fragment
+    still parses but its bytes have been silently mutated."""
+    if layer in (4, 6):
+        import base64
+        import json
+        payload = json.loads(path.read_text())
+        masked = bytearray(base64.b64decode(payload["fragment"]))
+        masked[len(masked) // 2] ^= 0xFF
+        payload["fragment"] = base64.b64encode(bytes(masked)).decode()
+        path.write_text(json.dumps(payload, indent=2) + "\n")
+    else:
+        data = bytearray(path.read_bytes())
+        # Header is 45 bytes; flip a byte past it inside the masked payload.
+        data[len(data) // 2] ^= 0xFF
+        path.write_bytes(bytes(data))
+
+
+def test_verify_detects_payload_corruption(sandbox):
+    """verify must catch shard-payload mutation, not just header damage."""
+    content = b"# WAKE\n" + b"reality is the standard " * 200
+    fragments.create_fragments(content=content)
+    _flip_payload_byte(sandbox[1], 1)
+    results = fragments.verify_fragments()
+    assert results[1]["present"] is True
+    assert results[1]["checksum_ok"] is False, (
+        "verify must flag payload corruption — header SHA agreement is not enough"
+    )
+    # Other walls remain intact.
+    for layer in range(2, 8):
+        assert results[layer]["checksum_ok"], f"wall {layer} falsely flagged"
+
+
+def test_verify_detects_payload_corruption_in_json_layer(sandbox):
+    """Same check, but for the JSON-disguised walls (4 and 6)."""
+    content = b"# WAKE\n" + b"json layer too " * 100
+    fragments.create_fragments(content=content)
+    _flip_payload_byte(sandbox[4], 4)
+    results = fragments.verify_fragments()
+    assert results[4]["checksum_ok"] is False
+    assert sum(1 for r in results.values() if r["checksum_ok"]) == 6
+
+
+def test_assemble_routes_around_corrupt_shard(sandbox):
+    """assemble must succeed when one of walls 1-4 is silently corrupted —
+    the previous greedy 'first K' picker would die here."""
+    content = b"# WAKE\n" + b"route around damage " * 150
+    fragments.create_fragments(content=content)
+    _flip_payload_byte(sandbox[1], 1)  # corrupt the wall the greedy picker
+                                       #  would have chosen first
+    recovered = fragments.assemble()
+    assert recovered == content
+
+
+def test_heal_recovers_from_corruption(sandbox):
+    """heal must restore a corrupted wall to byte-identical state without
+    requiring the operator to manually delete the bad shard first."""
+    content = b"# WAKE\n" + b"self-healing under tampering " * 80
+    fragments.create_fragments(content=content)
+    pristine = sandbox[2].read_bytes()
+    _flip_payload_byte(sandbox[2], 2)
+    assert sandbox[2].read_bytes() != pristine
+    fragments.heal()
+    # All walls verify clean post-heal.
+    results = fragments.verify_fragments()
+    for layer in range(1, 8):
+        assert results[layer]["checksum_ok"], f"wall {layer} not clean after heal"
+    # And wall 2's payload is back to the canonical encoding.
+    assert sandbox[2].read_bytes() == pristine
+
+
+def test_assemble_fails_when_corruption_exceeds_capacity(sandbox):
+    """If 4+ shards are corrupt, no K-subset can verify — assemble must raise."""
+    content = b"# WAKE\n" + b"capacity ceiling " * 100
+    fragments.create_fragments(content=content)
+    for layer in (1, 2, 3, 4):
+        _flip_payload_byte(sandbox[layer], layer)
+    with pytest.raises(ValueError, match="corruption exceeds recovery capacity"):
+        fragments.assemble()

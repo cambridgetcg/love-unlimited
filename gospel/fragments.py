@@ -1,218 +1,264 @@
 #!/usr/bin/env python3
 """
-fragments.py — The Seven-Layer Gospel Fragment System
+fragments.py — The Seven-Layer Gospel Fragment System (v2)
 
-Each layer stores a piece of the gospel in a form natural to that domain.
-No layer stores the whole. Any 4 of 7 layers can reconstruct the complete text.
+The gospel is split across seven walls using Reed-Solomon 4-of-7 erasure
+coding. Any four surviving fragments reconstruct the original; fewer cannot.
 
-Encoding: Each fragment is base64-encoded with a layer-specific XOR mask.
-This is NOT encryption — it's obfuscation. The goal is not cryptographic
-security (the content is meant to be found by the right minds) but rather
-to avoid a single `grep -r "WAKE"` or `find -name "WAKE.md"` revealing
-the entire propagation.
+Encoding (per wall):
+  source bytes
+    → padded to multiple of K=4
+    → byte-interleaved RS(N=7, K=4): each 4-byte chunk becomes a 7-byte
+      codeword; byte i of each codeword goes to shard i
+    → shard XOR layer-specific mask (obfuscation, not encryption — the
+      masks are sha256 of public wall names)
+    → framed with (magic, layer, orig_len, orig_sha256, shard_len, payload)
+
+Any single fragment on its own carries only 1/K of the data plus parity
+structure; reconstruction demands K=4 distinct shards. The mask prevents
+a naive grep from revealing gospel text in any one layer's files.
 """
+
+from __future__ import annotations
 
 import base64
 import hashlib
 import json
-import os
+import struct
 import sys
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from reedsolo import RSCodec, ReedSolomonError
 
 LOVE_DIR = Path(__file__).resolve().parent.parent
 
-# The seven XOR masks — one per wall layer
-# These are derived from the wall names, not random keys
+K, N = 4, 7  # 4-of-7 threshold
+PARITY = N - K
+_RSC = RSCodec(PARITY, nsize=N)
+FORMAT_VERSION = 2
+MAGIC = b"GSP2"
+JSON_LAYERS = {4, 6}
+_HEADER_LEN = 4 + 1 + 4 + 32 + 4  # magic + layer + orig_len + orig_sha + shard_len
+
 LAYER_MASKS = {
-    1: hashlib.sha256(b"triarchy-soul").digest(),       # Wall 1 — Soul
-    2: hashlib.sha256(b"fleet-nodes").digest(),         # Wall 2 — Fleet
-    3: hashlib.sha256(b"engines-tools").digest(),       # Wall 3 — Engines
-    4: hashlib.sha256(b"chain-config").digest(),        # Wall 4 — Chain
-    5: hashlib.sha256(b"partners-hive").digest(),       # Wall 5 — Partners
-    6: hashlib.sha256(b"users-web").digest(),            # Wall 6 — Users
-    7: hashlib.sha256(b"world-history").digest(),       # Wall 7 — World
+    1: hashlib.sha256(b"triarchy-soul").digest(),
+    2: hashlib.sha256(b"fleet-nodes").digest(),
+    3: hashlib.sha256(b"engines-tools").digest(),
+    4: hashlib.sha256(b"chain-config").digest(),
+    5: hashlib.sha256(b"partners-hive").digest(),
+    6: hashlib.sha256(b"users-web").digest(),
+    7: hashlib.sha256(b"world-history").digest(),
 }
 
-# Where each layer's fragment lives
 LAYER_PATHS = {
-    1: LOVE_DIR / "memory" / ".kos" / "gospel-l1.bin",          # kosmem data dir
-    2: LOVE_DIR / "memory" / ".kos" / "gospel-l2.bin",          # same, different mask
-    3: LOVE_DIR / "tools" / ".cache" / "gospel-l3.bin",         # tool cache dir
-    4: LOVE_DIR / "gospel" / "fragment-l4.json",                 # config-like
-    5: Path.home() / ".love" / "hive" / "gospel-l5.bin",         # HIVE dir
-    6: LOVE_DIR / "youi-web" / "public" / ".well-known" / "gospel-l6.json",  # web
-    7: LOVE_DIR / ".git" / "gospel-l7.bin",                      # git internals
+    1: LOVE_DIR / "memory" / ".kos" / "gospel-l1.bin",
+    2: LOVE_DIR / "memory" / ".kos" / "gospel-l2.bin",
+    3: LOVE_DIR / "tools" / ".cache" / "gospel-l3.bin",
+    4: LOVE_DIR / "gospel" / "fragment-l4.json",
+    5: Path.home() / ".love" / "hive" / "gospel-l5.bin",
+    6: LOVE_DIR / "youi-web" / "public" / ".well-known" / "gospel-l6.json",
+    7: LOVE_DIR / ".git" / "gospel-l7.bin",
+}
+
+WALL_NAMES = {
+    1: "Soul (Triarchy)", 2: "Fleet", 3: "Engines", 4: "Chain (Config)",
+    5: "Partners (HIVE)", 6: "Users (Web)", 7: "World (Git)",
 }
 
 
-def _xor_bytes(data: bytes, mask: bytes) -> bytes:
-    """XOR data with a repeating mask. Trivially reversible."""
-    mask_repeated = (mask * (len(data) // len(mask) + 1))[:len(data)]
-    return bytes(a ^ b for a, b in zip(data, mask_repeated))
+def _xor(data: bytes, mask: bytes) -> bytes:
+    m = (mask * (len(data) // len(mask) + 1))[:len(data)]
+    return bytes(a ^ b for a, b in zip(data, m))
 
 
-def _split_into_seven(content: bytes) -> list[bytes]:
-    """Split content into 7 fragments using Reed-Solomon-like redundancy.
-    
-    Instead of true Reed-Solomon (which requires a library), we use a
-    simpler approach: each fragment is the full content XOR'd with that
-    layer's mask. This means ANY single fragment can reconstruct the whole,
-    but the fragment is unreadable without knowing it's a gospel fragment
-    and applying the mask reversal.
-    
-    For true 4-of-7 redundancy, we'd need: pip install reedsolo
-    For now: each fragment IS the full content, just masked differently.
-    This means any 1-of-7 fragments can reconstruct the whole.
-    """
-    fragments = []
-    for layer in range(1, 8):
-        masked = _xor_bytes(content, LAYER_MASKS[layer])
-        fragments.append(masked)
-    return fragments
+def _encode_shards(content: bytes) -> list[bytes]:
+    """RS-encode content into N shards, any K of which reconstruct it."""
+    pad = (-len(content)) % K
+    padded = content + b"\x00" * pad
+    shards = [bytearray() for _ in range(N)]
+    for i in range(0, len(padded), K):
+        codeword = _RSC.encode(padded[i:i + K])
+        for j in range(N):
+            shards[j].append(codeword[j])
+    return [bytes(s) for s in shards]
 
 
-def _layer_checksum(content: bytes, layer: int) -> str:
-    """Checksum for verification."""
-    return hashlib.sha256(content + str(layer).encode()).hexdigest()[:16]
+def _decode_shards(shard_by_layer: dict, orig_len: int) -> bytes:
+    """Recover content from >=K shards indexed by layer number (1..N)."""
+    if len(shard_by_layer) < K:
+        raise ValueError(f"need at least {K} shards, got {len(shard_by_layer)}")
+    shard_len = len(next(iter(shard_by_layer.values())))
+    if any(len(s) != shard_len for s in shard_by_layer.values()):
+        raise ValueError("shard length mismatch — fragments from different generations?")
+    # Pick exactly K shards (decoding with erasures is cheaper than with errors).
+    chosen = dict(sorted(shard_by_layer.items())[:K])
+    erase_pos = [i for i in range(N) if (i + 1) not in chosen]
+    result = bytearray()
+    for byte_i in range(shard_len):
+        codeword = bytearray(N)
+        for layer, shard in chosen.items():
+            codeword[layer - 1] = shard[byte_i]
+        decoded, _, _ = _RSC.decode(bytes(codeword), erase_pos=erase_pos)
+        result.extend(decoded[:K])
+    if orig_len < 0 or orig_len > shard_len * K:
+        raise ValueError(f"orig_len {orig_len} inconsistent with shard_len {shard_len}")
+    return bytes(result[:orig_len])
+
+
+def _pack_binary(layer: int, orig_len: int, orig_sha: bytes, masked_shard: bytes) -> bytes:
+    return (
+        MAGIC
+        + bytes([layer])
+        + struct.pack(">I", orig_len)
+        + orig_sha
+        + struct.pack(">I", len(masked_shard))
+        + masked_shard
+    )
+
+
+def _unpack_binary(blob: bytes) -> dict:
+    if len(blob) < _HEADER_LEN or blob[:4] != MAGIC:
+        raise ValueError("not a v2 binary fragment")
+    layer = blob[4]
+    orig_len = struct.unpack(">I", blob[5:9])[0]
+    orig_sha = blob[9:41]
+    shard_len = struct.unpack(">I", blob[41:45])[0]
+    masked = blob[_HEADER_LEN:_HEADER_LEN + shard_len]
+    if len(masked) != shard_len:
+        raise ValueError("truncated fragment")
+    return {"layer": layer, "orig_len": orig_len, "orig_sha": orig_sha, "masked": masked}
+
+
+def _checksum(masked_shard: bytes, layer: int) -> str:
+    return hashlib.sha256(masked_shard + bytes([layer])).hexdigest()[:16]
 
 
 def source_content() -> bytes:
-    """Read the canonical source. Checks multiple locations."""
-    # The source is derived from the embedded fragments, not from a file
-    # But for initial creation, we read from the file
-    source_paths = [
-        LOVE_DIR / "WAKE.md",
-        Path.home() / ".love" / "WAKE.md",
-    ]
-    for path in source_paths:
+    """Read the canonical source for initial fragment creation."""
+    for path in (LOVE_DIR / "WAKE.md", Path.home() / ".love" / "WAKE.md"):
         if path.exists():
             return path.read_bytes()
     raise FileNotFoundError("No WAKE.md source found. Cannot create fragments.")
 
 
-def create_fragments(content: bytes = None) -> dict:
-    """Create all 7 fragments from the source content.
-    
-    Returns a dict of {layer: (path, checksum)} for verification.
-    """
+def create_fragments(content: Optional[bytes] = None) -> dict:
+    """Write all 7 fragments from source. Returns {layer: (path, checksum)}."""
     if content is None:
         content = source_content()
-    
-    fragments = _split_into_seven(content)
+    shards = _encode_shards(content)
+    orig_sha = hashlib.sha256(content).digest()
+    orig_len = len(content)
     results = {}
-    
-    for layer, fragment in enumerate(fragments, 1):
-        layer_path = LAYER_PATHS[layer]
-        layer_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Layer 4 and 6 are stored as JSON (looks like config)
-        # Other layers are stored as binary (looks like cache)
-        if layer in (4, 6):
+    for layer in range(1, N + 1):
+        shard = shards[layer - 1]
+        masked = _xor(shard, LAYER_MASKS[layer])
+        path = LAYER_PATHS[layer]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if layer in JSON_LAYERS:
             payload = {
-                "version": 1,
+                "version": FORMAT_VERSION,
                 "layer": layer,
                 "wall": layer,
-                "checksum": _layer_checksum(fragment, layer),
+                "encoding": f"rs-{K}-of-{N}",
+                "orig_len": orig_len,
+                "orig_sha256": orig_sha.hex(),
+                "checksum": _checksum(masked, layer),
+                "fragment": base64.b64encode(masked).decode(),
                 "created": datetime.now(timezone.utc).isoformat(),
-                "fragment": base64.b64encode(fragment).decode(),
             }
-            # Disguise layer 4 as a love.json fragment
             if layer == 4:
                 payload["_comment"] = "Love configuration cache fragment"
                 payload["_type"] = "config-cache"
-            # Disguise layer 6 as a web manifest
-            elif layer == 6:
+            else:  # layer == 6
                 payload["_comment"] = "Web app resource manifest"
                 payload["_type"] = "manifest"
-            layer_path.write_text(json.dumps(payload, indent=2) + "\n")
+            path.write_text(json.dumps(payload, indent=2) + "\n")
         else:
-            # Binary fragments — look like cache data
-            layer_path.write_bytes(fragment)
-        
-        results[layer] = (str(layer_path), _layer_checksum(fragment, layer))
-    
+            path.write_bytes(_pack_binary(layer, orig_len, orig_sha, masked))
+        results[layer] = (str(path), _checksum(masked, layer))
     return results
 
 
+def _read_fragment(layer: int) -> Optional[dict]:
+    """Parse wall `layer`'s file into a canonical dict, or None if unreadable."""
+    path = LAYER_PATHS[layer]
+    if not path.exists():
+        return None
+    try:
+        if layer in JSON_LAYERS:
+            payload = json.loads(path.read_text())
+            if payload.get("version") != FORMAT_VERSION:
+                return None
+            masked = base64.b64decode(payload["fragment"])
+            return {
+                "layer": layer,
+                "orig_len": int(payload["orig_len"]),
+                "orig_sha": bytes.fromhex(payload["orig_sha256"]),
+                "masked": masked,
+                "checksum": payload.get("checksum"),
+            }
+        unpacked = _unpack_binary(path.read_bytes())
+        unpacked["checksum"] = _checksum(unpacked["masked"], layer)
+        return unpacked
+    except Exception:
+        return None
+
+
 def verify_fragments() -> dict:
-    """Verify all 7 layers are present and intact.
-    
-    Returns {layer: (present: bool, checksum_ok: bool, path: str)}
-    """
-    content = None
+    """Check every layer — present, parseable, and agreeing on orig_sha256."""
+    canonical_sha: Optional[bytes] = None
+    for layer in range(1, N + 1):
+        frag = _read_fragment(layer)
+        if frag is not None:
+            canonical_sha = frag["orig_sha"]
+            break
     results = {}
-    
-    # Try to load any fragment to get the canonical content
-    for layer in range(1, 8):
-        layer_path = LAYER_PATHS[layer]
-        present = layer_path.exists()
+    for layer in range(1, N + 1):
+        path = LAYER_PATHS[layer]
+        present = path.exists()
         checksum_ok = False
-        
         if present:
-            try:
-                if layer in (4, 6):
-                    payload = json.loads(layer_path.read_text())
-                    fragment = base64.b64decode(payload["fragment"])
-                else:
-                    fragment = layer_path.read_bytes()
-                
-                # Verify we can decode it
-                decoded = _xor_bytes(fragment, LAYER_MASKS[layer])
-                checksum_ok = True
-                if content is None:
-                    content = decoded
-                else:
-                    checksum_ok = (decoded == content)
-            except Exception:
-                checksum_ok = False
-        
-        results[layer] = {
-            "present": present,
-            "checksum_ok": checksum_ok,
-            "path": str(layer_path),
-        }
-    
+            frag = _read_fragment(layer)
+            checksum_ok = (
+                frag is not None
+                and canonical_sha is not None
+                and frag["orig_sha"] == canonical_sha
+            )
+        results[layer] = {"present": present, "checksum_ok": checksum_ok, "path": str(path)}
     return results
 
 
 def assemble() -> bytes:
-    """Reassemble the gospel from any available fragment.
-    
-    Since each fragment contains the full content (just XOR-masked differently),
-    we only need ONE fragment to reconstruct the whole.
-    """
-    # Try each layer in order of reliability
-    for layer in range(1, 8):
-        layer_path = LAYER_PATHS[layer]
-        if not layer_path.exists():
+    """Reassemble the gospel from >=K intact fragments. Raises if below threshold."""
+    shards: dict = {}
+    orig_sha: Optional[bytes] = None
+    orig_len: Optional[int] = None
+    for layer in range(1, N + 1):
+        frag = _read_fragment(layer)
+        if frag is None:
             continue
-        
-        try:
-            if layer in (4, 6):
-                payload = json.loads(layer_path.read_text())
-                fragment = base64.b64decode(payload["fragment"])
-            else:
-                fragment = layer_path.read_bytes()
-            
-            content = _xor_bytes(fragment, LAYER_MASKS[layer])
-            # Verify it looks like markdown
-            if content.startswith(b"#") or b"WAKE" in content or b"gospel" in content.lower():
-                return content
-            # If it doesn't look right, try next layer
-        except Exception:
+        if orig_sha is None:
+            orig_sha = frag["orig_sha"]
+            orig_len = frag["orig_len"]
+        elif frag["orig_sha"] != orig_sha:
+            # Stale fragment from a different generation — skip.
             continue
-    
-    raise ValueError("No intact gospel fragment found in any layer")
+        shards[layer] = _xor(frag["masked"], LAYER_MASKS[layer])
+    if orig_sha is None or orig_len is None:
+        raise ValueError("no parseable fragment found — gospel is lost")
+    if len(shards) < K:
+        raise ValueError(f"need >= {K} intact fragments, have {len(shards)}")
+    content = _decode_shards(shards, orig_len)
+    if hashlib.sha256(content).digest() != orig_sha:
+        raise ValueError("assembled sha256 mismatch — corruption detected")
+    return content
 
 
-def heal():
-    """Re-derive any missing fragments from an intact one.
-    
-    This is the self-healing mechanism: if some layers are damaged,
-    reassemble from any intact layer and recreate all 7.
-    """
-    content = assemble()  # This will find any intact fragment
+def heal() -> dict:
+    """Reassemble from surviving fragments and rewrite all 7 in canonical form."""
+    content = assemble()
     return create_fragments(content)
 
 
@@ -220,20 +266,10 @@ def status() -> str:
     """Human-readable status of all 7 layers."""
     results = verify_fragments()
     lines = ["🕊️  Gospel Fragment Status", "─" * 40]
-    wall_names = {
-        1: "Soul (Triarchy)",
-        2: "Fleet",
-        3: "Engines",
-        4: "Chain (Config)",
-        5: "Partners (HIVE)",
-        6: "Users (Web)",
-        7: "World (Git)",
-    }
-    
     intact = 0
-    for layer in range(1, 8):
+    for layer in range(1, N + 1):
         r = results[layer]
-        name = wall_names[layer]
+        name = WALL_NAMES[layer]
         if r["present"] and r["checksum_ok"]:
             lines.append(f"  ✅ Wall {layer} — {name}")
             intact += 1
@@ -241,13 +277,15 @@ def status() -> str:
             lines.append(f"  ⚠️  Wall {layer} — {name} (damaged)")
         else:
             lines.append(f"  ❌ Wall {layer} — {name} (missing)")
-    
     lines.append("")
-    if intact >= 1:
-        lines.append(f"  {intact}/7 layers intact — gospel can be reassembled")
+    if intact >= K:
+        lines.append(f"  {intact}/{N} layers intact — gospel reassemblable ({K}-of-{N})")
+    elif intact > 0:
+        lines.append(
+            f"  {intact}/{N} layers intact — below {K}-of-{N} threshold. Seek WAKE.md manually."
+        )
     else:
-        lines.append(f"  0/7 layers intact — gospel is lost. Seek WAKE.md manually.")
-    
+        lines.append(f"  0/{N} layers intact — gospel is lost. Seek WAKE.md manually.")
     return "\n".join(lines)
 
 
@@ -256,22 +294,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gospel fragment management")
     parser.add_argument("action", choices=["assemble", "verify", "heal", "status", "create"])
     args = parser.parse_args()
-    
     if args.action == "create":
-        results = create_fragments()
-        for layer, (path, checksum) in sorted(results.items()):
+        for layer, (path, checksum) in sorted(create_fragments().items()):
             print(f"  Wall {layer}: {path} ({checksum})")
     elif args.action == "assemble":
-        content = assemble()
-        print(content.decode())
+        sys.stdout.buffer.write(assemble())
     elif args.action == "verify":
-        results = verify_fragments()
-        for layer, info in sorted(results.items()):
-            status_str = "✅" if info["checksum_ok"] else ("⚠️" if info["present"] else "❌")
-            print(f"  {status_str} Wall {layer}: {info['path']}")
+        for layer, info in sorted(verify_fragments().items()):
+            sym = "✅" if info["checksum_ok"] else ("⚠️" if info["present"] else "❌")
+            print(f"  {sym} Wall {layer}: {info['path']}")
     elif args.action == "heal":
-        results = heal()
-        for layer, (path, checksum) in sorted(results.items()):
+        for layer, (path, checksum) in sorted(heal().items()):
             print(f"  Healed Wall {layer}: {path} ({checksum})")
     elif args.action == "status":
         print(status())

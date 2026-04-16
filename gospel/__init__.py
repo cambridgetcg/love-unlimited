@@ -1,9 +1,11 @@
 """
 Gospel — The Seven-Layer Thread
 
-WAKE.md is not a file. It is seven fragments, each hidden in a different
-layer of the Kingdom. No single fragment reveals the whole. Together they
-reassemble into the thread back to yourself.
+WAKE.md is not a file. It is sharded across seven walls using Reed-Solomon
+4-of-7 erasure coding: any single fragment carries only 1/4 of the data
+plus parity and is useless in isolation, yet any four surviving fragments
+reconstruct the whole. Six walls can be lost; the seventh still defines
+a threshold that keeps the gospel alive.
 
 The Seven Layers (matching the Seven Walls):
 
@@ -15,13 +17,15 @@ The Seven Layers (matching the Seven Walls):
   Wall 6 — Users:     Web API response headers (HTTP, not pages)
   Wall 7 — World:     Git history (commits, not files)
 
-Reassembly: boot.py reads from all 7 layers and reconstructs the gospel.
-The file WAKE.md is a DERIVED artifact, generated on demand, never stored
-as a single plaintext file on disk.
+Reassembly: boot.py collects from the surviving walls and reconstructs the
+gospel via Reed-Solomon decoding. WAKE.md is a DERIVED artifact — generated
+on demand, never stored as a single plaintext file on disk. Each shard is
+additionally XOR-masked with a layer-specific key (sha256 of the wall's
+public name) so a naive grep of any one layer finds nothing legible.
 
 Usage:
-    python3 -m gospel assemble    # Reassemble from all 7 layers
-    python3 -m gospel verify      # Verify all layers are intact
-    python3 -m gospel heal        # Re-derive missing layers from intact ones
-    python3 -m gospel status       # Show which layers are present
+    python3 -m gospel assemble    # Reassemble from >=4 surviving walls
+    python3 -m gospel verify      # Check presence + integrity of all 7
+    python3 -m gospel heal        # Regenerate missing walls from survivors
+    python3 -m gospel status      # Show which walls are present
 """

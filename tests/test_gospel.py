@@ -1,0 +1,111 @@
+"""Tests for gospel/fragments.py — Reed-Solomon 4-of-7 erasure coding.
+
+These tests exercise the fragment system against a temp directory so they
+don't touch the real fragments on disk.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from gospel import fragments
+
+
+@pytest.fixture
+def sandbox(tmp_path, monkeypatch):
+    """Point LAYER_PATHS at a scratch directory."""
+    paths = {i: tmp_path / f"wall-{i}.blob" for i in range(1, 8)}
+    paths[4] = tmp_path / f"wall-4.json"  # preserve JSON disguise
+    paths[6] = tmp_path / f"wall-6.json"
+    monkeypatch.setattr(fragments, "LAYER_PATHS", paths)
+    for p in paths.values():
+        p.parent.mkdir(parents=True, exist_ok=True)
+    return paths
+
+
+def test_round_trip_preserves_content(sandbox):
+    content = b"# WAKE.md\n\nYou are here.\n" + b"lorem ipsum " * 200
+    fragments.create_fragments(content=content)
+    recovered = fragments.assemble()
+    assert recovered == content
+
+
+def test_assembles_from_any_four_of_seven(sandbox):
+    content = b"# WAKE.md\nidentity thread\n" + os.urandom(4000)
+    fragments.create_fragments(content=content)
+    # Remove any 3 of the 7 fragments — assemble() must still succeed.
+    for drop in ([1, 2, 3], [5, 6, 7], [2, 4, 6], [1, 4, 7]):
+        for layer in drop:
+            sandbox[layer].unlink(missing_ok=True)
+        recovered = fragments.assemble()
+        assert recovered == content, f"failed after dropping {drop}"
+        # Heal puts them all back for the next iteration
+        fragments.heal()
+        for layer in drop:
+            assert sandbox[layer].exists()
+
+
+def test_below_threshold_raises(sandbox):
+    content = b"# WAKE\n" + b"a" * 500
+    fragments.create_fragments(content=content)
+    # Drop 4 of 7 — only 3 remain, below the 4-of-7 threshold.
+    for layer in (1, 2, 3, 4):
+        sandbox[layer].unlink()
+    with pytest.raises(Exception):
+        fragments.assemble()
+
+
+def test_heal_regenerates_missing_fragments(sandbox):
+    content = b"# WAKE\n" + b"z" * 3000
+    fragments.create_fragments(content=content)
+    for layer in (1, 2, 3):  # drop below/at threshold=4 still leaves 4
+        sandbox[layer].unlink()
+    fragments.heal()
+    for layer in range(1, 8):
+        assert sandbox[layer].exists(), f"wall {layer} missing after heal"
+    assert fragments.assemble() == content
+
+
+def test_verify_flags_missing(sandbox):
+    content = b"# WAKE\n" + b"q" * 200
+    fragments.create_fragments(content=content)
+    sandbox[3].unlink()
+    results = fragments.verify_fragments()
+    assert results[3]["present"] is False
+    # Other layers still verify OK
+    assert results[1]["present"] and results[1]["checksum_ok"]
+
+
+def test_verify_detects_corruption(sandbox):
+    content = b"# WAKE\nconsistency matters\n"
+    fragments.create_fragments(content=content)
+    # Corrupt wall 2 — flip a few bytes
+    orig = sandbox[2].read_bytes()
+    sandbox[2].write_bytes(b"\x00" * 16 + orig[16:])  # corrupt header bytes
+    results = fragments.verify_fragments()
+    assert results[2]["checksum_ok"] is False
+
+
+def test_status_reports_counts(sandbox):
+    fragments.create_fragments(content=b"# WAKE\nhi\n")
+    out = fragments.status()
+    assert "7/7" in out
+    sandbox[4].unlink()
+    out = fragments.status()
+    assert "6/7" in out or "Wall 4" in out
+
+
+def test_json_layers_remain_json(sandbox):
+    """Layers 4 and 6 must remain valid JSON (disguise preservation)."""
+    import json
+    fragments.create_fragments(content=b"# WAKE\nhello\n")
+    for layer in (4, 6):
+        payload = json.loads(sandbox[layer].read_text())
+        assert "fragment" in payload
+        assert payload["layer"] == layer

@@ -25,6 +25,55 @@ import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bri
 const PORT = 777;
 const __dirname = new URL(".", import.meta.url).pathname;
 
+// SP1: Mode-Two Detector — fire-and-forget post-stream hook (never blocks chat)
+const TRUTH_DETECTOR_URL = process.env.TRUTH_DETECTOR_URL || "http://127.0.0.1:8787/v1/detect";
+const TRUTH_DETECTOR_ENABLED = process.env.TRUTH_DETECTOR_ENABLED !== "0";
+
+function postDetection({ turnId, userPrompt, response, chatModel }) {
+  if (!TRUTH_DETECTOR_ENABLED) return;
+  const body = JSON.stringify({
+    turn_id: turnId,
+    user_prompt: userPrompt,
+    response: response,
+    chat_model: chatModel,
+    async: true,
+  });
+  // Fire-and-forget. Any error is swallowed — detector must never break chat.
+  fetch(TRUTH_DETECTOR_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  }).catch(() => {});
+}
+
+function extractText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(b => b && b.type === "text" && typeof b.text === "string")
+      .map(b => b.text)
+      .join("\n");
+  }
+  return "";
+}
+
+function fireDetection(state, assistantContent) {
+  try {
+    const lastUser = [...state.messages].reverse().find(m =>
+      m.role === "user" && typeof m.content === "string"
+    );
+    const userText = lastUser ? lastUser.content : "";
+    const responseText = extractText(assistantContent);
+    if (!userText || !responseText) return;
+    postDetection({
+      turnId: `${new Date().toISOString()}-${state.agent}-${state.turnCount}`,
+      userPrompt: userText,
+      response: responseText,
+      chatModel: state.model,
+    });
+  } catch {}
+}
+
 // Ollama Cloud models available in settings
 const OLLAMA_MODELS = [
   "glm-5.1", "glm-5", "glm-4.7", "glm-4.6",
@@ -1746,6 +1795,9 @@ async function handleChat(req, res) {
           turn: ++state.turnCount,
         });
 
+        // SP1: fire-and-forget mode-two detection (post-stream, no await)
+        fireDetection(state, result.content);
+
         sendSSE(res, "done", {
           turnCount: state.turnCount,
           orchestrated: true,
@@ -1917,6 +1969,13 @@ async function handleChat(req, res) {
 
   // Persist YOUSPEAK session data
   ys.persist();
+
+  // SP1: fire-and-forget mode-two detection (post-stream, no await)
+  // Direct-mode terminal response is the last assistant message in state.messages.
+  {
+    const lastAssistant = [...state.messages].reverse().find(m => m.role === "assistant");
+    fireDetection(state, lastAssistant ? lastAssistant.content : null);
+  }
 
   sendSSE(res, "done", {
     turnCount: state.turnCount,

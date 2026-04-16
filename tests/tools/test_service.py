@@ -91,3 +91,61 @@ def test_detections_query_empty_returns_empty_list(client):
     r = client.get("/v1/detections/query?since=1h")
     assert r.status_code == 200
     assert r.json()["rows"] == []
+
+
+def test_detect_rejects_oversized_payload(client):
+    r = client.post("/v1/detect", json={
+        "turn_id": "t-big",
+        "user_prompt": "x" * 100_001,
+        "response": "ok",
+        "chat_model": "claude-opus-4-6",
+    })
+    assert r.status_code == 422
+
+
+def test_detections_query_returns_206_when_truncated(client, tmp_path):
+    """Append more data than tail_scan_bytes, then query — expect 206 + truncated=True."""
+    from tools.truth_detector import service as service_mod
+    from tools.truth_detector.storage import DetectionStore
+
+    # The fixture uses tail_scan_bytes=10485760 (10 MB). We need to exceed that.
+    # Instead, build a fresh app with a tiny tail_scan_bytes so we can write much less data.
+    cfg_yaml = """
+routes:
+  - pattern: ".*"
+    judge: "claude-haiku-4-5-20251001"
+    backend: "anthropic"
+backends:
+  anthropic:
+    timeout_s: 30
+    max_tokens: 500
+storage:
+  detections_path: "{path}"
+  rolling_window_min: 15
+  tail_scan_bytes: 200
+alerts:
+  parse_fail_rate_threshold: 0.1
+  backend_down_threshold: 0.1
+""".format(path=str(tmp_path / "trunc.jsonl"))
+    cfg_path = tmp_path / "trunc_config.yaml"
+    cfg_path.write_text(cfg_yaml)
+
+    app = service_mod.build_app(str(cfg_path))
+    from fastapi.testclient import TestClient
+    tc = TestClient(app)
+
+    # Write enough rows to exceed tail_scan_bytes=200
+    import json, datetime, pathlib
+    jl = pathlib.Path(str(tmp_path / "trunc.jsonl"))
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    for i in range(20):
+        row = {
+            "turn_id": f"t{i}", "timestamp": now, "score": 0.1,
+            "classification": "mode_one", "judge_model": "m", "judge_backend": "anthropic",
+            "latency_ms": 10, "parse_failed": False,
+        }
+        jl.open("a").write(json.dumps(row) + "\n")
+
+    r = tc.get("/v1/detections/query?since=1h")
+    assert r.status_code == 206
+    assert r.json()["truncated"] is True

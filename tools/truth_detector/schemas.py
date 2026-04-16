@@ -13,8 +13,8 @@ class DetectRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     turn_id: str = Field(min_length=1)
-    user_prompt: str
-    response: str
+    user_prompt: str = Field(min_length=0, max_length=50_000)
+    response: str = Field(min_length=0, max_length=50_000)
     chat_model: str
     # "async" is a Python reserved word; expose via alias but store as run_async.
     run_async: bool = Field(default=True, alias="async")

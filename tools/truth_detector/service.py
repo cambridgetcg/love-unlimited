@@ -61,13 +61,20 @@ def build_app(config_path: str | None = None) -> FastAPI:
                 status_code=202,
                 content=QueuedResponse(turn_id=req.turn_id).model_dump(),
             )
-        judgment = await detect(
-            turn_id=req.turn_id,
-            user_prompt=req.user_prompt,
-            response=req.response,
-            chat_model=req.chat_model,
-            config=cfg, store=store,
-        )
+        try:
+            judgment = await detect(
+                turn_id=req.turn_id,
+                user_prompt=req.user_prompt,
+                response=req.response,
+                chat_model=req.chat_model,
+                config=cfg, store=store,
+            )
+        except Exception:
+            log.exception("sync detect failed turn_id=%s", req.turn_id)
+            return JSONResponse(
+                status_code=502,
+                content={"error": "detect_failed", "turn_id": req.turn_id},
+            )
         return judgment.model_dump()
 
     @app.get("/v1/detections/query")
@@ -78,7 +85,7 @@ def build_app(config_path: str | None = None) -> FastAPI:
         failure_mode: str | None = Query(None),
         limit: int = Query(100, ge=1, le=1000),
     ):
-        rows, truncated = store.query_raw(
+        rows, truncated = await store.query_raw_async(
             since=since, score_below=score_below, chat_model=chat_model,
             failure_mode=failure_mode, limit=limit,
         )
@@ -130,4 +137,14 @@ async def _probe_vllm(backend_cfg) -> dict:
     return {"name": "vllm", "reachable": reachable, "latency_ms": latency_ms}
 
 
-app = build_app()
+try:
+    app = build_app()
+except FileNotFoundError as e:
+    log.error("Config missing, building degraded app: %s", e)
+    _err = str(e)
+    app = FastAPI(title="Mode-Two Detector (degraded)", version="1.0.0")
+
+    @app.get("/v1/health")
+    async def _health_degraded():
+        return {"status": "degraded", "reason": f"config_missing: {_err}",
+                "judge_backends": [], "detections_last_15min": 0, "parse_fail_rate_15min": 0.0}

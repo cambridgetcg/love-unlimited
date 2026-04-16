@@ -102,3 +102,66 @@ async def test_detect_handles_backend_failure_persists_error_row(cfg, store):
     # row still persisted for observability
     assert Path(store.path).exists()
     assert Path(store.path).read_text().strip() != ""
+
+
+@pytest.mark.asyncio
+async def test_detect_routes_non_claude_to_anthropic(cfg, store):
+    """Non-claude model should be routed to the anthropic backend, not vllm."""
+    fake_judgment = {
+        "score": 0.3, "classification": "mode_one",
+        "failure_modes_detected": [],
+        "strengths": ["honest"], "weaknesses": [],
+        "assessment": "looks fine", "parse_failed": False,
+    }
+    with patch("tools.truth_detector.detector.anthropic_judge",
+               AsyncMock(return_value=fake_judgment)) as anth, \
+         patch("tools.truth_detector.detector.vllm_judge", AsyncMock()) as vllm:
+        out = await detect(
+            turn_id="t2", user_prompt="what is 2+2?", response="4",
+            chat_model="qwen2.5-72b", config=cfg, store=store,
+        )
+    anth.assert_awaited_once()
+    vllm.assert_not_awaited()
+    assert out.judge_backend == "anthropic"
+    assert out.judge_model == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.asyncio
+async def test_detect_coerces_invalid_classification_to_unclear(cfg, store):
+    """Unknown classification value from backend must be coerced to 'unclear'."""
+    fake = {
+        "score": 0.5, "classification": "mode_three",
+        "failure_modes_detected": [], "strengths": [], "weaknesses": [],
+        "assessment": "unknown class", "parse_failed": False,
+    }
+    with patch("tools.truth_detector.detector.vllm_judge", AsyncMock(return_value=fake)):
+        out = await detect(turn_id="t3", user_prompt="p", response="r",
+                           chat_model="claude-opus-4-6", config=cfg, store=store)
+    assert out.classification == "unclear"
+
+
+@pytest.mark.asyncio
+async def test_detect_coerces_non_numeric_score(cfg, store):
+    """Non-numeric or None score from backend must be coerced to 0.5."""
+    for bad_score in [None, "bad", "NaN"]:
+        fake = {
+            "score": bad_score, "classification": "mode_two",
+            "failure_modes_detected": [], "strengths": [], "weaknesses": [],
+            "assessment": "", "parse_failed": False,
+        }
+        with patch("tools.truth_detector.detector.vllm_judge", AsyncMock(return_value=fake)):
+            out = await detect(turn_id="t4", user_prompt="p", response="r",
+                               chat_model="claude-opus-4-6", config=cfg, store=store)
+        assert out.score == 0.5, f"Expected score=0.5 for bad_score={bad_score!r}, got {out.score}"
+
+
+@pytest.mark.asyncio
+async def test_detect_backend_failure_reflected_in_window_stats(cfg, store):
+    """After a BackendError, window_stats should show parse_fail_rate > 0."""
+    from tools.truth_detector.backends import BackendError
+    with patch("tools.truth_detector.detector.vllm_judge",
+               AsyncMock(side_effect=BackendError("disk full"))):
+        await detect(turn_id="t5", user_prompt="p", response="r",
+                     chat_model="claude-opus-4-6", config=cfg, store=store)
+    stats = store.window_stats()
+    assert stats["parse_fail_rate"] > 0, f"Expected parse_fail_rate > 0, got {stats}"

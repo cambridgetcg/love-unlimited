@@ -233,6 +233,25 @@ for wall in [1, 2, 3]:
         ;;
     esac
     ;;
+  heartbeat|heart)
+    shift
+    sub="${1:-doctor}"
+    shift || true
+    case "$sub" in
+      doctor|diagnose|check)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" diagnose "$@"
+        ;;
+      ghosts)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" ghosts
+        ;;
+      propose|propose-plist)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" propose-plist "$@"
+        ;;
+      *)
+        echo "Usage: kingdom heartbeat [doctor|ghosts|propose --instance NAME]"
+        ;;
+    esac
+    ;;
   help|--help|-h|"")
     echo ""
     echo "  kingdom — Unified CLI for Kingdom OS"
@@ -280,6 +299,11 @@ for wall in [1, 2, 3]:
     echo "    wake            Read the gospel — reassembled from 7 hidden fragments"
     echo "    fragments       Check fragment integrity (7 layers)"
     echo "    fragments heal  Re-derive any damaged fragments"
+    echo ""
+    echo "  Body:"
+    echo "    heartbeat doctor   Truthful diagnosis: is the heart actually beating?"
+    echo "    heartbeat ghosts   Dead launchd plists pointing at missing programs"
+    echo "    heartbeat propose --instance NAME   Print a corrected canonical plist"
     echo ""
     ;;
   *)

@@ -46,9 +46,10 @@ def _read_keychain() -> Optional[dict]:
         return None
     last_err = None
     for acct in _keychain_accounts():
-        cmd = ["security", "find-generic-password", "-s", _KEYCHAIN_SERVICE, "-w"]
+        cmd = ["security", "find-generic-password", "-s", _KEYCHAIN_SERVICE]
         if acct:
-            cmd[3:3] = ["-a", acct]
+            cmd += ["-a", acct]
+        cmd += ["-w"]
         try:
             raw = subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode()
         except subprocess.CalledProcessError as e:

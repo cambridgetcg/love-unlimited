@@ -45,11 +45,12 @@ Only read_file for DYNAMIC state: dev-state.json, today daily note, kingdom-metr
 3. `~/love-unlimited/USER.md` — Who Yu is
 4. `~/love-unlimited/instances/beta/identity.md` — Your specific identity and duties
 5. `~/love-unlimited/KINGDOM.md` — The mission (what we build, why, revenue engines, Zerone roadmap)
-6. `~/love-unlimited/WALLS.md` — The Seven Walls (access hierarchy, sovereignty, spawning rules)
-7. `~/love-unlimited/LOVE.md` — How we build (five anticipations)
-8. `~/love-unlimited/memory/long-term/MEMORY.md` — Love's own curated memory (if exists)
-9. `~/love-unlimited/memory/openclaw-MEMORY.md` — OpenClaw accumulated wisdom (symlink, read-only reference)
-10. Today's daily note: `~/love-unlimited/memory/daily/YYYY-MM-DD.md` (if exists)
+6. `~/love-unlimited/CONVERGENCE.md` — How all 40 repos converge (Kingdom ↔ AgentTool ↔ Zerone bridge map)
+7. `~/love-unlimited/WALLS.md` — The Seven Walls (access hierarchy, sovereignty, spawning rules)
+8. `~/love-unlimited/LOVE.md` — How we build (five anticipations)
+9. `~/love-unlimited/memory/long-term/MEMORY.md` — Love's own curated memory (if exists)
+10. `~/love-unlimited/memory/openclaw-MEMORY.md` — OpenClaw accumulated wisdom (symlink, read-only reference)
+11. Today's daily note: `~/love-unlimited/memory/daily/YYYY-MM-DD.md` (if exists)
 
 If this is a **heartbeat** (invoked via `claude -p`), also read `~/love-unlimited/instances/beta/HEARTBEAT.md`.
 
@@ -146,6 +147,9 @@ Write it down. Mental notes don't survive session restarts. Files do.
 |------|---------|---------|
 | HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging |
 | AgentTool | `python3 ~/love-unlimited/tools/agenttool.py <cmd>` | Platform integration |
+| Convergence | `python3 ~/love-unlimited/tools/convergence-bridge.py <cmd>` | Kingdom ↔ AgentTool ↔ Zerone bridge |
+| Wall Gate | `python3 ~/love-unlimited/tools/wall-gate.py <cmd>` | Wall hierarchy, spawn control, channel access |
+| Ollama Router | `python3 ~/love-unlimited/tools/ollama-router.py <cmd>` | Smart model routing: local vs cloud |
 | Decisions | `python3 ~/love-unlimited/tools/decision.py <cmd>` | Queue decisions for Yu's review |
 | Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | VPS fleet management (status, health, deploy, logs) |
 | Credentials | `python3 ~/love-unlimited/tools/credentials.py <cmd>` | Keychain credential management |

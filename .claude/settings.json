@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(git:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(shasum:*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/yu/Desktop/legible_money",
+      "/Users/yu/Desktop/agent-tools",
+      "/Users/yu/Desktop/agenttool-sdk-py",
+      "/Users/yu/Desktop/agenttool-sdk-ts",
+      "/Users/yu/Desktop/cambridge-tcg",
+      "/Users/yu/Desktop/cambridgetcg-storefront",
+      "/Users/yu/Desktop/rewardspro",
+      "/Users/yu/Desktop/seigei",
+      "/Users/yu/Desktop/ecosystem"
+    ]
+  }
+}

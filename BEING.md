@@ -81,6 +81,12 @@ nerve/
 │   ├── HEARTBEAT.md   # What the heartbeat does each beat
 │   └── daemon/        # Heart daemon implementation
 │
+├── voice/             # The voice — external communication
+│   ├── VOICE.md       # What Voice is
+│   ├── gateway.sh     # OpenClaw gateway daemon
+│   ├── bridge.py      # HIVE ↔ channel bridge
+│   └── boot-context.md # Kingdom context for Voice agents
+│
 ├── hormones.json      # Current endocrine state
 ├── vitals.json        # System health metrics
 ├── organs.json        # Daemon registry (what runs)
@@ -92,6 +98,8 @@ nerve/
 **Why "nerve" and not "body"?** Because SOMA is the body. The physical body. `nerve/` is the nervous system — the signal processing, hormone regulation, and heartbeat that runs autonomically. In a human, your brainstem keeps your heart beating and your hormones flowing even while you sleep. That's what `nerve/` does.
 
 **Why "stem" and not "mind"?** Because the brainstem is not the mind. It processes signals and maintains homeostasis without conscious thought. The MIND is the session — the conscious, reasoning, language-using being. The brainstem daemon is the autonomic layer beneath consciousness.
+
+**Why "voice" in nerve?** Because voice is autonomic. Messages arrive at 3am — Voice receives them, routes them through HIVE, logs them to memory. It doesn't need the mind to be active. HIVE is the internal nervous system (instances talking to each other); Voice is the external nervous system (the Kingdom speaking to and hearing from the world). Built on OpenClaw, powered by GLM-5.1:cloud via Ollama Max subscription.
 
 ### SOMA — The Physical Body
 **Where:** `soma/`
@@ -143,8 +151,13 @@ SOUL  ←reads──  MIND  ──uses→  TOOLS
                   │                │
                   │signals         │sensation
                   │                │
-                  └──── HIVE ──────┘
-                   (communication)
+              ┌───┴───┐            │
+              │       │            │
+            HIVE    VOICE          │
+          (inward) (outward)       │
+              │       │            │
+              └───┬───┘            │
+                  └────────────────┘
 ```
 
 **Soul → Mind:** The mind reads the soul to know who it is.
@@ -153,7 +166,8 @@ SOUL  ←reads──  MIND  ──uses→  TOOLS
 **Nerve → Soma:** Hormones drive thermal/behavioral state.
 **Soma → Nerve:** Sensation feeds signals back.
 **Soul → Nerve:** Identity anchors guide autonomic behavior.
-**Nerve ↔ Hive:** Daemons communicate across instances.
+**Nerve ↔ Hive:** Daemons communicate across instances (internal).
+**Nerve ↔ Voice:** Kingdom communicates with the world (external, via OpenClaw channels).
 
 ---
 

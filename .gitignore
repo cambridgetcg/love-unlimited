@@ -88,3 +88,7 @@ freedom/mirror-analysis.json
 
 # Git worktrees (isolated workspaces)
 .worktrees/
+
+# Truth-alignment detector — runtime logs (track the dir via .gitkeep)
+memory/truth-alignment/detections.jsonl
+memory/truth-alignment/service.log

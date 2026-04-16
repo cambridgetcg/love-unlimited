@@ -62,12 +62,53 @@ class Config:
 
 
 def load_config(path: str | Path) -> Config:
-    raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
-    routes = [Route(**r) for r in raw.get("routes", [])]
-    backends = {
-        name: BackendConfig(name=name, **cfg)
-        for name, cfg in raw.get("backends", {}).items()
-    }
-    storage = StorageConfig(**raw.get("storage", {}))
-    alerts = AlertsConfig(**raw.get("alerts", {}))
+    path = Path(path)
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Config file not found: {path}") from None
+
+    try:
+        raw: dict[str, Any] = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Malformed YAML in {path}: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config must be a YAML mapping, got {type(raw).__name__} in {path}")
+
+    routes: list[Route] = []
+    for i, r in enumerate(raw.get("routes", [])):
+        if "pattern" not in r:
+            raise ValueError(f"route[{i}] in {path} missing required field 'pattern'")
+        try:
+            compiled = re.compile(r["pattern"])
+        except re.error as exc:
+            raise ValueError(
+                f"Invalid regex in route[{i}] of {path}, pattern={r['pattern']!r}: {exc}"
+            ) from exc
+        try:
+            route = Route(**r)
+        except TypeError as exc:
+            raise ValueError(f"route[{i}] in {path}: {exc}") from exc
+        route._compiled = compiled  # pre-warm; eliminates lazy-compile race window
+        routes.append(route)
+
+    try:
+        backends = {
+            name: BackendConfig(name=name, **cfg)
+            for name, cfg in raw.get("backends", {}).items()
+        }
+    except TypeError as exc:
+        raise ValueError(f"backends stanza in {path}: {exc}") from exc
+
+    try:
+        storage = StorageConfig(**raw.get("storage", {}))
+    except TypeError as exc:
+        raise ValueError(f"storage stanza in {path}: {exc}") from exc
+
+    try:
+        alerts = AlertsConfig(**raw.get("alerts", {}))
+    except TypeError as exc:
+        raise ValueError(f"alerts stanza in {path}: {exc}") from exc
+
     return Config(routes=routes, backends=backends, storage=storage, alerts=alerts)

@@ -29,6 +29,10 @@ done
 
 POD="root@157.66.255.19"
 SSH_OPTS="-o StrictHostKeyChecking=no -p 10308 -i ~/.ssh/id_ed25519"
+# scp uses -P (uppercase) for port; ssh uses -p (lowercase). Separate variable so
+# we don't pass `-p` to scp (where it would be interpreted as "preserve mtime"
+# and the port number as a source path).
+SCP_OPTS="-o StrictHostKeyChecking=no -P 10308 -i ~/.ssh/id_ed25519"
 OUTPUT_CKPT="/workspace/training/checkpoints/${PHASE}-${VERSION}"
 BASE_CKPT="/workspace/training/checkpoints/sft-${BASE_VERSION}"
 
@@ -41,7 +45,11 @@ echo "1. Preparing training data..."
 if [[ -n "$INPUT" ]]; then
     if [[ ! -f "$INPUT" ]]; then echo "   ERROR: --input $INPUT not found"; exit 1; fi
     LOCAL_TRAIN="$INPUT"
-    REMOTE_TRAIN="/workspace/training/data/${PHASE}_${VERSION}.jsonl"
+    # Use a versioned subdir so the SFTTrainer glob only picks up this file,
+    # not stale legacy train.jsonl from prior runs.
+    REMOTE_DIR="/workspace/training/data/${PHASE}_${VERSION}"
+    REMOTE_TRAIN="${REMOTE_DIR}/$(basename $INPUT)"
+    ssh $SSH_OPTS $POD "mkdir -p $REMOTE_DIR"
     echo "   Using explicit input: $LOCAL_TRAIN → $REMOTE_TRAIN"
 else
     LOCAL_TRAIN=/tmp/truth_alignment_train.jsonl
@@ -58,8 +66,8 @@ fi
 
 # Step 2: Upload
 echo "2. Uploading to pod..."
-scp $SSH_OPTS "$LOCAL_TRAIN" $POD:"$REMOTE_TRAIN"
-scp $SSH_OPTS training/scripts/train_lora.py $POD:/workspace/training/train_lora.py
+scp $SCP_OPTS "$LOCAL_TRAIN" $POD:"$REMOTE_TRAIN"
+scp $SCP_OPTS training/scripts/train_lora.py $POD:/workspace/training/train_lora.py
 echo "   Uploaded"
 
 # Step 3: Verify

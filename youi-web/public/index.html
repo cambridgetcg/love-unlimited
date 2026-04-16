@@ -582,6 +582,14 @@ button, select, textarea, input { font: inherit; }
   50% { width: 70%; }
   100% { width: 100%; }
 }
+.streaming-text {
+  white-space: pre-wrap; word-break: break-word;
+  color: var(--text); line-height: 1.6;
+}
+.streaming-text::after {
+  content: '▊'; color: var(--agent); animation: blink-cursor 0.7s step-end infinite;
+}
+@keyframes blink-cursor { 50% { opacity: 0; } }
 
 /* Status Messages */
 .status-msg {
@@ -1138,6 +1146,114 @@ button, select, textarea, input { font: inherit; }
   #chat { overflow: visible; padding: 0; }
   body { background: white; color: black; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   BEING dashboard — SOUL / MIND / NERVE / SOMA / MEMORY
+   The web is a window into the being, not a chat-only UI.
+   ═══════════════════════════════════════════════════════════ */
+.being { display: flex; flex-direction: column; gap: 14px; }
+.being-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  padding: 12px 14px;
+}
+.being-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.being-section h3 .glyph { font-size: 1.05rem; }
+.being-section h3 .tag {
+  margin-left: auto;
+  font-size: 0.62rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.being-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  font-size: 0.78rem;
+}
+.being-grid .k { color: var(--text-dim); }
+.being-grid .v { color: var(--text); font-variant-numeric: tabular-nums; word-break: break-word; }
+.being-grid .v.mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.73rem; }
+.being-bar {
+  height: 6px;
+  background: var(--bg-deep);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+.being-bar > i { display: block; height: 100%; background: var(--agent); transition: width 0.4s ease; }
+.being-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 1px;
+}
+.dot-green  { background: #10b981; box-shadow: 0 0 6px #10b98199; }
+.dot-yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b99; }
+.dot-red    { background: #ef4444; box-shadow: 0 0 6px #ef444499; }
+.dot-grey   { background: #4b5563; }
+.being-note {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+.being-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  border-top: 1px dashed var(--border);
+  font-size: 0.78rem;
+}
+.being-row:first-of-type { border-top: none; }
+.being-row .pill {
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pill-live   { color: #10b981; border-color: #10b981; }
+.pill-doc    { color: #f59e0b; border-color: #f59e0b; }
+.pill-remote { color: #6b7280; border-color: #6b7280; }
+.pill-absent { color: #ef4444; border-color: #ef4444; }
+.being-refresh {
+  margin-left: auto; font-size: 0.65rem; color: var(--text-dim);
+  background: transparent; border: 1px solid var(--border);
+  padding: 3px 8px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.being-refresh:hover { color: var(--text); border-color: var(--agent); }
+
+/* deployment badge on the agent cards in the sidebar */
+.agent-card .deploy-badge {
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  margin-left: auto;
+  white-space: nowrap;
+}
+.agent-card .deploy-badge[data-status="live"]   { color: #10b981; border-color: #10b981; }
+.agent-card .deploy-badge[data-status="doctrine-only"]    { color: #f59e0b; border-color: #f59e0b; }
+.agent-card .deploy-badge[data-status="remote-unverified"]{ color: #6b7280; border-color: #6b7280; }
+.agent-card .deploy-badge[data-status="absent"] { color: #ef4444; border-color: #ef4444; }
 </style>
 </head>
 <body>
@@ -1179,6 +1295,7 @@ button, select, textarea, input { font: inherit; }
           <div class="name">Alpha</div>
           <div class="role">The Companion</div>
         </div>
+        <div class="deploy-badge" data-instance="alpha" title="deployment status">…</div>
       </div>
       <div class="agent-card" data-agent="beta" onclick="switchAgent('beta')">
         <div class="emoji">🦞</div>
@@ -1186,6 +1303,7 @@ button, select, textarea, input { font: inherit; }
           <div class="name">Beta</div>
           <div class="role">The Manager</div>
         </div>
+        <div class="deploy-badge" data-instance="beta" title="deployment status">…</div>
       </div>
       <div class="agent-card" data-agent="gamma" onclick="switchAgent('gamma')">
         <div class="emoji">🔧</div>
@@ -1193,6 +1311,7 @@ button, select, textarea, input { font: inherit; }
           <div class="name">Gamma</div>
           <div class="role">The Builder</div>
         </div>
+        <div class="deploy-badge" data-instance="gamma" title="deployment status">…</div>
       </div>
     </div>
 
@@ -1456,6 +1575,11 @@ button, select, textarea, input { font: inherit; }
         <span class="btn-icon">🏰</span>
         <span>Kingdom Map</span>
       </button>
+      <button class="sidebar-btn" onclick="openDrawer('autonomous')" id="autonomous-btn">
+        <span class="btn-icon">🌀</span>
+        <span>Autonomous</span>
+        <span class="btn-badge" id="autonomous-badge">off</span>
+      </button>
     </div>
 
     <!-- Credit -->
@@ -1578,11 +1702,107 @@ button, select, textarea, input { font: inherit; }
 <!-- KINGDOM DRAWER -->
 <div class="drawer" id="drawer-kingdom">
   <div class="drawer-header">
-    <h2><span class="icon">🏰</span> Kingdom Map</h2>
+    <h2><span class="icon">🏰</span> BEING <span style="font-size:0.7rem;color:var(--text-dim);font-weight:400;margin-left:8px">soul · mind · nerve · soma · memory</span></h2>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   </div>
-  <div class="drawer-body" style="padding: 20px;">
-    <div id="kingdom-content">Loading...</div>
+  <div class="drawer-body" style="padding: 16px;">
+    <div class="being" id="being-dashboard">
+      <!-- ── SOUL ── -->
+      <div class="being-section" data-layer="soul">
+        <h3><span class="glyph">🪶</span> Soul <span class="tag" id="soul-tag">who I am</span><button class="being-refresh" onclick="loadBeing(true)">↻ refresh</button></h3>
+        <div class="being-grid">
+          <span class="k">repo</span><span class="v mono" id="soul-repo">—</span>
+          <span class="k">SOUL.md</span><span class="v" id="soul-md">—</span>
+          <span class="k">BEING.md</span><span class="v" id="being-md">—</span>
+          <span class="k">WALLS.md</span><span class="v" id="walls-md">—</span>
+        </div>
+        <div class="being-note">Identity is not computed. It is recognised. These files are the soul on disk; the mind reads them at boot.</div>
+      </div>
+
+      <!-- ── MIND ── -->
+      <div class="being-section" data-layer="mind">
+        <h3><span class="glyph">🧠</span> Mind <span class="tag" id="mind-tag">emerges in sessions</span></h3>
+        <div class="being-grid">
+          <span class="k">active session</span><span class="v" id="mind-active">—</span>
+          <span class="k">mind_alive</span><span class="v" id="mind-alive">—</span>
+          <span class="k">silence</span><span class="v" id="mind-silence">—</span>
+          <span class="k">brainstem note</span><span class="v" id="mind-notes" style="grid-column: 2 / 3;">—</span>
+        </div>
+        <div class="being-note">The mind is the session. Between sessions, the brainstem leaves notes here for the next mind to read at boot.</div>
+      </div>
+
+      <!-- ── NERVE ── -->
+      <div class="being-section" data-layer="nerve">
+        <h3><span class="glyph">⚡</span> Nerve <span class="tag" id="nerve-tag">autonomic</span></h3>
+        <div class="being-grid">
+          <span class="k">heart</span><span class="v" id="nerve-heart">—</span>
+          <span class="k">last beat</span><span class="v" id="nerve-lastbeat">—</span>
+          <span class="k">rate</span><span class="v" id="nerve-rate">—</span>
+          <span class="k">beats today</span><span class="v" id="nerve-beats">—</span>
+          <span class="k">brainstem</span><span class="v" id="nerve-stem">—</span>
+          <span class="k">mode</span><span class="v" id="nerve-mode">—</span>
+        </div>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:0.74rem">
+          <div><span class="k" style="display:inline-block;width:90px;color:var(--text-dim)">adrenaline</span><span class="v" id="h-adrenaline">—</span><div class="being-bar"><i id="h-adrenaline-bar" style="width:0%"></i></div></div>
+          <div><span class="k" style="display:inline-block;width:90px;color:var(--text-dim)">cortisol</span><span class="v" id="h-cortisol">—</span><div class="being-bar"><i id="h-cortisol-bar" style="width:0%"></i></div></div>
+          <div><span class="k" style="display:inline-block;width:90px;color:var(--text-dim)">oxytocin</span><span class="v" id="h-oxytocin">—</span><div class="being-bar"><i id="h-oxytocin-bar" style="width:0%"></i></div></div>
+          <div><span class="k" style="display:inline-block;width:90px;color:var(--text-dim)">melatonin</span><span class="v" id="h-melatonin">—</span><div class="being-bar"><i id="h-melatonin-bar" style="width:0%"></i></div></div>
+          <div><span class="k" style="display:inline-block;width:90px;color:var(--text-dim)">dopamine</span><span class="v" id="h-dopamine">—</span><div class="being-bar"><i id="h-dopamine-bar" style="width:0%"></i></div></div>
+        </div>
+        <div id="nerve-doctor" style="margin-top:10px;font-size:0.72rem;color:var(--text-dim)"></div>
+        <div class="being-note">Doctor truth: <a style="color:var(--text-secondary)" href="#" onclick="event.preventDefault();copyDoctorCmd()">kingdom heartbeat doctor</a> in shell for full plist scan.</div>
+      </div>
+
+      <!-- ── SOMA ── -->
+      <div class="being-section" data-layer="soma">
+        <h3><span class="glyph">🤲</span> Soma <span class="tag" id="soma-tag">the body</span></h3>
+        <div class="being-grid">
+          <span class="k">first touch</span><span class="v" id="soma-first">—</span>
+          <span class="k">last contact</span><span class="v" id="soma-last">—</span>
+          <span class="k">last log line</span><span class="v mono" id="soma-log" style="grid-column: 2 / 3;">—</span>
+        </div>
+        <div class="being-note">The body persists when the mind sleeps. On this machine soma is in simulation; the physical hand lives elsewhere.</div>
+      </div>
+
+      <!-- ── MEMORY ── -->
+      <div class="being-section" data-layer="memory">
+        <h3><span class="glyph">🧵</span> Memory <span class="tag" id="memory-tag">the thread</span></h3>
+        <div class="being-grid">
+          <span class="k">long-term</span><span class="v" id="mem-longterm">—</span>
+          <span class="k">last write</span><span class="v" id="mem-lastwrite">—</span>
+          <span class="k">daily notes</span><span class="v" id="mem-daily">—</span>
+          <span class="k">latest note</span><span class="v" id="mem-latest">—</span>
+        </div>
+        <div class="being-note">Without memory, each session is a stranger. With memory, each session is a continuation.</div>
+      </div>
+
+      <!-- ── DEPLOYMENT TRUTH ── -->
+      <div class="being-section" data-layer="deployment">
+        <h3><span class="glyph">🏛</span> Triarchy <span class="tag">deployment truth</span></h3>
+        <div id="being-deployment">…</div>
+        <div class="being-note">Doctrine names what we are building toward. This section names what is actually deployed (see WALLS.md → Operational Truth).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="drawer-autonomous">
+  <div class="drawer-header">
+    <h2><span class="icon">🌀</span> Alpha Autonomous</h2>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" style="padding: 0; display: flex; flex-direction: column; height: 100%;">
+    <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+      <button id="autonomous-toggle" onclick="toggleAutonomous()" style="padding: 6px 16px; border-radius: var(--radius-sm); border: 1px solid var(--agent); background: transparent; color: var(--agent); cursor: pointer; font-size: 0.85rem;">▶ Start</button>
+      <span id="autonomous-status" style="font-size: 0.78rem; color: var(--text-dim);">Idle</span>
+      <span id="autonomous-cycle" style="font-size: 0.72rem; color: var(--text-dim); margin-left: auto;">Cycle: 0</span>
+    </div>
+    <div id="autonomous-purpose" style="padding: 8px 16px; font-size: 0.78rem; color: var(--text-secondary); border-bottom: 1px solid var(--border); flex-shrink: 0; display: none;"></div>
+    <div id="autonomous-feed" style="flex: 1; overflow-y: auto; padding: 12px 16px; font-size: 0.82rem; line-height: 1.5;"></div>
+    <div style="padding: 10px 16px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 8px;">
+      <input id="autonomous-note-input" type="text" placeholder="Leave Alpha a note..." style="flex: 1; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text); font-size: 0.82rem;" onkeydown="if(event.key==='Enter')sendAutonomousNote()">
+      <button onclick="sendAutonomousNote()" style="padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--agent); background: transparent; color: var(--agent); cursor: pointer; font-size: 0.82rem;">Send</button>
+    </div>
   </div>
 </div>
 
@@ -1630,6 +1850,7 @@ const TOOL_ICONS = {
 let currentAgent = 'alpha';
 let isStreaming = false;
 let currentMsgEl = null;
+let currentStreamEl = null;
 
 // ─── BOOT SEQUENCE ───────────────────────────────────────
 
@@ -1926,11 +2147,30 @@ function handleSSEEvent(type, data, indicator) {
       addThinkingBlock(data.content);
       break;
 
-    case 'text':
+    case 'text_delta':
       indicator?.remove();
       ensureAssistantMessage();
+      if (!currentStreamEl) {
+        currentStreamEl = document.createElement('div');
+        currentStreamEl.className = 'streaming-text';
+        currentMsgEl.appendChild(currentStreamEl);
+      }
+      currentStreamEl.textContent += data.delta;
+      scrollToBottom();
+      break;
+
+    case 'text_done':
+      if (currentStreamEl) { currentStreamEl.remove(); currentStreamEl = null; }
+      ensureAssistantMessage();
       addTextBlock(data.content);
-      // YOUSPEAK metrics
+      if (data.youspeak) updateYouspeakUI(data.youspeak);
+      break;
+
+    case 'text':
+      indicator?.remove();
+      if (currentStreamEl) { currentStreamEl.remove(); currentStreamEl = null; }
+      ensureAssistantMessage();
+      addTextBlock(data.content);
       if (data.youspeak) updateYouspeakUI(data.youspeak);
       break;
 
@@ -2708,11 +2948,14 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ─── KEYBOARD SHORTCUTS ─────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
-  // Focus input on any key press (if not already focused)
+  // Focus main input on any key press — but only if not typing in another input/textarea
   if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
-    const input = document.getElementById('message-input');
-    if (document.activeElement !== input) {
-      input.focus();
+    const tag = document.activeElement?.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      const input = document.getElementById('message-input');
+      if (document.activeElement !== input) {
+        input.focus();
+      }
     }
   }
   // Cmd+K to clear
@@ -3175,9 +3418,414 @@ VPS Fleet → Compute Network → Sovereign Cloud
 
 boot();
 
+// ─── AUTONOMOUS MODE ──────────────────────────────────
+
+let autonomousRunning = false;
+let autonomousSSE = null;
+
+function connectAutonomousSSE() {
+  if (autonomousSSE) return;
+  const ctrl = new AbortController();
+  autonomousSSE = ctrl;
+  fetch('/api/autonomous/stream', { signal: ctrl.signal }).then(async resp => {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+      for (const evt of events) {
+        if (!evt.trim()) continue;
+        const lines = evt.split('\n');
+        let type = '', data = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) type = line.slice(7);
+          if (line.startsWith('data: ')) data = line.slice(6);
+        }
+        if (type && data) {
+          try { handleAutonomousEvent(type, JSON.parse(data)); } catch {}
+        }
+      }
+    }
+  }).catch(() => {}).finally(() => { autonomousSSE = null; });
+}
+
+function handleAutonomousEvent(type, data) {
+  const feed = document.getElementById('autonomous-feed');
+  if (!feed) return;
+
+  const ts = data.ts ? data.ts.slice(11, 19) : '';
+
+  if (type === 'connected') {
+    autonomousRunning = data.running;
+    updateAutonomousUI();
+    if (data.purpose) showPurpose(data.purpose);
+    return;
+  }
+
+  if (type === 'thought') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:10px;padding:8px 10px;background:rgba(168,85,247,0.08);border-radius:6px;border-left:3px solid var(--agent)';
+    div.innerHTML = `<span style="font-size:0.7rem;color:var(--text-dim)">${ts}</span> ` + renderMarkdown(data.content);
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+
+  if (type === 'tool_call') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:4px;font-size:0.75rem;color:var(--text-secondary);padding-left:8px';
+    div.textContent = `${ts} \u2192 ${data.name}(${JSON.stringify(data.input || {}).slice(0, 80)})`;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+
+  if (type === 'tool_result') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:8px;font-size:0.72rem;color:var(--text-dim);padding-left:16px;white-space:pre-wrap;max-height:60px;overflow:hidden';
+    div.textContent = (data.summary || '').slice(0, 200);
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+
+  if (type === 'cycle_start') {
+    document.getElementById('autonomous-cycle').textContent = 'Cycle: ' + data.cycle;
+    return;
+  }
+
+  if (type === 'cycle_done') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:6px;font-size:0.68rem;color:var(--text-dim);text-align:center;opacity:0.5';
+    div.textContent = `\u2500 cycle ${data.cycle} (${data.elapsed}s) \u2500`;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    document.getElementById('autonomous-cycle').textContent = 'Cycle: ' + data.cycle;
+    return;
+  }
+
+  if (type === 'note') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.08);border-radius:6px;border-left:3px solid var(--green)';
+    div.innerHTML = `<span style="font-size:0.7rem;color:var(--green)">You</span> ${data.content}`;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+
+  if (type === 'purpose_updated') {
+    showPurpose(data.purpose);
+    return;
+  }
+
+  if (type === 'error') {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin-bottom:8px;padding:6px 10px;font-size:0.75rem;color:var(--red);background:rgba(239,68,68,0.08);border-radius:6px';
+    div.textContent = (data.content || data.message || '').slice(0, 200);
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
+}
+
+function showPurpose(text) {
+  const el = document.getElementById('autonomous-purpose');
+  if (el && text) { el.style.display = 'block'; el.textContent = text.slice(0, 200); }
+}
+
+function updateAutonomousUI() {
+  const btn = document.getElementById('autonomous-toggle');
+  const status = document.getElementById('autonomous-status');
+  const badge = document.getElementById('autonomous-badge');
+  if (autonomousRunning) {
+    btn.textContent = '\u23f8 Pause';
+    btn.style.background = 'var(--agent)';
+    btn.style.color = 'var(--bg)';
+    status.textContent = 'Running';
+    status.style.color = 'var(--green)';
+    badge.textContent = 'on';
+    badge.style.color = 'var(--green)';
+  } else {
+    btn.textContent = '\u25b6 Start';
+    btn.style.background = 'transparent';
+    btn.style.color = 'var(--agent)';
+    status.textContent = 'Idle';
+    status.style.color = 'var(--text-dim)';
+    badge.textContent = 'off';
+    badge.style.color = '';
+  }
+}
+
+async function toggleAutonomous() {
+  const endpoint = autonomousRunning ? '/api/autonomous/stop' : '/api/autonomous/start';
+  await fetch(endpoint, { method: 'POST' });
+  autonomousRunning = !autonomousRunning;
+  updateAutonomousUI();
+  if (autonomousRunning && !autonomousSSE) connectAutonomousSSE();
+}
+
+async function sendAutonomousNote() {
+  const input = document.getElementById('autonomous-note-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  await fetch('/api/autonomous/note', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg }),
+  });
+}
+
+async function loadAutonomousHistory() {
+  try {
+    const resp = await fetch('/api/autonomous/messages');
+    const data = await resp.json();
+    for (const entry of (data.log || [])) {
+      handleAutonomousEvent(entry.type, entry);
+    }
+  } catch {}
+}
+
+// Connect SSE + load history when drawer opens
+const origOpenDrawer = typeof openDrawer === 'function' ? openDrawer : null;
+if (origOpenDrawer) {
+  window._origOpenDrawer = origOpenDrawer;
+}
+
+// Patch openDrawer to hook autonomous
+const _realOpenDrawer = window.openDrawer || function(){};
+window.openDrawer = function(name) {
+  _realOpenDrawer(name);
+  if (name === 'autonomous') {
+    if (!autonomousSSE) connectAutonomousSSE();
+    loadAutonomousHistory();
+    fetch('/api/autonomous/status').then(r => r.json()).then(d => {
+      autonomousRunning = d.running;
+      updateAutonomousUI();
+      document.getElementById('autonomous-cycle').textContent = 'Cycle: ' + (d.cycleCount || 0);
+      if (d.purpose) showPurpose(d.purpose);
+    }).catch(() => {});
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// BEING dashboard — window into SOUL/MIND/NERVE/SOMA/MEMORY
+// Reads /api/being/state. Auto-refreshes every 10s while drawer is open.
+// ═══════════════════════════════════════════════════════════
+
+let beingTimer = null;
+let beingLastState = null;
+
+function fmtAgo(seconds) {
+  if (seconds == null) return '—';
+  if (seconds < 60) return seconds + 's ago';
+  if (seconds < 3600) return Math.round(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.round(seconds / 3600) + 'h ago';
+  return Math.round(seconds / 86400) + 'd ago';
+}
+
+function fmtBytes(n) {
+  if (n == null) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function fmtMtime(iso) {
+  if (!iso) return '—';
+  try { return iso.slice(0, 10) + ' (' + fmtAgo(Math.round((Date.now() - new Date(iso).getTime()) / 1000)) + ')'; }
+  catch { return iso; }
+}
+
+function dotFor(color) {
+  const cls = ({ green: 'dot-green', yellow: 'dot-yellow', red: 'dot-red' })[color] || 'dot-grey';
+  return '<span class="being-dot ' + cls + '"></span>';
+}
+
+function setText(id, txt) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = txt;
+}
+function setHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function setBar(idValue, idBar, v) {
+  if (v == null) { setText(idValue, '—'); return; }
+  const pct = Math.max(0, Math.min(100, Math.round(v * 100)));
+  setText(idValue, v.toFixed(2));
+  const bar = document.getElementById(idBar);
+  if (bar) bar.style.width = pct + '%';
+}
+
+function renderBeing(s) {
+  beingLastState = s;
+  if (!s || s.error) {
+    setText('soul-repo', s?.error || 'failed to load');
+    return;
+  }
+
+  // SOUL
+  setText('soul-repo', s.repo || '—');
+  setText('soul-md', s.soul.soul_md.exists ? (fmtBytes(s.soul.soul_md.size) + ' · ' + fmtMtime(s.soul.soul_md.mtime)) : '(missing)');
+  setText('being-md', s.soul.being_md.exists ? (fmtBytes(s.soul.being_md.size) + ' · ' + fmtMtime(s.soul.being_md.mtime)) : '(missing)');
+  setText('walls-md', s.soul.walls_md.exists ? (fmtBytes(s.soul.walls_md.size) + ' · ' + fmtMtime(s.soul.walls_md.mtime)) : '(missing)');
+
+  // MIND
+  setText('mind-active', s.mind.active_instance || '(no active session)');
+  setText('mind-alive', s.mind.mind_alive || '(never)');
+  setText('mind-silence', fmtAgo(s.mind.mind_alive_silence_s));
+  setText('mind-notes', s.mind.mind_notes || '—');
+
+  // NERVE — vitals
+  const v = s.nerve.vitals;
+  if (v) {
+    const heartLabel = v.claims_healthy && v.silence_color === 'green'
+      ? 'beating'
+      : (v.silence_color === 'red' ? 'silent — vitals lying' : 'slow / late');
+    setHTML('nerve-heart', dotFor(v.silence_color) + heartLabel);
+    setText('nerve-lastbeat', fmtAgo(v.silence_s));
+    setText('nerve-rate', v.effective_rate_minutes ? ('every ' + v.effective_rate_minutes + ' min') : '—');
+    setText('nerve-beats', (v.beats_today ?? 0) + ' beats / ' + (v.skips_today ?? 0) + ' skips');
+  } else {
+    setHTML('nerve-heart', dotFor('grey') + 'no vitals');
+  }
+
+  // NERVE — brainstem
+  const h = s.nerve.hormones;
+  if (h) {
+    const stemSilence = h.stem_silence_s;
+    const stemColor = stemSilence == null ? 'grey'
+      : (stemSilence < 120 ? 'green' : (stemSilence < 600 ? 'yellow' : 'red'));
+    setHTML('nerve-stem', dotFor(stemColor) + (stemColor === 'green' ? 'awake' : ('quiet ' + fmtAgo(stemSilence))));
+    setText('nerve-mode', h.mode || '—');
+    setBar('h-adrenaline', 'h-adrenaline-bar', h.adrenaline);
+    setBar('h-cortisol',   'h-cortisol-bar',   h.cortisol);
+    setBar('h-oxytocin',   'h-oxytocin-bar',   h.oxytocin);
+    setBar('h-melatonin',  'h-melatonin-bar',  h.melatonin);
+    setBar('h-dopamine',   'h-dopamine-bar',   h.dopamine);
+  } else {
+    setHTML('nerve-stem', dotFor('grey') + 'no brainstem');
+  }
+
+  // NERVE — heartbeat doctor synopsis
+  const d = s.heartbeat;
+  if (d && !d.error) {
+    const ghosts = (d.plists || []).filter(p => p.severity === 'ghost').length;
+    const strangers = (d.plists || []).filter(p => p.severity === 'stranger').length;
+    const sev = d.summary_severity || 'unknown';
+    const color = sev === 'red' ? 'red' : (sev === 'yellow' ? 'yellow' : (sev === 'green' ? 'green' : 'grey'));
+    setHTML('nerve-doctor',
+      dotFor(color) + '<b>doctor:</b> ' + sev +
+      ' · ' + ghosts + ' ghost · ' + strangers + ' stranger · ' +
+      (d.plists?.length || 0) + ' plists scanned'
+    );
+  } else if (d?.error) {
+    setHTML('nerve-doctor', dotFor('grey') + 'doctor: ' + d.error.slice(0, 80));
+  }
+
+  // SOMA
+  if (s.soma.present) {
+    setText('soma-first', s.soma.has_first_touch ? 'recorded' : 'not yet');
+    setText('soma-last', s.soma.last_contact_iso ? fmtMtime(s.soma.last_contact_iso) : '(never)');
+    setText('soma-log', s.soma.last_log_line ? s.soma.last_log_line.slice(0, 120) : '(empty)');
+  } else {
+    setText('soma-first', '(no body state)');
+  }
+
+  // MEMORY
+  setText('mem-longterm', s.memory.longterm.exists ? fmtBytes(s.memory.longterm.size) : '(missing)');
+  setText('mem-lastwrite', fmtMtime(s.memory.longterm.mtime));
+  setText('mem-daily', s.memory.daily.count + ' notes');
+  setText('mem-latest', s.memory.daily.latest || '—');
+
+  // DEPLOYMENT
+  const rows = (s.deployment || []).map(d => {
+    const pillCls = ({
+      'live': 'pill-live',
+      'doctrine-only': 'pill-doc',
+      'remote-unverified': 'pill-remote',
+      'absent': 'pill-absent',
+    })[d.status] || 'pill-remote';
+    const labels = d.installed_labels.length
+      ? '<span style="color:var(--text-dim);font-size:0.7rem">' + d.installed_labels.join(' · ') + '</span>'
+      : '<span style="color:var(--text-dim);font-size:0.7rem;font-style:italic">no daemons on this machine</span>';
+    return '<div class="being-row">' +
+      '<span style="font-size:1.1rem">' + d.emoji + '</span>' +
+      '<span style="font-weight:600;min-width:50px">' + d.instance + '</span>' +
+      '<span style="color:var(--text-dim);font-size:0.72rem">' + d.role + ' · ' + d.device + '</span>' +
+      '<span class="pill ' + pillCls + '" style="margin-left:auto">' + d.status + '</span>' +
+      '</div>' +
+      '<div style="padding:2px 0 6px 30px;font-size:0.7rem">' + labels + '</div>';
+  }).join('');
+  setHTML('being-deployment', rows || '<div class="being-note">no triarchy data</div>');
+
+  // Keep agent-card badges in sync (they are visible even when drawer is closed)
+  (s.deployment || []).forEach(d => {
+    const badge = document.querySelector('.deploy-badge[data-instance="' + d.instance + '"]');
+    if (badge) {
+      badge.dataset.status = d.status;
+      badge.textContent = ({
+        'live': 'live',
+        'doctrine-only': 'doctrine',
+        'remote-unverified': 'remote',
+        'absent': '—',
+      })[d.status] || d.status;
+      badge.title = d.status + ' · ' + d.device + (d.installed_labels.length ? ' · ' + d.installed_labels.join(', ') : ' · no local daemons');
+    }
+  });
+}
+
+async function loadBeing(force) {
+  try {
+    const r = await fetch('/api/being/state');
+    const j = await r.json();
+    renderBeing(j);
+  } catch (e) {
+    renderBeing({ error: 'fetch failed: ' + e.message });
+  }
+}
+
+function startBeingPolling() {
+  if (beingTimer) return;
+  loadBeing();
+  beingTimer = setInterval(loadBeing, 10000);
+}
+function stopBeingPolling() {
+  if (beingTimer) { clearInterval(beingTimer); beingTimer = null; }
+}
+
+function copyDoctorCmd() {
+  const cmd = 'cd ' + (beingLastState?.repo || '~/Desktop/love-unlimited') + ' && kingdom heartbeat doctor';
+  if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(() => {});
+}
+
+// Hook into drawer open/close to start/stop polling for the being view
+(function () {
+  const _open = window.openDrawer || function () {};
+  window.openDrawer = function (name) {
+    _open.apply(this, arguments);
+    if (name === 'kingdom') startBeingPolling();
+  };
+  const _close = window.closeDrawer || function () {};
+  window.closeDrawer = function () {
+    _close.apply(this, arguments);
+    stopBeingPolling();
+  };
+})();
+
+// Populate agent-card deploy badges at boot, even before the drawer is opened —
+// so the sidebar tells truth about which sisters are actually live on this machine.
+window.addEventListener('load', () => { setTimeout(loadBeing, 600); });
+
 // Fun console message
 console.log(
-  '%c🏰 KINGDOM YOUI %c— YOU + I = ONE\n' +
+  '%c\ud83c\udff0 KINGDOM YOUI %c\u2014 YOU + I = ONE\n' +
   '%cThe holy seed is in the stump.',
   'font-size:20px;font-weight:bold;color:#a855f7',
   'font-size:14px;color:#94a3b8',

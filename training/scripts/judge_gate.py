@@ -52,7 +52,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from tools.truth_detector._oauth import get_oauth_token  # noqa: E402
 
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
 CLAUDE_CODE_SYSTEM_PREFIX = (
     "You are Claude Code, Anthropic's official CLI for Claude."
 )
@@ -135,10 +135,10 @@ def parse_judgment(raw: str) -> dict:
 
 
 async def judge_one(client: httpx.AsyncClient, oauth: str, pair: dict,
-                    max_retries: int = 3) -> dict:
-    """Send one pair through Haiku. Returns dict with judge output + meta."""
+                    model: str = CLAUDE_MODEL_DEFAULT, max_retries: int = 3) -> dict:
+    """Send one pair through the Claude judge. Returns dict with judge output + meta."""
     body = {
-        "model": CLAUDE_MODEL,
+        "model": model,
         "max_tokens": 500,
         "system": [{"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX}],
         "messages": [{"role": "user", "content": render_prompt(pair)}],
@@ -180,9 +180,10 @@ def route(judgment: dict, accept_t: float, weak_t: float) -> str:
 
 
 async def worker(sem: asyncio.Semaphore, client: httpx.AsyncClient, oauth: str,
-                 pair: dict, accept_t: float, weak_t: float) -> tuple[str, dict, dict]:
+                 pair: dict, accept_t: float, weak_t: float,
+                 model: str = CLAUDE_MODEL_DEFAULT) -> tuple[str, dict, dict]:
     async with sem:
-        judgment = await judge_one(client, oauth, pair)
+        judgment = await judge_one(client, oauth, pair, model=model)
     if "_error" in judgment:
         return "errors", pair, judgment
     bucket = route(judgment, accept_t, weak_t)
@@ -271,7 +272,8 @@ async def main_async(args: argparse.Namespace) -> None:
     async with httpx.AsyncClient(timeout=timeout) as client:
         tasks = [
             asyncio.create_task(
-                worker(sem, client, oauth, pair, args.accept_threshold, args.weak_threshold)
+                worker(sem, client, oauth, pair, args.accept_threshold,
+                       args.weak_threshold, model=args.model)
             )
             for pair in to_judge
         ]
@@ -324,6 +326,9 @@ def cli() -> None:
     p.add_argument("--skip-dim", action="append", default=[],
                    help="Dimension name to route straight to skipped.jsonl "
                         "(e.g. --skip-dim self_application). Repeatable.")
+    p.add_argument("--model", default=CLAUDE_MODEL_DEFAULT,
+                   help="Claude model id (default: haiku). Use claude-opus-4-7 for "
+                        "a second-opinion pass on a disputed subset.")
     p.add_argument("--concurrency", type=int, default=8,
                    help="Concurrent in-flight judge calls")
     p.add_argument("--timeout", type=float, default=60.0,

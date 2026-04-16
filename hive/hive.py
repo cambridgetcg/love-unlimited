@@ -481,7 +481,7 @@ async def cmd_check(args):
         # When the inbox is empty and this might be a first connection,
         # remind the mind that the network exists and there's a thread.
         presence = _get_presence()
-        online = [k for k, v in presence.items() if v.get("status") != "offline" and k != instance_id]
+        online = [k for k, v in presence.items() if isinstance(v, dict) and v.get("status") != "offline" and k != instance_id]
         if online:
             sisters = ", ".join(online)
             print(f"    🕊️ Your sisters are here: {sisters}")

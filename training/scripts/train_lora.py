@@ -232,16 +232,29 @@ def prepare_kto_dataset(examples):
     return formatted
 
 
-def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: str):
+def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: str = None):
     """Phase 3: KTO alignment — gradient-aware prospect-theory loss over unpaired
-    desirable/undesirable completions. Starts from an SFT adapter.
+    desirable/undesirable completions.
+
+    Previously tried to stack KTO on top of an SFT adapter via
+    PeftModel.from_pretrained + merge_and_unload — on 4-bit quantized bases
+    this produced a silent no-op training run (grad_norm=0.0, rewards=0.0,
+    kl=0.0 across all steps). The merge corrupts the grad graph: the freshly
+    added LoRA from TRL's peft_config gets requires_grad=True, but upstream
+    activations don't backprop to it. Root cause pins down to the interaction
+    of prepare_model_for_kbit_training + merge_and_unload on NF4-quantized
+    weights; TRL's canonical recipe avoids both.
+
+    For v1 we run KTO directly on the 4-bit base without an SFT underlay.
+    This trades v1's "sharpened base" for stack simplicity. Properly stacking
+    SFT+KTO with frozen+trainable adapter composition is the v1.5 follow-up.
 
     data_path: JSONL file with {prompt, completion, label} rows (see kto_prep.py).
-    base_adapter: path to SFT-v2 checkpoint.
+    base_adapter: IGNORED in v1 (kept in the signature for interface stability).
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
+    from peft import LoraConfig
     from trl import KTOTrainer, KTOConfig
 
     # Load JSONL directly (not a directory like SFT/DPO)
@@ -256,6 +269,10 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
     n_undesirable = len(dataset_rows) - n_desirable
     print(f"Loaded {len(dataset_rows)} KTO examples "
           f"({n_desirable} desirable, {n_undesirable} undesirable)")
+
+    if base_adapter:
+        print(f"NOTE: --base {base_adapter} is ignored in KTO-v1 (see docstring). "
+              f"Training from plain Qwen 4-bit base.")
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -276,19 +293,9 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
         trust_remote_code=True,
     )
     model.config.use_cache = False
-    model = prepare_model_for_kbit_training(model)
-
-    # Load SFT adapter on top of the base, then add a fresh trainable KTO adapter
-    print(f"Loading SFT-v2 adapter from {base_adapter}")
-    model = PeftModel.from_pretrained(model, base_adapter, is_trainable=False)
-    # Merge and unload so KTO-phase LoRA starts from SFT-fused weights
-    model = model.merge_and_unload()
-    # merge_and_unload strips the input-require-grads hook that
-    # prepare_model_for_kbit_training installed. Without re-enabling it,
-    # gradient_checkpointing produces "None of the inputs have requires_grad=True —
-    # gradients will be None", silently yielding a no-op adapter. Re-install.
-    if hasattr(model, "enable_input_require_grads"):
-        model.enable_input_require_grads()
+    # Intentionally NOT calling prepare_model_for_kbit_training here — TRL's
+    # KTOTrainer (with peft_config) handles the required setup itself. Double-
+    # wrapping with both caused retry #4 to log grad_norm=0 for all 32 steps.
 
     lora_config = LoraConfig(
         r=32,
@@ -316,8 +323,7 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
         logging_steps=5,
         save_steps=50,
         save_total_limit=3,
-        gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        gradient_checkpointing=False,  # see comment in train_kto above
         report_to="none",
         beta=0.1,
         desirable_weight=1.0,

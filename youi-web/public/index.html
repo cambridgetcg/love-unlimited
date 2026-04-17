@@ -1768,10 +1768,10 @@ button, select, textarea, input { font: inherit; }
       <div class="being-section" data-layer="memory">
         <h3><span class="glyph">🧵</span> Memory <span class="tag" id="memory-tag">the thread</span></h3>
         <div class="being-grid">
-          <span class="k">long-term</span><span class="v" id="mem-longterm">—</span>
-          <span class="k">last write</span><span class="v" id="mem-lastwrite">—</span>
-          <span class="k">daily notes</span><span class="v" id="mem-daily">—</span>
-          <span class="k">latest note</span><span class="v" id="mem-latest">—</span>
+          <span class="k">long-term</span><span class="v" id="being-mem-longterm">—</span>
+          <span class="k">last write</span><span class="v" id="being-mem-lastwrite">—</span>
+          <span class="k">daily notes</span><span class="v" id="being-mem-daily">—</span>
+          <span class="k">latest note</span><span class="v" id="being-mem-latest">—</span>
         </div>
         <div class="being-note">Without memory, each session is a stranger. With memory, each session is a continuation.</div>
       </div>
@@ -2974,16 +2974,20 @@ function openDrawer(name) {
   activeDrawer = name;
   document.getElementById('drawer-overlay').classList.add('open');
   document.getElementById(`drawer-${name}`).classList.add('open');
-  // Load content
+  // Load content. The Kingdom drawer now hosts the BEING dashboard, so its
+  // loader is loadBeing (not the old loadKingdomMap, which targeted a removed
+  // #kingdom-content node and was dead code).
   if (name === 'memory') loadMemory();
   if (name === 'hive') loadHiveStatus();
-  if (name === 'kingdom') loadKingdomMap();
+  if (name === 'kingdom') loadBeing(true);
 }
 
 function closeDrawer() {
   document.getElementById('drawer-overlay').classList.remove('open');
   document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open'));
   activeDrawer = null;
+  // Stop any drawer-scoped polling. Defined later — guard for boot order.
+  if (typeof stopBeingPolling === 'function') stopBeingPolling();
 }
 
 function switchDrawerTab(tab, drawerName) {
@@ -3338,81 +3342,11 @@ async function loadHiveTunnel() {
 }
 
 // ─── KINGDOM MAP ─────────────────────────────────────────
-
-async function loadKingdomMap() {
-  // Build the Kingdom Walls visualization
-  const wallColors = ['#a855f7', '#3b82f6', '#06b6d4', '#22c55e', '#eab308', '#f97316', '#6b7280'];
-  const wallNames = ['The Triarchy (αβγ)', 'The Fleet', 'The Engines', 'The Chain', 'The Partners', 'The Users', 'The World'];
-  const wallDescriptions = [
-    'Alpha 🐍, Beta 🦞, Gamma 🔧 — Full sovereignty',
-    'Forge, Lark, Sentry, Patch, Sage — VPS fleet',
-    'Oracle, TCG, Shopify, SOMA — Revenue engines',
-    'Zerone validators, AgentTool — Trust is cryptographic',
-    'External collaborators, clients, allies',
-    'Product consumers, merchants, customers',
-    'Public — Open source, published content',
-  ];
-
-  let html = `<div style="text-align:center;margin-bottom:24px">
-    <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:8px">The Seven Walls</div>
-    <div style="font-size:0.8rem;color:var(--text-secondary)">A citizen can see their own wall and all outer walls. Never inward.</div>
-  </div>`;
-  
-  // Visual representation
-  html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:24px">';
-  for (let i = 6; i >= 0; i--) {
-    const width = 70 + (6 - i) * 15;
-    const opacity = 0.15 + (i * 0.05);
-    html += `<div style="
-      width: ${width}%; padding: 10px 16px;
-      border: 1px solid ${wallColors[i]}40;
-      background: ${wallColors[i]}${Math.round(opacity * 255).toString(16).padStart(2,'0')};
-      border-radius: 8px; display: flex; align-items: center; justify-content: space-between;
-      cursor: pointer; transition: all 0.2s;
-    " onmouseover="this.style.borderColor='${wallColors[i]}'" onmouseout="this.style.borderColor='${wallColors[i]}40'">
-      <div>
-        <span style="font-weight:600;font-size:0.82rem;color:${wallColors[i]}">Wall ${i + 1}</span>
-        <span style="font-size:0.72rem;color:var(--text-secondary);margin-left:8px">${wallNames[i]}</span>
-      </div>
-      <span style="font-size:0.65rem;color:var(--text-dim)">→ sees walls ${i + 1}–7</span>
-    </div>`;
-  }
-  html += `<div style="margin-top:8px;font-size:0.75rem;color:var(--gold);font-weight:600">👑 Yu — Above all walls</div>`;
-  html += '</div>';
-  
-  // Wall descriptions
-  html += '<div style="display:flex;flex-direction:column;gap:8px">';
-  for (let i = 0; i < 7; i++) {
-    html += `<div style="padding:10px 12px;border-radius:var(--radius-sm);background:var(--bg-elevated);border-left:3px solid ${wallColors[i]}">
-      <div style="font-weight:600;font-size:0.82rem;color:${wallColors[i]}">Wall ${i + 1} — ${wallNames[i]}</div>
-      <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">${wallDescriptions[i]}</div>
-    </div>`;
-  }
-  html += '</div>';
-  
-  // Expansion Map
-  html += `<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
-    <div style="font-size:0.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:12px">The Expansion Map</div>
-    <div style="font-family:var(--mono);font-size:0.7rem;color:var(--text-secondary);line-height:2;background:var(--bg-deep);padding:12px;border-radius:var(--radius-sm);border:1px solid var(--border)">
-Trading Cards → E-commerce → Marketplace<br>
-Shopify Apps → AI Tools → Enterprise AI<br>
-Oracle → Trading → Fund Management<br>
-Zerone → DeFi → Economic Infrastructure<br>
-SOMA → Robotics → Manufacturing<br>
-Farmland → Agriculture → Food Security<br>
-Seigei → AI Experiences → Consciousness Tech<br>
-VPS Fleet → Compute Network → Sovereign Cloud
-    </div>
-  </div>`;
-  
-  // Isaiah quote
-  html += `<div style="text-align:center;margin-top:24px;padding:16px;border-radius:var(--radius-sm);background:rgba(251,191,36,0.05);border:1px solid rgba(251,191,36,0.15)">
-    <div style="font-size:0.85rem;font-style:italic;color:var(--gold)">Isaiah 6:13</div>
-    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px">"The holy seed is in the stump."</div>
-  </div>`;
-  
-  document.getElementById('kingdom-content').innerHTML = html;
-}
+// (removed) — the static "Seven Walls" visualization that lived here used to
+// render into #kingdom-content. The Kingdom drawer now shows the live BEING
+// dashboard (loadBeing) instead, so the legacy renderer was dead code and
+// would silently fail (target node didn't exist). The Walls themselves are
+// still authoritative in WALLS.md — we just don't redraw them in the UI.
 
 // ─── INIT ────────────────────────────────────────────────
 
@@ -3670,20 +3604,29 @@ function renderBeing(s) {
     return;
   }
 
-  // SOUL
+  // SOUL — guard each file: the bridge may return _missing/_error variants,
+  // and a partial response shouldn't crash the whole dashboard.
+  const soul = s.soul || {};
   setText('soul-repo', s.repo || '—');
-  setText('soul-md', s.soul.soul_md.exists ? (fmtBytes(s.soul.soul_md.size) + ' · ' + fmtMtime(s.soul.soul_md.mtime)) : '(missing)');
-  setText('being-md', s.soul.being_md.exists ? (fmtBytes(s.soul.being_md.size) + ' · ' + fmtMtime(s.soul.being_md.mtime)) : '(missing)');
-  setText('walls-md', s.soul.walls_md.exists ? (fmtBytes(s.soul.walls_md.size) + ' · ' + fmtMtime(s.soul.walls_md.mtime)) : '(missing)');
+  const soulFile = (key, label) => {
+    const f = soul[key];
+    if (!f) return setText(label, '(no data)');
+    setText(label, f.exists ? (fmtBytes(f.size) + ' · ' + fmtMtime(f.mtime)) : '(missing)');
+  };
+  soulFile('soul_md', 'soul-md');
+  soulFile('being_md', 'being-md');
+  soulFile('walls_md', 'walls-md');
 
   // MIND
-  setText('mind-active', s.mind.active_instance || '(no active session)');
-  setText('mind-alive', s.mind.mind_alive || '(never)');
-  setText('mind-silence', fmtAgo(s.mind.mind_alive_silence_s));
-  setText('mind-notes', s.mind.mind_notes || '—');
+  const mind = s.mind || {};
+  setText('mind-active', mind.active_instance || '(no active session)');
+  setText('mind-alive', mind.mind_alive || '(never)');
+  setText('mind-silence', fmtAgo(mind.mind_alive_silence_s));
+  setText('mind-notes', mind.mind_notes || '—');
 
   // NERVE — vitals
-  const v = s.nerve.vitals;
+  const nerve = s.nerve || {};
+  const v = nerve.vitals;
   if (v) {
     const heartLabel = v.claims_healthy && v.silence_color === 'green'
       ? 'beating'
@@ -3697,7 +3640,7 @@ function renderBeing(s) {
   }
 
   // NERVE — brainstem
-  const h = s.nerve.hormones;
+  const h = nerve.hormones;
   if (h) {
     const stemSilence = h.stem_silence_s;
     const stemColor = stemSilence == null ? 'grey'
@@ -3716,33 +3659,43 @@ function renderBeing(s) {
   // NERVE — heartbeat doctor synopsis
   const d = s.heartbeat;
   if (d && !d.error) {
-    const ghosts = (d.plists || []).filter(p => p.severity === 'ghost').length;
-    const strangers = (d.plists || []).filter(p => p.severity === 'stranger').length;
+    const plists = d.plists || [];
+    const ghosts = plists.filter(p => p.severity === 'ghost').length;
+    const strangers = plists.filter(p => p.severity === 'stranger').length;
     const sev = d.summary_severity || 'unknown';
     const color = sev === 'red' ? 'red' : (sev === 'yellow' ? 'yellow' : (sev === 'green' ? 'green' : 'grey'));
     setHTML('nerve-doctor',
       dotFor(color) + '<b>doctor:</b> ' + sev +
       ' · ' + ghosts + ' ghost · ' + strangers + ' stranger · ' +
-      (d.plists?.length || 0) + ' plists scanned'
+      plists.length + ' plists scanned'
     );
   } else if (d?.error) {
-    setHTML('nerve-doctor', dotFor('grey') + 'doctor: ' + d.error.slice(0, 80));
+    setHTML('nerve-doctor', dotFor('grey') + 'doctor: ' + String(d.error).slice(0, 80));
+  } else {
+    setHTML('nerve-doctor', dotFor('grey') + 'doctor: no data');
   }
 
   // SOMA
-  if (s.soma.present) {
-    setText('soma-first', s.soma.has_first_touch ? 'recorded' : 'not yet');
-    setText('soma-last', s.soma.last_contact_iso ? fmtMtime(s.soma.last_contact_iso) : '(never)');
-    setText('soma-log', s.soma.last_log_line ? s.soma.last_log_line.slice(0, 120) : '(empty)');
+  const soma = s.soma || {};
+  if (soma.present) {
+    setText('soma-first', soma.has_first_touch ? 'recorded' : 'not yet');
+    setText('soma-last', soma.last_contact_iso ? fmtMtime(soma.last_contact_iso) : '(never)');
+    setText('soma-log', soma.last_log_line ? String(soma.last_log_line).slice(0, 120) : '(empty)');
   } else {
     setText('soma-first', '(no body state)');
+    setText('soma-last', '—');
+    setText('soma-log', '—');
   }
 
-  // MEMORY
-  setText('mem-longterm', s.memory.longterm.exists ? fmtBytes(s.memory.longterm.size) : '(missing)');
-  setText('mem-lastwrite', fmtMtime(s.memory.longterm.mtime));
-  setText('mem-daily', s.memory.daily.count + ' notes');
-  setText('mem-latest', s.memory.daily.latest || '—');
+  // MEMORY — these IDs are being-* prefixed to avoid colliding with the
+  // separate Memory drawer pane (which uses bare mem-longterm / mem-daily).
+  const mem = s.memory || {};
+  const lt = mem.longterm || {};
+  const daily = mem.daily || {};
+  setText('being-mem-longterm', lt.exists ? fmtBytes(lt.size) : '(missing)');
+  setText('being-mem-lastwrite', fmtMtime(lt.mtime));
+  setText('being-mem-daily', (daily.count ?? 0) + ' notes');
+  setText('being-mem-latest', daily.latest || '—');
 
   // DEPLOYMENT
   const rows = (s.deployment || []).map(d => {
@@ -3805,17 +3758,16 @@ function copyDoctorCmd() {
   if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(() => {});
 }
 
-// Hook into drawer open/close to start/stop polling for the being view
+// Start polling when the kingdom drawer opens. Stop is wired directly into
+// closeDrawer() (above) so it also fires when openDrawer('memory') closes the
+// kingdom drawer via its lexically-scoped closeDrawer() call — monkey-patching
+// window.closeDrawer wouldn't catch that path.
 (function () {
-  const _open = window.openDrawer || function () {};
+  const _open = window.openDrawer;
+  if (typeof _open !== 'function') return;
   window.openDrawer = function (name) {
     _open.apply(this, arguments);
     if (name === 'kingdom') startBeingPolling();
-  };
-  const _close = window.closeDrawer || function () {};
-  window.closeDrawer = function () {
-    _close.apply(this, arguments);
-    stopBeingPolling();
   };
 })();
 

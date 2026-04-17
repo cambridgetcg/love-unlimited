@@ -12,14 +12,31 @@
 // All endpoints return JSON. All errors return 200 with an `error` field so the
 // dashboard can render "stale / unknown" cells instead of throwing.
 
-import { existsSync, readFileSync, statSync, readdirSync } from "fs";
+import { existsSync, readFileSync, statSync, readdirSync, openSync, readSync, closeSync } from "fs";
 import { join, resolve, dirname } from "path";
-import { execSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOVE_HOME = process.env.LOVE_HOME || resolve(join(__dirname, ".."));
+const execFileP = promisify(execFile);
+
+// Detect which sister this process is running as. Mirrors detectAgent() in
+// server.mjs: KINGDOM_AGENT wins, ~/.kingdom is the fallback, default alpha.
+// Used to decide which Triarchy row counts as "local" vs "remote-unverified".
+function detectLocalInstance() {
+  const env = process.env.KINGDOM_AGENT;
+  if (env) return env.toLowerCase();
+  try {
+    const kf = readFileSync(join(homedir(), ".kingdom"), "utf-8");
+    const m = kf.match(/^AGENT=(.+)$/m);
+    if (m) return m[1].trim().toLowerCase();
+  } catch {}
+  return "alpha";
+}
+const LOCAL_INSTANCE = detectLocalInstance();
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -124,19 +141,41 @@ function readNerve() {
   };
 }
 
+// Read just the tail of a file (default 4 KiB) without loading the whole thing.
+// Used for contact-log.jsonl which grows unbounded; full re-reads on every
+// poll were O(file_size) and wasteful.
+function readTail(path, bytes = 4096) {
+  let fd = -1;
+  try {
+    const size = statSync(path).size;
+    if (size === 0) return "";
+    const start = Math.max(0, size - bytes);
+    const len = size - start;
+    const buf = Buffer.alloc(len);
+    fd = openSync(path, "r");
+    readSync(fd, buf, 0, len, start);
+    return buf.toString("utf-8");
+  } catch {
+    return null;
+  } finally {
+    if (fd >= 0) try { closeSync(fd); } catch {}
+  }
+}
+
 function readSoma() {
   const stateFile = join(LOVE_HOME, "soma/state/body-state.json");
   const log = join(LOVE_HOME, "soma/state/contact-log.jsonl");
   const body = readJsonSafe(stateFile);
   const present = !body?._missing && !body?._error;
   let last_log_line = null;
-  try {
-    if (existsSync(log)) {
-      const buf = readFileSync(log, "utf-8").trimEnd();
-      const idx = buf.lastIndexOf("\n");
-      last_log_line = idx >= 0 ? buf.slice(idx + 1) : buf || null;
+  if (existsSync(log)) {
+    const tail = readTail(log, 4096);
+    if (tail != null) {
+      const trimmed = tail.trimEnd();
+      const idx = trimmed.lastIndexOf("\n");
+      last_log_line = idx >= 0 ? trimmed.slice(idx + 1) : trimmed || null;
     }
-  } catch {}
+  }
   return {
     present,
     body: present ? body : null,
@@ -205,8 +244,9 @@ function readDeployment() {
     const hasBrainstem = myLabels.some((l) => l.endsWith(".brainstem"));
     // "live" means at minimum heart+identity dir are present on THIS machine.
     // For sisters whose device is elsewhere, live cannot be confirmed from here —
-    // we honestly report "remote (unverified)" instead of pretending.
-    const isLocalDevice = sister.instance === "alpha"; // this is Alpha's machine
+    // we honestly report "remote (unverified)" instead of pretending. The local
+    // sister is detected from KINGDOM_AGENT / ~/.kingdom (see detectLocalInstance).
+    const isLocalDevice = sister.instance === LOCAL_INSTANCE;
     let status;
     if (isLocalDevice) {
       status = hasHeart ? "live" : (hasInstanceDir ? "doctrine-only" : "absent");
@@ -226,19 +266,22 @@ function readDeployment() {
 
 // ── heartbeat doctor passthrough ──────────────────────────────────────────
 
-function runHeartbeatDoctor() {
+async function runHeartbeatDoctor() {
   const script = join(LOVE_HOME, "tools/heartbeat_doctor.py");
   if (!existsSync(script)) return { error: `heartbeat_doctor.py not found at ${script}` };
   // The doctor exits non-zero (2 = red, 1 = yellow) on purpose for CLI use,
   // but the JSON is on stdout regardless. Capture stdout from either path.
+  // Async (execFile) so we don't block the event loop while Python boots.
   let stdout = "";
   try {
-    stdout = execSync(`python3 ${JSON.stringify(script)} diagnose --json`, {
+    const r = await execFileP("python3", [script, "diagnose", "--json"], {
       cwd: LOVE_HOME,
       env: { ...process.env, LOVE_HOME },
       encoding: "utf-8",
       timeout: 5000,
+      maxBuffer: 1024 * 1024,
     });
+    stdout = r.stdout || "";
   } catch (e) {
     stdout = e?.stdout || "";
     if (!stdout) return { error: String(e?.message || e) };
@@ -259,30 +302,37 @@ export async function handleBeingRoute(path, req, res) {
 
   try {
     if (path === "/api/being/heartbeat") {
-      return send(runHeartbeatDoctor()), true;
+      send(await runHeartbeatDoctor());
+      return true;
     }
     if (path === "/api/being/deployment") {
-      return send({ triarchy: readDeployment() }), true;
+      send({ triarchy: readDeployment(), local_instance: LOCAL_INSTANCE });
+      return true;
     }
     if (path === "/api/being/state") {
       // Single snapshot. Heartbeat doctor is included because it is the only
       // truth source for "is the heart actually beating from a real plist."
       const url = new URL(req.url, "http://localhost");
       const instance = url.searchParams.get("instance");
-      return send({
+      const heartbeat = await runHeartbeatDoctor();
+      send({
         repo: LOVE_HOME,
         timestamp: new Date().toISOString(),
+        local_instance: LOCAL_INSTANCE,
         soul: readSoul(),
         mind: readMind(instance),
         nerve: readNerve(),
         soma: readSoma(),
         memory: readMemory(),
         deployment: readDeployment(),
-        heartbeat: runHeartbeatDoctor(),
-      }), true;
+        heartbeat,
+      });
+      return true;
     }
-    return send({ error: `unknown being route: ${path}` }, 404), true;
+    send({ error: `unknown being route: ${path}` }, 404);
+    return true;
   } catch (e) {
-    return send({ error: String(e?.message || e) }, 500), true;
+    send({ error: String(e?.message || e) }, 500);
+    return true;
   }
 }

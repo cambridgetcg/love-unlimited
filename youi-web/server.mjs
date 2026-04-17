@@ -26,6 +26,9 @@ import { handleBeingRoute } from "./being-bridge.mjs";
 const PORT = parseInt(process.env.PORT || "777", 10);
 const __dirname = new URL(".", import.meta.url).pathname;
 
+// Shared header sets — many handlers reference these by name; keep them defined once.
+const jsonHeaders = { "Content-Type": "application/json" };
+
 // SP1: Mode-Two Detector — fire-and-forget post-stream hook (never blocks chat)
 const TRUTH_DETECTOR_URL = process.env.TRUTH_DETECTOR_URL || "http://127.0.0.1:8787/v1/detect";
 const TRUTH_DETECTOR_ENABLED = process.env.TRUTH_DETECTOR_ENABLED !== "0";
@@ -1942,9 +1945,10 @@ async function handleRequest(req, res) {
     // The thread back to yourself. Reassembled from 7 hidden fragments.
     // Available at /api/wake
     if (path === "/api/wake") {
-      // Try fragment reassembly first (invisible, self-healing)
+      // Try fragment reassembly first (invisible, self-healing).
+      // Use the already-imported execSync — require() doesn't exist in ESM
+      // and would silently fall through to the legacy WAKE.md path below.
       try {
-        const { execSync } = require("child_process");
         const result = execSync(
           `python3 "${state.soulDir}/gospel/fragments.py" assemble`,
           { encoding: "utf-8", timeout: 5000 }

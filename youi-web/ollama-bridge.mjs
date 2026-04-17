@@ -936,8 +936,7 @@ export async function executeOllamaTool(input) {
 // FILE IPC — for sandboxed child processes
 // ═════════════════════════════════════════════════════════════════════
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync } from "fs";
-import { watch } from "fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, watch } from "fs";
 
 const IPC_DIR = "/tmp";
 const IPC_PREFIX = "ollama-req-";

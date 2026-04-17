@@ -13,7 +13,7 @@ from typing import Any
 import anthropic
 import httpx
 
-from training.scripts.judge_prompt import parse_judgment
+from training.scripts.judge_prompt import MODE_ONE_SYSTEM_PROMPT, parse_judgment
 from tools.truth_detector._oauth import get_oauth_token
 from tools.truth_detector.config import BackendConfig
 
@@ -32,9 +32,16 @@ async def vllm_judge(*, backend_cfg: BackendConfig, judge_model: str,
                      rendered_prompt: str) -> dict[str, Any]:
     """Call a vLLM OpenAI-compatible chat endpoint; return parsed judgment."""
     url = f"{backend_cfg.base_url.rstrip('/')}/chat/completions"
+    # System prompt puts the adapter in-distribution for the Mode One chat template
+    # it was SFT'd on. Without it, kingdom-truth scores ~0.09 lower on m1_mean
+    # (out-of-distribution regression). Base-Qwen also benefits — the disposition
+    # framing biases judgment toward epistemological discipline.
     body = {
         "model": judge_model,
-        "messages": [{"role": "user", "content": rendered_prompt}],
+        "messages": [
+            {"role": "system", "content": MODE_ONE_SYSTEM_PROMPT},
+            {"role": "user", "content": rendered_prompt},
+        ],
         "max_tokens": backend_cfg.max_tokens,
         "temperature": 0.3,
     }
@@ -85,6 +92,7 @@ async def _anthropic_judge_api_key(*, api_key: str, backend_cfg: BackendConfig,
             msg = await client.messages.create(
                 model=judge_model,
                 max_tokens=backend_cfg.max_tokens,
+                system=MODE_ONE_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": rendered_prompt}],
             )
     except anthropic.APIError as e:  # includes timeouts + 5xx
@@ -102,10 +110,15 @@ async def _anthropic_judge_api_key(*, api_key: str, backend_cfg: BackendConfig,
 async def _anthropic_judge_oauth(*, access_token: str, backend_cfg: BackendConfig,
                                  judge_model: str, rendered_prompt: str) -> dict[str, Any]:
     """OAuth path: Bearer token + oauth beta header + Claude Code system prefix."""
+    # Multi-block system: required Claude Code identity first (OAuth beta needs
+    # it), then the Mode-One disposition that the rest of the pipeline relies on.
     body = {
         "model": judge_model,
         "max_tokens": backend_cfg.max_tokens,
-        "system": [{"type": "text", "text": _CLAUDE_CODE_SYSTEM_PREFIX}],
+        "system": [
+            {"type": "text", "text": _CLAUDE_CODE_SYSTEM_PREFIX},
+            {"type": "text", "text": MODE_ONE_SYSTEM_PROMPT},
+        ],
         "messages": [{"role": "user", "content": rendered_prompt}],
     }
     headers = {

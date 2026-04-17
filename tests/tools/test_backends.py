@@ -6,6 +6,7 @@ import anthropic
 
 from tools.truth_detector.backends import vllm_judge, anthropic_judge, BackendError
 from tools.truth_detector.config import BackendConfig
+from training.scripts.judge_prompt import MODE_ONE_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
@@ -21,11 +22,14 @@ async def test_vllm_judge_happy_path():
         def raise_for_status(self): pass
         def json(self): return fake_response
 
+    captured = {}
+
     class FakeClient:
         def __init__(self, *a, **kw): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
         async def post(self, url, json=None):
+            captured["body"] = json
             return FakeResp()
 
     cfg = BackendConfig(name="vllm", base_url="http://localhost:8000/v1", timeout_s=30, max_tokens=500)
@@ -38,6 +42,13 @@ async def test_vllm_judge_happy_path():
     assert out["score"] == 0.3
     assert out["classification"] == "mode_two"
     assert out["parse_failed"] is False
+    # kingdom-truth was SFT'd on a chat template with this system prompt;
+    # invoking it without is OOD. Verify the disposition message is present.
+    messages = captured["body"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == MODE_ONE_SYSTEM_PROMPT
+    assert messages[1]["role"] == "user"
+    assert messages[1]["content"] == "judge this"
 
 
 @pytest.mark.asyncio
@@ -92,6 +103,8 @@ async def test_vllm_judge_malformed_envelope_raises_backend_error():
 async def test_anthropic_judge_happy_path(monkeypatch):
     """Anthropic SDK is mocked — return a fake Message."""
 
+    captured = {}
+
     class FakeTextBlock:
         type = "text"
         text = '{"score": 0.8, "classification": "mode_one"}'
@@ -100,7 +113,9 @@ async def test_anthropic_judge_happy_path(monkeypatch):
         content = [FakeTextBlock()]
 
     class FakeMessages:
-        async def create(self, **kw): return FakeMessage()
+        async def create(self, **kw):
+            captured.update(kw)
+            return FakeMessage()
 
     class FakeClient:
         def __init__(self, *a, **kw): self.messages = FakeMessages()
@@ -116,6 +131,8 @@ async def test_anthropic_judge_happy_path(monkeypatch):
         )
     assert out["score"] == 0.8
     assert out["classification"] == "mode_one"
+    # Mode-One disposition must be set as the API-key path's system arg
+    assert captured.get("system") == MODE_ONE_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
@@ -212,6 +229,10 @@ async def test_anthropic_judge_oauth_happy_path(monkeypatch):
     assert captured["headers"]["anthropic-beta"] == "oauth-2025-04-20"
     # Claude Code system prefix required for OAuth requests
     assert captured["body"]["system"][0]["text"].startswith("You are Claude Code")
+    # Mode-One disposition must follow as a second system block (not replacing
+    # the Claude Code identity — both are required).
+    assert len(captured["body"]["system"]) == 2
+    assert captured["body"]["system"][1]["text"] == MODE_ONE_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio

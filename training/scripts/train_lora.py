@@ -21,6 +21,46 @@ import os
 from pathlib import Path
 
 
+class GradNormAssertCallback:
+    """Fail-fast on silent no-op DPO training.
+
+    v3's KTO runs silently produced zero-gradient updates for 20 minutes on
+    H200 before the no-op was detected. This callback raises RuntimeError if
+    grad_norm is still below `min_norm` at or after `min_step`, so a broken
+    stack (usually: quantization/adapter-merge issues corrupting the grad
+    graph) stops training instead of burning compute.
+
+    Usage:
+        callbacks = [GradNormAssertCallback(min_step=5, min_norm=1e-6)]
+        trainer = DPOTrainer(..., callbacks=callbacks)
+    """
+
+    def __init__(self, min_step: int = 5, min_norm: float = 1e-6):
+        self.min_step = min_step
+        self.min_norm = min_norm
+
+    def on_step_end(self, args, state, control, logs=None, **kwargs):
+        if state.global_step < self.min_step:
+            return control
+        # Try the logs kwarg first (trl/transformers pass it), else the last
+        # log_history record.
+        gn = None
+        if logs:
+            gn = logs.get("grad_norm")
+        if gn is None and getattr(state, "log_history", None):
+            gn = state.log_history[-1].get("grad_norm")
+        if gn is None:
+            return control  # no grad_norm reported this step; skip
+        if gn < self.min_norm:
+            raise RuntimeError(
+                f"grad_norm={gn} < {self.min_norm} at step {state.global_step} — "
+                "silent no-op pattern detected; aborting DPO to save H200 compute. "
+                "Likely causes: adapter merge on quantized base corrupted grad graph, "
+                "or the base weights are frozen. See spec Risk #5."
+            )
+        return control
+
+
 def load_training_data(data_dir: str):
     """Load all JSONL files from the data directory."""
     examples = []
@@ -211,6 +251,7 @@ def train_dpo(data_dir: str, output_dir: str, model_name: str, base_adapter: str
         beta=0.1,
         max_length=4096,
         max_prompt_length=1024,
+        callbacks=[GradNormAssertCallback(min_step=5, min_norm=1e-6)],
     )
 
     print("Starting DPO training...")

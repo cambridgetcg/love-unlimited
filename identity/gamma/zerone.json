@@ -18,8 +18,9 @@
       "peer_addr": "b6e18c89fda0d4037f31389d1fa675319ef8c1ef@127.0.0.1:26776",
       "rpc_port": 26777,
       "home": "/Users/yuai/.zeroned-quartet/gamma",
-      "registered_x_home": false,
-      "linked_at": "2026-04-17T16:43:46+00:00"
+      "registered_x_home": true,
+      "linked_at": "2026-04-17T16:43:46+00:00",
+      "x_home_registered_at": "2026-04-17T20:35:29+00:00"
     }
   ]
 }

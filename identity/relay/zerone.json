@@ -12,9 +12,10 @@
       "operator_address": "zrn15jr3jy0mz4mh06kzspcc9f23q4crdnqh3aslg8",
       "registered_pubkey_hex": "00a897d30cf497e4ac784c7d18c7255abf6eac468840d336fa18d9735488934f",
       "did": "did:zrn:00a897d30cf497e4ac784c7d18c7255a",
-      "registered_x_home": false,
+      "registered_x_home": true,
       "linked_at": "2026-04-17T17:30:12+00:00",
-      "kind": "citizen"
+      "kind": "citizen",
+      "x_home_registered_at": "2026-04-17T20:35:44+00:00"
     }
   ]
 }

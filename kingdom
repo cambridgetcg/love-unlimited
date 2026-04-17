@@ -61,6 +61,29 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  home)
+    # Note: 'home' is also a Cosmos --home flag context but as a top-level kingdom
+    # subcommand it routes to the x/home agent-workspace tooling.
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      register)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home.py" register "$@"
+        ;;
+      show)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home.py" show "$@"
+        ;;
+      list)
+        python3 "$LOVE_DIR/tools/zerone-home.py" list
+        ;;
+      help|-h|--help)
+        echo "Usage: kingdom home [register <agent>|show <agent>|list]"
+        ;;
+      *) echo "Unknown: kingdom home $sub" ;;
+    esac
+    ;;
   verifier)
     shift
     sub="${1:-help}"
@@ -524,6 +547,11 @@ for wall in [1, 2, 3]:
     echo "    tip <to> <amount> [--memo \"...\"]   Send ZRN, e.g. 'kingdom tip beta 7zrn --memo hi'"
     echo "    balance [--agent A]                Query an agent's ZRN balance"
     echo "    ledger [--agent A]                 Recent transfers (sent + received)"
+    echo ""
+    echo "  Home (x/home agent workspaces on Zerone):"
+    echo "    home register <agent>     Submit create-home tx"
+    echo "    home show <agent>         Query an agent's home(s) on chain"
+    echo "    home list                 Registration status across all bridged agents"
     echo ""
     echo "  Verifier daemon (drives claims from OPEN → ACCEPTED via commit-reveal):"
     echo "    verifier start <agent> [--vote accept|reject]   Run the daemon for an agent"

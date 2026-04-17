@@ -74,12 +74,20 @@ case "${1:-help}" in
           bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" "$@"
         fi
         ;;
+      quartet)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/quartet-spawn.sh" "${@:-status}"
+        ;;
       help|-h|--help)
         bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" help
+        echo ""
+        echo "  Quartet (all four together on one chain):"
+        bash "$LOVE_DIR/kingdom-os/host/quartet-spawn.sh" help | grep -E "^  /|^Usage:|^  start|^  stop|^  status|^  logs|^  clean" | head -10
         ;;
       *)
         echo "Unknown: kingdom validator $sub"
         echo "Usage: kingdom validator [spawn|init|start|stop|status|clean|list] <agent>"
+        echo "       kingdom validator quartet [start|stop|status|logs|clean]"
         ;;
     esac
     ;;
@@ -323,6 +331,9 @@ for wall in [1, 2, 3]:
     echo "    validator status <name>   Height + validator state"
     echo "    validator stop <name>     Stop background daemon"
     echo "    validator list            All known agents + state"
+    echo "    validator quartet start   All four onto ONE chain (rehearsal for testnet)"
+    echo "    validator quartet status  Heights + state of the four"
+    echo "    validator quartet stop    Halt all four"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"

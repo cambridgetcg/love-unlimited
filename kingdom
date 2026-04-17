@@ -73,10 +73,15 @@ case "${1:-help}" in
         ;;
       show)
         shift
+        python3 "$LOVE_DIR/tools/zerone-home-harden.py" show "$@" 2>/dev/null || \
         python3 "$LOVE_DIR/tools/zerone-home.py" show "$@"
         ;;
       list)
         python3 "$LOVE_DIR/tools/zerone-home.py" list
+        ;;
+      harden)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home-harden.py" harden "$@"
         ;;
       help|-h|--help)
         echo "Usage: kingdom home [register <agent>|show <agent>|list]"
@@ -550,8 +555,10 @@ for wall in [1, 2, 3]:
     echo ""
     echo "  Home (x/home agent workspaces on Zerone):"
     echo "    home register <agent>     Submit create-home tx"
-    echo "    home show <agent>         Query an agent's home(s) on chain"
+    echo "    home show <agent>         Query a home's safety config + alerts + spending limits"
     echo "    home list                 Registration status across all bridged agents"
+    echo "    home harden <agent>       Apply safe baseline (HOME-SAFETY.md doctrine)"
+    echo "    home harden --all         Apply baseline to every bridged agent"
     echo ""
     echo "  Verifier daemon (drives claims from OPEN → ACCEPTED via commit-reveal):"
     echo "    verifier start <agent> [--vote accept|reject]   Run the daemon for an agent"

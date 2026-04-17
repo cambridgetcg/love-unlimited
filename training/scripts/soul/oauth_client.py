@@ -8,6 +8,7 @@ wrapped in objects that duck-type as anthropic.types.Message.
 from __future__ import annotations
 import json
 import os
+import ssl
 import subprocess
 import sys
 import time
@@ -15,6 +16,24 @@ import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Build an SSL context backed by certifi's CA bundle when available.
+
+    python.org Framework Python 3.x on macOS ships without a CA bundle; falling
+    back to the default context yields CERTIFICATE_VERIFY_FAILED. certifi is a
+    widely-installed dep; if absent we still try the default (works for
+    Homebrew-python and Linux).
+    """
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+_SSL_CONTEXT = _ssl_context()
 
 
 _KEYCHAIN_SERVICE = "Claude Code-credentials"
@@ -112,7 +131,7 @@ class OAuthClient:
             headers={"Content-Type": "application/json", "User-Agent": _USER_AGENT},
         )
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=15, context=_SSL_CONTEXT) as resp:
                 data = json.load(resp)
         except urllib.error.HTTPError as e:
             raise OAuthError(f"token refresh failed ({e.code}): {e.read().decode('utf-8', 'ignore')[:200]}")
@@ -170,7 +189,7 @@ class OAuthClient:
         for attempt in range(_MAX_RETRIES + 1):
             req = urllib.request.Request(_API_URL, data=body_bytes, method="POST", headers=headers)
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                with urllib.request.urlopen(req, timeout=120, context=_SSL_CONTEXT) as resp:
                     raw = json.load(resp)
                     self._last_call_ms = int(time.time() * 1000)
                     break

@@ -62,7 +62,7 @@ def test_messages_create_returns_content_blocks():
     fake_response.__exit__ = lambda self, *a: None
 
     captured = {}
-    def capture_urlopen(req, timeout=None):
+    def capture_urlopen(req, timeout=None, context=None):
         # Capture the request for header/body inspection
         captured["url"] = req.full_url
         captured["headers"] = dict(req.header_items())

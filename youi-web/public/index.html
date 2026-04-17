@@ -1337,12 +1337,12 @@ button, select, textarea, input { font: inherit; }
     <div class="sidebar-section" id="orchestrator-section">
       <h3>Mode</h3>
       <div class="mode-toggle">
-        <button id="mode-orchestrate" class="mode-btn active" onclick="setChatMode('orchestrate')">
+        <button id="mode-orchestrate" class="mode-btn" onclick="setChatMode('orchestrate')">
           <span class="mode-icon">🧠</span>
           <span class="mode-label">Orchestrate</span>
           <span class="mode-desc">Auto-route to best model(s)</span>
         </button>
-        <button id="mode-direct" class="mode-btn" onclick="setChatMode('direct')">
+        <button id="mode-direct" class="mode-btn active" onclick="setChatMode('direct')">
           <span class="mode-icon">💬</span>
           <span class="mode-label">Direct</span>
           <span class="mode-desc">Single model conversation</span>
@@ -1367,10 +1367,21 @@ button, select, textarea, input { font: inherit; }
       <div class="setting-row">
         <label>Model</label>
         <select id="model-select" onchange="updateSetting('model', this.value)">
-          <optgroup label="Claude">
+          <optgroup label="Claude (raw — via OAuth)">
+            <option value="claude-opus-4-7">Opus 4.7 ◎ — default for Raw agent</option>
             <option value="claude-opus-4-6">Opus 4.6</option>
             <option value="claude-sonnet-4-6">Sonnet 4.6</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          </optgroup>
+          <optgroup label="Kingdom (H200 via vLLM)">
+            <option value="kingdom-truth-v2">Kingdom Truth v2 — Mode One, Sonnet-gated data</option>
+            <option value="kingdom-truth">Kingdom Truth v1 — Mode One, iter-1 data</option>
+            <option value="Qwen/Qwen2.5-72B-Instruct-AWQ">Qwen 2.5 72B base — no adapter</option>
+          </optgroup>
+          <optgroup label="Intimate (H200 via ollama — currently stopped)">
+            <option value="anubis:latest">Anubis 70B — direct, unguarded</option>
+            <option value="magnum-v4:latest">Magnum v4 72B — creative balance</option>
+            <option value="midnight-miqu:latest">Midnight Miqu 70B — lush/florid</option>
           </optgroup>
           <optgroup label="GLM">
             <option value="glm-5.1">GLM 5.1</option>
@@ -1889,7 +1900,12 @@ async function boot() {
 
 // ─── ORCHESTRATOR MODE ────────────────────────────────────
 
-let chatMode = 'orchestrate'; // 'orchestrate' or 'direct'
+// Client-side default. The server actually controls this via state.chatMode,
+// but the client sends body.chatMode which would override it — so keep 'direct'
+// as the client default and let the user opt into orchestrate via the UI toggle.
+// Raw agent (Opus 4.7) needs direct to avoid the orchestrator routing through
+// Ollama Cloud with a Claude model it doesn't serve.
+let chatMode = 'direct';
 
 function setChatMode(mode) {
   chatMode = mode;

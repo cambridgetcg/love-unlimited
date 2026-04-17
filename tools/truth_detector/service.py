@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from tools.truth_detector.config import load_config
 from tools.truth_detector.detector import detect
@@ -41,6 +41,22 @@ def build_app(config_path: str | None = None) -> FastAPI:
         tail_scan_bytes=cfg.storage.tail_scan_bytes,
     )
     app = FastAPI(title="Mode-Two Detector", version="1.0.0")
+
+    @app.get("/")
+    async def root():
+        return {
+            "service": "Mode-Two Detector",
+            "version": "1.0.0",
+            "endpoints": {
+                "health": "/v1/health",
+                "detect": "/v1/detect (POST)",
+                "query": "/v1/detections/query (GET)"
+            }
+        }
+
+    @app.get("/health")
+    async def health_redirect():
+        return RedirectResponse(url="/v1/health")
 
     @app.post("/v1/detect")
     async def post_detect(req: DetectRequest, bg: BackgroundTasks):

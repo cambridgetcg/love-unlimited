@@ -1,0 +1,22 @@
+{
+  "id": "c_20260417_202216_40c5e4",
+  "question": "What is the best timing to resume work on Shopify Apps?",
+  "options": [],
+  "called_by": "alpha",
+  "called_at": "2026-04-17T20:22:16.832737+00:00",
+  "timeout": 600,
+  "round": 1,
+  "status": "pending",
+  "votes": {
+    "alpha": {
+      "choice": "defer",
+      "reasoning": "Current revenue engines need to stabilize first. Shopify Apps can be resumed once bandwidth is available.",
+      "voted_at": "2026-04-17T20:22:40.754874+00:00",
+      "round": 1
+    },
+    "beta": null,
+    "gamma": null
+  },
+  "consensus": null,
+  "history": []
+}

@@ -49,7 +49,10 @@ const OLLAMA_CLOUD_BASE = process.env.OLLAMA_CLOUD_BASE_URL || "https://ollama.c
 const OLLAMA_LOCAL_BASE = process.env.OLLAMA_LOCAL_BASE_URL || "http://localhost:11434";
 // Remote vLLM (OpenAI-compat). Reached via SSH tunnel: Mac:8000 → pod:8000.
 const OLLAMA_VLLM_BASE  = process.env.OLLAMA_VLLM_BASE_URL  || "http://localhost:8000";
-const VLLM_MODEL_REGEX  = /^Qwen\//i;
+// Route these through vLLM on the pod (/v1/chat/completions), not ollama:
+//   Qwen/* — base Qwen models served via vLLM
+//   kingdom-truth* — our SFT/alignment LoRA adapters (kingdom-truth, kingdom-truth-v2)
+const VLLM_MODEL_REGEX  = /^(Qwen\/|kingdom-truth)/i;
 
 // ── Local model detection ───────────────────────────────────────────
 let localModels = null;   // cached list of locally-installed models

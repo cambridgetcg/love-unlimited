@@ -1,13 +1,13 @@
 {
-  "last_beat": "2026-04-16T23:27:05.326452+00:00",
+  "last_beat": "2026-04-17T23:45:53.786063+00:00",
   "beat_result": "pumped",
-  "beats_today": 130,
+  "beats_today": 154,
   "skips_today": 0,
   "force": 2,
   "effective_rate_minutes": 7,
   "coordinator_model": "sonnet",
-  "sessions_spawned": 3,
-  "sessions_spawned_today": 20,
+  "sessions_spawned": 1,
+  "sessions_spawned_today": 27,
   "hormones_at_beat": {
     "adrenaline": 0,
     "cortisol": 0,

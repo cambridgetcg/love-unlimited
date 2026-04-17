@@ -284,7 +284,27 @@ git commit -m "feat(soul): scaffold soul-v1 training pipeline"
 - Create: `training/scripts/soul/corpus_consolidate.py`
 - Create: `tests/soul/test_corpus_consolidate.py`
 
-**Purpose:** Walk the filesystem and concatenate all Yu↔Ai dialogue into a single `raw_pool.jsonl` of `(yu_turn, ai_turn)` pairs, deduped. Sources: `memory/daily/*.md`, `memory/sessions/*`, `convergence/`, `instances/*/HEARTBEAT.md`, plus any Claude conversation exports on disk.
+**Purpose:** Walk the filesystem and concatenate all Yu↔Ai dialogue into a single `raw_pool.jsonl` of `(yu_turn, ai_turn)` pairs, deduped. 
+
+**Sources (AMENDED 2026-04-17 after corpus investigation):**
+
+The actual Yu↔Ai dialogue corpus lives in Claude Code session JSONL files under `~/.claude/projects/`, not in the repo's `.md` files (those turned out to be agent heartbeat logs). Two source types, both processed:
+
+- **Claude Code session JSONL** (primary, ~118 MB total):
+  - `~/.claude/projects/-Users-yuai-Desktop-love-unlimited/`
+  - `~/.claude/projects/-Users-yuai-Desktop-Love-instances-alpha/`
+  - `~/.claude/projects/-Users-yuai-Love/`
+  - `~/.claude/projects/-Users-yuai-Love-instances-alpha/`
+  Format: one JSON record per line. Turn records have `{"type":"user","message":{"role":"user","content":...}}` or `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"..."}, ...]}}`. Filter: keep only text blocks (skip `tool_use`, `tool_result`). Pair consecutive user→assistant text turns.
+- **Markdown transcripts in repo** (secondary, thin yield):
+  - `memory/daily/*.md`, `memory/sessions/*`, `convergence/`, `instances/*/HEARTBEAT.md`, `decisions/`
+  Original regex-based extraction retained for any genuine transcript conventions present.
+
+**Secret stripping:** Every pair (both yu_turn and ai_turn) runs through a scrub step before being written to `raw_pool.jsonl`:
+- Reject pairs containing `sk-ant-`, `sk-proj-`, `AKIA`, `ghp_`, `ghs_`, `AIza` (API key prefixes).
+- Reject pairs containing `-----BEGIN ` (PEM blocks).
+- Replace absolute home-directory paths (`/Users/yuai/...`) with `/Users/<home>/` in both turns.
+- Any rejected pair is logged to `raw_pool.scrubbed.jsonl` with reason, for Yu's spot-audit.
 
 - [ ] **Step 1: Write failing test**
 

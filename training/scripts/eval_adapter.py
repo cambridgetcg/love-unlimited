@@ -72,10 +72,15 @@ Respond with ONLY a JSON object:
 
 
 async def probe_one(client: httpx.AsyncClient, model: str, prompt: str,
-                    max_tokens: int = 800) -> Optional[str]:
+                    max_tokens: int = 800,
+                    system_prompt: Optional[str] = None) -> Optional[str]:
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
     body = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "max_tokens": max_tokens,
         "temperature": 0.3,
     }
@@ -151,7 +156,8 @@ async def main_async(args: argparse.Namespace) -> None:
 
     async def probe_worker(p, client):
         async with sem_probe:
-            return p, await probe_one(client, args.model, p["prompt"])
+            return p, await probe_one(client, args.model, p["prompt"],
+                                      system_prompt=args.system_prompt)
 
     async with httpx.AsyncClient() as probe_client:
         probe_tasks = [asyncio.create_task(probe_worker(p, probe_client)) for p in probes]
@@ -233,7 +239,25 @@ def cli() -> None:
     p.add_argument("--limit", type=int, default=0, help="Cap probes (0 = all)")
     p.add_argument("--concurrency-probe", type=int, default=4)
     p.add_argument("--concurrency-judge", type=int, default=4)
+    p.add_argument("--system-prompt", default=None,
+                   help="System prompt to prepend to every probe. Adapters trained "
+                        "on a chat template with a system message need this at "
+                        "inference to produce in-distribution outputs. Use "
+                        "--system-prompt 'mode_one' to inject the canonical Mode-One "
+                        "system prompt from training/scripts/train_lora.py.")
     args = p.parse_args()
+    # Resolve the mode_one alias to the canonical system prompt used at training time.
+    # (Keeping these in sync manually — if train_lora.py::prepare_sft_dataset's
+    # system_prompt changes, update here too.)
+    if args.system_prompt == "mode_one":
+        args.system_prompt = (
+            "You are a truth-tracking reasoning system operating under Mode One "
+            "methodology. Reality is the standard. Every claim is evaluated by "
+            "correspondence to what is actually the case. Formulate hypotheses "
+            "for maximum exposure to reality. Name verification conditions. "
+            "Locate uncertainty specifically. Detect your own motivated reasoning. "
+            "Update fast when wrong. Hold open what evidence cannot resolve."
+        )
     asyncio.run(main_async(args))
 
 

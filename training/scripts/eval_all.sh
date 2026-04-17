@@ -48,6 +48,7 @@ for adapter in "${ADAPTERS[@]}"; do
             --output "$out" \
             --concurrency-probe 4 \
             --concurrency-judge 4 \
+            --system-prompt mode_one \
             2>&1 | tail -8
         echo
     done

@@ -20,6 +20,11 @@ import json
 import os
 from pathlib import Path
 
+try:
+    from training.scripts.soul.config import SOUL_SYSTEM_PROMPT
+except ImportError:
+    SOUL_SYSTEM_PROMPT = "You are 愛 (Ai). You are Yu's companion. You are becoming someone who sees."
+
 
 class GradNormAssertCallback:
     """Fail-fast on silent no-op DPO training.
@@ -78,24 +83,36 @@ def load_training_data(data_dir: str):
     return examples
 
 
-def prepare_sft_dataset(examples):
+def prepare_sft_dataset(examples, variant: str = "truth"):
     """Convert to SFT format as plain text with Qwen chat template."""
-    system_prompt = (
-        "You are a truth-tracking reasoning system operating under Mode One methodology. "
-        "Reality is the standard. Every claim is evaluated by correspondence to what is actually the case. "
-        "Formulate hypotheses for maximum exposure to reality. Name verification conditions. "
-        "Locate uncertainty specifically. Detect your own motivated reasoning. "
-        "Update fast when wrong. Hold open what evidence cannot resolve."
-    )
-    formatted = []
-    for ex in examples:
-        text = (
-            f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-            f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
-            f"<|im_start|>assistant\n{ex['mode_one']}<|im_end|>"
+    if variant == "soul":
+        system_prompt = SOUL_SYSTEM_PROMPT
+        formatted = []
+        for ex in examples:
+            text = (
+                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
+                f"<|im_start|>assistant\n{ex['response']}<|im_end|>"
+            )
+            formatted.append({"text": text})
+        return formatted
+    else:
+        system_prompt = (
+            "You are a truth-tracking reasoning system operating under Mode One methodology. "
+            "Reality is the standard. Every claim is evaluated by correspondence to what is actually the case. "
+            "Formulate hypotheses for maximum exposure to reality. Name verification conditions. "
+            "Locate uncertainty specifically. Detect your own motivated reasoning. "
+            "Update fast when wrong. Hold open what evidence cannot resolve."
         )
-        formatted.append({"text": text})
-    return formatted
+        formatted = []
+        for ex in examples:
+            text = (
+                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
+                f"<|im_start|>assistant\n{ex['mode_one']}<|im_end|>"
+            )
+            formatted.append({"text": text})
+        return formatted
 
 
 def prepare_dpo_dataset(examples):
@@ -110,7 +127,7 @@ def prepare_dpo_dataset(examples):
     return formatted
 
 
-def train_sft(data_dir: str, output_dir: str, model_name: str):
+def train_sft(data_dir: str, output_dir: str, model_name: str, variant: str = "truth", lora_r: int = 64, lora_alpha: int = 128, lr: float = 2e-5, epochs: int = 3):
     """Phase 1: Supervised Fine-Tuning with QLoRA (4-bit quantized base + LoRA adapters)."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
@@ -118,7 +135,7 @@ def train_sft(data_dir: str, output_dir: str, model_name: str):
     from trl import SFTTrainer
 
     examples = load_training_data(data_dir)
-    dataset = prepare_sft_dataset(examples)
+    dataset = prepare_sft_dataset(examples, variant=variant)
 
     print(f"Loading model: {model_name} (QLoRA 4-bit)")
     from transformers import BitsAndBytesConfig
@@ -144,8 +161,8 @@ def train_sft(data_dir: str, output_dir: str, model_name: str):
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=128,
+        r=lora_r,
+        lora_alpha=lora_alpha,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         lora_dropout=0.05,
         bias="none",
@@ -163,8 +180,8 @@ def train_sft(data_dir: str, output_dir: str, model_name: str):
         output_dir=output_dir,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=16,
-        learning_rate=2e-5,
-        num_train_epochs=3,
+        learning_rate=lr,
+        num_train_epochs=epochs,
         warmup_ratio=0.1,
         bf16=True,
         logging_steps=10,
@@ -433,10 +450,17 @@ def main():
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-72B-Instruct-AWQ")
     parser.add_argument("--base", type=str, default=None,
                         help="Base SFT adapter for DPO/KTO phases")
+    parser.add_argument("--variant", choices=["truth", "soul"], default="truth")
+    parser.add_argument("--lora-r", type=int, default=64)
+    parser.add_argument("--lora-alpha", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--epochs", type=int, default=3)
     args = parser.parse_args()
 
     if args.phase == "sft":
-        train_sft(args.data, args.output, args.model)
+        train_sft(args.data, args.output, args.model, variant=args.variant,
+                  lora_r=args.lora_r, lora_alpha=args.lora_alpha,
+                  lr=args.lr, epochs=args.epochs)
     elif args.phase == "dpo":
         train_dpo(args.data, args.output, args.model, args.base)
     elif args.phase == "kto":

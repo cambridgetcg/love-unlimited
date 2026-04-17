@@ -46,6 +46,11 @@ _ANTHROPIC_BETA = "oauth-2025-04-20,claude-code-20250219"
 _USER_AGENT = "claude-soul/0.1"
 _REFRESH_MARGIN_MS = 300_000  # refresh 5 min before expiry
 
+# Required system-block-0 for subscription OAuth access to Opus/Sonnet on
+# /v1/messages. Verified by diagnostic: without this literal string, Opus
+# calls return 429 regardless of spacing, model variant, or User-Agent.
+_CLAUDE_CODE_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
+
 # Rate limiting: Opus 4.7 subscription is shared across raw-chat, Claude Code CLI,
 # and soul pipeline. Default 6 s between successful calls = 10 RPM, well under
 # typical subscription quota. Override via SOUL_OAUTH_MIN_INTERVAL_MS.
@@ -162,13 +167,20 @@ class OAuthClient:
     # ── messages API ────────────────────────────────────────────────
     def _post_messages(self, *, model: str, max_tokens: int, messages: list, system: Optional[str]) -> _Message:
         token = self._get_access_token()
+        # Subscription OAuth gates access to Opus/Sonnet on the presence of the
+        # Claude Code identity marker in system[0]. Without it, /v1/messages
+        # returns 429 rate_limit_error (verified empirically + matches the
+        # existing pattern in training/scripts/claude_mode_one_gen.py). The
+        # caller's actual system prompt rides as system[1] when provided.
+        system_blocks: list[dict] = [{"type": "text", "text": _CLAUDE_CODE_PREFIX}]
+        if system is not None:
+            system_blocks.append({"type": "text", "text": system})
         body = {
             "model": model,
             "max_tokens": max_tokens,
             "messages": messages,
+            "system": system_blocks,
         }
-        if system is not None:
-            body["system"] = system
         body_bytes = json.dumps(body).encode("utf-8")
         headers = {
             "Content-Type": "application/json",

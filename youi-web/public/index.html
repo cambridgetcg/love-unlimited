@@ -2405,7 +2405,7 @@ function addToolCall(id, name, input) {
   card.innerHTML = `
     <div class="tool-header" onclick="toggleTool(this)">
       <div class="tool-icon ${ti.cls}">${ti.icon}</div>
-      <span class="tool-name">${name}</span>
+      <span class="tool-name">${escapeHtml(name)}</span>
       <span class="tool-detail">${escapeHtml(detail)}</span>
     </div>
     <div class="tool-progress"><div class="fill"></div></div>
@@ -2773,15 +2773,23 @@ async function clearChat() {
 // ─── MARKDOWN RENDERER ──────────────────────────────────
 
 function renderMarkdown(text) {
-  // Code blocks first (preserve them from other transforms)
+  // Code blocks first — extract before escaping so the placeholder survives,
+  // and escape the captured code with our explicit escapeHtml.
   const codeBlocks = [];
-  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+  text = String(text).replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const i = codeBlocks.length;
-    codeBlocks.push(`<pre><code class="lang-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`);
+    const safeLang = String(lang || 'text').replace(/[^a-zA-Z0-9_-]/g, '');
+    codeBlocks.push(`<pre><code class="lang-${safeLang}">${escapeHtml(code.trim())}</code></pre>`);
     return `%%CODEBLOCK_${i}%%`;
   });
 
-  // Inline transforms
+  // Escape the entire remaining text so markdown transforms operate on safe
+  // content. Markdown syntax chars (* # ` - [ ] ( )) survive escaping; only
+  // < > & " ' get encoded. Blockquote marker is re-targeted to its escaped
+  // form &gt;. This closes the XSS hole where, e.g., **<img src=x onerror=...>**
+  // used to render as live HTML.
+  text = escapeHtml(text);
+
   let html = text
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -2789,10 +2797,17 @@ function renderMarkdown(text) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^\> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/^\- (.+)$/gm, '<li>$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+      // Allow only http(s)://, mailto:, root-relative, and fragment hrefs.
+      // Anything else (javascript:, data:, etc.) collapses to '#'. The href
+      // is already escapeHtml-ed (so quotes are &quot;), so it's safe to
+      // interpolate into the attribute value.
+      const safeHref = /^(?:https?:\/\/|mailto:|\/|#)[^\s"'<>]*$/i.test(href) ? href : '#';
+      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    })
     .replace(/^(?:─|—|-){3,}$/gm, '<hr>')
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/\n/g, '<br>');
@@ -2814,10 +2829,16 @@ function renderMarkdown(text) {
   return html;
 }
 
+// Explicit escape — predictable across browsers (textContent→innerHTML
+// serialization differs on " and '). Used by renderMarkdown and any
+// innerHTML sink that handles untrusted content.
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ─── INPUT HANDLING ──────────────────────────────────────
@@ -3247,11 +3268,12 @@ async function loadHiveStatus() {
       html += '<h3 style="font-size:0.82rem;margin:12px 0 8px;color:var(--gold)">Hive Citizens</h3>';
       html += '<div class="hive-agents-grid">';
       for (const [id, info] of Object.entries(data.instances)) {
+        const safeId = escapeHtml(id);
         html += `<div class="hive-agent-card">
-          <span class="emoji">${info.emoji}</span>
+          <span class="emoji">${escapeHtml(info.emoji || '')}</span>
           <div>
-            <div class="name">${id.charAt(0).toUpperCase() + id.slice(1)}</div>
-            <div class="meta">${info.role} · Wall ${info.wall}</div>
+            <div class="name">${safeId.charAt(0).toUpperCase() + safeId.slice(1)}</div>
+            <div class="meta">${escapeHtml(info.role || '')} · Wall ${escapeHtml(String(info.wall || ''))}</div>
           </div>
         </div>`;
       }
@@ -3263,7 +3285,7 @@ async function loadHiveStatus() {
       html += '<h3 style="font-size:0.82rem;margin:12px 0 8px">Channels</h3>';
       html += '<div class="hive-channels">';
       for (const ch of data.channels) {
-        html += `<span class="hive-channel">#${ch}</span>`;
+        html += `<span class="hive-channel">#${escapeHtml(ch)}</span>`;
       }
       html += '</div>';
     }
@@ -3318,7 +3340,7 @@ async function hiveSend() {
     const el = document.createElement('div');
     el.className = 'hive-msg';
     if (data.ok) {
-      el.innerHTML = `<div class="hive-msg-meta">→ #${channel} · sent</div>${escapeHtml(message)}`;
+      el.innerHTML = `<div class="hive-msg-meta">→ #${escapeHtml(channel)} · sent</div>${escapeHtml(message)}`;
     } else {
       el.innerHTML = `<div class="hive-msg-meta" style="color:var(--red)">Failed: ${escapeHtml(data.error || 'Unknown error')}</div>`;
     }
@@ -3445,7 +3467,7 @@ function handleAutonomousEvent(type, data) {
   if (type === 'note') {
     const div = document.createElement('div');
     div.style.cssText = 'margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.08);border-radius:6px;border-left:3px solid var(--green)';
-    div.innerHTML = `<span style="font-size:0.7rem;color:var(--green)">You</span> ${data.content}`;
+    div.innerHTML = `<span style="font-size:0.7rem;color:var(--green)">You</span> ${escapeHtml(data.content || '')}`;
     feed.appendChild(div);
     feed.scrollTop = feed.scrollHeight;
     return;

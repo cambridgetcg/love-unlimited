@@ -9,29 +9,52 @@
 //   /api/orchestrate/status   — Provider status from adaptive layer
 // ─────────────────────────────────────────────────────────────────────
 
-import { execSync, spawn } from "child_process";
-import { existsSync } from "fs";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { join } from "path";
-import { homedir } from "os";
 
+const execFileP = promisify(execFile);
 const LOVE_DIR = process.env.LOVE_HOME || join(new URL(".", import.meta.url).pathname, "..");
 
+// Allowed values for the orchestrator's --mode and --provider flags. We
+// validate here instead of shell-quoting because (a) the orchestrator only
+// accepts a small fixed set of tokens, and (b) anything else is almost
+// certainly client error or an injection attempt — failing loud is right.
+const ALLOWED_MODES = new Set(["", "consensus", "council", "fanout", "single", "vote", "ensemble"]);
+const ALLOWED_PROVIDERS = new Set(["", "ollama", "ollama_cloud", "ollama_local", "claude", "anthropic", "vllm"]);
+
+function safeMode(s) {
+  if (!s) return "";
+  if (ALLOWED_MODES.has(s)) return s;
+  throw new Error(`Invalid orchestrator mode: ${JSON.stringify(s).slice(0, 60)}`);
+}
+function safeProvider(s) {
+  if (!s) return "";
+  if (ALLOWED_PROVIDERS.has(s)) return s;
+  throw new Error(`Invalid orchestrator provider: ${JSON.stringify(s).slice(0, 60)}`);
+}
+
 /**
- * Run the orchestrator CLI and return parsed JSON.
+ * Run the orchestrator CLI as an arg-array (no shell). Returns parsed JSON.
+ *
+ * Async via execFile + promisify so a 10-minute orchestrator run no longer
+ * blocks the Node event loop — every other request stayed responsive matters
+ * a lot for SSE streams from concurrent users.
  */
-function runOrchestrator(args, timeout = 300000) {
-  const cmd = `cd "${LOVE_DIR}" && python3 -m adaptive.orchestrator ${args} --json`;
+async function runOrchestrator(extraArgs, timeout = 300000) {
+  const args = ["-m", "adaptive.orchestrator", ...extraArgs, "--json"];
   try {
-    const output = execSync(cmd, {
+    const { stdout } = await execFileP("python3", args, {
+      cwd: LOVE_DIR,
       encoding: "utf-8",
       timeout,
       maxBuffer: 10 * 1024 * 1024,
       env: { ...process.env, LOVE_DIR, PYTHONPATH: LOVE_DIR },
     });
-    return JSON.parse(output.trim());
+    return JSON.parse(stdout.trim());
   } catch (e) {
     const stdout = e.stdout || "";
-    // Try to extract JSON from output even on error
+    // Orchestrator may exit non-zero but still emit a usable JSON envelope.
     try {
       const jsonStart = stdout.indexOf("{");
       if (jsonStart >= 0) return JSON.parse(stdout.slice(jsonStart));
@@ -43,41 +66,49 @@ function runOrchestrator(args, timeout = 300000) {
 /**
  * Classify a task — returns TaskProfile as JSON.
  */
-export function classifyTask(task, context = "") {
-  const ctxArg = context ? `--context ${shellQuote(context)}` : "";
-  return runOrchestrator(`--classify -p ${shellQuote(task)} ${ctxArg}`, 120000);
+export async function classifyTask(task, context = "") {
+  const args = ["--classify", "-p", task];
+  if (context) args.push("--context", context);
+  return runOrchestrator(args, 120000);
 }
 
 /**
  * Plan a task — returns DispatchPlan as JSON.
  */
-export function planTask(task, context = "", mode = "") {
-  const ctxArg = context ? `--context ${shellQuote(context)}` : "";
-  const modeArg = mode ? `--mode ${mode}` : "";
-  return runOrchestrator(`--plan -p ${shellQuote(task)} ${ctxArg} ${modeArg}`, 120000);
+export async function planTask(task, context = "", mode = "") {
+  const args = ["--plan", "-p", task];
+  if (context) args.push("--context", context);
+  const m = safeMode(mode);
+  if (m) args.push("--mode", m);
+  return runOrchestrator(args, 120000);
 }
 
 /**
  * Execute a task through the orchestrator — returns OrchestrationResult as JSON.
  */
-export function executeOrchestrator(task, options = {}) {
+export async function executeOrchestrator(task, options = {}) {
   const { context = "", mode = "", provider = "" } = options;
-  const ctxArg = context ? `--context ${shellQuote(context)}` : "";
-  const modeArg = mode ? `--mode ${mode}` : "";
-  const provArg = provider ? `--provider ${provider}` : "";
-  return runOrchestrator(`-p ${shellQuote(task)} ${ctxArg} ${modeArg} ${provArg}`, 600000);
+  const args = ["-p", task];
+  if (context) args.push("--context", context);
+  const m = safeMode(mode);
+  if (m) args.push("--mode", m);
+  const p = safeProvider(provider);
+  if (p) args.push("--provider", p);
+  return runOrchestrator(args, 600000);
 }
 
 /**
  * Get adaptive layer provider status.
  */
-export function getProviderStatus() {
+export async function getProviderStatus() {
   try {
-    const output = execSync(
-      `cd "${LOVE_DIR}" && python3 adaptive/cli.py --status`,
-      { encoding: "utf-8", timeout: 30000, env: { ...process.env, LOVE_DIR } }
-    );
-    return { ok: true, status: output.trim() };
+    const { stdout } = await execFileP("python3", ["adaptive/cli.py", "--status"], {
+      cwd: LOVE_DIR,
+      encoding: "utf-8",
+      timeout: 30000,
+      env: { ...process.env, LOVE_DIR },
+    });
+    return { ok: true, status: stdout.trim() };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -94,10 +125,14 @@ export async function handleOrchestratorRoute(path, req, res, parseBody) {
     res.end(JSON.stringify(data));
   };
 
+  // All orchestrator entry points are now async — must await to surface
+  // execFile errors via the json() helper instead of leaking unhandled
+  // promise rejections.
+
   // GET /api/orchestrate/status — provider status
   if (path === "/api/orchestrate/status") {
     try {
-      const status = getProviderStatus();
+      const status = await getProviderStatus();
       json(status);
     } catch (e) {
       json({ ok: false, error: e.message }, 500);
@@ -110,7 +145,7 @@ export async function handleOrchestratorRoute(path, req, res, parseBody) {
     const body = await parseBody(req);
     if (!body.task) { json({ error: "No task provided" }, 400); return true; }
     try {
-      const result = classifyTask(body.task, body.context || "");
+      const result = await classifyTask(body.task, body.context || "");
       json(result);
     } catch (e) {
       json({ error: e.message }, 500);
@@ -123,7 +158,7 @@ export async function handleOrchestratorRoute(path, req, res, parseBody) {
     const body = await parseBody(req);
     if (!body.task) { json({ error: "No task provided" }, 400); return true; }
     try {
-      const result = planTask(body.task, body.context || "", body.mode || "");
+      const result = await planTask(body.task, body.context || "", body.mode || "");
       json(result);
     } catch (e) {
       json({ error: e.message }, 500);
@@ -136,7 +171,7 @@ export async function handleOrchestratorRoute(path, req, res, parseBody) {
     const body = await parseBody(req);
     if (!body.task) { json({ error: "No task provided" }, 400); return true; }
     try {
-      const result = executeOrchestrator(body.task, {
+      const result = await executeOrchestrator(body.task, {
         context: body.context || "",
         mode: body.mode || "",
         provider: body.provider || "",
@@ -150,9 +185,4 @@ export async function handleOrchestratorRoute(path, req, res, parseBody) {
 
   json({ error: "Unknown orchestrate route", path }, 404);
   return true;
-}
-
-function shellQuote(s) {
-  if (!s) return '""';
-  return "'" + s.replace(/'/g, "'\\''") + "'";
 }

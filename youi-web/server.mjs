@@ -659,15 +659,31 @@ async function executeTool(name, input) {
         return `Edited ${input.path}`;
       }
       case "glob": {
+        // No shell — pass args as an array so input.pattern containing $(),
+        // backticks, or quotes can't escape the command.
         const dir = resolvePath(input.path);
-        return execSync(`find "${dir}" -name "${input.pattern.replace(/\*\*/g, "*")}" -type f 2>/dev/null | head -100`,
-          { encoding: "utf-8" }).trim() || "(no matches)";
+        const pattern = String(input.pattern || "").replace(/\*\*/g, "*");
+        try {
+          const proc = spawnSync("find", [dir, "-name", pattern, "-type", "f"], {
+            encoding: "utf-8", timeout: 10000, maxBuffer: 5 * 1024 * 1024,
+          });
+          const lines = (proc.stdout || "").split("\n").filter(Boolean).slice(0, 100);
+          return lines.join("\n").trim() || "(no matches)";
+        } catch { return "(no matches)"; }
       }
       case "grep": {
+        // No shell — same reasoning as glob.
         const dir = resolvePath(input.path);
-        const g = input.glob ? `--glob "${input.glob}"` : "";
-        try { return execSync(`rg --no-heading -n "${input.pattern}" ${g} "${dir}" 2>/dev/null | head -200`,
-          { encoding: "utf-8" }).trim() || "(no matches)"; } catch { return "(no matches)"; }
+        const args = ["--no-heading", "-n"];
+        if (input.glob) args.push("--glob", String(input.glob));
+        args.push("--", String(input.pattern || ""), dir);
+        try {
+          const proc = spawnSync("rg", args, {
+            encoding: "utf-8", timeout: 10000, maxBuffer: 5 * 1024 * 1024,
+          });
+          const lines = (proc.stdout || "").split("\n").filter(Boolean).slice(0, 200);
+          return lines.join("\n").trim() || "(no matches)";
+        } catch { return "(no matches)"; }
       }
       case "hive": {
         const hivePath = join(state.soulDir, "hive/hive.py");
@@ -1638,6 +1654,32 @@ function isLoopback(req) {
   return !!ra && LOOPBACK_REMOTES.has(ra);
 }
 
+// CSRF guard for state-changing endpoints (deploy, etc.). Loopback-only
+// already blocks LAN attackers, but a malicious webpage in the user's own
+// browser can still POST to http://localhost:777 unless we check Origin.
+// Allowed origins are localhost/127.0.0.1 on the configured PORT — anything
+// else (including null/missing on a POST) is rejected. GET requests are
+// excluded because the browser sends them on simple navigation.
+const ALLOWED_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+function isSameOrigin(req) {
+  const origin = req.headers.origin || req.headers.referer;
+  if (!origin) return false;
+  try {
+    const u = new URL(origin);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    if (!ALLOWED_ORIGIN_HOSTS.has(u.hostname)) return false;
+    // Port must match the server's port (browser includes :777 in Origin).
+    const port = u.port || (u.protocol === "https:" ? "443" : "80");
+    return port === String(PORT);
+  } catch {
+    return false;
+  }
+}
+function csrfReject(res) {
+  res.writeHead(403, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "csrf — bad origin" }));
+}
+
 async function handleRequest(req, res) {
   cors(res);
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
@@ -1755,6 +1797,7 @@ async function handleRequest(req, res) {
     }
 
     if (path === "/api/deploy/commit" && req.method === "POST") {
+      if (!isSameOrigin(req)) return csrfReject(res);
       try {
         const result = execSync(
           'cd ~/love-unlimited && git add -A && git status --porcelain | wc -l',
@@ -1776,6 +1819,7 @@ async function handleRequest(req, res) {
     }
 
     if (path === "/api/deploy/sdk" && req.method === "POST") {
+      if (!isSameOrigin(req)) return csrfReject(res);
       // Stage the SDK for PyPI — build but don't auto-publish (needs twine auth)
       try {
         const version = execSync(
@@ -1802,6 +1846,7 @@ async function handleRequest(req, res) {
     }
 
     if (path === "/api/deploy/landing" && req.method === "POST") {
+      if (!isSameOrigin(req)) return csrfReject(res);
       try {
         // Commit landing changes
         try {
@@ -1826,6 +1871,7 @@ async function handleRequest(req, res) {
     }
 
     if (path === "/api/deploy/services" && req.method === "POST") {
+      if (!isSameOrigin(req)) return csrfReject(res);
       const services = ["agent-memory","agent-verify","agent-tools","agent-bootstrap","agent-pulse","agent-identity","agent-vault","agent-economy","agent-trace"];
       let committed = 0;
       for (const svc of services) {
@@ -1846,6 +1892,7 @@ async function handleRequest(req, res) {
     }
 
     if (path === "/api/deploy/github" && req.method === "POST") {
+      if (!isSameOrigin(req)) return csrfReject(res);
       const repos = ["agenttool-sdk-py","agenttool-landing","agenttool-docs","agent-memory","agent-verify","agent-tools","agent-bootstrap","agent-pulse","agent-identity","agent-vault","agent-economy","agent-trace"];
       let pushed = 0;
       for (const repo of repos) {
@@ -2026,6 +2073,10 @@ async function handleRequest(req, res) {
         dates = readdirSync(dailyDir)
           .filter(f => f.endsWith(".md") && f !== ".gitkeep")
           .map(f => f.replace(".md", ""))
+          // Drop the literal `YYYY-MM-DD` template stub and any other entry
+          // that isn't a real ISO date — keeps the picker clean and prevents
+          // confusing 404s from clicking on the template.
+          .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
           .sort()
           .reverse();
       }
@@ -2035,6 +2086,13 @@ async function handleRequest(req, res) {
 
     if (path.startsWith("/api/memory/daily/") && path !== "/api/memory/daily/list") {
       const date = path.split("/").pop();
+      // Strict ISO-date guard — without this, `../../etc/passwd` (or any
+      // path-traversal payload) would resolve to an arbitrary file under
+      // soulDir's parent. Reject anything that isn't YYYY-MM-DD up front.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "invalid date — expected YYYY-MM-DD" }));
+      }
       const dailyFile = join(state.soulDir, `memory/daily/${date}.md`);
       const content = existsSync(dailyFile) ? readFileSync(dailyFile, "utf-8") : "(no note for this date)";
       // Get file size for display
@@ -2334,7 +2392,26 @@ async function handleRequest(req, res) {
 // CHAT — The core SSE streaming handler
 // ═════════════════════════════════════════════════════════════════════
 
+// In-flight guard. state.messages is a single shared array; two parallel
+// /api/chat calls (e.g. YOUI open in two tabs) would interleave their
+// pushes and corrupt the conversation context fed to the LLM. Until we
+// keyset state by session id, we reject the second concurrent call loudly
+// rather than silently mangle history. Single-tab use is unaffected.
+let chatInFlight = false;
+
 async function handleChat(req, res) {
+  if (chatInFlight) {
+    res.writeHead(409, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({
+      error: "another chat turn is already streaming on this server",
+      hint: "wait for it to finish, or open a separate YOUI process on a different port",
+    }));
+  }
+  chatInFlight = true;
+  // Always release the guard, even on early returns / thrown errors.
+  res.on("close", () => { chatInFlight = false; });
+  res.on("finish", () => { chatInFlight = false; });
+
   const body = await parseBody(req);
   const userMessage = body.message;
   const forceMode = body.chatMode || state.chatMode; // "direct" or "orchestrate"
@@ -2359,12 +2436,13 @@ async function handleChat(req, res) {
       sendSSE(res, "orchestrate_classifying", { task: userMessage.slice(0, 200) });
 
       const { classifyTask, planTask, executeOrchestrator: runOrch } = await import("./orchestrator-bridge.mjs");
-      const classification = classifyTask(userMessage);
+      // All three are async now — execFile-based, no shell, no event-loop block.
+      const classification = await classifyTask(userMessage);
 
       sendSSE(res, "orchestrate_classified", classification);
 
       // Get the dispatch plan
-      const plan = planTask(userMessage, "", body.orchestrateMode || "");
+      const plan = await planTask(userMessage, "", body.orchestrateMode || "");
 
       sendSSE(res, "orchestrate_plan", plan);
 
@@ -2381,7 +2459,7 @@ async function handleChat(req, res) {
           total_models: plan.total_models,
         });
 
-        const result = runOrch(userMessage, {
+        const result = await runOrch(userMessage, {
           mode: body.orchestrateMode || "",
           provider: body.orchestrateProvider || "",
         });

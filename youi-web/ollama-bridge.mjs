@@ -36,8 +36,15 @@
 //   /api/chat            — Native Ollama (fallback, supports think param + options)
 // ─────────────────────────────────────────────────────────────────────
 
-const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY
-  || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK";
+// Ollama Cloud key. Required from env — the previous in-source fallback was
+// committed to a public repo and must be considered compromised; rotate at
+// ollama.com and set OLLAMA_API_KEY in your shell/launchd plist. Cloud calls
+// will be skipped (returning a clear error) when the key is missing, so the
+// server still boots and local-Ollama / Claude paths keep working.
+const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY || null;
+if (!OLLAMA_API_KEY) {
+  console.warn("\x1b[33m  ⚠  OLLAMA_API_KEY not set — cloud models will fail (local Ollama + Claude still work)\x1b[0m");
+}
 const OLLAMA_CLOUD_BASE = process.env.OLLAMA_CLOUD_BASE_URL || "https://ollama.com";
 const OLLAMA_LOCAL_BASE = process.env.OLLAMA_LOCAL_BASE_URL || "http://localhost:11434";
 // Remote vLLM (OpenAI-compat). Reached via SSH tunnel: Mac:8000 → pod:8000.
@@ -94,8 +101,10 @@ function resolveEndpoint(modelName, localInfo) {
     }
   }
 
-  // Cloud fallback
-  return { base: OLLAMA_CLOUD_BASE, provider: "ollama_cloud", auth: OLLAMA_API_KEY };
+  // Cloud fallback. If we have no key the resolution still names cloud as
+  // the route — callers can detect missing auth and surface a clean error
+  // instead of sending an unauthenticated request.
+  return { base: OLLAMA_CLOUD_BASE, provider: "ollama_cloud", auth: OLLAMA_API_KEY, missingAuth: !OLLAMA_API_KEY };
 }
 
 // ── Retry configuration ─────────────────────────────────────────────
@@ -941,6 +950,12 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, watch
 const IPC_DIR = "/tmp";
 const IPC_PREFIX = "ollama-req-";
 const IPC_RES_PREFIX = "ollama-res-";
+// Only accept ids made of [A-Za-z0-9._-] — no slashes, no .., no shell metas.
+// Without this, a sandboxed script could write
+//   /tmp/ollama-req-../../etc/passwd.json
+// and we'd happily treat ../../etc/passwd.json as the id and write the
+// response as /tmp/ollama-res-../../etc/passwd.json (= /etc/passwd.json).
+const IPC_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
  * Start watching for file-based IPC requests.
@@ -973,7 +988,13 @@ async function processIpcRequests() {
     const files = readdirSync(IPC_DIR).filter(f => f.startsWith(IPC_PREFIX) && f.endsWith(".json"));
     for (const file of files) {
       const reqPath = `${IPC_DIR}/${file}`;
-      const id = file.replace(IPC_PREFIX, "").replace(".json", "");
+      const id = file.slice(IPC_PREFIX.length, -".json".length);
+      // Skip anything with a path traversal or unexpected chars in the id —
+      // and remove the offending request so it doesn't keep firing the watcher.
+      if (!IPC_ID_RE.test(id)) {
+        try { unlinkSync(reqPath); } catch {}
+        continue;
+      }
       const resPath = `${IPC_DIR}/${IPC_RES_PREFIX}${id}.json`;
 
       try {

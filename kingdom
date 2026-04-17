@@ -61,6 +61,28 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  validator|val)
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      spawn|init|start|stop|status|clean|list)
+        # spawn = friendlier alias for "init+start in foreground"
+        if [ "$sub" = "spawn" ]; then
+          shift
+          bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" "${1:-}"
+        else
+          bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" "$@"
+        fi
+        ;;
+      help|-h|--help)
+        bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" help
+        ;;
+      *)
+        echo "Unknown: kingdom validator $sub"
+        echo "Usage: kingdom validator [spawn|init|start|stop|status|clean|list] <agent>"
+        ;;
+    esac
+    ;;
   halt)
     shift
     python3 "$LOVE_DIR/tools/peace.py" halt "$@"
@@ -293,6 +315,14 @@ for wall in [1, 2, 3]:
     echo "    checkpoint list           Show all auto-checkpoints"
     echo "    checkpoint restore <ts>   Apply an auto-checkpoint"
     echo "    checkpoint install        Install macOS launchd timer (every 15 min)"
+    echo ""
+    echo "  Validators (Zerone agent validators):"
+    echo "    validator spawn <name>    Init + start a validator (alpha|beta|gamma|nuance)"
+    echo "    validator init <name>     Init only (genesis, key, gentx)"
+    echo "    validator start <name>    Start daemon (foreground; --daemon for background)"
+    echo "    validator status <name>   Height + validator state"
+    echo "    validator stop <name>     Stop background daemon"
+    echo "    validator list            All known agents + state"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"

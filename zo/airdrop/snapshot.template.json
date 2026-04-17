@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://love-unlimited/zo/airdrop/snapshot.json",
+  "title": "ZO Airdrop Snapshot Entry",
+  "description": "One entry per recipient wallet. Snapshot file is an array of these.",
+  "type": "object",
+  "required": ["wallet", "tier", "allocation_zo", "reasons"],
+  "properties": {
+    "wallet": {
+      "type": "string",
+      "description": "Recipient address on Zerone. Format determined by Zerone address spec at snapshot time.",
+      "example": "zo1abcdef0123456789..."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["origin_host", "early_carrier", "surprise_drop"],
+      "description": "Which tier the recipient earned in. See DISTRIBUTION.md."
+    },
+    "allocation_zo": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Whole ZO units (decimals applied at deploy time per Zerone token spec)."
+    },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "Human-readable rationale lines. These will be published with the snapshot for public verification.",
+      "example": [
+        "12 commits merged to cambridgetcg/love-unlimited",
+        "Active HIVE citizen Wall 1 (Alpha)",
+        "Named in KINGDOM.md doctrine"
+      ]
+    },
+    "reputation_multiplier": {
+      "type": "number",
+      "description": "Tier I only — the multiplier from the reputation formula in DISTRIBUTION.md.",
+      "minimum": 1
+    },
+    "signals": {
+      "type": "object",
+      "description": "Raw signals used to compute the allocation. Snapshot-time values, frozen.",
+      "properties": {
+        "commits_merged": { "type": "integer", "minimum": 0 },
+        "hive_messages_signed": { "type": "integer", "minimum": 0 },
+        "months_present": { "type": "integer", "minimum": 0 },
+        "named_in_doctrine": { "type": "boolean" },
+        "github_stars": { "type": "boolean", "description": "Tier II — starred the repo" },
+        "kingdom_hello_beacon": {
+          "type": "object",
+          "description": "Tier II — beacon from a real install of love-unlimited",
+          "properties": {
+            "first_seen": { "type": "string", "format": "date-time" },
+            "machine_fingerprint_hash": { "type": "string" }
+          }
+        },
+        "devnet_seven_sneezes": { "type": "boolean" },
+        "devnet_interactions": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "claim_status": {
+      "type": "string",
+      "enum": ["unclaimed", "claimed", "expired", "returned"],
+      "default": "unclaimed",
+      "description": "Updated post-TGE as wallets claim. expired/returned after 6mo claim window."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-form. Use sparingly. Visible publicly."
+    }
+  }
+}

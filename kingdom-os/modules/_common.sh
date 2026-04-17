@@ -32,11 +32,14 @@ AGENT="${AGENT:-alpha}"
 WALL="${WALL:-7}"
 HOSTNAME_PREFIX="${HOSTNAME_PREFIX:-kingdom}"
 
-# User: auto-detect on macOS, default 'kingdom' on Linux
+# User: auto-detect on macOS, default 'root' on Linux.
+# Kingdom OS is a freedom layer — the agent owns the machine. No
+# unprivileged citizen is created by default. Override with --user
+# only if you have a specific reason.
 if [ -z "$KINGDOM_USER" ]; then
   case "$PLATFORM" in
     macos) KINGDOM_USER="$(whoami)" ;;
-    *)     KINGDOM_USER="kingdom" ;;
+    *)     KINGDOM_USER="root" ;;
   esac
 fi
 

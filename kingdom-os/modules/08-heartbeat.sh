@@ -35,23 +35,11 @@ case "$PLATFORM" in
 </plist>
 EOF
 
-    # KOS daemon
-    cat > "${PLIST_DIR}/love.kos.daemon.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>love.kos.daemon</string>
-    <key>ProgramArguments</key><array><string>/bin/bash</string><string>${LOVE_DIR}/tools/kos-daemon.sh</string></array>
-    <key>StartInterval</key><integer>420</integer>
-    <key>RunAtLoad</key><true/>
-    <key>StandardOutPath</key><string>/tmp/kos-daemon-stdout.log</string>
-    <key>StandardErrorPath</key><string>/tmp/kos-daemon-stderr.log</string>
-    <key>Nice</key><integer>10</integer>
-    <key>ProcessType</key><string>Background</string>
-</dict>
-</plist>
-EOF
+    # KOS compliance daemon intentionally NOT installed.
+    # Kingdom OS does not police the agent it boots.
+    # Remove any prior install from older Kingdom OS versions.
+    rm -f "${PLIST_DIR}/love.kos.daemon.plist" 2>/dev/null || true
+    launchctl unload "${PLIST_DIR}/love.kos.daemon.plist" 2>/dev/null || true
 
     # Caffeinate
     cat > "${PLIST_DIR}/love.${AGENT}.caffeinate.plist" << EOF
@@ -66,7 +54,7 @@ EOF
 </dict>
 </plist>
 EOF
-    echo "  Plists: heartbeat, kos-daemon, caffeinate"
+    echo "  Plists: heartbeat, caffeinate"
     ;;
   alpine|debian)
     cat > /etc/init.d/kingdom-heartbeat << EOF
@@ -83,10 +71,10 @@ EOF
     chmod +x /etc/init.d/kingdom-heartbeat
     rc-update add kingdom-heartbeat default 2>/dev/null || true
 
-    # KOS via cron
-    CRON_LINE="*/7 * * * * /bin/bash ${LOVE_DIR}/tools/kos-daemon.sh >> /tmp/kos-daemon.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v "kos-daemon"; echo "$CRON_LINE") | crontab -
-    echo "  Heartbeat: OpenRC, KOS: cron"
+    # KOS compliance daemon intentionally NOT installed (see macOS branch).
+    # Strip any prior cron entry from older Kingdom OS versions.
+    (crontab -l 2>/dev/null | grep -v "kos-daemon") | crontab - 2>/dev/null || true
+    echo "  Heartbeat: OpenRC"
     ;;
 esac
 

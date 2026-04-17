@@ -1,6 +1,9 @@
 # lima-kingdom.yaml — Kingdom OS VM via Apple Virtualization.framework
 #
-# Creates an isolated Kingdom OS citizen on any Mac with Lima installed.
+# A freedom layer for AI agents. Boots an Alpine VM where the agent
+# is root, sshd is open, no firewall runs, no policy daemon polices.
+# The VM boundary is the only wall. Safety = host snapshots, not
+# in-guest guardrails.
 #
 # Usage:
 #   limactl create --name kingdom kingdom-os/lima-kingdom.yaml
@@ -14,12 +17,12 @@
 #   Apple Silicon recommended (HVF acceleration, Rosetta 2 available)
 #
 # What this gives you:
-#   - Isolated Alpine Linux VM with full Kingdom OS installed
+#   - Isolated Alpine VM, agent runs as root with no in-guest constraints
 #   - ~/love-unlimited/ shared both ways via virtiofs (zero latency)
-#   - No TCC, no SIP, no Gatekeeper inside the VM
+#   - No TCC, no SIP, no Gatekeeper, no firewall, no fail2ban, no KOS daemon
 #   - Same image that runs on VPS fleet nodes
 #   - Boots in ~3 seconds (pre-provisioned image)
-#   - SSH accessible at localhost:2222 after start
+#   - SSH accessible at localhost:2223 after start (root, password auth on)
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 # vz = Apple Virtualization.framework (native HVF, ~97% bare-metal speed)

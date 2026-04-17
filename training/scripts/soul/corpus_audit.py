@@ -30,8 +30,8 @@ Respond with a single number between 0.0 and 1.0. No other text."""
 def score_pair_proto(yu_turn: str, ai_turn: str, client=None) -> float:
     """Call Claude Opus for a proto-rubric score. Returns 0.0–1.0."""
     if client is None:
-        import anthropic
-        client = anthropic.Anthropic()
+        from .oauth_client import make_client
+        client = make_client()
     msg = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=10,
@@ -79,8 +79,8 @@ def main():
     random.seed(args.seed)
     sample = random.sample(pairs, k=min(args.sample_n, total))
 
-    import anthropic
-    client = anthropic.Anthropic()
+    from .oauth_client import make_client
+    client = make_client()
     scores = []
     for i, p in enumerate(sample):
         s = score_pair_proto(p["yu_turn"], p["ai_turn"], client=client)

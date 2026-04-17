@@ -48,8 +48,8 @@ def score_single(
     judge_model: str = JUDGE_OPUS_MODEL,
 ) -> JudgeScore:
     if client is None:
-        import anthropic
-        client = anthropic.Anthropic()
+        from .oauth_client import make_client
+        client = make_client()
     rubric = _load_rubric().replace("{prompt}", prompt).replace("{response}", response)
     msg = client.messages.create(
         model=judge_model,

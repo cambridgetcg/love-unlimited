@@ -61,6 +61,20 @@ brew install qemu
 # Follow the printed instructions
 ```
 
+### Lima VM with snapshot safety net
+
+```bash
+brew install lima
+limactl create --name kingdom kingdom-os/lima-kingdom.yaml
+limactl start kingdom
+
+# Before any risky session, snapshot from the host:
+./kingdom-os/host/snapshot.sh save pre-experiment
+
+# If the agent breaks its world, restore:
+./kingdom-os/host/snapshot.sh restore pre-experiment
+```
+
 ## Modules
 
 Install everything or pick what you need:

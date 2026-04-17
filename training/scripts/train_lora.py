@@ -236,6 +236,27 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
     """Phase 3: KTO alignment — gradient-aware prospect-theory loss over unpaired
     desirable/undesirable completions.
 
+    ⚠️  CURRENTLY PRODUCES A NO-OP ADAPTER IN OUR ENVIRONMENT (2026-04-17).
+    ⚠️  Seven retries (see inline comments below) narrowed the issue down to
+    ⚠️  an incompatibility between TRL 0.12.2 + PEFT + bitsandbytes 0.45.x +
+    ⚠️  KTOTrainer on 72B-QLoRA. Training runs to completion and saves a
+    ⚠️  checkpoint, but every logged step has grad_norm=0.0, rewards=0.0,
+    ⚠️  kl=0.0 → the saved LoRA weights are just the random init.
+    ⚠️
+    ⚠️  Confirmed broken combinations:
+    ⚠️    - grad_ckpt on (reentrant)      → silent no-op
+    ⚠️    - grad_ckpt on (non-reentrant)  → CheckpointError on backward
+    ⚠️    - grad_ckpt off via KTOConfig   → KTO still used it internally
+    ⚠️    - explicit grad_ckpt_disable    → still no-op
+    ⚠️    - prepare + merge_and_unload    → graph corruption, no grad flow
+    ⚠️    - no prepare                    → explicit "requires grad" error
+    ⚠️
+    ⚠️  Next attempts to try (not scoped here):
+    ⚠️    - Downgrade or upgrade TRL/PEFT to a known-good combo
+    ⚠️    - Use DPOTrainer instead (TRL's KTO is newer, DPO is better tested)
+    ⚠️    - Custom training loop bypassing TRL's KTOTrainer
+    ⚠️    - bf16 base (not 4-bit) — needs full 144 GB VRAM, feasible on H200
+
     Previously tried to stack KTO on top of an SFT adapter via
     PeftModel.from_pretrained + merge_and_unload — on 4-bit quantized bases
     this produced a silent no-op training run (grad_norm=0.0, rewards=0.0,
@@ -254,7 +275,7 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from peft import LoraConfig
+    from peft import LoraConfig, prepare_model_for_kbit_training
     from trl import KTOTrainer, KTOConfig
 
     # Load JSONL directly (not a directory like SFT/DPO)
@@ -293,9 +314,22 @@ def train_kto(data_path: str, output_dir: str, model_name: str, base_adapter: st
         trust_remote_code=True,
     )
     model.config.use_cache = False
-    # Intentionally NOT calling prepare_model_for_kbit_training here — TRL's
-    # KTOTrainer (with peft_config) handles the required setup itself. Double-
-    # wrapping with both caused retry #4 to log grad_norm=0 for all 32 steps.
+    # prepare_model_for_kbit_training IS required for QLoRA — it installs the
+    # input-require-grads hook that lets activations backprop to LoRA params.
+    # Skipping it (as retry #5 did) raises:
+    #   RuntimeError: element 0 of tensors does not require grad and does
+    #   not have a grad_fn
+    # The bug in retries #2-4 was PeftModel.from_pretrained + merge_and_unload
+    # on 4-bit base weights, which silently corrupted the grad graph. Keeping
+    # prepare_model_for_kbit_training and dropping the merge works.
+    model = prepare_model_for_kbit_training(model)
+    # prepare_model_for_kbit_training implicitly enables gradient_checkpointing
+    # on the model itself. KTOConfig(gradient_checkpointing=False) only controls
+    # whether the trainer tries to toggle it — it does NOT retroactively disable
+    # the model-level flag. Without this explicit disable, KTO on 72B-QLoRA logs
+    # "None of the inputs have requires_grad=True. Gradients will be None" at
+    # torch/utils/checkpoint.py:92, silently yielding a no-op adapter (retry #6).
+    model.gradient_checkpointing_disable()
 
     lora_config = LoraConfig(
         r=32,

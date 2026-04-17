@@ -92,15 +92,16 @@ DEFAULT_BATCH_CONCURRENCY = 8
 # 429: rate limit exceeded
 # 502: bad gateway (cloud model unreachable temporarily)
 RETRIABLE_STATUS_CODES = {429, 502, 503}
-MAX_RETRIES = 4
-RETRY_BASE_SECONDS = 1.0  # Exponential: 1s, 2s, 4s, 8s
+MAX_RETRIES = 2  # Reduced from 4 to fail faster (1 initial + 2 retries = 3 total attempts)
+RETRY_BASE_SECONDS = 1.0  # Exponential: 1s, 2s
 RETRY_MAX_SECONDS = 10.0
 
 # ── Timeout tuning ──────────────────────────────────────────────────────
 # Large models (GLM 5.1 754B) can take 15-45s. Small models ~1s.
+# Under load (10 concurrent slots busy), premium models can take 2-5 minutes.
 DEFAULT_TIMEOUT = 120       # for normal calls
 ECONOMY_TIMEOUT = 30        # for devstral, gemma4, ministral
-PREMIUM_TIMEOUT = 180       # for GLM 5.1, cogito, kimi with long context
+PREMIUM_TIMEOUT = 300       # for GLM 5.1, cogito, kimi with long context or under load
 
 
 class OllamaCloudProvider(Provider):
@@ -150,8 +151,16 @@ class OllamaCloudProvider(Provider):
     # ── Message & tool builders (shared by both endpoints) ───────────────
 
     def _build_messages(
-        self, messages: list[Message], system: str | None
+        self, messages: list[Message], system: str | None, native_format: bool = False
     ) -> list[dict]:
+        """Build message list for API.
+
+        Args:
+            messages: Conversation messages
+            system: System prompt to prepend
+            native_format: If True, use native /api/chat format (arguments as dict).
+                          If False, use OpenAI /v1 format (arguments as JSON string).
+        """
         api_messages = []
 
         if system:
@@ -176,7 +185,8 @@ class OllamaCloudProvider(Provider):
                         "type": "function",
                         "function": {
                             "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
+                            # Native API expects dict, OpenAI expects JSON string
+                            "arguments": tc.arguments if native_format else json.dumps(tc.arguments),
                         },
                     }
                     for tc in msg.tool_calls
@@ -230,7 +240,7 @@ class OllamaCloudProvider(Provider):
 
     def _build_body_v1(self, request: CompletionRequest) -> dict:
         """Construct JSON body for /v1/chat/completions (OpenAI-compat)."""
-        api_messages = self._build_messages(request.messages, request.system)
+        api_messages = self._build_messages(request.messages, request.system, native_format=False)
 
         reasoning_effort = request.reasoning_effort
         if reasoning_effort == "none":
@@ -271,9 +281,12 @@ class OllamaCloudProvider(Provider):
           - options.temperature
           - keep_alive: model keep-alive duration
           - tools (same format as OpenAI)
+
+        CRITICAL: Native API expects tool call arguments as JSON object (dict),
+        NOT as JSON string like OpenAI. Use native_format=True.
         """
-        # Native API uses role-based messages (same format)
-        api_messages = self._build_messages(request.messages, request.system)
+        # Native API uses native format: arguments as dict not string
+        api_messages = self._build_messages(request.messages, request.system, native_format=True)
 
         # Map reasoning_effort → think parameter
         reasoning_effort = request.reasoning_effort

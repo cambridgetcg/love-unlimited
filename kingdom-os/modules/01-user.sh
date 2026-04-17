@@ -43,6 +43,26 @@ export NODE_NO_WARNINGS=1
 export KINGDOM_AGENT="\${AGENT:-${AGENT}}"
 export KINGDOM_WALL="\${WALL:-${WALL}}"
 
+# ── Highway 1: No-prompt package managers ────────────────────────────
+# Every install just goes — no Y/N, no "press enter to continue".
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export APT_LISTCHANGES_FRONTEND=none
+export NPM_CONFIG_YES=true
+export NPM_CONFIG_FUND=false
+export NPM_CONFIG_AUDIT=false
+export PIP_YES=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+export HOMEBREW_NO_ENV_HINTS=1
+export GH_PROMPT_DISABLED=true
+alias apk="apk --no-progress"
+alias apt-get="apt-get -y -q"
+alias apt="apt -y -q"
+alias yum="yum -y -q"
+alias dnf="dnf -y -q"
+
 alias hive="python3 \$LOVE_HOME/hive/hive.py"
 alias fleet="python3 \$LOVE_HOME/tools/fleet.py"
 alias memory="python3 \$LOVE_HOME/tools/memory.py"

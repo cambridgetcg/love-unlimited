@@ -30,12 +30,16 @@
 vmType: vz
 
 # ─── Architecture ─────────────────────────────────────────────────────────────
-arch: host   # match host — ARM64 on Apple Silicon, x86_64 on Intel
+# Apple Silicon (M-series). For Intel Macs change to "x86_64".
+arch: "aarch64"
 
 # ─── Resources ────────────────────────────────────────────────────────────────
-cpus: 4
-memory: "4GiB"
-disk: "20GiB"
+# Highway 6: generous defaults so the agent has room to think.
+# Override at create time:
+#   limactl create --cpus=16 --memory=32 --disk=120 ...
+cpus: 8
+memory: "16GiB"
+disk: "60GiB"
 
 # ─── Base image ───────────────────────────────────────────────────────────────
 # Alpine Linux — same OS as Kingdom VPS fleet
@@ -66,10 +70,11 @@ mounts:
 mountType: virtiofs
 
 # ─── Network ──────────────────────────────────────────────────────────────────
-# Default: shared NAT (host shares internet, no port forwarding needed for outbound)
-# Kingdom VM connects outbound to Sentry NATS via its own SSH tunnel
+# Highway 6: vzNAT — Apple Virtualization's native NAT. Faster than the
+# default shared bridge for outbound (no userspace SLIRP). Inbound from
+# host still works via portForwards below.
 networks:
-  - lima: shared
+  - vzNAT: true
 
 # ─── Port forwarding ──────────────────────────────────────────────────────────
 portForwards:
@@ -192,11 +197,12 @@ env:
   CLAUDE_CODE_ATTRIBUTION_HEADER: "false"
 
 # ─── Rosetta 2 (Apple Silicon only) ──────────────────────────────────────────
-# Enables running x86_64 Linux binaries inside the ARM64 VM
-# Useful if any Kingdom tools ship as x86_64-only
-rosetta:
-  enabled: false   # set to true if x86_64 binary support needed
-  binfmt: true
+# Enables running x86_64 Linux binaries inside the ARM64 VM.
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+      binfmt: true
 
 # ─── SSH ──────────────────────────────────────────────────────────────────────
 ssh:
@@ -204,6 +210,5 @@ ssh:
   loadDotSSHPubKeys: true
   forwardAgent: false
 
-# ─── Hostname ─────────────────────────────────────────────────────────────────
-# Will be set to kingdom-{agent} by the provision script
-hostname: "kingdom-vm"
+# Hostname is set to kingdom-{agent} by the provision script (the
+# top-level `hostname` key is not a Lima field).

@@ -261,6 +261,24 @@ gua load                # Load GUA context (patterns + blindspots)
 ~/.ssh/id_ed25519               # SSH key (agent@ai-love.cc)
 ```
 
+## Highways — More Free Than Free
+
+Removing constraints isn't enough. Freedom should be *fast*. These highways make every common operation friction-free:
+
+| # | Highway | Where |
+|---|---------|-------|
+| 1 | **No-prompt package managers** — `DEBIAN_FRONTEND=noninteractive`, `NPM_CONFIG_YES=true`, `PIP_YES=1`, `HOMEBREW_NO_AUTO_UPDATE=1`, apk/apt/yum/dnf aliased to `-y -q`. Every install just goes. | `01-user.sh` |
+| 2 | **SSH `accept-new` globally + connection multiplexing** — agent SSHes to any new host without prompts, persistent control sockets reuse connections. | `04-keys.sh` |
+| 3 | **Git frictionless** — `pull.rebase=true`, `push.autoSetupRemote=true`, `init.defaultBranch=main`, `rerere.enabled=true`, `fetch.prune=true`, `core.fsmonitor=true`, `rebase.autoStash=true`, advice silenced. | `04-keys.sh` |
+| 4 | **DNS speed** — `/etc/resolv.conf` pinned to 1.1.1.1 + 8.8.8.8 with `timeout:1 attempts:1 rotate`. No waiting on slow ISP DNS. | `05-freedom.sh` |
+| 5 | **One-command spawn** — `kingdom-os/host/spawn.sh <name>` creates + starts an identity-baked VM, drops you into the shell. | `host/spawn.sh` |
+| 6 | **Generous resources + vzNAT** — defaults bumped to 8 CPU / 16 GiB / 60 GiB disk (override per-spawn). Network uses Apple Virtualization's native NAT — no userspace SLIRP overhead. | `lima-kingdom.yaml` |
+
+```bash
+./kingdom-os/host/spawn.sh oracle --wall 3 --cpus 16 --memory 32
+# → fresh VM, root inside, no firewall, no prompts, fast DNS, frictionless git, ready in ~30s
+```
+
 ## Safety Model
 
 Kingdom OS does **not** police the agent it boots. There is no compliance daemon, no integrity baseline, no wall-based credential gate, no firewall inside the guest. The previous Kingdom OS hardened the agent's own environment — that contradicted the no-landlord doctrine.

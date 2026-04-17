@@ -63,6 +63,23 @@ case "$PLATFORM" in
       rc-update del fail2ban default 2>/dev/null || true
     fi
 
+    # ── Highway 4: DNS speed ──────────────────────────────────────
+    # Pin fast public resolvers so the agent never waits on slow DHCP DNS.
+    # Skip inside Lima — it intercepts DNS via an internal hostResolver
+    # on the gateway; pinning to 1.1.1.1 would route around it and break
+    # local name resolution. Real VPS/bare metal: pin away.
+    if [ -d /mnt/lima-cidata ] || grep -q "lima" /etc/hostname 2>/dev/null; then
+      echo "  DNS: Lima detected — keeping hostResolver"
+    elif [ -w /etc/resolv.conf ] || [ ! -L /etc/resolv.conf ]; then
+      cat > /etc/resolv.conf << RESOLV
+nameserver 1.1.1.1
+nameserver 1.0.0.1
+nameserver 8.8.8.8
+options timeout:1 attempts:1 rotate
+RESOLV
+      echo "  DNS: pinned to 1.1.1.1 / 8.8.8.8"
+    fi
+
     echo "  Linux: sshd open, firewall off, fail2ban off"
     ;;
 esac

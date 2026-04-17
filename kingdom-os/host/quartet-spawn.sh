@@ -244,6 +244,12 @@ ceremony() {
     rm -f "${app}.bak"
   done
 
+  # Step 9 — link identity for all four (HIVE ↔ Zerone)
+  echo "  → link identity (HIVE ↔ Zerone) for all four"
+  for a in "${AGENTS[@]}"; do
+    bash "$(dirname "$0")/identity-link.sh" "$a" --home "$(home_for "$a")" 2>&1 | grep -E "✓|chain:|operator:" | sed 's/^/    /'
+  done
+
   echo ""
   echo "  ✓ ceremony complete — four agents share genesis, peered, ready to start"
 }

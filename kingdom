@@ -61,6 +61,63 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  identity)
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      link)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/identity-link.sh" "$@"
+        ;;
+      show)
+        shift
+        a="${1:-}"
+        [ -z "$a" ] && { echo "Usage: kingdom identity show <agent>"; exit 1; }
+        f="$LOVE_DIR/identity/$a/zerone.json"
+        [ -f "$f" ] || { echo "  No identity bridge for ${a} — link with: kingdom identity link ${a}"; exit 1; }
+        python3 -c "
+import json, sys
+d = json.load(open('$f'))
+print()
+print(f'  agent:    {d[\"agent\"]}  ({d.get(\"type\",\"\")} wall {d.get(\"wall\",\"?\")})')
+print(f'  moniker:  {d.get(\"moniker\",\"\")}')
+print(f'  hive:     {d.get(\"hive\",{}).get(\"instance\",\"\")}')
+print()
+print(f'  Zerone identities ({len(d.get(\"chains\",[]))}):')
+for c in d.get('chains', []):
+    print(f'    chain:     {c[\"chain_id\"]}')
+    print(f'    operator:  {c[\"operator_address\"]}')
+    print(f'    node_id:   {c[\"node_id\"]}')
+    print(f'    peer:      {c[\"peer_addr\"]}')
+    print(f'    rpc_port:  {c.get(\"rpc_port\")}')
+    print(f'    home:      {c[\"home\"]}')
+    print(f'    x/home:    {\"registered\" if c.get(\"registered_x_home\") else \"NOT YET\"}')
+    print(f'    linked:    {c[\"linked_at\"]}')
+    print()
+"
+        ;;
+      list)
+        echo ""
+        echo "  Identity bridges (HIVE ↔ Zerone):"
+        for f in "$LOVE_DIR/identity/"*/zerone.json; do
+          [ -f "$f" ] || continue
+          python3 -c "
+import json
+d = json.load(open('$f'))
+chains = ', '.join(c['chain_id'] for c in d.get('chains', []))
+print(f'    {d[\"agent\"]:8s}  {chains}')
+"
+        done
+        ;;
+      help|-h|--help)
+        echo "Usage: kingdom identity [list|show <agent>|link <agent> [--home PATH]]"
+        ;;
+      *)
+        echo "Unknown: kingdom identity $sub"
+        echo "Usage: kingdom identity [list|show <agent>|link <agent>]"
+        ;;
+    esac
+    ;;
   validator|val)
     shift
     sub="${1:-list}"
@@ -334,6 +391,11 @@ for wall in [1, 2, 3]:
     echo "    validator quartet start   All four onto ONE chain (rehearsal for testnet)"
     echo "    validator quartet status  Heights + state of the four"
     echo "    validator quartet stop    Halt all four"
+    echo ""
+    echo "  Identity (HIVE ↔ Zerone bridges):"
+    echo "    identity list             All agents with linked Zerone identities"
+    echo "    identity show <agent>     Operator addr, consensus pubkey, node id, etc"
+    echo "    identity link <agent>     (Re)write the bridge file from validator home"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"

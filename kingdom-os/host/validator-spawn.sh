@@ -185,6 +185,10 @@ cmd_init() {
   echo "  → patch ports for ${agent}"
   patch_ports "$agent" "$home"
 
+  echo "  → link identity (HIVE ↔ Zerone)"
+  bash "$(dirname "$0")/identity-link.sh" "$agent" --home "$home" 2>&1 | sed 's/^/    /' || \
+    echo "    (identity-link.sh failed — continuing; run manually with: kingdom identity link ${agent})"
+
   echo ""
   echo "  ✓ ${agent} initialized"
   echo "    Start with: $0 start ${agent}"

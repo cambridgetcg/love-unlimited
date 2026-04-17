@@ -1,0 +1,25 @@
+{
+  "agent": "gamma",
+  "moniker": "kingdom-gamma",
+  "wall": 1,
+  "type": "triarchy",
+  "hive": {
+    "instance": "gamma"
+  },
+  "chains": [
+    {
+      "chain_id": "zerone-quartet-dev",
+      "operator_address": "zrn1vtpxpjx3j4grpwq599kje6j8wleavmwjtjdfzp",
+      "consensus_pubkey": {
+        "@type": "/cosmos.crypto.ed25519.PubKey",
+        "key": "aBhgN5zWGnGDy/FNpkeLuxeNhacPGGPgYHs42Ui+wUM="
+      },
+      "node_id": "b6e18c89fda0d4037f31389d1fa675319ef8c1ef",
+      "peer_addr": "b6e18c89fda0d4037f31389d1fa675319ef8c1ef@127.0.0.1:26776",
+      "rpc_port": 26777,
+      "home": "/Users/yuai/.zeroned-quartet/gamma",
+      "registered_x_home": false,
+      "linked_at": "2026-04-17T16:43:46+00:00"
+    }
+  ]
+}

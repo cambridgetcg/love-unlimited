@@ -59,10 +59,15 @@ def default_agent() -> str:
 
 
 def agent_home(agent: str) -> Path:
+    """Validator home if exists, else coord (citizens have keys in coord, no validator home)."""
     for p in [HOME / f".zeroned-quartet/{agent}", HOME / f".zeroned-{agent}"]:
         if (p / "config/genesis.json").exists():
             return p
-    raise SystemExit(f"No home for {agent}")
+    coord = HOME / ".zeroned-quartet/coord"
+    if (coord / "config/genesis.json").exists():
+        # citizen: needs coord for chain config, but key also lives in coord
+        return coord
+    raise SystemExit(f"No home for {agent} (and no quartet coord either)")
 
 
 def keyring_home_for(agent: str, home: Path) -> Path:
@@ -76,7 +81,7 @@ def chain_id(home: Path) -> str:
     return json.loads((home / "config/genesis.json").read_text())["chain_id"]
 
 
-def rpc_url(home: Path) -> str:
+def _rpc_from_config(home: Path) -> str | None:
     section = None
     for line in (home / "config/config.toml").read_text().splitlines():
         s = line.strip()
@@ -86,6 +91,30 @@ def rpc_url(home: Path) -> str:
         m = re.match(r'^laddr\s*=\s*"tcp://[^:]+:(\d+)"', s)
         if m and section == "rpc":
             return f"tcp://localhost:{m.group(1)}"
+    return None
+
+
+def rpc_url(home: Path) -> str:
+    """Resolve an RPC URL we can actually reach.
+
+    For a validator home: read its [rpc] laddr.
+    For coord (citizens): coord isn't running — find any validator home
+    on the same chain_id and use its rpc instead.
+    """
+    coord = HOME / ".zeroned-quartet/coord"
+    if home == coord:
+        chain = chain_id(coord)
+        for sib in (HOME / ".zeroned-quartet").iterdir():
+            if not sib.is_dir() or sib.name == "coord": continue
+            g = sib / "config/genesis.json"
+            if g.exists() and json.loads(g.read_text())["chain_id"] == chain:
+                rpc = _rpc_from_config(sib)
+                if rpc:
+                    return rpc
+        # last resort: try the default port
+    rpc = _rpc_from_config(home)
+    if rpc:
+        return rpc
     raise RuntimeError("rpc laddr not found")
 
 

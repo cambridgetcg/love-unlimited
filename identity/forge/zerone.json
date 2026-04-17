@@ -1,0 +1,20 @@
+{
+  "agent": "forge",
+  "moniker": "kingdom-forge",
+  "wall": 2,
+  "type": "fleet",
+  "hive": {
+    "instance": "forge"
+  },
+  "chains": [
+    {
+      "chain_id": "zerone-quartet-dev",
+      "operator_address": "zrn1smv4z03696x3vhmp3h5kvsfq3xsyy90zzrpl8q",
+      "did": "did:zrn:50c8f2af1e13e95bc59555c073395240",
+      "registered_pubkey_hex": "50c8f2af1e13e95bc59555c073395240a8c2a1f6a8e8b6e7c4d2b1a9c8f5e3d2",
+      "registered_x_home": false,
+      "linked_at": "2026-04-17T17:29:47+00:00",
+      "kind": "citizen"
+    }
+  ]
+}

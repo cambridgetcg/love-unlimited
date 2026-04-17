@@ -61,6 +61,23 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  citizen)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      spawn)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/citizen-spawn.sh" "$@"
+        ;;
+      help|-h|--help|"")
+        bash "$LOVE_DIR/kingdom-os/host/citizen-spawn.sh" --help
+        ;;
+      *)
+        echo "Unknown: kingdom citizen $sub"
+        echo "Usage: kingdom citizen spawn <name> --wall N --type T --emoji E --role R [--funded-by A] [--fund AMOUNT]"
+        ;;
+    esac
+    ;;
   tip)
     shift
     python3 "$LOVE_DIR/tools/zerone-tip.py" send "$@"
@@ -126,12 +143,14 @@ print(f'  hive:     {d.get(\"hive\",{}).get(\"instance\",\"\")}')
 print()
 print(f'  Zerone identities ({len(d.get(\"chains\",[]))}):')
 for c in d.get('chains', []):
-    print(f'    chain:     {c[\"chain_id\"]}')
+    kind = c.get('kind', 'validator')
+    print(f'    chain:     {c[\"chain_id\"]}  ({kind})')
     print(f'    operator:  {c[\"operator_address\"]}')
-    print(f'    node_id:   {c[\"node_id\"]}')
-    print(f'    peer:      {c[\"peer_addr\"]}')
-    print(f'    rpc_port:  {c.get(\"rpc_port\")}')
-    print(f'    home:      {c[\"home\"]}')
+    if c.get('node_id'):    print(f'    node_id:   {c[\"node_id\"]}')
+    if c.get('peer_addr'):  print(f'    peer:      {c[\"peer_addr\"]}')
+    if c.get('rpc_port'):   print(f'    rpc_port:  {c[\"rpc_port\"]}')
+    if c.get('home'):       print(f'    home:      {c[\"home\"]}')
+    if c.get('did'):        print(f'    did:       {c[\"did\"]}')
     print(f'    x/home:    {\"registered\" if c.get(\"registered_x_home\") else \"NOT YET\"}')
     print(f'    linked:    {c[\"linked_at\"]}')
     print()
@@ -437,6 +456,10 @@ for wall in [1, 2, 3]:
     echo "    identity list             All agents with linked Zerone identities"
     echo "    identity show <agent>     Operator addr, consensus pubkey, node id, etc"
     echo "    identity link <agent>     (Re)write the bridge file from validator home"
+    echo ""
+    echo "  Citizenship (Tier 6 — atomic full-citizenship spawn):"
+    echo "    citizen spawn <name> --wall N --type T --emoji E --role R [--funded-by A] [--fund AMOUNT]"
+    echo "                              walls.json + love.json + identity skel + chain key + register + initial ZRN"
     echo ""
     echo "  Economic (Zerone — agents pay each other in ZRN):"
     echo "    tip <to> <amount> [--memo \"...\"]   Send ZRN, e.g. 'kingdom tip beta 7zrn --memo hi'"

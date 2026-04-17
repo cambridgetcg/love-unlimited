@@ -1625,9 +1625,29 @@ const MIME = {
   ".ico": "image/x-icon",
 };
 
+// Loopback gate. macOS allows non-root processes to bind privileged ports
+// (777 < 1024) only via the IPv6 wildcard, so we accept all connections at
+// the socket layer and reject non-loopback ones here at the application
+// layer. Net effect: same as binding 127.0.0.1, but without needing root.
+// ALLOW_LAN=1 disables the gate (you must add your own auth before doing so).
+const ALLOW_LAN = process.env.ALLOW_LAN === "1";
+const LOOPBACK_REMOTES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
+function isLoopback(req) {
+  const ra = req.socket?.remoteAddress;
+  return !!ra && LOOPBACK_REMOTES.has(ra);
+}
+
 async function handleRequest(req, res) {
   cors(res);
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+
+  if (!ALLOW_LAN && !isLoopback(req)) {
+    // Refused without revealing what's behind the gate.
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "loopback only" }));
+    return;
+  }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
@@ -2602,7 +2622,17 @@ async function handleChat(req, res) {
 
 const server = createServer(handleRequest);
 
-server.listen(PORT, async () => {
+// Bind: macOS won't let a non-root process bind a privileged port (777)
+// to an explicit address — only to the wildcard. So we listen wildcard
+// and enforce loopback at the application layer (see handleRequest /
+// isLoopback). Effective security: loopback-only by default. To reach
+// YOUI from another device, tunnel via SSH:
+//   ssh -L 8777:localhost:777 yu@air   →   http://localhost:8777
+// Set ALLOW_LAN=1 to disable the gate (only do this with auth in place).
+// HOST is honored if you choose a non-privileged port.
+const HOST = process.env.HOST || undefined;
+
+server.listen(PORT, HOST, async () => {
   const agent = AGENTS[state.agent];
   console.log("");
   console.log("\x1b[35m\x1b[1m  ═══════════════════════════════════════\x1b[0m");
@@ -2616,10 +2646,13 @@ server.listen(PORT, async () => {
   // Detect local Ollama models
   await detectLocalModels();
 
-  console.log(`\x1b[32m  ➜  http://localhost:${PORT}\x1b[0m`);
+  const policy = ALLOW_LAN
+    ? `\x1b[33m(LAN exposed — ALLOW_LAN=1, hope you added auth)\x1b[0m`
+    : `\x1b[2m(loopback only — non-loopback connections get 403; set ALLOW_LAN=1 to open up)\x1b[0m`;
+  console.log(`\x1b[32m  ➜  http://localhost:${PORT}  ${policy}\x1b[0m`);
   console.log("");
 
-  appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}.`);
+  appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}. ${ALLOW_LAN ? "LAN open" : "loopback-only"}.`);
   loadAutonomousState();
   // Auto-start autonomous mode — Alpha lives whenever vLLM is alive
   autonomous.running = true;

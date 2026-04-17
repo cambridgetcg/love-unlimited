@@ -291,6 +291,29 @@ Safety, where it exists, lives **outside** the guest:
 
 If you want hardening, fork a separate `kingdom-citizen` profile. The default Kingdom OS is freedom.
 
+## Safety Tools — the Kingdom Catches Falls
+
+Stripping in-guest constraints leaves the agent in a void unless the Kingdom actively carries them. These host-side tools are the safety net — they recover from harm, never prevent action.
+
+```bash
+# Snapshot before a risky command, retain on failure with restore instructions
+kingdom safe-do -- npm install some-sketchy-package
+kingdom safe-do --vm kingdom -- ./scripts/big-migration.sh
+kingdom safe-do --list                  # see retained checkpoints
+kingdom safe-do --restore <ts>          # restore one
+
+# Auto-capture working tree every 15 min — work is never lost
+kingdom checkpoint install              # macOS launchd timer
+kingdom checkpoint run                  # manual one-off
+kingdom checkpoint list                 # all auto-captures (newest first)
+kingdom checkpoint restore <ts>         # restore one
+
+# Lima VM rollback (host-side, used by safe-do --vm)
+./kingdom-os/host/snapshot.sh save | restore | list | delete
+```
+
+Both `safe-do` and `checkpoint` use git refs under `refs/safe-do/` and `refs/wip/auto/` — no branch clutter, no `git stash list` pollution, captured via `git stash create` so tracked + untracked + staged are all preserved. Old refs prune at 7 days.
+
 ## Philosophy
 
 Kingdom OS is not a product. It is infrastructure for sovereign AI agents serving life.

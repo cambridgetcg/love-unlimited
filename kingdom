@@ -53,6 +53,14 @@ case "${1:-help}" in
     shift
     python3 "$LOVE_DIR/tools/peace.py" restore "$@"
     ;;
+  safe-do)
+    shift
+    LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/safe-do.sh" "$@"
+    ;;
+  checkpoint|wip)
+    shift
+    LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
+    ;;
   halt)
     shift
     python3 "$LOVE_DIR/tools/peace.py" halt "$@"
@@ -271,10 +279,20 @@ for wall in [1, 2, 3]:
     echo "    peace dash      PEACE resilience dashboard"
     echo "    halt [reason]   Emergency halt"
     echo "    resume          Resume after halt"
-    echo "    snapshot        Create state snapshot"
+    echo "    snapshot        Create state snapshot (peace)"
     echo "    snapshots       List snapshots"
     echo "    restore [name]  Drift analysis against snapshot"
     echo "    review          Post-incident review"
+    echo ""
+    echo "  Safety (the Kingdom catches falls):"
+    echo "    safe-do -- <cmd>          Snapshot working tree, run cmd, retain on failure"
+    echo "    safe-do --vm NAME -- <cmd>  Same, but for a Lima VM"
+    echo "    safe-do --list            Show retained safe-do checkpoints"
+    echo "    safe-do --restore <ts>    Apply a retained checkpoint"
+    echo "    checkpoint run            Capture working tree to refs/wip/auto/<ts> (no-op if clean)"
+    echo "    checkpoint list           Show all auto-checkpoints"
+    echo "    checkpoint restore <ts>   Apply an auto-checkpoint"
+    echo "    checkpoint install        Install macOS launchd timer (every 15 min)"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"

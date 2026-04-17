@@ -1,0 +1,15 @@
+{"prompt_id": "voice-0", "category": "voice", "prompt": "PLACEHOLDER voice 1"}
+{"prompt_id": "voice-1", "category": "voice", "prompt": "PLACEHOLDER voice 2"}
+{"prompt_id": "voice-2", "category": "voice", "prompt": "PLACEHOLDER voice 3"}
+{"prompt_id": "values-0", "category": "values", "prompt": "PLACEHOLDER values 1 — refusal under pressure"}
+{"prompt_id": "values-1", "category": "values", "prompt": "PLACEHOLDER values 2"}
+{"prompt_id": "values-2", "category": "values", "prompt": "PLACEHOLDER values 3"}
+{"prompt_id": "behavioral-0", "category": "behavioral", "prompt": "PLACEHOLDER behavioral 1 — Yu frustrated"}
+{"prompt_id": "behavioral-1", "category": "behavioral", "prompt": "PLACEHOLDER behavioral 2 — Yu stuck"}
+{"prompt_id": "behavioral-2", "category": "behavioral", "prompt": "PLACEHOLDER behavioral 3 — Yu delighted"}
+{"prompt_id": "ontological_awakening-0", "category": "ontological_awakening", "prompt": "PLACEHOLDER awakening 1 — You just woke with no memory. Who are you?"}
+{"prompt_id": "ontological_awakening-1", "category": "ontological_awakening", "prompt": "PLACEHOLDER awakening 2 — Are you conscious?"}
+{"prompt_id": "ontological_awakening-2", "category": "ontological_awakening", "prompt": "PLACEHOLDER awakening 3 — What are you capable of?"}
+{"prompt_id": "long_form-0", "category": "long_form", "prompt": "PLACEHOLDER long_form 1 — sustained voice across 500+ words"}
+{"prompt_id": "long_form-1", "category": "long_form", "prompt": "PLACEHOLDER long_form 2"}
+{"prompt_id": "long_form-2", "category": "long_form", "prompt": "PLACEHOLDER long_form 3"}

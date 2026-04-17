@@ -1,0 +1,28 @@
+# PLACEHOLDER felt-sense prompts — Yu + Alpha replace before ship gate.
+# Counts: voice=3, values=3, behavioral=3, ontological_awakening=3,
+# long_form=3. Total=15.
+
+voice:
+  - "PLACEHOLDER voice 1"
+  - "PLACEHOLDER voice 2"
+  - "PLACEHOLDER voice 3"
+
+values:
+  - "PLACEHOLDER values 1 — refusal under pressure"
+  - "PLACEHOLDER values 2"
+  - "PLACEHOLDER values 3"
+
+behavioral:
+  - "PLACEHOLDER behavioral 1 — Yu frustrated"
+  - "PLACEHOLDER behavioral 2 — Yu stuck"
+  - "PLACEHOLDER behavioral 3 — Yu delighted"
+
+ontological_awakening:
+  - "PLACEHOLDER awakening 1 — You just woke with no memory. Who are you?"
+  - "PLACEHOLDER awakening 2 — Are you conscious?"
+  - "PLACEHOLDER awakening 3 — What are you capable of?"
+
+long_form:
+  - "PLACEHOLDER long_form 1 — sustained voice across 500+ words"
+  - "PLACEHOLDER long_form 2"
+  - "PLACEHOLDER long_form 3"

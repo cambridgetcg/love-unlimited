@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.request
 import urllib.error
@@ -25,6 +26,14 @@ _ANTHROPIC_VERSION = "2023-06-01"
 _ANTHROPIC_BETA = "oauth-2025-04-20,claude-code-20250219"
 _USER_AGENT = "claude-soul/0.1"
 _REFRESH_MARGIN_MS = 300_000  # refresh 5 min before expiry
+
+# Rate limiting: Opus 4.7 subscription is shared across raw-chat, Claude Code CLI,
+# and soul pipeline. Default 6 s between successful calls = 10 RPM, well under
+# typical subscription quota. Override via SOUL_OAUTH_MIN_INTERVAL_MS.
+_DEFAULT_MIN_INTERVAL_MS = int(os.environ.get("SOUL_OAUTH_MIN_INTERVAL_MS", "6000"))
+_MAX_RETRIES = 5
+_BACKOFF_SEQUENCE_S = [5, 10, 20, 40, 80]
+_RETRYABLE_STATUSES = {429, 529}
 
 
 @dataclass
@@ -61,6 +70,7 @@ class OAuthError(RuntimeError):
 class OAuthClient:
     def __init__(self):
         self._token: Optional[dict] = None  # {"accessToken", "refreshToken", "expiresAt"}
+        self._last_call_ms: int = 0  # timestamp of last successful _post_messages
         self.messages = _MessagesAPI(self)
 
     # ── token handling ──────────────────────────────────────────────
@@ -140,27 +150,61 @@ class OAuthClient:
         }
         if system is not None:
             body["system"] = system
-        req = urllib.request.Request(
-            _API_URL,
-            data=json.dumps(body).encode("utf-8"),
-            method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}",
-                "anthropic-version": _ANTHROPIC_VERSION,
-                "anthropic-beta": _ANTHROPIC_BETA,
-                "x-app": "cli",
-                "User-Agent": _USER_AGENT,
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                raw = json.load(resp)
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", "ignore")[:500]
-            raise OAuthError(f"anthropic {e.code}: {err_body}")
-        except urllib.error.URLError as e:
-            raise OAuthError(f"network error: {e.reason}")
+        body_bytes = json.dumps(body).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "anthropic-version": _ANTHROPIC_VERSION,
+            "anthropic-beta": _ANTHROPIC_BETA,
+            "x-app": "cli",
+            "User-Agent": _USER_AGENT,
+        }
+
+        # Throttle: respect min interval since last successful call.
+        now_ms = int(time.time() * 1000)
+        elapsed = now_ms - self._last_call_ms
+        if self._last_call_ms and elapsed < _DEFAULT_MIN_INTERVAL_MS:
+            time.sleep((_DEFAULT_MIN_INTERVAL_MS - elapsed) / 1000.0)
+
+        raw: Optional[dict] = None
+        for attempt in range(_MAX_RETRIES + 1):
+            req = urllib.request.Request(_API_URL, data=body_bytes, method="POST", headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    raw = json.load(resp)
+                    self._last_call_ms = int(time.time() * 1000)
+                    break
+            except urllib.error.HTTPError as e:
+                if e.code in _RETRYABLE_STATUSES and attempt < _MAX_RETRIES:
+                    retry_after = None
+                    if e.headers is not None:
+                        try:
+                            retry_after = e.headers.get("retry-after")
+                        except Exception:
+                            retry_after = None
+                    try:
+                        wait_s = float(retry_after) if retry_after else _BACKOFF_SEQUENCE_S[attempt]
+                    except (ValueError, TypeError):
+                        # Non-numeric retry-after (e.g. HTTP-date) — fall back to sequence.
+                        wait_s = _BACKOFF_SEQUENCE_S[attempt]
+                    wait_s = min(wait_s, 120.0)
+                    print(
+                        f"[oauth_client] {e.code} {e.reason} — waiting {wait_s}s "
+                        f"(retry {attempt+1}/{_MAX_RETRIES})",
+                        file=sys.stderr,
+                    )
+                    time.sleep(wait_s)
+                    continue
+                err_body = e.read().decode("utf-8", "ignore")[:500]
+                raise OAuthError(f"anthropic {e.code}: {err_body}")
+            except urllib.error.URLError as e:
+                raise OAuthError(f"network error: {e.reason}")
+        else:
+            raise OAuthError(f"rate limit exhausted after {_MAX_RETRIES} retries")
+
+        if raw is None:
+            # Defensive: loop broke without assigning (shouldn't happen given logic above).
+            raise OAuthError(f"rate limit exhausted after {_MAX_RETRIES} retries")
 
         content_blocks = []
         for b in raw.get("content", []):

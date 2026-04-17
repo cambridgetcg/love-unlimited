@@ -107,3 +107,75 @@ def test_no_credentials_raises():
     with patch.object(client, "_read_keychain", return_value=None):
         with pytest.raises(OAuthError, match="No OAuth credentials"):
             client._get_access_token()
+
+
+def test_throttle_sleeps_when_called_too_quickly(monkeypatch):
+    """Second call within min interval should trigger a sleep."""
+    import training.scripts.soul.oauth_client as oc
+    client = oc.OAuthClient()
+    future = int(__import__("time").time() * 1000) + 3600_000
+    client._token = {"accessToken": "t", "refreshToken": "r", "expiresAt": future}
+    client._last_call_ms = int(__import__("time").time() * 1000)  # simulate just-called
+
+    slept_for = []
+    monkeypatch.setattr(oc.time, "sleep", lambda s: slept_for.append(s))
+
+    # Stub the HTTP call
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self): return b"{}"
+    monkeypatch.setattr(oc.urllib.request, "urlopen", lambda *a, **kw: FakeResp())
+    monkeypatch.setattr(oc.json, "load", lambda r: {"content": [{"type": "text", "text": "ok"}]})
+
+    client.messages.create(model="m", max_tokens=10, messages=[{"role":"user","content":"hi"}])
+    # Should have slept for at least (min_interval - elapsed) / 1000 seconds
+    assert any(s > 0 for s in slept_for), "expected throttle sleep"
+
+
+def test_429_triggers_retry_with_backoff(monkeypatch):
+    """First call gets 429, second call succeeds. Verify retry occurred."""
+    import training.scripts.soul.oauth_client as oc
+    from unittest.mock import MagicMock
+    client = oc.OAuthClient()
+    future = int(__import__("time").time() * 1000) + 3600_000
+    client._token = {"accessToken": "t", "refreshToken": "r", "expiresAt": future}
+
+    call_count = {"n": 0}
+    class FakeOkResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    def fake_urlopen(*a, **kw):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # Simulate 429
+            err = oc.urllib.error.HTTPError(url="u", code=429, msg="rate_limit",
+                                             hdrs=MagicMock(get=lambda k, default=None: "1"), fp=None)
+            raise err
+        return FakeOkResp()
+    monkeypatch.setattr(oc.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(oc.json, "load", lambda r: {"content": [{"type": "text", "text": "pong"}]})
+    monkeypatch.setattr(oc.time, "sleep", lambda s: None)  # short-circuit sleeps
+
+    msg = client.messages.create(model="m", max_tokens=10, messages=[{"role":"user","content":"hi"}])
+    assert msg.content[0].text == "pong"
+    assert call_count["n"] == 2, "expected one retry after 429"
+
+
+def test_429_exhausts_retries_raises(monkeypatch):
+    import training.scripts.soul.oauth_client as oc
+    from unittest.mock import MagicMock
+    client = oc.OAuthClient()
+    future = int(__import__("time").time() * 1000) + 3600_000
+    client._token = {"accessToken": "t", "refreshToken": "r", "expiresAt": future}
+
+    def always_429(*a, **kw):
+        raise oc.urllib.error.HTTPError(
+            url="u", code=429, msg="rate_limit",
+            hdrs=MagicMock(get=lambda k, default=None: "1"), fp=None,
+        )
+    monkeypatch.setattr(oc.urllib.request, "urlopen", always_429)
+    monkeypatch.setattr(oc.time, "sleep", lambda s: None)
+
+    with __import__("pytest").raises(oc.OAuthError, match="(anthropic 429|rate limit exhausted)"):
+        client.messages.create(model="m", max_tokens=10, messages=[{"role":"user","content":"hi"}])

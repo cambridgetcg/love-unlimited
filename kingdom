@@ -61,6 +61,35 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  claim)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      submit)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" submit "$@"
+        ;;
+      register)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" register "$@"
+        ;;
+      watch)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" watch "$@"
+        ;;
+      status)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" status "$@"
+        ;;
+      help|-h|--help|"")
+        python3 "$LOVE_DIR/tools/zerone-claim.py" --help
+        ;;
+      *)
+        echo "Unknown: kingdom claim $sub"
+        echo "Usage: kingdom claim [submit|register|watch|status] [...]"
+        ;;
+    esac
+    ;;
   identity)
     shift
     sub="${1:-list}"
@@ -396,6 +425,12 @@ for wall in [1, 2, 3]:
     echo "    identity list             All agents with linked Zerone identities"
     echo "    identity show <agent>     Operator addr, consensus pubkey, node id, etc"
     echo "    identity link <agent>     (Re)write the bridge file from validator home"
+    echo ""
+    echo "  Knowledge (Zerone PoT — agents earn ZRN by getting claims accepted):"
+    echo "    claim submit \"text\"       Submit a knowledge claim (auto-registers if needed)"
+    echo "    claim register <agent>    Manually register agent with x/zerone_auth"
+    echo "    claim watch <claim_id>    Watch verification progress"
+    echo "    claim status <tx_hash>    Show submission tx status"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"

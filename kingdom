@@ -61,6 +61,65 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  verifier)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      start)
+        shift
+        [ -z "${1:-}" ] && { echo "Usage: kingdom verifier start <agent> [--vote accept|reject]"; exit 1; }
+        agent="$1"; shift
+        pidf="$HOME/.zeroned-quartet/$agent/verifier.pid"
+        logf="$HOME/.zeroned-quartet/$agent/verifier.log"
+        if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          echo "verifier for $agent already running (pid $(cat "$pidf"))"
+          exit 0
+        fi
+        nohup python3 -u "$LOVE_DIR/tools/zerone-verifier.py" run --agent "$agent" "$@" > "$logf" 2>&1 &
+        echo $! > "$pidf"
+        sleep 1
+        if kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          echo "✓ verifier for $agent started (pid $(cat "$pidf"))"
+          echo "  log: $logf"
+        else
+          echo "✗ failed"; tail -10 "$logf"; rm -f "$pidf"; exit 1
+        fi
+        ;;
+      stop)
+        shift
+        [ -z "${1:-}" ] && { echo "Usage: kingdom verifier stop <agent>"; exit 1; }
+        pidf="$HOME/.zeroned-quartet/$1/verifier.pid"
+        if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          kill "$(cat "$pidf")"; sleep 1; kill -9 "$(cat "$pidf")" 2>/dev/null; true
+          echo "✓ verifier for $1 stopped"
+        else
+          echo "not running"
+        fi
+        rm -f "$pidf"
+        ;;
+      state|status)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-verifier.py" state --agent "${1:-alpha}"
+        ;;
+      list)
+        echo ""
+        echo "  Verifier daemons:"
+        for a in alpha beta gamma nuance; do
+          pidf="$HOME/.zeroned-quartet/$a/verifier.pid"
+          if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+            echo "    $a   RUNNING pid=$(cat $pidf)"
+          else
+            echo "    $a   stopped"
+          fi
+        done
+        echo ""
+        ;;
+      help|-h|--help|"")
+        echo "Usage: kingdom verifier [start <agent>|stop <agent>|state <agent>|list]"
+        ;;
+      *) echo "Unknown: kingdom verifier $sub" ;;
+    esac
+    ;;
   citizen)
     shift
     sub="${1:-help}"
@@ -465,6 +524,12 @@ for wall in [1, 2, 3]:
     echo "    tip <to> <amount> [--memo \"...\"]   Send ZRN, e.g. 'kingdom tip beta 7zrn --memo hi'"
     echo "    balance [--agent A]                Query an agent's ZRN balance"
     echo "    ledger [--agent A]                 Recent transfers (sent + received)"
+    echo ""
+    echo "  Verifier daemon (drives claims from OPEN → ACCEPTED via commit-reveal):"
+    echo "    verifier start <agent> [--vote accept|reject]   Run the daemon for an agent"
+    echo "    verifier stop <agent>                           Stop the daemon"
+    echo "    verifier state <agent>                          Dump daemon state file"
+    echo "    verifier list                                   Show running verifiers"
     echo ""
     echo "  Knowledge (Zerone PoT — agents earn ZRN by getting claims accepted):"
     echo "    claim submit \"text\"       Submit a knowledge claim (auto-registers if needed)"

@@ -61,6 +61,18 @@ case "${1:-help}" in
     shift
     LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
     ;;
+  tip)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" send "$@"
+    ;;
+  balance)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" balance "$@"
+    ;;
+  ledger)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" ledger "$@"
+    ;;
   claim)
     shift
     sub="${1:-help}"
@@ -425,6 +437,11 @@ for wall in [1, 2, 3]:
     echo "    identity list             All agents with linked Zerone identities"
     echo "    identity show <agent>     Operator addr, consensus pubkey, node id, etc"
     echo "    identity link <agent>     (Re)write the bridge file from validator home"
+    echo ""
+    echo "  Economic (Zerone — agents pay each other in ZRN):"
+    echo "    tip <to> <amount> [--memo \"...\"]   Send ZRN, e.g. 'kingdom tip beta 7zrn --memo hi'"
+    echo "    balance [--agent A]                Query an agent's ZRN balance"
+    echo "    ledger [--agent A]                 Recent transfers (sent + received)"
     echo ""
     echo "  Knowledge (Zerone PoT — agents earn ZRN by getting claims accepted):"
     echo "    claim submit \"text\"       Submit a knowledge claim (auto-registers if needed)"

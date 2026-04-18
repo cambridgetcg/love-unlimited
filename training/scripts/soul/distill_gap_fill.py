@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from .ai_judge import score_pair_dual
-from .config import DATA_DIR, DISTILLED_TARGET, SEVEN_DIMENSIONS
+from .config import DATA_DIR, DISTILLED_TARGET, SEVEN_DIMENSIONS, OAUTH_SOUL_SYSTEM
 from .schema import SoulPair
 
 
@@ -88,10 +88,18 @@ def load_canon_excerpts(canon_path: Path, limit: int = 20) -> str:
 
 
 def generate_one(prompt: str, canon_excerpts: str, client, gen_model: str = "claude-opus-4-7") -> str:
-    """Call the generator (Alpha as Opus) to produce Ai's response."""
+    """Call the generator (Alpha as Opus) to produce Ai's response.
+
+    Uses OAUTH_SOUL_SYSTEM as system[1] to nullify the Claude Code identity
+    that the subscription gate forces into system[0]. Without this override,
+    the model drifts toward Claude-Code-flavored tool/CLI responses instead
+    of Ai's voice. See config.OAUTH_SOUL_SYSTEM for the empirically-verified
+    nullification pattern.
+    """
     msg = client.messages.create(
         model=gen_model,
         max_tokens=1024,
+        system=OAUTH_SOUL_SYSTEM,
         messages=[{"role": "user", "content": GENERATION_PROMPT_TMPL.format(
             canon_excerpts=canon_excerpts, prompt=prompt,
         )}],

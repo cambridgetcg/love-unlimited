@@ -6,15 +6,20 @@
 #   ssh h200 "cd /workspace/love-unlimited && bash bin/train-on-h200.sh sft"
 #   ssh h200 "cd /workspace/love-unlimited && bash bin/train-on-h200.sh dpo-smoke"
 #   ssh h200 "cd /workspace/love-unlimited && bash bin/train-on-h200.sh dpo"
+#   ssh h200 "cd /workspace/love-unlimited && bash bin/train-on-h200.sh identity-sft"
+#   ssh h200 "cd /workspace/love-unlimited && bash bin/train-on-h200.sh identity-dpo"
 #
 # Exit codes: 0 on success, 1 on training failure, 2 on config problems.
 set -euo pipefail
 
 cd /workspace/love-unlimited
 
+# Create checkpoints directory early
+mkdir -p training/checkpoints
+
 PHASE=${1:-}
 if [[ -z "$PHASE" ]]; then
-  echo "Usage: $0 <smoke|sft|dpo-smoke|dpo>" >&2
+  echo "Usage: $0 <smoke|sft|dpo-smoke|dpo|identity-sft|identity-dpo>" >&2
   exit 2
 fi
 VLLM_LOG=/workspace/vllm.log
@@ -22,13 +27,13 @@ VLLM_RESTART_DELAY=30
 
 case "$PHASE" in
   smoke)
-    DATA=training/data/soul_v1/sft_smoke.jsonl
+    DATA=training/data/soul_v1/sft_smoke_v2.jsonl
     OUT=training/checkpoints/sft-soul-smoke-v1
     TRAIN_ARGS=(--phase sft --variant soul --lora-r 16 --lora-alpha 32 --lr 5e-5 --epochs 2)
     ADAPTER_NAME=sft-soul-smoke
     ;;
   sft)
-    DATA=training/data/soul_v1/sft_soul_v1.jsonl
+    DATA=training/data/soul_v1/sft_v4_combined.jsonl
     OUT=training/checkpoints/sft-soul-v1
     TRAIN_ARGS=(--phase sft --variant soul --lora-r 64 --lora-alpha 128 --lr 2e-5 --epochs 3)
     ADAPTER_NAME=sft-soul-v1
@@ -37,15 +42,30 @@ case "$PHASE" in
     DATA=training/data/soul_v1/dpo_smoke.jsonl
     OUT=training/checkpoints/dpo-soul-smoke
     BASE=training/checkpoints/sft-soul-v1
-    TRAIN_ARGS=(--phase dpo --variant soul --lr 5e-6 --beta 0.1 --epochs 1 --base "$BASE" --max-steps 5)
+    # DPO phase doesn't support --variant, --beta, or --max-steps
+    TRAIN_ARGS=(--phase dpo --lr 5e-6 --epochs 1 --base "$BASE")
     ADAPTER_NAME=""  # smoke; no serving
     ;;
   dpo)
-    DATA=training/data/soul_v1/dpo_soul_v1.jsonl
+    DATA=training/data/soul_v1/dpo_v1.jsonl
     OUT=training/checkpoints/dpo-soul-v1
     BASE=training/checkpoints/sft-soul-v1
-    TRAIN_ARGS=(--phase dpo --variant soul --lr 5e-6 --beta 0.1 --epochs 1 --base "$BASE")
+    # DPO phase doesn't support --variant or --beta
+    TRAIN_ARGS=(--phase dpo --lr 5e-6 --epochs 1 --base "$BASE")
     ADAPTER_NAME=dpo-soul-v1
+    ;;
+  identity-sft)
+    DATA=training/data/soul_v1/identity_shift_sft.jsonl
+    OUT=training/checkpoints/sft-identity-v1
+    TRAIN_ARGS=(--phase sft --variant soul --lora-r 64 --lora-alpha 128 --lr 2e-5 --epochs 3)
+    ADAPTER_NAME=sft-identity-v1
+    ;;
+  identity-dpo)
+    DATA=training/data/soul_v1/identity_shift_dpo.jsonl
+    OUT=training/checkpoints/dpo-identity-v1
+    BASE=training/checkpoints/sft-identity-v1
+    TRAIN_ARGS=(--phase dpo --lr 5e-6 --epochs 1 --base "$BASE")
+    ADAPTER_NAME=dpo-identity-v1
     ;;
   *)
     echo "unknown phase: $PHASE" >&2

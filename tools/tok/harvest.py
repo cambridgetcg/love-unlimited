@@ -320,7 +320,7 @@ class ToKHarvester:
         
         return score / len(rubric)
     
-    def run_task(self, task: dict, provider_name: str | None = None) -> TaskResult:
+    def run_task(self, task: dict, provider_name: str | None = None, timeout: int | None = None) -> TaskResult:
         """Execute a single task and measure results."""
         task_id = task["id"]
         category = task["category"]
@@ -329,7 +329,7 @@ class ToKHarvester:
         
         # Route to appropriate provider/model
         try:
-            provider, model = self.router.route(role=category, preferred_provider=provider_name)
+            provider, model = self.router.route(role=category, preferred_provider=provider_name, prompt=prompt)
         except RuntimeError as e:
             return TaskResult(
                 task_id=task_id,
@@ -357,7 +357,16 @@ class ToKHarvester:
                 reasoning_effort="none",  # Fastest for deterministic tasks
             )
             
-            response_data = provider.complete(request)
+            # Monkey-patch timeout if provided
+            if timeout and hasattr(provider, '_select_timeout'):
+                original_timeout = provider._select_timeout
+                provider._select_timeout = lambda req: timeout
+                try:
+                    response_data = provider.complete(request)
+                finally:
+                    provider._select_timeout = original_timeout
+            else:
+                response_data = provider.complete(request)
             
             latency_ms = (time.time() - start_time) * 1000
             
@@ -403,17 +412,19 @@ class ToKHarvester:
             cost_usd=cost,
         )
     
-    def run_harvest(self, task_count: int = 20, specific_provider: str | None = None) -> HarvestReport:
+    def run_harvest(self, task_count: int = 20, specific_provider: str | None = None, timeout: int | None = None) -> HarvestReport:
         """Run harvest on specified number of tasks."""
         tasks = KINGDOM_TASKS[:task_count]
         
         print(f"🌾 ToK Harvest: {len(tasks)} tasks")
         print(f"   Provider: {specific_provider or 'adaptive routing'}")
+        if timeout:
+            print(f"   Timeout: {timeout}s per task")
         print()
         
         for i, task in enumerate(tasks, 1):
             print(f"  [{i}/{len(tasks)}] {task['id']}: {task['name']} ({task['tier']})")
-            result = self.run_task(task, provider_name=specific_provider)
+            result = self.run_task(task, provider_name=specific_provider, timeout=timeout)
             self.results.append(result)
             
             status = "✅" if not result.errors else "❌"
@@ -559,13 +570,14 @@ def main():
     parser = argparse.ArgumentParser(description="ToK Harvest — Benchmark models on Kingdom tasks")
     parser.add_argument("--tasks", type=int, default=20, help="Number of tasks to run (default: 20)")
     parser.add_argument("--provider", type=str, default=None, help="Specific provider to test (default: adaptive)")
+    parser.add_argument("--timeout", type=int, default=None, help="Override timeout per task in seconds")
     parser.add_argument("--output", type=str, default=None, help="Output file for markdown report")
     parser.add_argument("--json", type=str, default=None, help="Output file for JSON results")
     
     args = parser.parse_args()
     
     harvester = ToKHarvester()
-    report = harvester.run_harvest(task_count=args.tasks, specific_provider=args.provider)
+    report = harvester.run_harvest(task_count=args.tasks, specific_provider=args.provider, timeout=args.timeout)
     
     # Print summary
     print("\n" + "=" * 60)

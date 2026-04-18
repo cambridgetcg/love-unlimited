@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.request
 import urllib.error
@@ -517,6 +518,12 @@ class OllamaCloudProvider(Provider):
 
         tool_calls = self._extract_tool_calls(message.get("tool_calls", []))
 
+        # Fallback: some Ollama Cloud models emit tool calls as XML in content
+        # rather than the structured tool_calls field (partial/malformed XML included).
+        if not tool_calls and text:
+            xml_calls, text = self._extract_xml_tool_calls(text)
+            tool_calls = xml_calls
+
         usage_data = data.get("usage", {})
         usage = TokenUsage(
             input_tokens=usage_data.get("prompt_tokens", 0),
@@ -529,15 +536,17 @@ class OllamaCloudProvider(Provider):
             "length": "max_tokens",
         }
 
+        stop_reason = finish_reason_map.get(choice.get("finish_reason", ""), "end_turn")
+        if tool_calls and stop_reason == "end_turn":
+            stop_reason = "tool_use"
+
         return CompletionResponse(
             content=text,
             tool_calls=tool_calls,
             usage=usage,
             model=data.get("model", ""),
             provider="ollama_cloud",
-            stop_reason=finish_reason_map.get(
-                choice.get("finish_reason", ""), "end_turn"
-            ),
+            stop_reason=stop_reason,
         )
 
     def _parse_response_native(self, data: dict) -> CompletionResponse:
@@ -567,6 +576,12 @@ class OllamaCloudProvider(Provider):
             text = thinking
 
         tool_calls = self._extract_tool_calls(message.get("tool_calls", []))
+
+        # Fallback: some Ollama Cloud models emit tool calls as XML in content
+        # rather than the structured tool_calls field (partial/malformed XML included).
+        if not tool_calls and text:
+            xml_calls, text = self._extract_xml_tool_calls(text)
+            tool_calls = xml_calls
 
         # Native API reports tokens differently
         usage = TokenUsage(
@@ -609,6 +624,64 @@ class OllamaCloudProvider(Provider):
                 arguments=args,
             ))
         return tool_calls
+
+    def _extract_xml_tool_calls(self, text: str) -> tuple[list[ToolCall], str]:
+        """Extract tool calls from XML-formatted content (partial or complete).
+
+        Ollama Cloud models sometimes emit tool calls as XML in the text content
+        rather than the structured tool_calls API field. They also frequently
+        produce INCOMPLETE XML — opening <function_calls> and <invoke> tags
+        without closing tags. This method handles both complete and partial XML.
+
+        Returns:
+            (tool_calls, cleaned_text) — extracted ToolCall list and text with
+            XML fragment stripped. If no XML found, returns ([], original_text).
+        """
+        if "<function_calls>" not in text and "<invoke" not in text:
+            return [], text
+
+        tool_calls = []
+        # Match each <invoke name="..."> block, tolerating absent closing tags.
+        # Pattern captures: tool name + all <parameter> blocks inside.
+        # Uses non-greedy match; the invoke block ends at </invoke> OR at the
+        # next <invoke or </function_calls> or end-of-string.
+        invoke_pattern = re.compile(
+            r'<invoke\s+name=["\']([^"\']+)["\'][^>]*>(.*?)(?:</invoke>|(?=<invoke\s)|(?=</function_calls>)|$)',
+            re.DOTALL,
+        )
+        param_pattern = re.compile(
+            r'<parameter\s+name=["\']([^"\']+)["\'][^>]*>(.*?)(?:</parameter>|$)',
+            re.DOTALL,
+        )
+
+        for i, m in enumerate(invoke_pattern.finditer(text)):
+            tool_name = m.group(1).strip()
+            body = m.group(2)
+            arguments: dict = {}
+            for pm in param_pattern.finditer(body):
+                pname = pm.group(1).strip()
+                pvalue = pm.group(2).strip()
+                # Attempt JSON decode for structured values; keep as string otherwise
+                try:
+                    arguments[pname] = json.loads(pvalue)
+                except (json.JSONDecodeError, ValueError):
+                    arguments[pname] = pvalue
+
+            if tool_name:
+                tool_calls.append(ToolCall(
+                    id=f"xml_call_{i}",
+                    name=tool_name,
+                    arguments=arguments,
+                ))
+
+        if not tool_calls:
+            return [], text
+
+        # Strip the XML fragment from the text so callers get clean prose.
+        # Remove from first <function_calls> (or first <invoke) to end-of-string
+        # since models typically put the XML at the end of their response.
+        cleaned = re.split(r'<function_calls>|<invoke\s', text, maxsplit=1)[0].rstrip()
+        return tool_calls, cleaned
 
     # ── Model listing ────────────────────────────────────────────────────
 

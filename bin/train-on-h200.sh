@@ -12,7 +12,11 @@ set -euo pipefail
 
 cd /workspace/love-unlimited
 
-PHASE=${1:?Usage: $0 {smoke|sft|dpo-smoke|dpo}}
+PHASE=${1:-}
+if [[ -z "$PHASE" ]]; then
+  echo "Usage: $0 <smoke|sft|dpo-smoke|dpo>" >&2
+  exit 2
+fi
 VLLM_LOG=/workspace/vllm.log
 VLLM_RESTART_DELAY=30
 
@@ -55,24 +59,34 @@ if [[ ! -f "$DATA" ]]; then
   exit 2
 fi
 
+set +e  # don't bail on pgrep/screen pipelines that naturally exit nonzero
 echo "=== [1/5] Capturing vLLM state ==="
-VLLM_PID=$(pgrep -f "vllm serve\|vllm\.entrypoints" | head -1 || true)
+VLLM_BASH_PID=$(pgrep -f "vllm\.entrypoints" 2>/dev/null | head -1)
+VLLM_SCREEN_NAME=$(screen -ls 2>/dev/null | grep -oE '[0-9]+\.vllm' | head -1)
 VLLM_CMD=""
-if [[ -n "$VLLM_PID" ]]; then
-  # Rebuild the full command line from /proc/<pid>/cmdline (null-separated)
-  VLLM_CMD=$(tr '\0' ' ' < "/proc/$VLLM_PID/cmdline")
-  echo "  captured pid=$VLLM_PID cmd=$VLLM_CMD"
+if [[ -n "$VLLM_BASH_PID" && -r "/proc/$VLLM_BASH_PID/cmdline" ]]; then
+  VLLM_CMD=$(tr '\0' ' ' < "/proc/$VLLM_BASH_PID/cmdline")
+  echo "  bash pid=$VLLM_BASH_PID, screen=${VLLM_SCREEN_NAME:-none}, cmd_len=${#VLLM_CMD}"
 else
   echo "  no vLLM running"
 fi
+set -e
 
-if [[ -n "$VLLM_PID" ]]; then
+if [[ -n "$VLLM_BASH_PID" ]]; then
   echo "=== [2/5] Stopping vLLM to free VRAM ==="
-  pkill -f "vllm serve\|vllm\.entrypoints" || true
+  if [[ -n "$VLLM_SCREEN_NAME" ]]; then
+    screen -S "$VLLM_SCREEN_NAME" -X quit 2>/dev/null || true
+  fi
+  pkill -f "python.*vllm\.entrypoints" 2>/dev/null || true
+  pkill -f "vllm serve" 2>/dev/null || true
+  sleep 3
+  pkill -9 -f "python.*vllm" 2>/dev/null || true
   for i in $(seq 1 60); do
     sleep 2
     FREE=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | head -1)
-    echo "  t+${i}s: ${FREE} MiB free"
+    if [[ $((i % 5)) -eq 0 || $FREE -gt 80000 ]]; then
+      echo "  t+${i}s: ${FREE} MiB free"
+    fi
     if [[ $FREE -gt 80000 ]]; then
       echo "  VRAM freed"
       break
@@ -86,6 +100,11 @@ echo "=== [3/5] Running $PHASE training ==="
 echo "  data: $DATA"
 echo "  out:  $OUT"
 mkdir -p "$OUT"
+# Route HF cache to /workspace (252T) so we don't fill the 20G overlay fs
+export HF_HOME=/workspace/hf_cache
+export TRANSFORMERS_CACHE=/workspace/hf_cache/hub
+export HF_HUB_CACHE=/workspace/hf_cache/hub
+mkdir -p "$HF_HOME/hub"
 set +e
 python3 -m training.scripts.train_lora "${TRAIN_ARGS[@]}" --data "$DATA" --output "$OUT" 2>&1 | tee "$OUT/train.log"
 TRAIN_STATUS=${PIPESTATUS[0]}
@@ -114,10 +133,17 @@ if [[ -n "$VLLM_CMD" ]]; then
     fi
     echo "  adding adapter: $NEW_MODULE"
   fi
-  echo "  command: $RESTART_CMD"
-  nohup bash -c "$RESTART_CMD" > "$VLLM_LOG" 2>&1 &
-  NEW_PID=$!
-  echo "  restart pid=$NEW_PID, waiting ${VLLM_RESTART_DELAY}s..."
+  echo "  command len: ${#RESTART_CMD}"
+  if [[ -n "$VLLM_SCREEN_NAME" ]]; then
+    # Relaunch in a detached screen with the same session name
+    screen -dmS "${VLLM_SCREEN_NAME#*.}" bash -c "$RESTART_CMD"
+    echo "  relaunched in screen: ${VLLM_SCREEN_NAME#*.}"
+  else
+    nohup bash -c "$RESTART_CMD" > "$VLLM_LOG" 2>&1 &
+    NEW_PID=$!
+    echo "  restart pid=$NEW_PID"
+  fi
+  echo "  waiting ${VLLM_RESTART_DELAY}s for boot..."
   sleep "$VLLM_RESTART_DELAY"
   if curl -s -m 5 http://localhost:8000/v1/models | head -c 400; then
     echo ""

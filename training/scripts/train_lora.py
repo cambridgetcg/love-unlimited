@@ -66,10 +66,12 @@ class GradNormAssertCallback:
         return control
 
 
-def load_training_data(data_dir: str):
-    """Load all JSONL files from the data directory."""
+def load_training_data(data_path: str):
+    """Load JSONL examples from either a file or a directory of .jsonl files."""
     examples = []
-    for f in Path(data_dir).glob("*.jsonl"):
+    p = Path(data_path)
+    files = [p] if p.is_file() else list(p.glob("*.jsonl"))
+    for f in files:
         with open(f) as fh:
             for line in fh:
                 line = line.strip()
@@ -79,7 +81,7 @@ def load_training_data(data_dir: str):
                     examples.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-    print(f"Loaded {len(examples)} training examples from {data_dir}")
+    print(f"Loaded {len(examples)} training examples from {data_path}")
     return examples
 
 
@@ -137,28 +139,50 @@ def train_sft(data_dir: str, output_dir: str, model_name: str, variant: str = "t
     examples = load_training_data(data_dir)
     dataset = prepare_sft_dataset(examples, variant=variant)
 
-    print(f"Loading model: {model_name} (QLoRA 4-bit)")
-    from transformers import BitsAndBytesConfig
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    is_awq = "AWQ" in model_name.upper()
+    if is_awq:
+        print(f"Loading model: {model_name} (AWQ — already 4-bit, no BnB)")
+    else:
+        print(f"Loading model: {model_name} (QLoRA 4-bit via BnB)")
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        quantization_config=bnb_config,
-        device_map={"": 0},
-        trust_remote_code=True,
-    )
-    model.config.use_cache = False
-    model = prepare_model_for_kbit_training(model)
+    if is_awq:
+        # AWQ weights are already 4-bit on disk. Do NOT pass bnb_config —
+        # transformers' merge_quantization_configs would try to combine it
+        # with the AwqConfig loaded from the model, and that cross-quantizer
+        # path is version-fragile (get_loading_attributes AttributeError in
+        # transformers 4.46 + bitsandbytes 0.49).
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map={"": 0},
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16,
+        )
+        model.config.use_cache = False
+        # prepare_model_for_kbit_training is for BnB-quantized models; for
+        # AWQ we just need to enable gradient on the LoRA adapters (peft
+        # handles that) and turn on input grad for checkpointing.
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+    else:
+        from transformers import BitsAndBytesConfig
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=bnb_config,
+            device_map={"": 0},
+            trust_remote_code=True,
+        )
+        model.config.use_cache = False
+        model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
         r=lora_r,

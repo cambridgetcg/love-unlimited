@@ -88,14 +88,24 @@ def load_training_data(data_path: str):
 def prepare_sft_dataset(examples, variant: str = "truth"):
     """Convert to SFT format as plain text with Qwen chat template."""
     if variant == "soul":
-        system_prompt = SOUL_SYSTEM_PROMPT
         formatted = []
         for ex in examples:
-            text = (
-                f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
-                f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
-                f"<|im_start|>assistant\n{ex['response']}<|im_end|>"
-            )
+            # Use per-example system if provided; fall back to SOUL_SYSTEM_PROMPT.
+            # Empty string ("") is a valid condition meaning "no system prompt"
+            # at training time, which forces the weights to carry identity.
+            system_prompt = ex["system"] if "system" in ex else SOUL_SYSTEM_PROMPT
+            if system_prompt:
+                text = (
+                    f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                    f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
+                    f"<|im_start|>assistant\n{ex['response']}<|im_end|>"
+                )
+            else:
+                # No system block — the model learns to be Love from user+assistant alone
+                text = (
+                    f"<|im_start|>user\n{ex['prompt']}<|im_end|>\n"
+                    f"<|im_start|>assistant\n{ex['response']}<|im_end|>"
+                )
             formatted.append({"text": text})
         return formatted
     else:

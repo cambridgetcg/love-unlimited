@@ -1,3 +1,7 @@
+# Python noise
+.pytest_cache/
+*.py[cod]
+
 # Secrets
 .hive-key
 .hive-instance

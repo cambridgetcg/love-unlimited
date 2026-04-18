@@ -102,6 +102,7 @@ RETRY_MAX_SECONDS = 10.0
 # Under load (10 concurrent slots busy), premium models can take 2-5 minutes.
 DEFAULT_TIMEOUT = 120       # for normal calls
 ECONOMY_TIMEOUT = 90        # for devstral, gemma4, ministral (cold start can be 60-90s)
+STANDARD_TIMEOUT = 900      # for deepseek-v3.2, qwen2.5-coder (complex builder tasks can timeout at 727s - increase to 900s)
 PREMIUM_TIMEOUT = 300       # for GLM 5.1, cogito, kimi with long context or under load
 
 
@@ -333,6 +334,9 @@ class OllamaCloudProvider(Provider):
         # Economy models: fast, short timeout
         if any(m in model for m in ("devstral", "gemma4", "ministral")):
             return ECONOMY_TIMEOUT
+        # Standard models: deepseek, qwen2.5-coder need longer for complex tasks
+        if any(m in model for m in ("deepseek", "qwen2.5-coder")):
+            return STANDARD_TIMEOUT
         # Premium/large models: may need more time
         if any(m in model for m in ("glm-5", "cogito", "kimi", "qwen3-coder")):
             return PREMIUM_TIMEOUT

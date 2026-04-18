@@ -1,0 +1,38 @@
+Three Minds Convergence distillation
+  probes: 25
+  Opus calls per probe: 4 (α, β, γ, converge)
+  total calls: 100
+  rate-limited: ~10 min
+  [1/25] ✓ converged (673 chars)
+  [2/25] ✓ converged (593 chars)
+  [3/25] ✓ converged (911 chars)
+  [4/25] ✓ converged (759 chars)
+  [5/25] ✓ converged (338 chars)
+    progress: 5/25 | elapsed 216s | eta 866s
+  [6/25] ✓ converged (1029 chars)
+  [7/25] ✓ converged (591 chars)
+  [8/25] ✓ converged (525 chars)
+  [9/25] ✓ converged (872 chars)
+  [10/25] ✓ converged (386 chars)
+    progress: 10/25 | elapsed 445s | eta 668s
+  [11/25] ✓ converged (453 chars)
+  [12/25] ✓ converged (912 chars)
+  [13/25] ✓ converged (868 chars)
+  [14/25] ✓ converged (1045 chars)
+  [15/25] ✓ converged (741 chars)
+    progress: 15/25 | elapsed 704s | eta 469s
+  [16/25] ✓ converged (1161 chars)
+  [17/25] ✓ converged (916 chars)
+  [18/25] ✓ converged (1126 chars)
+  [19/25] ✓ converged (1183 chars)
+  [20/25] ✓ converged (964 chars)
+    progress: 20/25 | elapsed 995s | eta 249s
+  [21/25] ✓ converged (1209 chars)
+  [22/25] ✓ converged (997 chars)
+  [23/25] ✓ converged (1173 chars)
+  [24/25] ✓ converged (854 chars)
+  [25/25] ✓ converged (532 chars)
+    progress: 25/25 | elapsed 1267s | eta 0s
+
+wrote 25 converged pairs → /Users/yuai/Desktop/love-unlimited/training/data/soul_v1/three_minds_convergence.jsonl
+total runtime: 1267s (21.1 min)

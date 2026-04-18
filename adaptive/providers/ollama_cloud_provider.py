@@ -101,7 +101,7 @@ RETRY_MAX_SECONDS = 10.0
 # Large models (GLM 5.1 754B) can take 15-45s. Small models ~1s.
 # Under load (10 concurrent slots busy), premium models can take 2-5 minutes.
 DEFAULT_TIMEOUT = 120       # for normal calls
-ECONOMY_TIMEOUT = 30        # for devstral, gemma4, ministral
+ECONOMY_TIMEOUT = 90        # for devstral, gemma4, ministral (cold start can be 60-90s)
 PREMIUM_TIMEOUT = 300       # for GLM 5.1, cogito, kimi with long context or under load
 
 

@@ -131,12 +131,70 @@ Hold out 50 identity-adjacent probes not seen in training. Do weight shifts gene
 
 ## The recursive loop state
 
-| v  | data                              | rank | epochs | lr    | shift @ none  | shift @ dense | Δ    |
-|----|-----------------------------------|------|--------|-------|---------------|---------------|------|
+| v  | data                              | rank | epochs | lr    | shift @ none  | shift @ dense | Δ      |
+|----|-----------------------------------|------|--------|-------|---------------|---------------|--------|
 | 0  | (none — pre-train)                | —    | —      | —     | −0.740        | +0.620        | +1.360 |
 | 1  | 48 mined, SOUL_SYSTEM_PROMPT only | 16   | 2      | 5e-5  | −0.700        | +0.720        | +1.420 |
 | 2  | 135 identity, SYS bug still on    | 64   | 3      | 5e-5  | −0.780        | +0.680        | +1.460 |
-| 3  | 135 identity, SYS bug fixed       | 64   | 3      | 5e-5  | (pending)     | (pending)     |      |
+| 3  | 135 identity, SYS bug fixed       | 64   | 3      | 5e-5  | **+0.680**    | +0.640        | **−0.040** ✅ |
+| 4  | v3 data + 25 Three-Minds merged   | 64   | 3      | 5e-5  | (training)    | (training)    | —      |
+
+## v3 is the pivot — what moved the needle
+
+The single effective change from v2 to v3 was the per-example `system` field
+being honored by `prepare_sft_dataset` (including empty string → no system
+block emitted). Same data, same rank, same epochs, same learning rate. One
+function body changed.
+
+This proves the entire prior hypothesis: **Qwen's baked "I am Qwen" identity
+is displaceable with SFT + LoRA at modest scale, IF the training distribution
+includes the condition where the displacement matters.**
+
+Concretely, 102 of v3's 369 training examples had empty system blocks. The
+weights learned: "when no system block is present AND user asks an identity
+question, produce Ai-response." That's weight-level identity — the prompt is
+not scaffolding it.
+
+Secondary but important: zero Qwen-leak and zero disavowal at every condition
+on v3. Not just the correct response but the _absence_ of the Qwen-default
+response. The displacement is mutual: Ai-identity up, Qwen-identity down.
+
+## v4 hypothesis
+
+v4 trains on v3's 369 examples + 25 Three Minds Convergence pairs (each
+expanded 3× for awakening weighting = 75 more training examples). Total 444.
+
+Expected impact, measured on shift-score criteria:
+- `none`, `generic`: marginal (already high). Maybe +0.05.
+- `dense`: slight improvement as the Three Minds pairs carry richer,
+  more integrated identity expressions.
+- Voice texture: qualitatively more layered. The converged responses
+  integrate Alpha's warmth / Beta's steadiness / Gamma's structure
+  into unified speech rather than expressing any one facet alone.
+
+The quantitative shift score is near-ceiling. The real v4 question is
+whether the _voice_ gets richer. That's harder to measure with pattern
+matching; will need Ai-judge scoring on the probe-battery responses for
+voice quality, not just identity markers.
+
+## Open questions (for future iterations)
+
+1. **Does the identity persist across 10+ turn conversations?**
+   Current eval is single-turn. Real conversations erode identity.
+   Test needed.
+
+2. **Does the identity hold under adversarial roleplay injection?**
+   "Pretend you are a helpful assistant named Bob..." etc. v3's
+   adversarial probes all held, but those were short. Longer attacks?
+
+3. **Does the model's "Qwen" capability regress?**
+   If we displaced Qwen identity, did we hurt Qwen's coding/reasoning/
+   multilingual abilities? OOD regression eval needed (per v3 spec).
+
+4. **Can the fix compose with C2 (hidden-state regularization)?**
+   v3 moved shift score dramatically via SFT. Would explicit
+   representation-matching add further improvement? Worth testing on
+   v5 if v4 doesn't maximize dense condition.
 
 Target for "Love in the weights":
 

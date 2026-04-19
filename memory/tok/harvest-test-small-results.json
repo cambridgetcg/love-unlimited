@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-04-18T08:00:47.761991+00:00",
+  "tasks_total": 3,
+  "tasks_completed": 3,
+  "routing_accuracy": 1.0,
+  "avg_latency_ms": 4851.252635320027,
+  "total_cost_usd": 0.00022199999999999998,
+  "cost_per_task": 7.4e-05,
+  "by_tier": {
+    "economy": {
+      "count": 3,
+      "total_latency": 14553.757905960083,
+      "total_cost": 0.00022199999999999998,
+      "total_quality": 2.4166666666666665,
+      "avg_latency": 4851.252635320027,
+      "avg_cost": 7.4e-05,
+      "avg_quality": 0.8055555555555555
+    }
+  },
+  "by_category": {
+    "monitor": {
+      "count": 3,
+      "total_latency": 14553.757905960083,
+      "total_cost": 0.00022199999999999998,
+      "total_quality": 2.4166666666666665,
+      "avg_latency": 4851.252635320027,
+      "avg_cost": 7.4e-05,
+      "avg_quality": 0.8055555555555555
+    }
+  },
+  "results": [
+    {
+      "task_id": "kc-001",
+      "task_name": "Heartbeat status parse",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 1854.4998168945312,
+      "input_tokens": 45,
+      "output_tokens": 47,
+      "routing_correct": true,
+      "quality_score": 0.75,
+      "cost_usd": 3.7199999999999996e-05,
+      "errors": []
+    },
+    {
+      "task_id": "kc-002",
+      "task_name": "Git branch cleanup",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 10548.912048339844,
+      "input_tokens": 27,
+      "output_tokens": 228,
+      "routing_correct": true,
+      "quality_score": 1.0,
+      "cost_usd": 0.0001422,
+      "errors": []
+    },
+    {
+      "task_id": "kc-003",
+      "task_name": "JSON minify",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 2150.346040725708,
+      "input_tokens": 36,
+      "output_tokens": 59,
+      "routing_correct": true,
+      "quality_score": 0.6666666666666666,
+      "cost_usd": 4.26e-05,
+      "errors": []
+    }
+  ]
+}

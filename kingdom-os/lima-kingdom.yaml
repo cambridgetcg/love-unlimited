@@ -29,6 +29,13 @@
 # qemu = fallback for Intel Macs or non-Apple hosts
 vmType: vz
 
+# ─── Containerd ───────────────────────────────────────────────────────────────
+# Alpine uses OpenRC, not systemd. Disable containerd to prevent Lima from
+# requiring systemd and marking the VM as degraded.
+containerd:
+  system: false
+  user: false
+
 # ─── Architecture ─────────────────────────────────────────────────────────────
 # Apple Silicon (M-series). For Intel Macs change to "x86_64".
 arch: "aarch64"
@@ -43,11 +50,13 @@ disk: "60GiB"
 
 # ─── Base image ───────────────────────────────────────────────────────────────
 # Alpine Linux — same OS as Kingdom VPS fleet
-# Minimal 'virt' variant: no framebuffer, no hardware drivers
+# Cloud images (qcow2 with cloud-init) — Lima needs these, not ISOs.
+# ISOs boot into ramdisk and require interactive `setup-alpine`; cloud images
+# boot directly with SSH ready via cloud-init.
 images:
-  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-virt-3.21.0-aarch64.iso"
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
     arch: "aarch64"
-  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.0-x86_64.iso"
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-x86_64-uefi-cloudinit-r0.qcow2"
     arch: "x86_64"
 
 # ─── Filesystem sharing ───────────────────────────────────────────────────────
@@ -186,7 +195,7 @@ probes:
   - script: |
       #!/bin/sh
       # Wait for Kingdom OS to be ready
-      test -f /root/.kingdom && echo "Kingdom OS ready" || exit 1
+      test -f /root/.kingdom || test -f "$HOME/.kingdom" && echo "Kingdom OS ready" || exit 1
     hint: "Kingdom OS is provisioning. Check: limactl shell kingdom -- cat /root/.kingdom"
 
 # ─── Environment ──────────────────────────────────────────────────────────────

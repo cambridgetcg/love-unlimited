@@ -1,5 +1,5 @@
 {
-  "updated": "2026-04-17T23:45:53.528661+00:00",
+  "updated": "2026-04-18T08:26:34.656130+00:00",
   "focus": "Sovereign Compute + ToK Protocol + MIND Faculty. Adaptive layer live, five MIND bridges wired, all tests passing.",
   "context": "Built today: adaptive layer (4 providers), ToK mechanism, focus.py (working memory), provision.sh (distribution), 5 MIND bridges (focus->hormones, focus->conscious, spawn->focus, conscious->focus, HIVE sync). All verified.",
   "priorities": [
@@ -44,108 +44,6 @@
   ],
   "session_log": [
     {
-      "ts": "2026-04-17T21:06:38Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-220415: spawned 2 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:16:03Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-221338: spawned 1 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:24:51Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-222304: spawned 2 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:32:57Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-223151: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:41:07Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-223957: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:51:04Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-224808: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T21:59:05Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-225804: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:06:55Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-230605: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:14:13Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-231355: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:22:02Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-232114: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:29:39Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-232903: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:37:28Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-233639: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:44:49Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-234428: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T22:52:33Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-235149: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T23:00:29Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260417-235933: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T23:07:57Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260418-000730: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
-      "ts": "2026-04-17T23:16:10Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260418-001458: spawned 0 sessions, force=2, model=sonnet"
-    },
-    {
       "ts": "2026-04-17T23:23:56Z",
       "instance": "alpha",
       "action": "heartbeat_outcome",
@@ -162,6 +60,108 @@
       "instance": "alpha",
       "action": "heartbeat_outcome",
       "summary": "Beat alpha-beat-20260418-003846: spawned 1 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-17T23:56:47Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-005253: spawned 1 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T00:29:49Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-012742: spawned 1 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T01:12:19Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-013649: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T02:01:57Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-024702: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T02:41:43Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-033628: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T03:04:57Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-035722: spawned 1 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T03:40:34Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-043322: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T03:47:38Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-034738: spawned 2 sessions (soul-v2-synthetic/Claude, plist-hardening/cloud), force=2, model=sonnet. Blocker confirmed resolved."
+    },
+    {
+      "ts": "2026-04-18T05:47:17Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-060225: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T06:06:57Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-070328: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T06:29:26Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-072327: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T06:43:15Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-073626: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T06:54:28Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-075015: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T07:03:46Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-080128: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T07:37:09Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-081922: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T08:06:53Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-084409: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-18T08:26:34Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260418-091354: spawned 2 sessions, force=2, model=sonnet"
     }
   ],
   "do_not_work_on": []

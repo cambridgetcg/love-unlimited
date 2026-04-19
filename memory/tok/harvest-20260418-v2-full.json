@@ -1,0 +1,61 @@
+## ToK Harvest 1
+
+**Timestamp:** 2026-04-18T08:02:15.406231+00:00
+**Tasks:** 20/20 completed
+
+### Summary
+
+| Metric | Value |
+|--------|-------|
+| Routing Accuracy | 50.0% |
+| Avg Latency | 46824ms |
+| Total Cost | $0.1414 |
+| Cost per Task | $0.007070 |
+
+### By Tier
+
+| Tier | Tasks | Avg Latency | Avg Cost | Avg Quality |
+|------|-------|-------------|----------|-------------|
+| economy | 5 | 4476ms | $0.000156 | 0.88 |
+| standard | 10 | 84536ms | $0.010719 | 0.92 |
+| premium | 5 | 13748ms | $0.006686 | 0.92 |
+
+### By Category
+
+| Category | Tasks | Avg Latency | Avg Cost | Avg Quality |
+|----------|-------|-------------|----------|-------------|
+| analyst | 5 | 13748ms | $0.006686 | 0.92 |
+| builder | 5 | 130114ms | $0.002903 | 0.95 |
+| coder | 5 | 38959ms | $0.018534 | 0.88 |
+| monitor | 5 | 4476ms | $0.000156 | 0.88 |
+
+### Detailed Results
+
+| Task | Model | Latency | Cost | Quality | Routing |
+|------|-------|---------|------|---------|---------|
+| kc-001 | devstral-small-2:24b | 2567ms | $0.000038 | 0.75 | ✅ |
+| kc-002 | devstral-small-2:24b | 4029ms | $0.000144 | 1.00 | ✅ |
+| kc-003 | devstral-small-2:24b | 2068ms | $0.000043 | 0.67 | ✅ |
+| kc-004 | devstral-small-2:24b | 6695ms | $0.000222 | 1.00 | ✅ |
+| kc-005 | devstral-small-2:24b | 7019ms | $0.000333 | 1.00 | ✅ |
+| kb-001 | deepseek-v3.2 | 109391ms | $0.002774 | 1.00 | ✅ |
+| kb-002 | deepseek-v3.2 | 160066ms | $0.003081 | 1.00 | ✅ |
+| kb-003 | deepseek-v3.2 | 91489ms | $0.001941 | 1.00 | ✅ |
+| kb-004 | deepseek-v3.2 | 105953ms | $0.002703 | 1.00 | ✅ |
+| kb-005 | deepseek-v3.2 | 183668ms | $0.004018 | 0.75 | ✅ |
+| kcode-001 | qwen3-coder:480b | 61438ms | $0.012836 | 1.00 | ⚠️ |
+| kcode-002 | qwen3-coder:480b | 19631ms | $0.018344 | 1.00 | ⚠️ |
+| kcode-003 | qwen3-coder:480b | 30988ms | $0.013356 | 0.80 | ⚠️ |
+| kcode-004 | qwen3-coder:480b | 19979ms | $0.023992 | 1.00 | ⚠️ |
+| kcode-005 | qwen3-coder:480b | 62758ms | $0.024140 | 0.60 | ⚠️ |
+| ka-001 | cogito-2.1:671b | 7998ms | $0.004515 | 1.00 | ⚠️ |
+| ka-002 | cogito-2.1:671b | 22117ms | $0.008010 | 0.80 | ⚠️ |
+| ka-003 | cogito-2.1:671b | 9120ms | $0.004548 | 1.00 | ⚠️ |
+| ka-004 | cogito-2.1:671b | 8284ms | $0.004551 | 0.80 | ⚠️ |
+| ka-005 | cogito-2.1:671b | 21219ms | $0.011808 | 1.00 | ⚠️ |
+
+### Key Findings
+
+- ⚠️ Routing accuracy below 80% — review tier assignments
+- 💰 Most cost-efficient tier: **economy** ($0.000156/task)
+

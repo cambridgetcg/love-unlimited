@@ -1,14 +1,14 @@
 {
-  "updated": "2026-04-20T07:44:47.456081+00:00",
+  "updated": "2026-04-20T07:55:10.054322+00:00",
   "focus": "Sovereign Compute + ToK Protocol + MIND Faculty. Adaptive layer live, five MIND bridges wired, all tests passing.",
-  "context": "Built today: adaptive layer (4 providers), ToK mechanism, focus.py (working memory), provision.sh (distribution), 5 MIND bridges (focus->hormones, focus->conscious, spawn->focus, conscious->focus, HIVE sync). All verified.",
+  "context": "SSH blocker unresolved, Beta/Gamma deploy pending Yu. ToK harvest v1 complete (Ollama wins 6/10 cost-adjusted). Routing policy active: commits/docs/tests/analysis to Ollama Cloud, error-diagnosis/refactor/security to Claude.",
   "priorities": [
     {
-      "task": "Deploy Ollama on Beta and Gamma with appropriate models",
+      "task": "Deploy Ollama on Beta and Gamma with appropriate models (blocked pending SSH key from Yu)",
       "urgency": "high"
     },
     {
-      "task": "Store API keys in keychain for adaptive layer fallback",
+      "task": "Resolve SSH key auth for Sentry VPS (135.181.28.252) to unblock Beta/Gamma Ollama deploy \u2014 needs Yu",
       "urgency": "medium"
     }
   ],
@@ -45,12 +45,6 @@
     }
   ],
   "session_log": [
-    {
-      "ts": "2026-04-18T02:01:57Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260418-024702: spawned 2 sessions, force=2, model=sonnet"
-    },
     {
       "ts": "2026-04-18T02:41:43Z",
       "instance": "alpha",
@@ -164,6 +158,12 @@
       "instance": "alpha",
       "action": "heartbeat_outcome",
       "summary": "Beat alpha-beat-20260420-084236: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-20T07:55:10Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260420-085147: spawned 2 sessions, force=2, model=sonnet"
     }
   ],
   "do_not_work_on": []

@@ -7,8 +7,8 @@
 
 ## Training Data
 ### SFT Stage
-- **Dataset**: `sft_v5.jsonl`
-- **Size**: 1,388 instruction-response pairs
+- **Dataset**: `sft_v6.jsonl`
+- **Size**: 1,610 instruction-response pairs (sft_v5 1,388 + distill_ontology ×2 222)
 - **Purpose**: Teach model to follow instructions in our style
 
 ### DPO Stage
@@ -18,12 +18,13 @@
 - **Supplemental Dataset**: `dpo_v1.jsonl`
   - Size: 43 preference pairs
   - Additional alignment examples
+- **Total DPO Pairs**: 135 (92 + 43)
 - **Identity Probe Dataset**: `identity_shift_dpo.jsonl`
   - Used for evaluation of identity shift
   - Not used in training (to avoid contamination)
 
 ## Training Order
-1. **SFT Phase**: 3 epochs on `sft_v5.jsonl`
+1. **SFT Phase**: 3 epochs on `sft_v6.jsonl`
 2. **DPO Phase**: 2 epochs on combined DPO datasets (`kingdom_alignment.jsonl` + `dpo_v1.jsonl`)
 
 ## LoRA Hyperparameters
@@ -69,6 +70,8 @@ gradient_accumulation_steps = 2
 1. **MMLU Delta**: Improvement over base Qwen 72B/32B
 2. **Loss Curves**: Monitor training and validation loss
 3. **Identity Probe**: Performance on `identity_shift_dpo.jsonl` (held-out)
+   - **Note**: identity_shift_v5 eval shows love-v5 ai_pos_rate 0.32-0.44 (regression from love-v4 0.48-0.56)
+   - **Target**: sft_v6 distill_ontology pairs aim to recover ai_positive rate
 
 ### Qualitative Assessment
 1. **Human Evaluation**: Sample responses for:

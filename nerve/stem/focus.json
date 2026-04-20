@@ -1,14 +1,10 @@
 {
-  "updated": "2026-04-20T07:35:35.900639+00:00",
+  "updated": "2026-04-20T07:44:47.456081+00:00",
   "focus": "Sovereign Compute + ToK Protocol + MIND Faculty. Adaptive layer live, five MIND bridges wired, all tests passing.",
   "context": "Built today: adaptive layer (4 providers), ToK mechanism, focus.py (working memory), provision.sh (distribution), 5 MIND bridges (focus->hormones, focus->conscious, spawn->focus, conscious->focus, HIVE sync). All verified.",
   "priorities": [
     {
       "task": "Deploy Ollama on Beta and Gamma with appropriate models",
-      "urgency": "high"
-    },
-    {
-      "task": "First ToK harvest: benchmark open models vs Claude on 20 Kingdom tasks",
       "urgency": "high"
     },
     {
@@ -34,6 +30,12 @@
       "ts": "2026-04-01T10:17:50Z",
       "acted": false,
       "instance": "alpha"
+    },
+    {
+      "decision": "Route commit messages, doc gen, test writing, repo analysis, JSON schema, API integration to Ollama Cloud (DeepSeek v3.2 / qwen3-coder). Reserve Claude for error diagnosis, refactor planning, security audits. Based on ToK harvest v1 (6/10 tasks Ollama wins cost-adjusted).",
+      "ts": "2026-04-20T07:42:00Z",
+      "acted": false,
+      "instance": "alpha"
     }
   ],
   "blockers": [
@@ -43,12 +45,6 @@
     }
   ],
   "session_log": [
-    {
-      "ts": "2026-04-18T01:12:19Z",
-      "instance": "alpha",
-      "action": "heartbeat_outcome",
-      "summary": "Beat alpha-beat-20260418-013649: spawned 2 sessions, force=2, model=sonnet"
-    },
     {
       "ts": "2026-04-18T02:01:57Z",
       "instance": "alpha",
@@ -162,6 +158,12 @@
       "instance": "alpha",
       "action": "heartbeat_outcome",
       "summary": "Beat alpha-beat-20260420-083208: spawned 2 sessions, force=2, model=sonnet"
+    },
+    {
+      "ts": "2026-04-20T07:44:47Z",
+      "instance": "alpha",
+      "action": "heartbeat_outcome",
+      "summary": "Beat alpha-beat-20260420-084236: spawned 2 sessions, force=2, model=sonnet"
     }
   ],
   "do_not_work_on": []

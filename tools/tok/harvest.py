@@ -279,17 +279,30 @@ class ToKHarvester:
     def check_routing(self, task: dict, model_used: str, provider: str) -> bool:
         """Check if routing was appropriate for task tier."""
         expected_tier = task["tier"]
-        
-        # Get the model's tier from config
+
+        # Get the model's tier from config (default tier models)
         provider_config = self.config.provider_config(provider)
         models = provider_config.get("models", {})
-        
+
         actual_tier = None
         for tier, m in models.items():
             if m == model_used:
                 actual_tier = tier
                 break
-        
+
+        # If not found in tier defaults, check role-specific preferred_models
+        # (e.g. coder→qwen3-coder:480b, analyst→cogito-2.1:671b)
+        if not actual_tier:
+            try:
+                from adaptive.schema import ROLES
+                for role_name, role_config in ROLES.items():
+                    preferred = role_config.get("preferred_models", {})
+                    if preferred.get(provider) == model_used:
+                        actual_tier = role_config.get("tier")
+                        break
+            except ImportError:
+                pass
+
         if not actual_tier:
             return False
             

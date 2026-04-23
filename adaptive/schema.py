@@ -83,12 +83,19 @@ class CompletionResponse:
 
 @dataclass
 class StreamEvent:
-    """A single event from a streaming completion.
+    """A single event from a streaming completion or agent run.
 
-    Types:
-      "text"      — incremental text delta (cumulate `text` to get full content)
-      "tool_call" — a complete tool call, emitted once its JSON input is fully assembled
-      "done"      — final event; carries usage, model, stop_reason
+    Provider-level types (from AnthropicProvider.stream, etc.):
+      "text"           — incremental text delta (cumulate `text` to get full content)
+      "tool_call"      — a complete tool call, emitted once its JSON input is assembled
+      "done"           — terminal event for a single completion; carries usage/model/stop_reason
+
+    Agent-loop types (from AgentRunner.stream):
+      "iteration_start" — a new turn in the agent loop is beginning; `iteration` is 0-indexed
+      "tool_executing"  — a tool is about to run; `tool_call` identifies it
+      "tool_result"     — a tool finished; `tool_result_id`/`tool_result_content` carry the output
+      "iteration_end"   — turn complete (post tool execution, before the next model call)
+      "run_done"        — the whole agent run is finished; cumulative usage/model/stop_reason
     """
     type: str
     text: str = ""
@@ -96,6 +103,9 @@ class StreamEvent:
     usage: TokenUsage | None = None
     model: str = ""
     stop_reason: str = ""
+    iteration: int | None = None
+    tool_result_id: str | None = None
+    tool_result_content: str = ""
 
 
 # ── Role definitions ─────────────────────────────────────────────────────────

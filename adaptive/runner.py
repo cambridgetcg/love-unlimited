@@ -430,6 +430,176 @@ class AgentRunner:
         self.total_usage.output_tokens += response.usage.output_tokens
         return response.content
 
+    def stream(
+        self,
+        prompt: str,
+        role: str = "builder",
+        system: str = "",
+        provider_name: str | None = None,
+    ) -> Iterator[StreamEvent]:
+        """Run the agent loop, streaming every phase.
+
+        Emits, in order, for each iteration:
+            iteration_start → (text deltas, tool_call events) → iteration_end
+        and, if tool calls arrive, between the provider events:
+            tool_executing → tool_result   (for each tool)
+        The final event is always 'run_done' with cumulative usage.
+
+        If the provider doesn't support streaming, events are synthesized from
+        `provider.complete(request)` so the caller never has to branch on
+        provider capability.
+
+        Token usage accumulates into `self.total_usage` across all iterations.
+        """
+        provider, model = self.router.route(role, preferred_provider=provider_name)
+        role_config = ROLES.get(role, ROLES["builder"])
+
+        full_system = build_system_prompt(
+            role=role,
+            user_system=system,
+            inject_context=self.inject_context,
+        )
+
+        messages: list[Message] = [Message(role="user", content=prompt)]
+
+        final_model = ""
+        final_stop_reason = "end_turn"
+        cumulative_usage = TokenUsage()
+
+        for iteration in range(self.max_iterations):
+            yield StreamEvent(type="iteration_start", iteration=iteration)
+
+            request = CompletionRequest(
+                messages=messages,
+                tools=self.tools if self.tools else None,
+                model=model,
+                max_tokens=role_config.get("max_tokens", 4096),
+                temperature=0.0,
+                effort=role_config.get("effort", "medium"),
+                reasoning_effort=role_config.get("reasoning_effort"),
+                system=full_system,
+            )
+
+            # Accumulate per-iteration state from provider events
+            iter_text_parts: list[str] = []
+            iter_tool_calls: list[ToolCall] = []
+
+            def _provider_events() -> Iterator[StreamEvent]:
+                """Stream from provider, or synthesize events from complete()."""
+                if provider.supports_streaming():
+                    try:
+                        yield from provider.stream(request)
+                        return
+                    except NotImplementedError:
+                        pass
+                # Non-streaming fallback
+                response = provider.complete(request)
+                if response.content:
+                    yield StreamEvent(type="text", text=response.content)
+                for tc in response.tool_calls:
+                    yield StreamEvent(type="tool_call", tool_call=tc)
+                yield StreamEvent(
+                    type="done",
+                    usage=response.usage,
+                    model=response.model,
+                    stop_reason=response.stop_reason,
+                )
+
+            for ev in _provider_events():
+                if ev.type == "text":
+                    iter_text_parts.append(ev.text)
+                    yield ev
+                elif ev.type == "tool_call" and ev.tool_call is not None:
+                    iter_tool_calls.append(ev.tool_call)
+                    yield ev
+                elif ev.type == "done":
+                    if ev.usage is not None:
+                        cumulative_usage.input_tokens += ev.usage.input_tokens
+                        cumulative_usage.output_tokens += ev.usage.output_tokens
+                        self.total_usage.input_tokens += ev.usage.input_tokens
+                        self.total_usage.output_tokens += ev.usage.output_tokens
+                    if ev.model:
+                        final_model = ev.model
+                    if ev.stop_reason:
+                        final_stop_reason = ev.stop_reason
+
+            # No tool calls → this iteration is the end of the run
+            if not iter_tool_calls:
+                yield StreamEvent(type="iteration_end", iteration=iteration)
+                yield StreamEvent(
+                    type="run_done",
+                    usage=cumulative_usage,
+                    model=final_model,
+                    stop_reason=final_stop_reason,
+                )
+                return
+
+            # Record assistant turn (with tool calls) so the next model call sees it
+            messages.append(Message(
+                role="assistant",
+                content="".join(iter_text_parts),
+                tool_calls=iter_tool_calls,
+            ))
+
+            # Execute tools, emit framing events, collect results
+            if len(iter_tool_calls) == 1:
+                tc = iter_tool_calls[0]
+                yield StreamEvent(type="tool_executing", tool_call=tc)
+                result = _execute_tool(tc.name, tc.arguments)
+                yield StreamEvent(
+                    type="tool_result",
+                    tool_result_id=tc.id,
+                    tool_result_content=result,
+                )
+                messages.append(Message(
+                    role="tool_result", content=result,
+                    tool_call_id=tc.id, name=tc.name,
+                ))
+            else:
+                # Emit all "executing" events first so a UI can show them in parallel
+                for tc in iter_tool_calls:
+                    yield StreamEvent(type="tool_executing", tool_call=tc)
+
+                def _exec_one(tc: ToolCall) -> tuple[ToolCall, str]:
+                    try:
+                        return tc, _execute_tool(tc.name, tc.arguments)
+                    except Exception as e:
+                        return tc, f"Error: {e}"
+
+                with ThreadPoolExecutor(max_workers=min(len(iter_tool_calls), 8)) as pool:
+                    futures = {pool.submit(_exec_one, tc): tc for tc in iter_tool_calls}
+                    results_map: dict[str, str] = {}
+                    for fut in futures:
+                        try:
+                            tc_obj, result = fut.result()
+                            results_map[tc_obj.id] = result
+                        except Exception as e:
+                            tc_obj = futures[fut]
+                            results_map[tc_obj.id] = f"Error: {e}"
+
+                # Preserve original order for both event emission and provider correctness
+                for tc in iter_tool_calls:
+                    result = results_map[tc.id]
+                    yield StreamEvent(
+                        type="tool_result",
+                        tool_result_id=tc.id,
+                        tool_result_content=result,
+                    )
+                    messages.append(Message(
+                        role="tool_result", content=result,
+                        tool_call_id=tc.id, name=tc.name,
+                    ))
+
+            yield StreamEvent(type="iteration_end", iteration=iteration)
+
+        # Hit max_iterations without a tool-free iteration
+        yield StreamEvent(
+            type="run_done",
+            usage=cumulative_usage,
+            model=final_model,
+            stop_reason="max_iterations",
+        )
+
     def stream_single_shot(
         self,
         prompt: str,

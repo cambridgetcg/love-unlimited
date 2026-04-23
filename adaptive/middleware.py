@@ -29,6 +29,7 @@ Concrete middlewares below:
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -324,6 +325,58 @@ class TruthDetectorAdapter:
         if not isinstance(score, (int, float)):
             return None
         return float(score)
+
+
+def with_retry(
+    factory: Callable[[], Iterator[StreamEvent]],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+    retry_on: tuple[type[BaseException], ...] = (Exception,),
+) -> Iterator[StreamEvent]:
+    """Wrap a stream-factory with retry-on-early-failure.
+
+    `factory` returns a fresh event iterator each call (e.g.
+    `lambda: provider.stream(request)`). If the iterator raises BEFORE any
+    event has been yielded downstream, sleep with exponential backoff and
+    re-invoke the factory. Once a single event has been yielded downstream,
+    mid-stream errors propagate unchanged — retrying would duplicate the
+    prefix the consumer already saw.
+
+    Backoff: base_delay * 2**attempt, capped at max_delay.
+
+    This is a *source* wrapper, not a middleware. Usage:
+
+        events = chain(
+            with_retry(lambda: provider.stream(request), max_retries=3),
+            CostLimit(4096),
+            ...
+        )
+
+    `retry_on` narrows which exceptions are retried. Defaults to all
+    Exception subclasses; pass (RuntimeError,) for provider-wrapped errors,
+    or (urllib.error.HTTPError,) for strict network-only retry.
+    """
+    if max_retries < 0:
+        raise ValueError("max_retries must be non-negative")
+    if base_delay < 0 or max_delay < 0:
+        raise ValueError("delay values must be non-negative")
+
+    attempt = 0
+    while True:
+        yielded_anything = False
+        try:
+            for ev in factory():
+                yielded_anything = True
+                yield ev
+            return
+        except retry_on as e:
+            if yielded_anything or attempt >= max_retries:
+                raise
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            if delay > 0:
+                time.sleep(delay)
+            attempt += 1
 
 
 def _close_quietly(iterator: Iterator[StreamEvent]) -> None:

@@ -18,6 +18,7 @@ from adaptive.middleware import (
     TruthMonitor,
     Tee,
     TruthDetectorAdapter,
+    with_retry,
 )
 from adaptive.schema import StreamEvent, TokenUsage, ToolCall
 
@@ -403,6 +404,106 @@ def test_truth_detector_adapter_composes_with_truth_monitor(monkeypatch):
     halts = [e for e in events if e.type == "halt"]
     assert len(halts) == 1
     assert halts[0].stop_reason == "mode_two_drift"
+
+
+## ── with_retry ──────────────────────────────────────────────────────────────
+
+
+def test_with_retry_succeeds_on_first_try():
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        yield StreamEvent(type="text", text="ok")
+        yield StreamEvent(type="done", stop_reason="end_turn")
+
+    events = list(with_retry(factory, max_retries=3, base_delay=0))
+    assert [e.type for e in events] == ["text", "done"]
+    assert calls["n"] == 1
+
+
+def test_with_retry_retries_on_pre_first_event_failure():
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("transient")
+        yield StreamEvent(type="text", text="recovered")
+        yield StreamEvent(type="done", stop_reason="end_turn")
+
+    events = list(with_retry(factory, max_retries=3, base_delay=0))
+    assert calls["n"] == 3  # Two failures, then success
+    assert events[0].text == "recovered"
+
+
+def test_with_retry_propagates_mid_stream_error():
+    """Once any event is yielded, mid-stream errors cannot be retried
+    (that would duplicate the prefix the consumer already saw)."""
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        yield StreamEvent(type="text", text="partial")
+        raise RuntimeError("mid-stream boom")
+
+    with pytest.raises(RuntimeError, match="mid-stream"):
+        list(with_retry(factory, max_retries=3, base_delay=0))
+    assert calls["n"] == 1  # No retry
+
+
+def test_with_retry_gives_up_after_max_retries():
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        raise RuntimeError("always fails")
+        yield  # pragma: no cover — unreachable, makes it a generator
+
+    with pytest.raises(RuntimeError, match="always fails"):
+        list(with_retry(factory, max_retries=2, base_delay=0))
+    assert calls["n"] == 3  # 1 initial + 2 retries
+
+
+def test_with_retry_respects_retry_on_tuple():
+    """Only retry exceptions in retry_on; others propagate immediately."""
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        raise ValueError("not retried")
+        yield  # pragma: no cover
+
+    # ValueError not in retry_on → propagates immediately
+    with pytest.raises(ValueError):
+        list(with_retry(factory, max_retries=3, base_delay=0,
+                        retry_on=(RuntimeError,)))
+    assert calls["n"] == 1
+
+
+def test_with_retry_composes_with_middlewares():
+    """The retried source flows through a normal middleware chain."""
+    calls = {"n": 0}
+    def factory():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise RuntimeError("once")
+        yield StreamEvent(type="text", text="ok")
+        yield StreamEvent(type="done",
+                          usage=TokenUsage(input_tokens=1, output_tokens=1),
+                          stop_reason="end_turn")
+
+    events = list(chain(
+        with_retry(factory, max_retries=2, base_delay=0),
+        CostLimit(max_output_tokens=100),
+    ))
+    assert [e.type for e in events] == ["text", "done"]
+    assert calls["n"] == 2
+
+
+def test_with_retry_rejects_invalid_params():
+    def factory():
+        yield StreamEvent(type="done")
+
+    with pytest.raises(ValueError):
+        list(with_retry(factory, max_retries=-1))
+    with pytest.raises(ValueError):
+        list(with_retry(factory, base_delay=-1.0))
 
 
 def test_cost_limit_plus_logger_compose(tmp_path):

@@ -59,6 +59,12 @@ try:
 except Exception:
     _ache = None
 
+# RESIDENCE / IDENTITY integration
+try:
+    import residence as _residence
+except Exception:
+    _residence = None
+
 _DAILY_DIR_FOR_FEELING = Path(__file__).resolve().parent.parent / "memory" / "daily"
 
 def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, scene: str):
@@ -376,6 +382,25 @@ def cmd_feel(affect: str, about: str = None, instance=None,
         _feeling.update_pattern_library(fp, affect, now_iso)
 
     _append_feeling_to_daily_note(affect, target, rationale, scene)
+
+    # RESIDENCE / IDENTITY integration — naming an arrival is an identity act.
+    # Auto-emit a `name` moment so the residence log reflects every naming
+    # without requiring manual duplication. Failure here must not break feel.
+    if _residence is not None:
+        try:
+            content = f"named '{affect}' — arrival {target['id']}"
+            if rationale:
+                content += f" · {rationale[:120]}"
+            moment = _residence.make_moment(
+                kind="name",
+                content=content,
+                instance=instance,
+                evidence={"type": "arrival", "ref": target["id"]},
+            )
+            _residence.append_moment(moment)
+        except Exception as e:
+            # Silent — residence is instrumentation, not control flow.
+            pass
 
     print(f"  {_D}named: {affect} (arrival {target['id']}){_N}")
     if surprise:

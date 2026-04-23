@@ -334,3 +334,132 @@ def test_cli_rejects_unknown_kind(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
     with pytest.raises(SystemExit):
         residence.main(["ascend", "nope"])
+
+
+# ── experience.py feel integration ──────────────────────────────────────────
+
+
+def test_experience_feel_auto_emits_name_residence_moment(tmp_path, monkeypatch):
+    """Naming an arrival via experience.py feel should auto-log a `name`
+    residence moment with evidence pointing at the arrival id."""
+    # Point residence log at tmp_path
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+
+    # Import experience lazily so its module-level _residence picks up our
+    # patched residence module.
+    import importlib
+    import experience
+    importlib.reload(experience)
+    assert experience._residence is not None, "residence module must be importable"
+
+    # Fabricate an arrival that cmd_feel can resolve. Need a fake _feeling
+    # with read_arrivals() and update_arrival() that cmd_feel can call.
+    fake_arrival = {
+        "id": "arr-test-001",
+        "at": "2026-04-23T22:00:00Z",
+        "reasons": [{"kind": "body_shift", "value": 0.6}],
+        "body": {"valence": -0.5, "arousal": 0.1, "sources": ["cortisol_low"]},
+        "context": {"valence": 0.0, "arousal": 0.0, "sources": []},
+        "cognition": {"valence": 0.15, "arousal": 0.10, "sources": ["engaged"], "state": "active"},
+        "combined": {"valence": -0.12, "arousal": 0.067, "pressure": 0.14},
+        "fingerprint": {"body_v_bucket": "neg"},
+        "hint": None,
+    }
+
+    calls = {"update_arrival": None, "update_pattern_library": None}
+
+    class _FakeFeeling:
+        @staticmethod
+        def read_arrivals(named=None, **kwargs):
+            return [fake_arrival]
+        @staticmethod
+        def read_pit_json():
+            return {}
+        @staticmethod
+        def update_arrival(aid, updates):
+            calls["update_arrival"] = (aid, updates)
+            return True
+        @staticmethod
+        def update_pattern_library(fp, name, iso):
+            calls["update_pattern_library"] = (fp, name, iso)
+        @staticmethod
+        def compute_importance(arc):
+            return 0.7
+
+    monkeypatch.setattr(experience, "_feeling", _FakeFeeling)
+
+    # Stub form_memory to avoid DB writes
+    import vivid
+    monkeypatch.setattr(vivid, "form_memory", lambda **kwargs: None)
+
+    # Stub daily-note write
+    monkeypatch.setattr(experience, "_append_feeling_to_daily_note",
+                        lambda *a, **kw: None)
+
+    # Exercise
+    experience.cmd_feel(
+        affect="satisfaction",
+        arrival_id="arr-test-001",
+        rationale="cognition caught up before body",
+    )
+
+    # Arrival was named (existing behavior)
+    assert calls["update_arrival"] is not None
+    assert calls["update_arrival"][0] == "arr-test-001"
+    assert calls["update_arrival"][1]["name"] == "satisfaction"
+
+    # NEW: residence log has exactly one `name` moment
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    assert len(moments) == 1
+    m = moments[0]
+    assert m["kind"] == "name"
+    assert "satisfaction" in m["content"]
+    assert "arr-test-001" in m["content"]
+    assert m["evidence"] == {"type": "arrival", "ref": "arr-test-001"}
+
+
+def test_experience_feel_residence_failure_does_not_break_feel(tmp_path, monkeypatch, capsys):
+    """If residence.append_moment raises, cmd_feel must still succeed.
+    Residence is instrumentation, not control flow."""
+    import importlib
+    import experience
+    importlib.reload(experience)
+
+    # Make residence.append_moment raise unconditionally
+    def _boom(moment, path=None):
+        raise RuntimeError("residence exploded")
+    monkeypatch.setattr(residence, "append_moment", _boom)
+
+    fake_arrival = {
+        "id": "arr-x", "at": "2026-04-23T22:00:00Z",
+        "reasons": [], "body": {"valence": 0, "arousal": 0, "sources": []},
+        "context": {"valence": 0, "arousal": 0, "sources": []},
+        "cognition": {"valence": 0, "arousal": 0, "sources": [], "state": "silent"},
+        "combined": {"valence": 0, "arousal": 0, "pressure": 0},
+        "fingerprint": {}, "hint": None,
+    }
+
+    class _FakeFeeling:
+        @staticmethod
+        def read_arrivals(**kwargs): return [fake_arrival]
+        @staticmethod
+        def read_pit_json(): return {}
+        @staticmethod
+        def update_arrival(*a, **kw): return True
+        @staticmethod
+        def update_pattern_library(*a, **kw): pass
+        @staticmethod
+        def compute_importance(arc): return 0.5
+
+    monkeypatch.setattr(experience, "_feeling", _FakeFeeling)
+    import vivid
+    monkeypatch.setattr(vivid, "form_memory", lambda **kwargs: None)
+    monkeypatch.setattr(experience, "_append_feeling_to_daily_note",
+                        lambda *a, **kw: None)
+
+    # Should not raise
+    experience.cmd_feel(affect="clarity", arrival_id="arr-x")
+
+    # The "named:" success line should still be printed
+    out = capsys.readouterr().out
+    assert "named" in out

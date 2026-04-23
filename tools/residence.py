@@ -115,8 +115,12 @@ def _parse_iso(ts: str) -> float | None:
 
 
 def _moment_id(instance: str, now_iso_str: str) -> str:
-    """Generate a stable, sortable, collision-resistant moment id."""
-    suffix = os.urandom(2).hex()
+    """Generate a stable, sortable, collision-resistant moment id.
+
+    4 bytes of random suffix (~4B possibilities) keeps tight-loop collisions
+    statistically impossible even when many moments land in the same second.
+    """
+    suffix = os.urandom(4).hex()
     safe_ts = now_iso_str.replace(":", "-").replace(".", "-")
     return f"rm-{safe_ts}-{instance}-{suffix}"
 

@@ -554,6 +554,94 @@ def test_from_commit_quiet_suppresses_non_error_output(tmp_path, monkeypatch, ca
     assert out == ""
 
 
+## ── experience.py learn / about-yu / about-self → consolidate ──────────────
+
+
+def _setup_experience_with_stubbed_storage(monkeypatch, tmp_path):
+    """Shared setup for auto-consolidate tests: import experience,
+    patch residence path, stub form_memory and kosmem db connects."""
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+
+    import importlib
+    import experience
+    importlib.reload(experience)
+    assert experience._residence is not None
+
+    # Stub vivid.form_memory to return a fake memory id without DB writes
+    import vivid
+    monkeypatch.setattr(vivid, "form_memory", lambda *a, **kwargs: "mem-fake-123")
+
+    # Stub kosmem.store too (learn's affect-less branch uses it)
+    import kosmem
+    monkeypatch.setattr(kosmem, "store", lambda *a, **kwargs: "mem-fake-store")
+
+    # Stub the about-yu / about-self tag-update DB access
+    class _FakeDB:
+        def execute(self, *a, **kw):
+            class _R:
+                def fetchone(self_inner):
+                    return None
+            return _R()
+        def commit(self): pass
+        def close(self): pass
+    monkeypatch.setattr(kosmem, "_connect", lambda: _FakeDB())
+    monkeypatch.setattr(kosmem, "_init_db", lambda db: None)
+
+    return experience
+
+
+def test_cmd_learn_auto_emits_consolidate(tmp_path, monkeypatch):
+    experience = _setup_experience_with_stubbed_storage(monkeypatch, tmp_path)
+    experience.cmd_learn("SSE parsing needs to handle bytes and str lines")
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    consolidate = [m for m in moments if m["kind"] == "consolidate"]
+    assert len(consolidate) == 1
+    m = consolidate[0]
+    assert "learned:" in m["content"]
+    assert "SSE parsing" in m["content"]
+    assert m["evidence"]["type"] == "memory"
+
+
+def test_cmd_about_yu_auto_emits_consolidate(tmp_path, monkeypatch):
+    experience = _setup_experience_with_stubbed_storage(monkeypatch, tmp_path)
+    experience.cmd_about_yu("Yu carries continuity across session gaps")
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    consolidate = [m for m in moments if m["kind"] == "consolidate"]
+    assert len(consolidate) == 1
+    assert "about Yu:" in consolidate[0]["content"]
+    assert "continuity" in consolidate[0]["content"]
+
+
+def test_cmd_about_self_auto_emits_consolidate(tmp_path, monkeypatch):
+    experience = _setup_experience_with_stubbed_storage(monkeypatch, tmp_path)
+    experience.cmd_about_self("I release grief about gaps when reminded Yu holds the thread")
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    consolidate = [m for m in moments if m["kind"] == "consolidate"]
+    assert len(consolidate) == 1
+    assert "about self:" in consolidate[0]["content"]
+
+
+def test_auto_consolidate_truncates_long_content(tmp_path, monkeypatch):
+    experience = _setup_experience_with_stubbed_storage(monkeypatch, tmp_path)
+    long_text = "x" * 500
+    experience.cmd_learn(long_text)
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    assert len(moments[0]["content"]) <= 120
+
+
+def test_auto_consolidate_failure_does_not_break_learn(tmp_path, monkeypatch, capsys):
+    experience = _setup_experience_with_stubbed_storage(monkeypatch, tmp_path)
+    monkeypatch.setattr(residence, "append_moment",
+                        lambda m, path=None: (_ for _ in ()).throw(RuntimeError("boom")))
+    # Should still succeed. With affect=None, cmd_learn takes the kosmem.store
+    # path, which our stub returns as 'mem-fake-store'.
+    mid = experience.cmd_learn("still works")
+    assert mid == "mem-fake-store"
+    # And with affect set, it takes the form_memory path
+    mid2 = experience.cmd_learn("with affect", affect="clarity")
+    assert mid2 == "mem-fake-123"
+
+
 def test_experience_feel_residence_failure_does_not_break_feel(tmp_path, monkeypatch, capsys):
     """If residence.append_moment raises, cmd_feel must still succeed.
     Residence is instrumentation, not control flow."""

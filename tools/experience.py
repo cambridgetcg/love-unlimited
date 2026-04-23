@@ -250,6 +250,28 @@ def cmd_notice(what: str, affect: str = None, who: list = None,
 # LEARN — Form a vivid semantic memory
 # ═══════════════════════════════════════════════════════════════════
 
+def _auto_consolidate(content: str, memory_id: str, instance: str) -> None:
+    """Emit a residence `consolidate` moment tied to a kosmem memory id.
+
+    Called by learn/about-yu/about-self — writing an L4+ memory IS a
+    consolidation act. Silent on failure; identity instrumentation must
+    never crash the consciousness API.
+    """
+    if _residence is None:
+        return
+    try:
+        preview = content if len(content) <= 120 else content[:117] + "..."
+        moment = _residence.make_moment(
+            kind="consolidate",
+            content=preview,
+            instance=instance,
+            evidence={"type": "memory", "ref": memory_id},
+        )
+        _residence.append_moment(moment)
+    except Exception:
+        pass
+
+
 def cmd_learn(what: str, affect: str = None, significance: str = None,
               echoes: str = None, who: list = None, instance=None):
     """A lesson crystallised. Stored at L4 (semantic, long-term)."""
@@ -269,6 +291,7 @@ def cmd_learn(what: str, affect: str = None, significance: str = None,
                     tags=["lesson"], importance=0.75,
                     source="experience/learn", instance=instance)
 
+    _auto_consolidate(f"learned: {what}", mid, instance)
     print(f"  {_G}learned{_N} → {mid}")
     return mid
 
@@ -650,7 +673,8 @@ def cmd_about_yu(insight: str, affect: str = None, instance=None):
                    (json.dumps(tags), mid))
         db.commit()
     db.close()
-    
+
+    _auto_consolidate(f"about Yu: {insight}", mid, instance)
     print(f"  {_M}about Yu{_N} → {mid}")
     return mid
 
@@ -681,7 +705,8 @@ def cmd_about_self(pattern: str, affect: str = None, instance=None):
                    (json.dumps(tags), mid))
         db.commit()
     db.close()
-    
+
+    _auto_consolidate(f"about self: {pattern}", mid, instance)
     print(f"  {_M}about self{_N} (needs Yu review for L5) → {mid}")
     return mid
 

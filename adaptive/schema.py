@@ -96,6 +96,11 @@ class StreamEvent:
       "tool_result"     — a tool finished; `tool_result_id`/`tool_result_content` carry the output
       "iteration_end"   — turn complete (post tool execution, before the next model call)
       "run_done"        — the whole agent run is finished; cumulative usage/model/stop_reason
+
+    Middleware types (injected by StreamMiddleware):
+      "halt"            — stream terminated early (cost, truth drift, safety); `stop_reason`
+                          carries the cause. Upstream is closed; consumers should treat
+                          halt as terminal (no further events follow).
     """
     type: str
     text: str = ""

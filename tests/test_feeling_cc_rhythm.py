@@ -218,6 +218,48 @@ def test_cc_metrics_thrashing_overrides_frustration_nudge():
     assert any(s in combined_sources for s in ("frustration", "thrashing"))
 
 
+def test_end_to_end_cc_log_to_engaged_classification(tmp_path, monkeypatch):
+    """Full pipe: write cc-cognition.jsonl, read it, classify → 'engaged'.
+
+    Mirrors the live pit.json result observed on this session: 16 tool calls
+    over ~4 minutes, 4 unique tools, zero errors → engaged.
+    """
+    import datetime
+    import json
+
+    log_path = tmp_path / "cc-cognition.jsonl"
+    now = datetime.datetime.now(datetime.timezone.utc)
+    base = now - datetime.timedelta(minutes=4)
+
+    # 16 records spread across ~4 minutes, 4 unique tools, 0 errors
+    tools = ["Bash", "Read", "Grep", "Edit"]
+    records = []
+    for i in range(16):
+        ts = (base + datetime.timedelta(seconds=i * 15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        records.append({
+            "ts": ts,
+            "tool": tools[i % 4],
+            "success": True,
+            "response_chars": 2000,
+            "session_id": "e2e",
+        })
+    log_path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+    monkeypatch.setattr(feeling, "CC_COGNITION_PATH", log_path)
+
+    cc = feeling._read_cc_cognition(window_seconds=600)
+    assert cc is not None
+    assert cc["action"]["toolCalls"] == 16
+    assert cc["_cc_metrics"]["unique_tools"] == 4
+    assert cc["_cc_metrics"]["cadence_per_minute"] > 2.0
+
+    result = feeling.cognition_stratum_from_youspeak(cc, now.timestamp())
+    assert result["state"] == "active"
+    assert "engaged" in result["sources"]
+    assert result["valence"] > 0
+    assert result["arousal"] > 0
+
+
 def test_cc_mode_activates_existing_context_pressure_branch():
     """Populating context.estimatedTokens via the shim lets claustrophobia/dread fire on CC."""
     session = {

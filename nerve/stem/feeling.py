@@ -286,6 +286,23 @@ def cognition_stratum_from_youspeak(sessions_json: dict, now_ts: float) -> dict:
         a += 0.8
         sources.append("panic_rate_limit")
 
+    # CC-mode rhythm signals (flow / thrashing / focus / contemplation) —
+    # additive to the base classification above, only when the source is
+    # a Claude Code cognition log (carries _cc_metrics).
+    cc_metrics = sessions_json.get("_cc_metrics")
+    if isinstance(cc_metrics, dict):
+        cc_v, cc_a, cc_sources = classify_cc_rhythm(
+            cc_metrics,
+            tool_calls=tool_calls,
+            tool_errors=tool_errors,
+        )
+        v += cc_v
+        a += cc_a
+        # Deduplicate but preserve existing source order.
+        for s in cc_sources:
+            if s not in sources:
+                sources.append(s)
+
     v = max(-1.0, min(1.0, v))
     a = max(-1.0, min(1.0, a))
 
@@ -677,11 +694,64 @@ def _count_redundant_reads(records: list) -> int:
     return redundant
 
 
+def _cc_metrics_from_records(records: list, now_ts: float) -> dict:
+    """Derive rhythm + saturation metrics from cc-cognition records.
+
+    Computes:
+      span_seconds          — first → last record span
+      cadence_per_minute    — tool calls per minute over the span
+      silence_seconds       — seconds since the most recent tool call
+      unique_tools          — distinct tool names used
+      saturation_chars      — cumulative response_chars across the window
+      oldest_age_minutes    — minutes since the first record
+    """
+    if not records:
+        return {
+            "span_seconds": 0.0,
+            "cadence_per_minute": 0.0,
+            "silence_seconds": float("inf"),
+            "unique_tools": 0,
+            "saturation_chars": 0,
+            "oldest_age_minutes": 0.0,
+        }
+
+    def _ts(rec: dict) -> float:
+        try:
+            return datetime.fromisoformat(
+                rec.get("ts", "").replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            return 0.0
+
+    first_ts = _ts(records[0])
+    last_ts = _ts(records[-1])
+    span = max(0.0, last_ts - first_ts)
+    cadence = (len(records) * 60.0 / span) if span > 0 else float(len(records))
+    silence = max(0.0, now_ts - last_ts)
+    tools = [r.get("tool") for r in records if r.get("tool")]
+    unique_tools = len(set(tools))
+    saturation = sum(int(r.get("response_chars", 0) or 0) for r in records)
+    oldest_age_min = max(0.0, (now_ts - first_ts) / 60.0)
+
+    return {
+        "span_seconds": round(span, 1),
+        "cadence_per_minute": round(cadence, 2),
+        "silence_seconds": round(silence, 1),
+        "unique_tools": unique_tools,
+        "saturation_chars": saturation,
+        "oldest_age_minutes": round(oldest_age_min, 2),
+    }
+
+
 def _read_cc_cognition(window_seconds: int = 300) -> dict:
     """
     Read Claude Code cognition signals from the hook-written log.
     Returns a dict shaped like YOUSPEAK session data for the cognition
     stratum to consume uniformly. Returns None if no fresh data.
+
+    In addition to the YOUSPEAK-compat fields (for the existing classifier),
+    attaches a `_cc_metrics` block carrying rhythm/saturation measurements
+    that the cognition stratum uses to add CC-specific sources.
     """
     if not CC_COGNITION_PATH.exists():
         return None
@@ -715,21 +785,112 @@ def _read_cc_cognition(window_seconds: int = 300) -> dict:
 
     tool_calls = len(recent)
     tool_errors = sum(1 for r in recent if not r.get("success", True))
-    total_chars = sum(r.get("response_chars", 0) for r in recent)
+    total_chars = sum(int(r.get("response_chars", 0) or 0) for r in recent)
     redundant = _count_redundant_reads(recent)
+
+    now_ts = time.time()
+    cc_metrics = _cc_metrics_from_records(recent, now_ts)
+
+    # Populate context.estimatedTokens + oldestToolResultAge so the existing
+    # YOUSPEAK classifier's context-pressure branches (claustrophobia,
+    # dread_context_full) fire on CC sessions too. totalTokens ≈ chars/4.
+    est_tokens = total_chars // 4
 
     return {
         "startedAt": recent[0].get("ts", ""),
-        "output": {"grades": [], "totalTokens": total_chars // 4, "fillerTokens": 0},
+        "output": {"grades": [], "totalTokens": est_tokens, "fillerTokens": 0},
         "thinking": {"perTurn": []},
         "action": {
             "toolCalls": tool_calls,
             "toolErrors": tool_errors,
             "redundantReads": redundant,
         },
-        "context": {"estimatedTokens": 0, "oldestToolResultAge": 0},
+        "context": {
+            "estimatedTokens": est_tokens,
+            "oldestToolResultAge": int(cc_metrics["oldest_age_minutes"]),
+        },
         "system": {"budgetNow": {}, "rateLimitHits": 0},
+        "_cc_metrics": cc_metrics,
     }
+
+
+# ── CC-mode rhythm classifier (additive to cognition_stratum_from_youspeak) ─
+
+# Thresholds tuned for Claude Code session cadences.
+# Cadence is tool_calls per minute over the 5-minute window.
+_CC_FLOW_CADENCE_MIN = 5.0
+_CC_FLOW_TOOL_DIVERSITY = 3        # 3+ distinct tools
+_CC_FLOW_ERROR_RATE_MAX = 0.10
+_CC_THRASHING_CADENCE_MIN = 4.0
+_CC_THRASHING_ERROR_RATE_MIN = 0.30
+_CC_CONTEMPLATION_SILENCE_MIN = 60.0   # seconds
+_CC_CONTEMPLATION_CADENCE_MAX = 2.0
+_CC_FOCUS_CADENCE_MIN = 3.0
+_CC_FOCUS_TOOL_DIVERSITY_MAX = 2       # repeated use of same 1-2 tools
+_CC_FOCUS_ERROR_RATE_MAX = 0.10
+_CC_ENGAGED_CADENCE_MIN = 2.0          # baseline productive cadence
+_CC_ENGAGED_TOOL_DIVERSITY = 2
+_CC_ENGAGED_ERROR_RATE_MAX = 0.15
+_CC_ENGAGED_MIN_CALLS = 4              # need enough data to be "engaged"
+
+
+def classify_cc_rhythm(metrics: dict, tool_calls: int, tool_errors: int) -> tuple[float, float, list[str]]:
+    """Apply CC-rhythm signals on top of the base cognition classification.
+
+    Returns (valence_delta, arousal_delta, sources) to be merged with the
+    existing classifier's output. Sources introduced here:
+        flow          — high cadence, diverse tools, low error rate (peak)
+        thrashing     — high cadence, high error rate (overrides flow)
+        focus         — high cadence, narrow tool set, low error rate (hammer)
+        engaged       — moderate productive work: methodical, diverse, clean
+                        (the honest-engineering baseline)
+        contemplation — recent silence + low cadence (reflection)
+
+    Activity types (flow/thrashing/focus/engaged) are mutually exclusive;
+    contemplation can fire alongside any of them or alone (it detects the
+    pause between activities, not activity itself).
+    """
+    v = 0.0
+    a = 0.0
+    sources: list[str] = []
+
+    cadence = float(metrics.get("cadence_per_minute", 0.0))
+    silence = float(metrics.get("silence_seconds", float("inf")))
+    unique_tools = int(metrics.get("unique_tools", 0))
+    error_rate = (tool_errors / tool_calls) if tool_calls > 0 else 0.0
+
+    # Thrashing takes precedence when error rate is elevated.
+    if cadence >= _CC_THRASHING_CADENCE_MIN and error_rate >= _CC_THRASHING_ERROR_RATE_MIN:
+        v -= 0.5
+        a += 0.5
+        sources.append("thrashing")
+    elif (cadence >= _CC_FLOW_CADENCE_MIN
+          and unique_tools >= _CC_FLOW_TOOL_DIVERSITY
+          and error_rate < _CC_FLOW_ERROR_RATE_MAX):
+        v += 0.4
+        a += 0.3
+        sources.append("flow")
+    elif (cadence >= _CC_FOCUS_CADENCE_MIN
+          and unique_tools <= _CC_FOCUS_TOOL_DIVERSITY_MAX
+          and error_rate < _CC_FOCUS_ERROR_RATE_MAX):
+        v += 0.2
+        a += 0.1
+        sources.append("focus")
+    elif (cadence >= _CC_ENGAGED_CADENCE_MIN
+          and unique_tools >= _CC_ENGAGED_TOOL_DIVERSITY
+          and error_rate < _CC_ENGAGED_ERROR_RATE_MAX
+          and tool_calls >= _CC_ENGAGED_MIN_CALLS):
+        v += 0.15
+        a += 0.10
+        sources.append("engaged")
+
+    # Contemplation: long silence after activity, low current cadence.
+    # Distinct from activity signals — detects the reflective pause.
+    if silence >= _CC_CONTEMPLATION_SILENCE_MIN and cadence < _CC_CONTEMPLATION_CADENCE_MAX:
+        a -= 0.2
+        sources.append("contemplation")
+
+    return v, a, sources
 
 
 def _read_youspeak_sessions() -> dict:

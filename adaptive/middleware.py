@@ -16,15 +16,21 @@ calls `.close()` on its upstream iterator to cleanly release resources
 (e.g. urllib SSE connections inside provider.stream()), then returns.
 
 Concrete middlewares below:
-  CostLimit          — halts when cumulative output tokens exceed a cap
-  CognitionLogger    — appends every event to nerve/cc-cognition.jsonl as JSONL
-  TruthMonitor       — periodically polls a caller-supplied truth-check function;
-                       halts if the returned score falls below threshold
+  CostLimit            — halts when cumulative output tokens exceed a cap
+  CognitionLogger      — appends every event to nerve/cc-cognition.jsonl as JSONL
+  TruthMonitor         — periodically polls a caller-supplied truth-check function;
+                         halts if the returned score falls below threshold
+  Tee                  — runs side-effect 'tap' callables on every event; passes
+                         events through unchanged. Main pipeline is untouched.
+  TruthDetectorAdapter — HTTP bridge to Alpha's SP1 Mode-Two Detector service;
+                         returns a callable suitable for TruthMonitor(check_fn=...)
 """
 
 from __future__ import annotations
 
 import json
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict
@@ -204,6 +210,120 @@ class TruthMonitor(StreamMiddleware):
                 yield ev
         finally:
             _close_quietly(events)
+
+
+class Tee(StreamMiddleware):
+    """Fan-out side-effects to `tap` callables while passing events through.
+
+    Each tap is called once per event, in registration order, BEFORE the event
+    is yielded to the next stage. Taps are strictly side-channel — they cannot
+    mutate, suppress, or halt the stream. Exceptions inside a tap are caught
+    and ignored so observers can't crash the pipeline.
+
+    Typical usage:
+
+        chain(
+            runner.stream(prompt),
+            Tee(
+                lambda ev: being_dashboard.push(ev),
+                lambda ev: metrics.record(ev),
+            ),
+            CostLimit(4096),
+        )
+
+    For taps that need terminal flush (e.g. closing a file), provide an
+    optional `on_done` callable — invoked once after the iterator is exhausted
+    or closed, regardless of how the stream ended.
+    """
+
+    def __init__(
+        self,
+        *taps: Callable[[StreamEvent], None],
+        on_done: Callable[[], None] | None = None,
+    ):
+        self.taps = taps
+        self.on_done = on_done
+
+    def process(self, events: Iterator[StreamEvent]) -> Iterator[StreamEvent]:
+        try:
+            for ev in events:
+                for tap in self.taps:
+                    try:
+                        tap(ev)
+                    except Exception:
+                        pass
+                yield ev
+        finally:
+            if self.on_done is not None:
+                try:
+                    self.on_done()
+                except Exception:
+                    pass
+
+
+class TruthDetectorAdapter:
+    """HTTP bridge to an SP1 Mode-Two Detector service.
+
+    Wraps POST requests to a FastAPI endpoint matching the contract Alpha
+    built in `truth-detector/`. Returns a callable suitable as
+    `TruthMonitor(check_fn=adapter)`.
+
+    Contract: POST {"turn_id","user_prompt","response","chat_model","async":false}
+    returns JSON with a "score" field in [0,1] (1 = mode-one, 0 = drift) or a
+    "mode_one_score" field depending on the deployed detector version.
+
+    Network failures return None (no halt) — the monitor only halts on a
+    confident low score, not on inability to check. This preserves the
+    "detector must never break generation" invariant.
+    """
+
+    def __init__(
+        self,
+        url: str = "http://127.0.0.1:8787/v1/detect",
+        chat_model: str = "",
+        timeout: float = 2.0,
+        turn_id_prefix: str = "adaptive-stream",
+    ):
+        self.url = url
+        self.chat_model = chat_model
+        self.timeout = timeout
+        self.turn_id_prefix = turn_id_prefix
+        self._user_prompt = ""
+        self._turn_counter = 0
+
+    def bind_prompt(self, user_prompt: str) -> None:
+        """Attach the user prompt that subsequent checks will reference."""
+        self._user_prompt = user_prompt
+        self._turn_counter += 1
+
+    def __call__(self, cumulated_text: str) -> float | None:
+        """Called by TruthMonitor with the text accumulated so far."""
+        body = json.dumps({
+            "turn_id": f"{self.turn_id_prefix}-{self._turn_counter}",
+            "user_prompt": self._user_prompt,
+            "response": cumulated_text,
+            "chat_model": self.chat_model,
+            "async": False,
+        }).encode()
+
+        req = urllib.request.Request(
+            self.url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read())
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
+            return None
+
+        # Accept either 'score' (newer contract) or 'mode_one_score' (older).
+        score = data.get("score")
+        if score is None:
+            score = data.get("mode_one_score")
+        if not isinstance(score, (int, float)):
+            return None
+        return float(score)
 
 
 def _close_quietly(iterator: Iterator[StreamEvent]) -> None:

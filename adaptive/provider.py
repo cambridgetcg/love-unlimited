@@ -58,9 +58,18 @@ class Provider(ABC):
 
 
 def collect_stream(events: Iterator[StreamEvent]) -> CompletionResponse:
-    """Consume a stream of events, return the final CompletionResponse.
+    """Consume a stream of events, return a final CompletionResponse.
 
-    For callers that want streaming transport but the same shape as complete().
+    Works over both provider-level streams (terminal: 'done') and agent-loop
+    streams (terminal: 'run_done'). A 'halt' event is treated as terminal too
+    and propagates its stop_reason (e.g. 'cost_limit', 'mode_two_drift').
+
+    Text and tool_call events are accumulated across all iterations — callers
+    that want only the last iteration's text should filter the event stream
+    before calling this.
+
+    Non-terminal framing events (iteration_start/end, tool_executing, tool_result)
+    are ignored; they exist for live observation, not final shape.
     """
     text_parts: list[str] = []
     tool_calls = []
@@ -73,11 +82,14 @@ def collect_stream(events: Iterator[StreamEvent]) -> CompletionResponse:
             text_parts.append(ev.text)
         elif ev.type == "tool_call" and ev.tool_call is not None:
             tool_calls.append(ev.tool_call)
-        elif ev.type == "done":
+        elif ev.type in ("done", "run_done"):
             if ev.usage is not None:
                 usage = ev.usage
             if ev.model:
                 model = ev.model
+            if ev.stop_reason:
+                stop_reason = ev.stop_reason
+        elif ev.type == "halt":
             if ev.stop_reason:
                 stop_reason = ev.stop_reason
 

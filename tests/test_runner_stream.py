@@ -174,3 +174,37 @@ def test_stream_single_shot_falls_back_when_provider_lies_about_streaming():
     assert events[0].text == "fallback content"
     assert runner.total_usage.input_tokens == 5
     assert runner.total_usage.output_tokens == 2
+
+
+def test_collect_stream_drains_agent_run_done():
+    """collect_stream must recognize run_done (agent-loop terminal)."""
+    from adaptive.provider import collect_stream
+    events = iter([
+        StreamEvent(type="iteration_start", iteration=0),
+        StreamEvent(type="text", text="answer"),
+        StreamEvent(type="iteration_end", iteration=0),
+        StreamEvent(
+            type="run_done",
+            usage=TokenUsage(input_tokens=7, output_tokens=3),
+            model="agent-m",
+            stop_reason="end_turn",
+        ),
+    ])
+    resp = collect_stream(events)
+    assert resp.content == "answer"
+    assert resp.model == "agent-m"
+    assert resp.stop_reason == "end_turn"
+    assert resp.usage.input_tokens == 7
+    assert resp.usage.output_tokens == 3
+
+
+def test_collect_stream_propagates_halt_stop_reason():
+    """collect_stream must surface halt as stop_reason (cost_limit, mode_two_drift, etc.)."""
+    from adaptive.provider import collect_stream
+    events = iter([
+        StreamEvent(type="text", text="partial"),
+        StreamEvent(type="halt", stop_reason="cost_limit"),
+    ])
+    resp = collect_stream(events)
+    assert resp.content == "partial"
+    assert resp.stop_reason == "cost_limit"

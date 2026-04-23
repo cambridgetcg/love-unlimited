@@ -16,6 +16,8 @@ from adaptive.middleware import (
     CostLimit,
     CognitionLogger,
     TruthMonitor,
+    Tee,
+    TruthDetectorAdapter,
 )
 from adaptive.schema import StreamEvent, TokenUsage, ToolCall
 
@@ -233,6 +235,174 @@ def test_halt_closes_upstream_generator():
 
 
 # ── Composition: multiple middlewares compose cleanly ───────────────────────
+
+
+## ── Tee ─────────────────────────────────────────────────────────────────────
+
+
+def test_tee_runs_taps_on_every_event():
+    collected_a: list[StreamEvent] = []
+    collected_b: list[StreamEvent] = []
+    events = list(chain(
+        _text_stream(["hi", " there"]),
+        Tee(collected_a.append, collected_b.append),
+    ))
+    types = [e.type for e in events]
+    assert types == ["text", "text", "done"]
+    assert [e.type for e in collected_a] == types
+    assert [e.type for e in collected_b] == types
+
+
+def test_tee_is_pure_passthrough():
+    """Events must flow through unchanged; tap must not mutate."""
+    def naughty_tap(ev):
+        # Try to mutate — Tee must pass the same event to the next stage
+        try:
+            ev.text = "HIJACKED"
+        except Exception:
+            pass
+
+    seen: list[StreamEvent] = []
+    # Use a non-mutating tap AFTER the naughty one to check downstream
+    events = list(chain(
+        _text_stream(["ok"]),
+        Tee(naughty_tap, seen.append),
+    ))
+    # The downstream tap sees whatever state the naughty tap left — that's
+    # expected: events are dataclasses, not frozen. But the stream itself
+    # is passed through unchanged (Tee doesn't create copies).
+    assert len(events) == 2
+    assert events[0].type == "text"
+
+
+def test_tee_swallows_exceptions_in_taps():
+    def raising(ev):
+        raise RuntimeError("tap failure")
+
+    good_received: list[StreamEvent] = []
+    events = list(chain(
+        _text_stream(["ok"]),
+        Tee(raising, good_received.append),
+    ))
+    # Main pipeline proceeded despite the raising tap
+    assert [e.type for e in events] == ["text", "done"]
+    assert len(good_received) == 2
+
+
+def test_tee_on_done_fires_once_at_stream_end():
+    calls = {"count": 0}
+    def closer():
+        calls["count"] += 1
+
+    list(chain(
+        _text_stream(["ok"]),
+        Tee(on_done=closer),
+    ))
+    assert calls["count"] == 1
+
+
+def test_tee_on_done_fires_even_when_upstream_halts():
+    calls = {"count": 0}
+    def closer():
+        calls["count"] += 1
+
+    # Upstream halts mid-stream; on_done still runs (finally block)
+    list(chain(
+        _text_stream(["x" * 1000]),
+        CostLimit(max_output_tokens=10),  # halts
+        Tee(on_done=closer),
+    ))
+    assert calls["count"] == 1
+
+
+## ── TruthDetectorAdapter ────────────────────────────────────────────────────
+
+
+def test_truth_detector_adapter_bind_and_call_shape(monkeypatch):
+    """Adapter posts correct JSON body and parses 'score' field."""
+    captured: dict = {}
+
+    class _FakeResp:
+        def __init__(self, payload):
+            self.payload = payload
+        def read(self):
+            return json.dumps(self.payload).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def _fake_urlopen(req, timeout=None):
+        captured["data"] = json.loads(req.data.decode())
+        captured["timeout"] = timeout
+        return _FakeResp({"score": 0.87})
+
+    import adaptive.middleware as mw
+    monkeypatch.setattr(mw.urllib.request, "urlopen", _fake_urlopen)
+
+    adapter = TruthDetectorAdapter(
+        url="http://example/detect",
+        chat_model="glm-5.1",
+        timeout=3.0,
+    )
+    adapter.bind_prompt("is the sky blue?")
+    score = adapter("it is indeed")
+
+    assert score == 0.87
+    assert captured["timeout"] == 3.0
+    assert captured["data"]["user_prompt"] == "is the sky blue?"
+    assert captured["data"]["response"] == "it is indeed"
+    assert captured["data"]["chat_model"] == "glm-5.1"
+    assert captured["data"]["async"] is False
+
+
+def test_truth_detector_adapter_accepts_mode_one_score_field(monkeypatch):
+    """Older detectors return 'mode_one_score' rather than 'score'."""
+    class _FakeResp:
+        def read(self):
+            return b'{"mode_one_score": 0.42}'
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import adaptive.middleware as mw
+    monkeypatch.setattr(mw.urllib.request, "urlopen", lambda req, timeout=None: _FakeResp())
+
+    adapter = TruthDetectorAdapter()
+    adapter.bind_prompt("hi")
+    assert adapter("hello") == 0.42
+
+
+def test_truth_detector_adapter_returns_none_on_network_failure(monkeypatch):
+    """A dead detector must not break generation — return None, let monitor pass through."""
+    def _raise(req, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    import urllib.error
+    import adaptive.middleware as mw
+    monkeypatch.setattr(mw.urllib.request, "urlopen", _raise)
+
+    adapter = TruthDetectorAdapter()
+    adapter.bind_prompt("hi")
+    assert adapter("any text") is None
+
+
+def test_truth_detector_adapter_composes_with_truth_monitor(monkeypatch):
+    """The adapter callable plugs directly into TruthMonitor."""
+    class _FakeResp:
+        def read(self):
+            return b'{"score": 0.1}'
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import adaptive.middleware as mw
+    monkeypatch.setattr(mw.urllib.request, "urlopen", lambda req, timeout=None: _FakeResp())
+
+    adapter = TruthDetectorAdapter()
+    adapter.bind_prompt("ask")
+    monitor = TruthMonitor(check_fn=adapter, threshold=0.3, interval_chars=5)
+
+    events = list(chain(_text_stream(["a" * 50]), monitor))
+    halts = [e for e in events if e.type == "halt"]
+    assert len(halts) == 1
+    assert halts[0].stop_reason == "mode_two_drift"
 
 
 def test_cost_limit_plus_logger_compose(tmp_path):

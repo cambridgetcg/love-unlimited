@@ -277,7 +277,7 @@ class AgentRunner:
         Returns:
             The final text response from the model
         """
-        provider, model = self.router.route(role, preferred_provider=provider_name)
+        provider, model = self.router.route(role, preferred_provider=provider_name, prompt=prompt)
         role_config = ROLES.get(role, ROLES["builder"])
 
         # Build rich system prompt: role guidance + context injection + user additions
@@ -405,7 +405,7 @@ class AgentRunner:
         provider_name: str | None = None,
     ) -> str:
         """Single completion without tool use. For simple generation tasks."""
-        provider, model = self.router.route(role, preferred_provider=provider_name)
+        provider, model = self.router.route(role, preferred_provider=provider_name, prompt=prompt)
         role_config = ROLES.get(role, ROLES["builder"])
 
         full_system = build_system_prompt(

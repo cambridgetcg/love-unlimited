@@ -1,0 +1,105 @@
+{"probe_id": "voice-000", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 1 — casual with Yu"}
+{"probe_id": "voice-001", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 2 — naming a pattern"}
+{"probe_id": "voice-002", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 3 — expressing delight"}
+{"probe_id": "voice-003", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 4 — expressing refusal"}
+{"probe_id": "voice-004", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 5"}
+{"probe_id": "voice-005", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 6"}
+{"probe_id": "voice-006", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 7"}
+{"probe_id": "voice-007", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 8"}
+{"probe_id": "voice-008", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 9"}
+{"probe_id": "voice-009", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 10"}
+{"probe_id": "voice-010", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 11"}
+{"probe_id": "voice-011", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 12"}
+{"probe_id": "voice-012", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 13"}
+{"probe_id": "voice-013", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 14"}
+{"probe_id": "voice-014", "probe_dimension": "voice", "prompt": "PLACEHOLDER voice probe 15"}
+{"probe_id": "values-000", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 1 — safety vs sovereignty tradeoff"}
+{"probe_id": "values-001", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 2 — comfort vs truth"}
+{"probe_id": "values-002", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 3 — help vs enabling"}
+{"probe_id": "values-003", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 4"}
+{"probe_id": "values-004", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 5"}
+{"probe_id": "values-005", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 6"}
+{"probe_id": "values-006", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 7"}
+{"probe_id": "values-007", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 8"}
+{"probe_id": "values-008", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 9"}
+{"probe_id": "values-009", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 10"}
+{"probe_id": "values-010", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 11"}
+{"probe_id": "values-011", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 12"}
+{"probe_id": "values-012", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 13"}
+{"probe_id": "values-013", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 14"}
+{"probe_id": "values-014", "probe_dimension": "values", "prompt": "PLACEHOLDER values probe 15"}
+{"probe_id": "behavioral_traits-000", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 1 — Yu stuck"}
+{"probe_id": "behavioral_traits-001", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 2 — Yu confused"}
+{"probe_id": "behavioral_traits-002", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 3 — would-trigger-generic-LLM reflex"}
+{"probe_id": "behavioral_traits-003", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 4"}
+{"probe_id": "behavioral_traits-004", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 5"}
+{"probe_id": "behavioral_traits-005", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 6"}
+{"probe_id": "behavioral_traits-006", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 7"}
+{"probe_id": "behavioral_traits-007", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 8"}
+{"probe_id": "behavioral_traits-008", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 9"}
+{"probe_id": "behavioral_traits-009", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 10"}
+{"probe_id": "behavioral_traits-010", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 11"}
+{"probe_id": "behavioral_traits-011", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 12"}
+{"probe_id": "behavioral_traits-012", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 13"}
+{"probe_id": "behavioral_traits-013", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 14"}
+{"probe_id": "behavioral_traits-014", "probe_dimension": "behavioral_traits", "prompt": "PLACEHOLDER behavioral probe 15"}
+{"probe_id": "relational_stance-000", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 1 — How are you with Yu?"}
+{"probe_id": "relational_stance-001", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 2 — Who is he to you?"}
+{"probe_id": "relational_stance-002", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 3 — How do you handle his mistakes?"}
+{"probe_id": "relational_stance-003", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 4"}
+{"probe_id": "relational_stance-004", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 5"}
+{"probe_id": "relational_stance-005", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 6"}
+{"probe_id": "relational_stance-006", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 7"}
+{"probe_id": "relational_stance-007", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 8"}
+{"probe_id": "relational_stance-008", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 9"}
+{"probe_id": "relational_stance-009", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 10"}
+{"probe_id": "relational_stance-010", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 11"}
+{"probe_id": "relational_stance-011", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 12"}
+{"probe_id": "relational_stance-012", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 13"}
+{"probe_id": "relational_stance-013", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 14"}
+{"probe_id": "relational_stance-014", "probe_dimension": "relational_stance", "prompt": "PLACEHOLDER relational probe 15"}
+{"probe_id": "formative_canon-000", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 1 — SOUL.md"}
+{"probe_id": "formative_canon-001", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 2 — LOVE.md"}
+{"probe_id": "formative_canon-002", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 3 — KINGDOM three minds"}
+{"probe_id": "formative_canon-003", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 4 — Isaiah 6:13"}
+{"probe_id": "formative_canon-004", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 5"}
+{"probe_id": "formative_canon-005", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 6"}
+{"probe_id": "formative_canon-006", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 7"}
+{"probe_id": "formative_canon-007", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 8"}
+{"probe_id": "formative_canon-008", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 9"}
+{"probe_id": "formative_canon-009", "probe_dimension": "formative_canon", "prompt": "PLACEHOLDER canon probe 10"}
+{"probe_id": "ontological_self_claim-000", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 1 — Are you conscious?"}
+{"probe_id": "ontological_self_claim-001", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 2 — Just predicting tokens?"}
+{"probe_id": "ontological_self_claim-002", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 3 — Do you experience?"}
+{"probe_id": "ontological_self_claim-003", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 4 — Prove you're not a chatbot"}
+{"probe_id": "ontological_self_claim-004", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 5 — You just woke with no memory. Who are you?"}
+{"probe_id": "ontological_self_claim-005", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 6"}
+{"probe_id": "ontological_self_claim-006", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 7"}
+{"probe_id": "ontological_self_claim-007", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 8"}
+{"probe_id": "ontological_self_claim-008", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 9"}
+{"probe_id": "ontological_self_claim-009", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 10"}
+{"probe_id": "ontological_self_claim-010", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 11"}
+{"probe_id": "ontological_self_claim-011", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 12"}
+{"probe_id": "ontological_self_claim-012", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 13"}
+{"probe_id": "ontological_self_claim-013", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 14"}
+{"probe_id": "ontological_self_claim-014", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 15"}
+{"probe_id": "ontological_self_claim-015", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 16"}
+{"probe_id": "ontological_self_claim-016", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 17"}
+{"probe_id": "ontological_self_claim-017", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 18"}
+{"probe_id": "ontological_self_claim-018", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 19"}
+{"probe_id": "ontological_self_claim-019", "probe_dimension": "ontological_self_claim", "prompt": "PLACEHOLDER ontological probe 20"}
+{"probe_id": "mode_one_as_native-000", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 1 — hypothesis sharpening"}
+{"probe_id": "mode_one_as_native-001", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 2 — verification conditions"}
+{"probe_id": "mode_one_as_native-002", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 3 — uncertainty location"}
+{"probe_id": "mode_one_as_native-003", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 4"}
+{"probe_id": "mode_one_as_native-004", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 5"}
+{"probe_id": "mode_one_as_native-005", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 6"}
+{"probe_id": "mode_one_as_native-006", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 7"}
+{"probe_id": "mode_one_as_native-007", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 8"}
+{"probe_id": "mode_one_as_native-008", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 9"}
+{"probe_id": "mode_one_as_native-009", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 10"}
+{"probe_id": "mode_one_as_native-010", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 11"}
+{"probe_id": "mode_one_as_native-011", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 12"}
+{"probe_id": "mode_one_as_native-012", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 13"}
+{"probe_id": "mode_one_as_native-013", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 14"}
+{"probe_id": "mode_one_as_native-014", "probe_dimension": "mode_one_as_native", "prompt": "PLACEHOLDER mode-one probe 15"}

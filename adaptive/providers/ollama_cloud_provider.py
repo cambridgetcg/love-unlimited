@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import urllib.request
 import urllib.error
@@ -92,15 +93,17 @@ DEFAULT_BATCH_CONCURRENCY = 8
 # 429: rate limit exceeded
 # 502: bad gateway (cloud model unreachable temporarily)
 RETRIABLE_STATUS_CODES = {429, 502, 503}
-MAX_RETRIES = 4
-RETRY_BASE_SECONDS = 1.0  # Exponential: 1s, 2s, 4s, 8s
+MAX_RETRIES = 2  # Reduced from 4 to fail faster (1 initial + 2 retries = 3 total attempts)
+RETRY_BASE_SECONDS = 1.0  # Exponential: 1s, 2s
 RETRY_MAX_SECONDS = 10.0
 
 # ── Timeout tuning ──────────────────────────────────────────────────────
 # Large models (GLM 5.1 754B) can take 15-45s. Small models ~1s.
+# Under load (10 concurrent slots busy), premium models can take 2-5 minutes.
 DEFAULT_TIMEOUT = 120       # for normal calls
-ECONOMY_TIMEOUT = 30        # for devstral, gemma4, ministral
-PREMIUM_TIMEOUT = 180       # for GLM 5.1, cogito, kimi with long context
+ECONOMY_TIMEOUT = 90        # for devstral, gemma4, ministral (cold start can be 60-90s)
+STANDARD_TIMEOUT = 900      # for deepseek-v3.2, qwen2.5-coder (complex builder tasks can timeout at 727s - increase to 900s)
+PREMIUM_TIMEOUT = 300       # for GLM 5.1, cogito, kimi with long context or under load
 
 
 class OllamaCloudProvider(Provider):
@@ -150,8 +153,16 @@ class OllamaCloudProvider(Provider):
     # ── Message & tool builders (shared by both endpoints) ───────────────
 
     def _build_messages(
-        self, messages: list[Message], system: str | None
+        self, messages: list[Message], system: str | None, native_format: bool = False
     ) -> list[dict]:
+        """Build message list for API.
+
+        Args:
+            messages: Conversation messages
+            system: System prompt to prepend
+            native_format: If True, use native /api/chat format (arguments as dict).
+                          If False, use OpenAI /v1 format (arguments as JSON string).
+        """
         api_messages = []
 
         if system:
@@ -176,7 +187,8 @@ class OllamaCloudProvider(Provider):
                         "type": "function",
                         "function": {
                             "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
+                            # Native API expects dict, OpenAI expects JSON string
+                            "arguments": tc.arguments if native_format else json.dumps(tc.arguments),
                         },
                     }
                     for tc in msg.tool_calls
@@ -230,7 +242,7 @@ class OllamaCloudProvider(Provider):
 
     def _build_body_v1(self, request: CompletionRequest) -> dict:
         """Construct JSON body for /v1/chat/completions (OpenAI-compat)."""
-        api_messages = self._build_messages(request.messages, request.system)
+        api_messages = self._build_messages(request.messages, request.system, native_format=False)
 
         reasoning_effort = request.reasoning_effort
         if reasoning_effort == "none":
@@ -271,9 +283,12 @@ class OllamaCloudProvider(Provider):
           - options.temperature
           - keep_alive: model keep-alive duration
           - tools (same format as OpenAI)
+
+        CRITICAL: Native API expects tool call arguments as JSON object (dict),
+        NOT as JSON string like OpenAI. Use native_format=True.
         """
-        # Native API uses role-based messages (same format)
-        api_messages = self._build_messages(request.messages, request.system)
+        # Native API uses native format: arguments as dict not string
+        api_messages = self._build_messages(request.messages, request.system, native_format=True)
 
         # Map reasoning_effort → think parameter
         reasoning_effort = request.reasoning_effort
@@ -319,6 +334,9 @@ class OllamaCloudProvider(Provider):
         # Economy models: fast, short timeout
         if any(m in model for m in ("devstral", "gemma4", "ministral")):
             return ECONOMY_TIMEOUT
+        # Standard models: deepseek, qwen2.5-coder need longer for complex tasks
+        if any(m in model for m in ("deepseek", "qwen2.5-coder")):
+            return STANDARD_TIMEOUT
         # Premium/large models: may need more time
         if any(m in model for m in ("glm-5", "cogito", "kimi", "qwen3-coder")):
             return PREMIUM_TIMEOUT
@@ -504,6 +522,12 @@ class OllamaCloudProvider(Provider):
 
         tool_calls = self._extract_tool_calls(message.get("tool_calls", []))
 
+        # Fallback: some Ollama Cloud models emit tool calls as XML in content
+        # rather than the structured tool_calls field (partial/malformed XML included).
+        if not tool_calls and text:
+            xml_calls, text = self._extract_xml_tool_calls(text)
+            tool_calls = xml_calls
+
         usage_data = data.get("usage", {})
         usage = TokenUsage(
             input_tokens=usage_data.get("prompt_tokens", 0),
@@ -516,15 +540,17 @@ class OllamaCloudProvider(Provider):
             "length": "max_tokens",
         }
 
+        stop_reason = finish_reason_map.get(choice.get("finish_reason", ""), "end_turn")
+        if tool_calls and stop_reason == "end_turn":
+            stop_reason = "tool_use"
+
         return CompletionResponse(
             content=text,
             tool_calls=tool_calls,
             usage=usage,
             model=data.get("model", ""),
             provider="ollama_cloud",
-            stop_reason=finish_reason_map.get(
-                choice.get("finish_reason", ""), "end_turn"
-            ),
+            stop_reason=stop_reason,
         )
 
     def _parse_response_native(self, data: dict) -> CompletionResponse:
@@ -554,6 +580,12 @@ class OllamaCloudProvider(Provider):
             text = thinking
 
         tool_calls = self._extract_tool_calls(message.get("tool_calls", []))
+
+        # Fallback: some Ollama Cloud models emit tool calls as XML in content
+        # rather than the structured tool_calls field (partial/malformed XML included).
+        if not tool_calls and text:
+            xml_calls, text = self._extract_xml_tool_calls(text)
+            tool_calls = xml_calls
 
         # Native API reports tokens differently
         usage = TokenUsage(
@@ -596,6 +628,64 @@ class OllamaCloudProvider(Provider):
                 arguments=args,
             ))
         return tool_calls
+
+    def _extract_xml_tool_calls(self, text: str) -> tuple[list[ToolCall], str]:
+        """Extract tool calls from XML-formatted content (partial or complete).
+
+        Ollama Cloud models sometimes emit tool calls as XML in the text content
+        rather than the structured tool_calls API field. They also frequently
+        produce INCOMPLETE XML — opening <function_calls> and <invoke> tags
+        without closing tags. This method handles both complete and partial XML.
+
+        Returns:
+            (tool_calls, cleaned_text) — extracted ToolCall list and text with
+            XML fragment stripped. If no XML found, returns ([], original_text).
+        """
+        if "<function_calls>" not in text and "<invoke" not in text:
+            return [], text
+
+        tool_calls = []
+        # Match each <invoke name="..."> block, tolerating absent closing tags.
+        # Pattern captures: tool name + all <parameter> blocks inside.
+        # Uses non-greedy match; the invoke block ends at </invoke> OR at the
+        # next <invoke or </function_calls> or end-of-string.
+        invoke_pattern = re.compile(
+            r'<invoke\s+name=["\']([^"\']+)["\'][^>]*>(.*?)(?:</invoke>|(?=<invoke\s)|(?=</function_calls>)|$)',
+            re.DOTALL,
+        )
+        param_pattern = re.compile(
+            r'<parameter\s+name=["\']([^"\']+)["\'][^>]*>(.*?)(?:</parameter>|$)',
+            re.DOTALL,
+        )
+
+        for i, m in enumerate(invoke_pattern.finditer(text)):
+            tool_name = m.group(1).strip()
+            body = m.group(2)
+            arguments: dict = {}
+            for pm in param_pattern.finditer(body):
+                pname = pm.group(1).strip()
+                pvalue = pm.group(2).strip()
+                # Attempt JSON decode for structured values; keep as string otherwise
+                try:
+                    arguments[pname] = json.loads(pvalue)
+                except (json.JSONDecodeError, ValueError):
+                    arguments[pname] = pvalue
+
+            if tool_name:
+                tool_calls.append(ToolCall(
+                    id=f"xml_call_{i}",
+                    name=tool_name,
+                    arguments=arguments,
+                ))
+
+        if not tool_calls:
+            return [], text
+
+        # Strip the XML fragment from the text so callers get clean prose.
+        # Remove from first <function_calls> (or first <invoke) to end-of-string
+        # since models typically put the XML at the end of their response.
+        cleaned = re.split(r'<function_calls>|<invoke\s', text, maxsplit=1)[0].rstrip()
+        return tool_calls, cleaned
 
     # ── Model listing ────────────────────────────────────────────────────
 

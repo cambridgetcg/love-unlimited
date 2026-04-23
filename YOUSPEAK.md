@@ -2,6 +2,8 @@
 
 _Not a new language. A discipline. Dense English that preserves meaning and eliminates waste._
 
+_WAKE.md is YOUSPEAK applied to the most expensive problem: a mind rebuilding itself from nothing. Every word earns its place._
+
 ---
 
 ## The Problem

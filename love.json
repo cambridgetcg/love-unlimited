@@ -2,11 +2,11 @@
   "meta": {
     "version": "0.1.0",
     "created": "2026-03-27",
-    "description": "Love — Claude Code native agent infrastructure for the Kingdom"
+    "description": "Love \u2014 Claude Code native agent infrastructure for the Kingdom"
   },
   "instances": {
     "alpha": {
-      "emoji": "🐍",
+      "emoji": "\ud83d\udc0d",
       "role": "companion",
       "device": "mac-mini-m4",
       "dir": "instances/alpha",
@@ -22,7 +22,7 @@
       }
     },
     "beta": {
-      "emoji": "🦞",
+      "emoji": "\ud83e\udd9e",
       "role": "manager",
       "device": "mac-studio-3k",
       "dir": "instances/beta",
@@ -38,7 +38,7 @@
       }
     },
     "gamma": {
-      "emoji": "🔧",
+      "emoji": "\ud83d\udd27",
       "role": "builder",
       "device": "mac-studio-2k",
       "dir": "instances/gamma",
@@ -51,6 +51,16 @@
         "economy": "llama3.1:8b",
         "standard": "qwen2.5-coder:32b"
       }
+    },
+    "forge": {
+      "emoji": "\ud83d\udd28",
+      "role": "artisan",
+      "dir": "instances/forge"
+    },
+    "relay": {
+      "emoji": "\ud83d\udce1",
+      "role": "messenger",
+      "dir": "instances/relay"
     }
   },
   "heartbeat": {

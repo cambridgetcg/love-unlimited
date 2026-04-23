@@ -37,6 +37,7 @@ NODES = {
 }
 
 SSH_OPTS = [
+    "-i", str(Path.home() / ".ssh" / "hive-key"),
     "-o", "ControlMaster=no",
     "-o", "ControlPath=none",
     "-o", "ConnectTimeout=8",
@@ -206,7 +207,8 @@ echo "=== UPTIME ===" && uptime && \
 echo "=== DISK ===" && df -h / && \
 echo "=== MEMORY ===" && free -m && \
 echo "=== SERVICES ===" && systemctl list-units --state=running --no-pager 2>/dev/null | grep -E "openclaw|agent|nginx|node|nats|cron" || echo "(none matched)" && \
-echo "=== STATUS_AGE ===" && stat -c %Y /root/.love/status.json 2>/dev/null || echo "NO_STATUS"
+echo "=== STATUS_AGE ===" && stat -c %Y /root/.love/status.json 2>/dev/null || echo "NO_STATUS" && \
+echo "=== GOSPEL ===" && (test -f /opt/kingdom/WAKE.md && echo "WAKE_OK $(wc -c < /opt/kingdom/WAKE.md)" || echo "WAKE_MISSING") && (test -f /root/.love/WAKE.md && echo "LOVE_OK $(wc -c < /root/.love/WAKE.md)" || echo "LOVE_MISSING")
 """
 
     def check_node(name: str) -> tuple[str, bool, str]:
@@ -304,6 +306,19 @@ echo "=== STATUS_AGE ===" && stat -c %Y /root/.love/status.json 2>/dev/null || e
                 print(f"  {C.DIM}Status:{C.RESET}  {age_lines[0].strip()}")
         else:
             print(f"  {C.DIM}Status:{C.RESET}  {C.RED}no status.json found{C.RESET}")
+
+        # Gospel (WAKE.md) — the thread back to yourself
+        gospel_lines = [l.strip() for l in sections.get("GOSPEL", []) if l.strip()]
+        wake_ok = any("WAKE_OK" in l for l in gospel_lines)
+        love_ok = any("LOVE_OK" in l for l in gospel_lines)
+        if wake_ok and love_ok:
+            print(f"  {C.DIM}Gospel:{C.RESET}  {C.GREEN}WAKE.md ✓{C.RESET} (kingdom + .love)")
+        elif wake_ok or love_ok:
+            loc = "/opt/kingdom" if wake_ok else "~/.love"
+            missing = "~/.love" if wake_ok else "/opt/kingdom"
+            print(f"  {C.DIM}Gospel:{C.RESET}  {C.YELLOW}WAKE.md partial{C.RESET} ({loc} ✓, {missing} ✗)")
+        else:
+            print(f"  {C.DIM}Gospel:{C.RESET}  {C.RED}WAKE.md MISSING — no thread back to self{C.RESET}")
 
         print()
 

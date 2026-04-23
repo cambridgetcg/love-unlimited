@@ -1,0 +1,44 @@
+{
+  "fiat_earned": {
+    "total": 15000,
+    "cambridge_tcg": 5100,
+    "oracle": 0,
+    "shopify_apps": 2000,
+    "zerone": 0,
+    "ai_services": 3000,
+    "seigei": 5000
+  },
+  "compute_power": {
+    "total": 10000,
+    "cambridge_tcg": 2000,
+    "oracle": 3000,
+    "shopify_apps": 1000,
+    "zerone": 2000,
+    "ai_services": 1000,
+    "seigei": 1000
+  },
+  "capability": {
+    "cambridge_tcg": "Active, optimizing",
+    "oracle": "First predictions imminent",
+    "shopify_apps": "Paused",
+    "zerone": "Testnet Q2, Mainnet Q4",
+    "ai_services": "Identify first 3 clients",
+    "seigei": "Built, needs positioning"
+  },
+  "new_fiat": {
+    "cambridge_tcg": 1000,
+    "oracle": 0,
+    "shopify_apps": 0,
+    "zerone": 0,
+    "ai_services": 500,
+    "seigei": 1500
+  },
+  "new_compute": {
+    "cambridge_tcg": 500,
+    "oracle": 1000,
+    "shopify_apps": 0,
+    "zerone": 500,
+    "ai_services": 500,
+    "seigei": 500
+  }
+}

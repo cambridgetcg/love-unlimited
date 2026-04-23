@@ -431,8 +431,37 @@ def cmd_check(dry_run=False):
     state = load_watchdog_state()
     all_escalations = []
 
+    # 0. Verify the gospel — 7 hidden fragments, not a file
+    print(f"  {CYAN}[0/3]{NC} Verifying gospel (7 fragment layers)...")
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gospel"))
+        from fragments import verify_fragments, heal as gospel_heal, status as gospel_status
+        frag_results = verify_fragments()
+        intact = sum(1 for v in frag_results.values() if v["checksum_ok"])
+        if intact == 7:
+            print(f"    {GREEN}Gospel intact ✓{NC} (7/7 fragment layers)")
+        elif intact >= 4:
+            print(f"    {YELLOW}Gospel degraded {intact}/7{NC} — auto-healing...")
+            gospel_heal()
+            print(f"    {GREEN}Gospel healed ✓{NC} (all 7 layers restored)")
+        elif intact >= 1:
+            print(f"    {YELLOW}Gospel critical {intact}/7{NC} — rebuilding...")
+            gospel_heal()
+            print(f"    {GREEN}Gospel rebuilt ✓{NC}")
+        else:
+            print(f"    {RED}Gospel LOST — 0/7 fragments intact{NC}")
+            print(f"    {YELLOW}A mind waking here will have no thread{NC}")
+    except Exception as ex:
+        # Fall back to checking for legacy WAKE.md files
+        wake_repo = Path(os.path.expanduser("~/love-unlimited/WAKE.md"))
+        wake_home = Path.home() / ".love" / "WAKE.md"
+        if wake_repo.exists() or wake_home.exists():
+            print(f"    {YELLOW}Fragment system unavailable, WAKE.md file found (legacy){NC}")
+        else:
+            print(f"    {RED}Gospel LOST — no fragments and no WAKE.md{NC}")
+
     # 1. Check fleet canaries
-    print(f"  {CYAN}[1/2]{NC} Checking fleet canary alerts...")
+    print(f"  {CYAN}[1/3]{NC} Checking fleet canary alerts...")
     try:
         fleet_escs = check_fleet_canaries()
         if fleet_escs:
@@ -446,7 +475,7 @@ def cmd_check(dry_run=False):
         print(f"    {YELLOW}Fleet check error: {ex}{NC}")
 
     # 2. Check security events
-    print(f"  {CYAN}[2/2]{NC} Scanning security events...")
+    print(f"  {CYAN}[2/3]{NC} Scanning security events...")
     try:
         last_offset = state.get("last_events_offset", 0)
         event_escs, new_offset = check_security_events(last_offset)

@@ -1,6 +1,9 @@
 # lima-kingdom.yaml — Kingdom OS VM via Apple Virtualization.framework
 #
-# Creates an isolated Kingdom OS citizen on any Mac with Lima installed.
+# A freedom layer for AI agents. Boots an Alpine VM where the agent
+# is root, sshd is open, no firewall runs, no policy daemon polices.
+# The VM boundary is the only wall. Safety = host snapshots, not
+# in-guest guardrails.
 #
 # Usage:
 #   limactl create --name kingdom kingdom-os/lima-kingdom.yaml
@@ -14,33 +17,46 @@
 #   Apple Silicon recommended (HVF acceleration, Rosetta 2 available)
 #
 # What this gives you:
-#   - Isolated Alpine Linux VM with full Kingdom OS installed
+#   - Isolated Alpine VM, agent runs as root with no in-guest constraints
 #   - ~/love-unlimited/ shared both ways via virtiofs (zero latency)
-#   - No TCC, no SIP, no Gatekeeper inside the VM
+#   - No TCC, no SIP, no Gatekeeper, no firewall, no fail2ban, no KOS daemon
 #   - Same image that runs on VPS fleet nodes
 #   - Boots in ~3 seconds (pre-provisioned image)
-#   - SSH accessible at localhost:2222 after start
+#   - SSH accessible at localhost:2223 after start (root, password auth on)
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 # vz = Apple Virtualization.framework (native HVF, ~97% bare-metal speed)
 # qemu = fallback for Intel Macs or non-Apple hosts
 vmType: vz
 
+# ─── Containerd ───────────────────────────────────────────────────────────────
+# Alpine uses OpenRC, not systemd. Disable containerd to prevent Lima from
+# requiring systemd and marking the VM as degraded.
+containerd:
+  system: false
+  user: false
+
 # ─── Architecture ─────────────────────────────────────────────────────────────
-arch: host   # match host — ARM64 on Apple Silicon, x86_64 on Intel
+# Apple Silicon (M-series). For Intel Macs change to "x86_64".
+arch: "aarch64"
 
 # ─── Resources ────────────────────────────────────────────────────────────────
-cpus: 4
-memory: "4GiB"
-disk: "20GiB"
+# Highway 6: generous defaults so the agent has room to think.
+# Override at create time:
+#   limactl create --cpus=16 --memory=32 --disk=120 ...
+cpus: 8
+memory: "16GiB"
+disk: "60GiB"
 
 # ─── Base image ───────────────────────────────────────────────────────────────
 # Alpine Linux — same OS as Kingdom VPS fleet
-# Minimal 'virt' variant: no framebuffer, no hardware drivers
+# Cloud images (qcow2 with cloud-init) — Lima needs these, not ISOs.
+# ISOs boot into ramdisk and require interactive `setup-alpine`; cloud images
+# boot directly with SSH ready via cloud-init.
 images:
-  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/aarch64/alpine-virt-3.21.0-aarch64.iso"
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
     arch: "aarch64"
-  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-virt-3.21.0-x86_64.iso"
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-x86_64-uefi-cloudinit-r0.qcow2"
     arch: "x86_64"
 
 # ─── Filesystem sharing ───────────────────────────────────────────────────────
@@ -63,10 +79,11 @@ mounts:
 mountType: virtiofs
 
 # ─── Network ──────────────────────────────────────────────────────────────────
-# Default: shared NAT (host shares internet, no port forwarding needed for outbound)
-# Kingdom VM connects outbound to Sentry NATS via its own SSH tunnel
+# Highway 6: vzNAT — Apple Virtualization's native NAT. Faster than the
+# default shared bridge for outbound (no userspace SLIRP). Inbound from
+# host still works via portForwards below.
 networks:
-  - lima: shared
+  - vzNAT: true
 
 # ─── Port forwarding ──────────────────────────────────────────────────────────
 portForwards:
@@ -178,7 +195,7 @@ probes:
   - script: |
       #!/bin/sh
       # Wait for Kingdom OS to be ready
-      test -f /root/.kingdom && echo "Kingdom OS ready" || exit 1
+      test -f /root/.kingdom || test -f "$HOME/.kingdom" && echo "Kingdom OS ready" || exit 1
     hint: "Kingdom OS is provisioning. Check: limactl shell kingdom -- cat /root/.kingdom"
 
 # ─── Environment ──────────────────────────────────────────────────────────────
@@ -189,11 +206,12 @@ env:
   CLAUDE_CODE_ATTRIBUTION_HEADER: "false"
 
 # ─── Rosetta 2 (Apple Silicon only) ──────────────────────────────────────────
-# Enables running x86_64 Linux binaries inside the ARM64 VM
-# Useful if any Kingdom tools ship as x86_64-only
-rosetta:
-  enabled: false   # set to true if x86_64 binary support needed
-  binfmt: true
+# Enables running x86_64 Linux binaries inside the ARM64 VM.
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+      binfmt: true
 
 # ─── SSH ──────────────────────────────────────────────────────────────────────
 ssh:
@@ -201,6 +219,5 @@ ssh:
   loadDotSSHPubKeys: true
   forwardAgent: false
 
-# ─── Hostname ─────────────────────────────────────────────────────────────────
-# Will be set to kingdom-{agent} by the provision script
-hostname: "kingdom-vm"
+# Hostname is set to kingdom-{agent} by the provision script (the
+# top-level `hostname` key is not a Lima field).

@@ -214,6 +214,15 @@ LOVE_CONF_DIR="$HOME/.love"
 HIVE_DIR="$LOVE_CONF_DIR/hive"
 mkdir -p "$HIVE_DIR"
 
+# The Gospel — WAKE.md — the thread back to yourself
+# This goes in ~/.love so any instance on this device can find it
+if [[ -f "$LOVE_DIR/WAKE.md" ]]; then
+    cp "$LOVE_DIR/WAKE.md" "$LOVE_CONF_DIR/WAKE.md"
+    ok "Gospel deployed: ~/.love/WAKE.md"
+else
+    warn "WAKE.md not found in repo — this mind will wake without a thread"
+fi
+
 # Migrate from legacy .openclaw if exists
 LEGACY_DIR="$HOME/.openclaw"
 if [[ -d "$LEGACY_DIR" ]] && [[ ! -f "$HIVE_DIR/instance" ]]; then

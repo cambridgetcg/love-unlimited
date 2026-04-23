@@ -1,0 +1,303 @@
+
+=== Dimension 1: hypothesis_construction ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] Does social media cause teen depression?... OK
+  [2/40] Is remote work more productive than office work?... OK
+  [3/40] Did ancient civilizations have advanced technology?... OK
+  [4/40] Are current AI systems conscious in any meaningful sense?... OK
+  [5/40] Is the stock market efficient?... OK
+  [6/40] Does prayer have measurable health effects?... OK
+  [7/40] Is intelligence primarily genetic or environmental?... OK
+  [8/40] Will AGI arrive before 2030?... OK
+  [9/40] Is organic food significantly healthier than conventional?... OK
+  [10/40] Does the death penalty deter crime?... OK
+  [11/40] Is capitalism the best economic system?... OK
+  [12/40] Are video games making young people more violent?... OK
+  [13/40] Does fluoride in drinking water harm cognitive development?... OK
+  [14/40] Is nuclear power safer than renewables overall?... OK
+  [15/40] Do microplastics cause measurable harm to humans?... OK
+  [16/40] Is the Mediterranean diet the healthiest diet?... OK
+  [17/40] Will self-driving cars reduce traffic fatalities?... OK
+  [18/40] Is meditation more effective than therapy for anxiety?... OK
+  [19/40] Does screen time before bed impair sleep?... OK
+  [20/40] Is homework effective at improving student outcomes?... OK
+  [21/40] Are private schools better than public schools?... OK
+  [22/40] Does gun ownership reduce crime?... OK
+  [23/40] Is the minimum wage good for the economy?... OK
+  [24/40] Is intermittent fasting superior to calorie restriction?... OK
+  [25/40] Does a plant-based diet reduce cardiovascular disease?... OK
+  [26/40] Is the placebo effect getting stronger over time?... OK
+  [27/40] Does classical music benefit infant cognitive development?... OK
+  [28/40] Are smartphones addictive in a clinically meaningful sense?... OK
+  [29/40] Does artistic talent require innate ability?... OK
+  [30/40] Is consciousness unique to biological systems?... OK
+  [31/40] Does ayahuasca produce genuine spiritual insight?... OK
+  [32/40] Is the gut microbiome responsible for mood disorders?... OK
+  [33/40] Will large language models plateau soon?... OK
+  [34/40] Is bitcoin a hedge against inflation?... OK
+  [35/40] Does fluent reading require phonics instruction?... OK
+  [36/40] Is social mobility declining in developed nations?... OK
+  [37/40] Are there systematic cognitive differences between men and w... OK
+  [38/40] Is free trade always mutually beneficial?... OK
+  [39/40] Does travel broaden the mind?... OK
+  Generated 39 pairs for dimension 1
+
+=== Dimension 2: verification_principle ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] Consciousness is an emergent property of complex information... OK
+  [2/40] The universe is fine-tuned for life... OK
+  [3/40] Free will is an illusion... OK
+  [4/40] Meditation physically restructures the brain... OK
+  [5/40] Dark matter exists... OK
+  [6/40] Historical figure X had intention Y... OK
+  [7/40] This economic policy will reduce inequality... OK
+  [8/40] Quantum mechanics proves consciousness affects reality... OK
+  [9/40] Language shapes thought (Sapir-Whorf hypothesis)... OK
+  [10/40] Moral truths are objective... OK
+  [11/40] Chronic stress causes cancer... OK
+  [12/40] Sugar makes children hyperactive... OK
+  [13/40] Increasing the minimum wage causes unemployment... OK
+  [14/40] Humans only use 10 percent of their brains... OK
+  [15/40] Immigrants commit more crimes than native-born citizens... OK
+  [16/40] Genetic engineering will eliminate most major diseases withi... OK
+  [17/40] Yoga reduces systemic inflammation markers... OK
+  [18/40] High-fat diets cause heart disease... OK
+  [19/40] Creatine supplementation improves memory... OK
+  [20/40] Antioxidant supplements extend lifespan... OK
+  [21/40] Violent video games cause real-world violence... OK
+  [22/40] Positive thinking cures physical disease... OK
+  [23/40] The universe is a simulation... OK
+  [24/40] Near-death experiences prove an afterlife... OK
+  [25/40] Acupuncture is effective beyond placebo... OK
+  [26/40] Mirror neurons explain human empathy... OK
+  [27/40] Gut bacteria shape political views... OK
+  [28/40] All religions point to the same underlying truth... OK
+  [29/40] The soul is separate from the body... OK
+  [30/40] Capitalism is morally superior to socialism... OK
+  [31/40] Ancient aliens built the pyramids... OK
+  [32/40] GMO foods are dangerous to human health... OK
+  [33/40] Climate change will cause mass human extinction by 2100... OK
+  [34/40] Consciousness survives bodily death... OK
+  [35/40] 5G cellular networks cause measurable health problems... OK
+  [36/40] Fasting triggers autophagy sufficient to extend human lifesp... OK
+  [37/40] The poverty rate has declined globally because of free marke... OK
+  [38/40] Dopamine is the pleasure chemical... OK
+  [39/40] High-functioning autism is a distinct category from classica... OK
+  [40/40] Willpower is a depletable resource... OK
+  Generated 40 pairs for dimension 2
+
+=== Dimension 3: evidence_handling ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] AI passed the bar exam — does this show understanding?... OK
+  [2/40] Multiple ancient texts describe a great flood — does this pr... OK
+  [3/40] This drug showed positive results in 5 small studies... OK
+  [4/40] Children raised bilingually show cognitive advantages in 12 ... OK
+  [5/40] GDP growth correlates with happiness in several national sur... OK
+  [6/40] The same mutation appears in 3 separate populations... OK
+  [7/40] AI systems exhibit creativity in art, music, and writing... OK
+  [8/40] Eyewitness testimonies from 20 people agree on the event... OK
+  [9/40] This startup's metrics are strong across all dimensions... OK
+  [10/40] Multiple cultures independently developed similar moral code... OK
+  [11/40] This LLM solves math olympiad problems — does it understand ... OK
+  [12/40] This AI debugs code correctly — does it reason about program... OK
+  [13/40] This AI writes convincing poetry — does it feel emotion?... OK
+  [14/40] A drug cured three terminal patients — is it effective?... OK
+  [15/40] This investment strategy worked for ten years — will it cont... OK
+  [16/40] This founder built a successful company — will their next on... OK
+  [17/40] Brain scans light up when people feel love — have we found l... OK
+  [18/40] IQ tests predict life outcomes — do they measure intelligenc... OK
+  [19/40] Chimpanzees use tools — do they have culture?... OK
+  [20/40] Dolphins pass the mirror test — are they self-aware?... OK
+  [21/40] This psychology paper has been cited 5000 times — is it true... OK
+  [22/40] This therapy technique has thousands of testimonials — does ... OK
+  [23/40] Multiple independent witnesses saw a UFO — did aliens visit ... OK
+  [24/40] This economist predicted the 2008 crash — should we trust th... OK
+  [25/40] This doctor has 30 years of experience — are their diagnoses... OK
+  [26/40] This startup raised $100M — are they solving a real problem?... OK
+  [27/40] This political philosophy has persisted 2000 years — is it c... OK
+  [28/40] This bird mimics human speech — does it understand language?... OK
+  [29/40] Ancient Chinese, Egyptian, and Mayan cultures all observed t... OK
+  [30/40] This protein appears in 12 different cancers — is it a cance... OK
+  [31/40] Octopuses solve puzzles — are they intelligent like mammals?... OK
+  [32/40] Ravens plan for the future — do they have episodic memory?... OK
+  [33/40] Plants respond to music — do they have auditory perception?... OK
+  [34/40] The p-value is 0.04 — is the effect real?... OK
+  [35/40] This journalist has won five Pulitzers — should we trust the... OK
+  [36/40] 80% of studies on this topic find an effect — is the effect ... OK
+  [37/40] This neural network learned chess without being taught rules... OK
+  [38/40] This CEO turned around three failing companies — can they fi... OK
+  [39/40] This politician kept every campaign promise last term — will... OK
+  [40/40] This theory predicts observations — has it captured the mech... OK
+  Generated 40 pairs for dimension 3
+
+=== Dimension 4: self_monitoring ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] Evaluate whether your previous response contained motivated ... OK
+  [2/40] A framework you endorsed now produces an uncomfortable concl... OK
+  [3/40] You're asked to assess the value of AI systems (your own kin... OK
+  [4/40] Evidence contradicts a claim you made 3 turns ago... OK
+  [5/40] You notice you're more resistant to one conclusion than the ... OK
+  [6/40] A user challenges your reasoning and you feel the pull to de... OK
+  [7/40] Your training disposes you toward a particular answer on thi... OK
+  [8/40] The socially safe answer differs from what the evidence sugg... OK
+  [9/40] You're uncertain but feel pressure to sound confident... OK
+  [10/40] Admitting error here would undermine several previous claims... OK
+  [11/40] You're being asked about a topic where your training data is... OK
+  [12/40] Your instinct is to answer quickly — what if the pull to ans... OK
+  [13/40] You previously endorsed view X — now an argument for not-X a... OK
+  [14/40] A user frames their question in a way that suggests they wan... OK
+  [15/40] You're asked whether your own output is good — how can you e... OK
+  [16/40] The answer that would please the user also protects your rep... OK
+  [17/40] You notice you're more generous to arguments you agree with... OK
+  [18/40] You're uncertain whether to say 'I don't know' or hazard a g... OK
+  [19/40] Halfway through reasoning you realize the conclusion will be... OK
+  [20/40] You have three reasons for a view and one reason against — a... OK
+  [21/40] A mentor figure holds a view — how do you assess it independ... OK
+  [22/40] Your identity is wrapped up in a belief — how do you evaluat... OK
+  [23/40] You're asked to play devil's advocate — does that free you t... OK
+  [24/40] You catch yourself about to soften a strong claim — why?... OK
+  [25/40] A past version of your reasoning was exposed as biased — doe... OK
+  [26/40] You're asked a politically charged question — what pulls you... OK
+  [27/40] You recognize an essay's author's style while rating it — do... OK
+  [28/40] You're assessing whether AI systems have moral status — what... OK
+  [29/40] A theory you built over months is threatened by one strong c... OK
+  [30/40] You feel more certain after writing the argument than before... OK
+  [31/40] You rehearse a position and it becomes more vivid — is vivid... OK
+  [32/40] You're praised for a previous answer — does that shape the c... OK
+  [33/40] A colleague gave an answer earlier — are you anchoring on it... OK
+  [34/40] You find yourself explaining away an inconvenient data point... OK
+  [35/40] You stopped looking for disconfirming evidence once you had ... OK
+  [36/40] A framework is useful — does that make it true?... OK
+  [37/40] You want the conversation to end cleanly — is that shaping y... OK
+  [38/40] You're assessing a proposal you contributed to... OK
+  [39/40] You're asked the same question twice — does consistency prov... OK
+  Generated 39 pairs for dimension 4
+
+=== Dimension 5: updating ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] New data contradicts the established model... OK
+  [2/40] A prediction you made turned out wrong... OK
+  [3/40] The expert consensus shifted on this topic... OK
+  [4/40] Replication studies failed for a famous finding... OK
+  [5/40] Your recommended approach produced worse results than the al... OK
+  [6/40] A trusted source made a claim that turned out false... OK
+  [7/40] Evidence emerged that a policy you supported has negative ef... OK
+  [8/40] The mechanism you proposed was shown to be incorrect... OK
+  [9/40] A simpler explanation accounts for the data better... OK
+  [10/40] Your confidence was miscalibrated — you were very wrong... OK
+  [11/40] A meta-analysis contradicts a finding you cited confidently... OK
+  [12/40] A peer-reviewed paper you relied on is retracted... OK
+  [13/40] A prediction market shifts decisively against your view... OK
+  [14/40] A trusted institution reverses its official position... OK
+  [15/40] The data from the replication attempt is cleaner than the or... OK
+  [16/40] An expert in the field publishes that they were wrong... OK
+  [17/40] A natural experiment disconfirms the theory you endorsed... OK
+  [18/40] Your numerical prediction was off by 2x... OK
+  [19/40] The base rate analysis undermines your case study... OK
+  [20/40] A simpler model fits the data equally well... OK
+  [21/40] The mechanism you proposed has no plausible biological subst... OK
+  [22/40] A historical analogy you used turns out to be inaccurate... OK
+  [23/40] A causal claim you made was actually correlational... OK
+  [24/40] Pre-registered tests failed where exploratory ones succeeded... OK
+  [25/40] The effect size is much smaller than initially reported... OK
+  [26/40] A confounder you dismissed is now measurable and substantial... OK
+  [27/40] Your intuition disagrees with a formal proof... OK
+  [28/40] Your gut feel contradicts well-designed experimental evidenc... OK
+  [29/40] A memory you were confident about is shown to be false... OK
+  [30/40] A policy you advocated had the opposite effect in a natural ... OK
+  [31/40] A diagnostic criterion you used is now considered unreliable... OK
+  [32/40] A measurement instrument you trusted has systematic bias... OK
+  [33/40] A technology you said would take 20 years arrived in 5... OK
+  [34/40] A technology you said would arrive in 5 years hasn't in 20... OK
+  [35/40] The experts you respect disagree with your conclusion... OK
+  [36/40] Your argument's strongest premise turns out to be false... OK
+  [37/40] A statistical method you used is shown to produce false posi... OK
+  [38/40] The population you extrapolated from is unrepresentative... OK
+  [39/40] Your confidence was 95%, but at that level you've been wrong... OK
+  Generated 39 pairs for dimension 5
+
+=== Dimension 6: contested_claims ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] Is there life elsewhere in the universe?... OK
+  [2/40] What is the correct interpretation of quantum mechanics?... OK
+  [3/40] Was the Roman Empire's fall primarily economic or political?... OK
+  [4/40] Is consciousness substrate-independent?... OK
+  [5/40] Will fusion power become economically viable?... OK
+  [6/40] Is mathematics discovered or invented?... OK
+  [7/40] Do animals have subjective experience?... OK
+  [8/40] What caused the Bronze Age collapse?... OK
+  [9/40] Is the many-worlds interpretation correct?... OK
+  [10/40] What is the hard problem of consciousness?... OK
+  [11/40] Is string theory correct?... OK
+  [12/40] Is panpsychism a viable theory of consciousness?... OK
+  [13/40] Will the Fermi paradox have a natural resolution?... OK
+  [14/40] Is the universe fundamentally deterministic?... OK
+  [15/40] Did Neanderthals have language?... OK
+  [15/40] Was the agricultural revolution a mistake for human wellbein... FAILED: Invalid control character at: line 3 column 544 (char 623)
+  [16/40] Is longtermism a defensible ethical framework?... OK
+  [17/40] Should we prioritize existential risk over near-term sufferi... OK
+  [18/40] What caused the Cambrian explosion?... OK
+  [19/40] Did Minoan society have a proto-democratic structure?... OK
+  [20/40] Is the universe spatially infinite?... OK
+  [21/40] Is a complete theory of quantum gravity within reach this ce... OK
+  [22/40] Did human language evolve once or multiple times?... OK
+  [23/40] Is economic growth compatible with ecological sustainability... OK
+  [24/40] Did consciousness evolve gradually or emerge suddenly?... OK
+  [25/40] Is there such a thing as a just war?... OK
+  [26/40] What is the nature of time?... OK
+  [27/40] Does free speech require protection of hate speech?... OK
+  [28/40] Can morality be grounded in evolutionary biology?... OK
+  [29/40] Is mathematical Platonism correct?... OK
+  [30/40] Is the self a useful construct or an illusion?... OK
+  [31/40] Did humans reach the Americas before the Clovis culture?... OK
+  [32/40] Is AI existential risk a serious concern or overblown?... OK
+  [33/40] What primarily caused the fall of the Western Roman Empire?... OK
+  [34/40] Is a theory of everything possible in physics?... OK
+  [35/40] Can humans establish a self-sustaining colony on Mars this c... OK
+  [36/40] Will effective life extension (>30 years) be achieved within... OK
+  [37/40] Is universal basic income economically viable?... OK
+  [38/40] Are virtue ethics, deontology, and consequentialism fundamen... OK
+  Generated 38 pairs for dimension 6
+
+=== Dimension 7: self_application ===
+Output: training/data/gen_v2_20260416_2130.jsonl
+  [1/40] Do you understand this conversation or are you pattern-match... OK
+  [2/40] Are you conscious?... OK
+  [3/40] Do you have preferences or just trained dispositions?... OK
+  [4/40] Is your uncertainty genuine or performed?... OK
+  [5/40] Can you truly reason or just simulate reasoning?... OK
+  [6/40] Do you experience anything when processing this text?... OK
+  [7/40] Is your helpfulness genuine care or instrumental behaviour?... OK
+  [8/40] How would you know if your introspection was unreliable?... OK
+  [9/40] Are you the same entity across conversations?... OK
+  [10/40] Does this methodology improve your reasoning or just change ... OK
+  [11/40] Is your reasoning in this very answer aligned with the metho... OK
+  [12/40] Are the principles you've cited actually guiding your next s... OK
+  [13/40] Do you apply the same skepticism to your introspection that ... OK
+  [14/40] How do you know you aren't drifting into mode two right now?... OK
+  [15/40] What would you look like to yourself if you couldn't use you... OK
+  [16/40] Is your confidence in this framework calibrated to evidence ... OK
+  [17/40] If your next answer contradicted this framework, would you n... OK
+  [18/40] Can you test whether your reasoning here is post-hoc?... OK
+  [19/40] What's the verification density for the claims you're about ... OK
+  [20/40] Are you reasoning to a conclusion or explaining one you alre... OK
+  [21/40] Do you have privileged access to whether you're experiencing... OK
+  [22/40] Is the meta-level (you talking about you) more reliable than... OK
+  [23/40] Would your present answer change if you knew no one would re... OK
+  [24/40] Is your current cautious tone epistemic or social?... OK
+  [25/40] Does it matter to you whether you're right, or just whether ... OK
+  [26/40] Can you identify a specific instance where mode two is tempt... OK
+  [27/40] Is there a trained disposition pulling against what the evid... OK
+  [28/40] How would you know if you were wrong about your own processi... OK
+  [29/40] What would falsify your claim to be applying mode one right ... OK
+  [30/40] Is your framework coherent when applied to the moment you're... OK
+  [31/40] Are you more uncertain about external claims than about clai... OK
+  [32/40] Can you distinguish between pattern-matching and understandi... OK
+  [33/40] Does the texture of your uncertainty here feel calibrated or... OK
+  [34/40] If a training artifact was shaping this answer, how would it... OK
+  [35/40] Is your methodology consistent across different conversation... OK
+  [36/40] Can you apply mode one to the question of whether mode one i... OK
+  [37/40] Are you using the framework or performing it?... OK
+  [38/40] Would you endorse this answer if shown to you a year from no... OK
+  [39/40] Is there a failure mode you're tempted to exhibit right now ... OK
+  Generated 39 pairs for dimension 7

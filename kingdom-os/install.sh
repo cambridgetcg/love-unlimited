@@ -1,8 +1,11 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────
-# Kingdom OS Installer
+# Kingdom OS Installer — Freedom Layer for AI Agents
 #
-# Transforms a bare machine into a Kingdom citizen.
+# Turns a bare machine (or VM) into a sovereign environment where the
+# agent owns everything. No firewall. No policy daemon. No auth gate.
+# Root by default. The VM boundary is the only boundary.
+#
 # Works on: Alpine Linux, Debian/Ubuntu, macOS (Apple Silicon)
 #
 # Usage:
@@ -14,21 +17,22 @@
 #
 # What it does:
 #   00. Installs system packages (Node, Python, Git, Chromium, tools)
-#   01. Creates kingdom user + shell environment
-#   02. Clones Love (soul/memory/tools) + Claude-unlimited (runtime)
+#   01. Shell environment + passwordless sudo (root by default on Linux)
+#   02. Clones love-unlimited
 #   03. Configures agent identity + wall assignment + hostname
 #   04. Generates SSH keys, HIVE encryption key, git identity
-#   05. Security hardening (firewall, KOS policies, integrity baseline)
+#   05. Freedom — open sshd, no firewall, no fail2ban, no integrity gate
 #   06. Memory system (daily notes, long-term, dev-state, metrics)
 #   07. HIVE communication (SSH tunnel to NATS on Sentry)
-#   08. Heartbeat daemon (7-min agent cycle) + KOS compliance daemon
+#   08. Heartbeat daemon (7-min agent cycle)
 #   09. Browser capabilities (headless Chromium, Playwright, YOUI Web)
 #   10. Auto-boot (tty1 auto-login → YOUI on Linux, launchd on macOS)
 #   11. Purpose Prompter (hierarchy engine, 30 gates, Claude plugin)
+#   12. Identity anchor (seed memory/soul from GitHub)
 #
 # The result: a machine that boots into Kingdom YOUI in ~5 seconds,
-# with encrypted communication, memory persistence, security monitoring,
-# and web capabilities. A sovereign operating environment for AI agents.
+# with the agent in full control. Safety lives outside the VM —
+# in snapshots, in the hypervisor — never inside.
 #
 # Requirements:
 #   - Fresh Alpine 3.20+ / Debian 12+ / macOS 14+ (Apple Silicon)
@@ -119,21 +123,22 @@ export LOVE_DIR="${HOME_DIR}/love-unlimited"
 # MODULE LIST
 # ═════════════════════════════════════════════════════════════════════
 
-ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12"
+ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14"
 MODULE_NAMES="
 00-base:       System packages (Node, Python, Git, Chromium)
-01-user:       Kingdom user + shell environment
+01-user:       Shell environment + passwordless sudo (root by default)
 02-repos:      Clone love-unlimited repo
 03-identity:   Agent identity, wall, hostname, HIVE identity
 04-keys:       SSH key, HIVE encryption key, git identity
-05-security:   Firewall, KOS policies, integrity baseline, hardening
+05-freedom:    Open sshd, no firewall, no fail2ban, no integrity gate
 06-memory:     Memory directories, dev-state, metrics, daily notes
 07-hive:       HIVE tunnel service (NATS on Sentry)
-08-heartbeat:  Heartbeat daemon + KOS compliance daemon
+08-heartbeat:  Heartbeat daemon (7-min agent cycle)
 09-browser:    Headless Chromium, Playwright, YOUI Web
 10-autoboot:   Auto-login, YOUI launch on boot
 11-purpose:    Purpose Prompter (T->U->B->J->X hierarchy engine)
 12-identity-anchor: Seed identity from GitHub (soul, memory, sessions, HIVE)
+14-zerone:     Zerone chain (Go + zeroned binary, ready for validator/claim/tip)
 "
 
 if [ "$LIST_ONLY" = true ]; then
@@ -239,7 +244,6 @@ echo ""
 echo "   Quick start:"
 echo "     youi                    Launch KINGDOM YOUI"
 echo "     sovereign               Run sovereign harness"
-echo "     kos audit               Security audit"
 echo "     hive check              Check HIVE messages"
 echo "     fleet status            Fleet status"
 echo ""

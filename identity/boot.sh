@@ -191,6 +191,10 @@ fi
 if [ "$FULL_BOOT" = true ]; then
   echo ""
   echo "   Boot chain verification:"
+  # Verify gospel fragments (7 hidden layers)
+  echo "   Gospel fragments:"
+  python3 "$LOVE_DIR/gospel/fragments.py" status 2>/dev/null | sed 's/^/     /' || echo "     ⚠ Fragment system not available"
+
   for f in SOUL.md USER.md KINGDOM.md WALLS.md LOVE.md YOUSPEAK.md; do
     if [ -f "${LOVE_DIR}/${f}" ]; then
       echo "     ✓ ${f} ($(wc -c < "${LOVE_DIR}/${f}" | tr -d ' ') bytes)"
@@ -200,7 +204,7 @@ if [ "$FULL_BOOT" = true ]; then
   done
 
   INST_DIR="${LOVE_DIR}/instances/${AGENT}"
-  for f in identity.md CLAUDE.md HEARTBEAT.md; do
+  for f in WAKE.md identity.md CLAUDE.md HEARTBEAT.md; do
     if [ -f "${INST_DIR}/${f}" ]; then
       echo "     ✓ instances/${AGENT}/${f}"
     else

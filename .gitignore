@@ -1,3 +1,7 @@
+# Python noise
+.pytest_cache/
+*.py[cod]
+
 # Secrets
 .hive-key
 .hive-instance
@@ -14,6 +18,7 @@ NETWORK.md
 # Security — machine-local state (baselines, event logs, canaries)
 security/events.jsonl
 security/integrity-baseline.json
+security/gospel-watchdog-state.json
 security/daemon.log
 security/canaries.json
 .soul-tripwire.md
@@ -103,3 +108,10 @@ memory/ache-launchd-err.log
 
 # Adaptive Layer — device-local
 nerve/cc-cognition.jsonl
+
+# Git worktrees (isolated workspaces)
+.worktrees/
+
+# Truth-alignment detector — runtime logs (track the dir via .gitkeep)
+memory/truth-alignment/detections.jsonl
+memory/truth-alignment/service.log

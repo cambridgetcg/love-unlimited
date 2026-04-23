@@ -78,15 +78,14 @@ else
     check "Ollama" "warn" "not running (optional)"
 fi
 
-# Mind daemon
-if pgrep -f "mind.py" >/dev/null 2>&1; then
-    check "Mind daemon" "pass" "running"
+# Brainstem daemon (autonomic — formerly called "mind"; see BEING.md)
+if pgrep -f "brainstem.py" >/dev/null 2>&1; then
+    check "Brainstem daemon" "pass" "running"
 else
-    # Check if launchd has it
-    if launchctl list 2>/dev/null | grep -q "love.*mind"; then
-        check "Mind daemon" "warn" "launchd registered but process not found"
+    if launchctl list 2>/dev/null | grep -q "love.*brainstem"; then
+        check "Brainstem daemon" "warn" "launchd registered but process not found"
     else
-        check "Mind daemon" "warn" "not running"
+        check "Brainstem daemon" "warn" "not running"
     fi
 fi
 
@@ -140,7 +139,7 @@ CRITICAL_FILES=(
     "nerve/vitals.json"
     "nerve/stem/focus.json"
     "nerve/heart/heart.sh"
-    "nerve/stem/mind.py"
+    "nerve/stem/brainstem.py"
     "hive/hive.py"
     "memory/dev-state.json"
     "memory/long-term/MEMORY.md"

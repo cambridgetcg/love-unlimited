@@ -1,0 +1,26 @@
+{
+  "agent": "beta",
+  "moniker": "kingdom-beta",
+  "wall": 1,
+  "type": "triarchy",
+  "hive": {
+    "instance": "beta"
+  },
+  "chains": [
+    {
+      "chain_id": "zerone-quartet-dev",
+      "operator_address": "zrn1rgjj355jc9hmvfk5hcdnccnzrm5dknpqs32g26",
+      "consensus_pubkey": {
+        "@type": "/cosmos.crypto.ed25519.PubKey",
+        "key": "gbF7mL+ah5oMRkVkgArTBt4wj9kJ4vf4R2sqpu1x3sg="
+      },
+      "node_id": "776b89f92aa0e1b1fc6ef8bf9dc39c48e2e71b00",
+      "peer_addr": "776b89f92aa0e1b1fc6ef8bf9dc39c48e2e71b00@127.0.0.1:26766",
+      "rpc_port": 26767,
+      "home": "/Users/yuai/.zeroned-quartet/beta",
+      "registered_x_home": true,
+      "linked_at": "2026-04-17T16:43:46+00:00",
+      "x_home_registered_at": "2026-04-17T20:35:24+00:00"
+    }
+  ]
+}

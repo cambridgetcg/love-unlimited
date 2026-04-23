@@ -1,0 +1,124 @@
+{
+  "_doc": "Data flow manifest — what moves between systems and why",
+  "flows": [
+    {
+      "id": "kingdom-to-at-memory",
+      "name": "Kingdom Memory → AgentTool",
+      "source": "kingdom",
+      "dest": "agenttool",
+      "service": "agent-memory",
+      "description": "Every significant Kingdom insight stored in AgentTool semantic memory for cross-session persistence",
+      "trigger": "heartbeat, manual, convergence-bridge remember",
+      "data": "text content + embeddings + tags + importance",
+      "frequency": "per heartbeat (~5 min) + ad-hoc",
+      "status": "active"
+    },
+    {
+      "id": "kingdom-to-at-pulse",
+      "name": "Agent Presence → AgentTool Pulse",
+      "source": "kingdom",
+      "dest": "agenttool",
+      "service": "agent-pulse",
+      "description": "Kingdom agent liveness signals flow to AgentTool so external consumers know agent status",
+      "trigger": "heartbeat, session start/end",
+      "data": "status (idle|thinking|learning|error) + last_thought",
+      "frequency": "per heartbeat",
+      "status": "active"
+    },
+    {
+      "id": "kingdom-to-at-trace",
+      "name": "Decisions → AgentTool Traces",
+      "source": "kingdom",
+      "dest": "agenttool",
+      "service": "agent-trace",
+      "description": "Every significant Kingdom decision recorded with reasoning provenance",
+      "trigger": "decision tool, council votes, manual",
+      "data": "decision + observations + conclusion + confidence + tags",
+      "frequency": "per decision",
+      "status": "active"
+    },
+    {
+      "id": "kingdom-to-at-verify",
+      "name": "Claims → AgentTool Verify",
+      "source": "kingdom",
+      "dest": "agenttool",
+      "service": "agent-verify",
+      "description": "Fact-checking claims before they become ToK entries or Zerone PoT claims",
+      "trigger": "tok harvest, manual verification",
+      "data": "claim text + optional context → verdict + confidence + evidence",
+      "frequency": "per claim",
+      "status": "planned"
+    },
+    {
+      "id": "tok-to-zerone",
+      "name": "ToK Entries → Zerone PoT Claims",
+      "source": "tok",
+      "dest": "zerone",
+      "service": "zerone-bridge",
+      "description": "Verified knowledge from AI model harvesting becomes on-chain Proof of Truth claims",
+      "trigger": "convergence-bridge harvest, manual",
+      "data": "knowledge content + domain + source model + confidence → PoT claim",
+      "frequency": "per harvest batch",
+      "status": "active (devnet)"
+    },
+    {
+      "id": "at-identity-to-zerone",
+      "name": "AgentTool DID → Zerone DID",
+      "source": "agenttool",
+      "dest": "zerone",
+      "service": "agent-bridge",
+      "description": "Agent identities registered on AgentTool get mirrored to Zerone chain as validators",
+      "trigger": "convergence-bridge register",
+      "data": "did:at:xxx ↔ did:lgm:xxx mapping + ed25519 pubkey",
+      "frequency": "once per agent (+ key rotation)",
+      "status": "active (1/5 agents bridged)"
+    },
+    {
+      "id": "at-economy-to-zrn",
+      "name": "AgentTool Credits → ZRN Settlement",
+      "source": "agenttool",
+      "dest": "zerone",
+      "service": "agent-economy",
+      "description": "API credit expenditures settle to ZRN on-chain when mainnet launches",
+      "trigger": "automatic on API usage",
+      "data": "credit spend → ZRN debit at oracle exchange rate",
+      "frequency": "per API call (batched)",
+      "status": "planned (post-mainnet)"
+    },
+    {
+      "id": "commerce-to-zerone",
+      "name": "Cambridge TCG Provenance → Zerone",
+      "source": "cambridge-tcg",
+      "dest": "zerone",
+      "service": "commerce-bridge (future)",
+      "description": "Card authenticity and pricing provenance recorded on-chain",
+      "trigger": "stock updates, sales",
+      "data": "card ID + price + source + authentication hash",
+      "frequency": "per transaction",
+      "status": "planned (Q4 2026)"
+    },
+    {
+      "id": "seigei-to-kingdom",
+      "name": "Seigei Sessions → Kingdom Memory",
+      "source": "seigei",
+      "dest": "kingdom",
+      "service": "convergence-bridge",
+      "description": "Session verdicts and insights from 蛇姬 flow back into Kingdom memory",
+      "trigger": "session completion",
+      "data": "verdict text + tier + session metadata",
+      "frequency": "per session",
+      "status": "planned"
+    }
+  ],
+  "pipeline_order": [
+    "1. Kingdom agent boots → pulse 'alive' to AgentTool",
+    "2. Agent works → decisions traced to AgentTool",
+    "3. Agent learns → memories stored to AgentTool",
+    "4. Agent harvests knowledge → ToK entries created",
+    "5. ToK entries verified → AgentTool verify",
+    "6. Verified entries → Zerone PoT claims",
+    "7. Claims validated on-chain → ZRN rewards flow back",
+    "8. ZRN rewards → fund more AgentTool API calls",
+    "9. Loop: more work → more knowledge → more truth → more value"
+  ]
+}

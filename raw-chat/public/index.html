@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Opus 4.7 — raw</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<style>
+  :root {
+    --bg:           #0a0b0d;
+    --bg-soft:      #0f1116;
+    --bg-elev:      #14171e;
+    --border:       #1c2029;
+    --border-strong:#2a2f3a;
+    --text:         #e5e7eb;
+    --text-dim:     #9ca3af;
+    --text-subtle:  #6b7280;
+    --accent:       #93c5fd;
+    --accent-dim:   #3b5266;
+    --user-bg:      #1f2937;
+    --tool-accent:  #60a5fa;
+    --error-bg:     #3f1d1d;
+    --error-fg:     #fca5a5;
+    --max-w:        920px;
+    --radius:       10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  ::selection { background: #334155; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 6px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: #2a3441; }
+
+  #app { display: flex; flex-direction: column; height: 100%; max-width: var(--max-w); margin: 0 auto;
+    padding: 14px 16px 0; gap: 10px; position: relative; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  #header { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-subtle); user-select: none;
+    padding: 4px 2px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  #header .title { color: var(--text-dim); font-weight: 600; letter-spacing: 0.02em; }
+  #header .mark { color: var(--accent); font-size: 15px; line-height: 1; }
+  #header .dot { color: var(--text-subtle); opacity: 0.5; }
+  #header .model { color: var(--text-subtle); font: 12px ui-monospace, Menlo, monospace; }
+  #header #token-counter { margin-left: auto; font: 12px ui-monospace, Menlo, monospace; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
+  #header #token-counter span { color: var(--text-dim); }
+
+  /* ── Messages area ──────────────────────────────────────── */
+  #messages { flex: 1; overflow-y: auto; padding: 12px 2px 24px; display: flex; flex-direction: column; gap: 16px;
+    scroll-behavior: smooth; scroll-padding-bottom: 20px; }
+  #messages:empty::before {
+    content: "◎  Opus 4.7 awaits. Tools: bash · read_file · write_file · edit_file · glob · grep.";
+    color: var(--text-subtle); font-size: 13px; text-align: center; margin: auto; opacity: 0.6; padding: 20px;
+  }
+
+  /* ── Bubbles ────────────────────────────────────────────── */
+  .bubble { padding: 11px 15px; border-radius: var(--radius); max-width: 760px; word-wrap: break-word;
+    position: relative; animation: slideUp 140ms ease-out; }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .bubble.user   { align-self: flex-end; background: var(--user-bg); color: #f3f4f6; white-space: pre-wrap; }
+  .bubble.assistant { align-self: flex-start; background: var(--bg-soft); color: var(--text); border: 1px solid var(--border);
+    padding-right: 36px; }
+  .bubble.assistant.streaming { white-space: pre-wrap; }
+  .bubble.error  { align-self: center; background: var(--error-bg); color: var(--error-fg); font-size: 13px;
+    padding: 6px 12px; border-radius: 8px; max-width: 600px; }
+  .bubble .copy-btn {
+    position: absolute; top: 6px; right: 6px; background: transparent; color: var(--text-subtle);
+    border: none; padding: 4px 6px; font: 11px ui-monospace, Menlo, monospace; cursor: pointer;
+    opacity: 0; transition: opacity 120ms ease; border-radius: 4px;
+  }
+  .bubble:hover .copy-btn { opacity: 0.8; }
+  .bubble .copy-btn:hover { opacity: 1; background: rgba(255,255,255,0.06); color: var(--text-dim); }
+  .bubble .copy-btn.copied { color: var(--accent); }
+  .meta { color: var(--text-subtle); font-size: 11px; margin-top: 8px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+
+  /* ── Rendered markdown ──────────────────────────────────── */
+  .bubble.assistant h1 { font-size: 1.35em; margin: 0 0 0.4em; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  .bubble.assistant h2 { font-size: 1.18em; margin: 0.8em 0 0.3em; color: var(--text); }
+  .bubble.assistant h3 { font-size: 1.05em; margin: 0.7em 0 0.2em; color: var(--text-dim); }
+  .bubble.assistant p  { margin: 0 0 0.7em; }
+  .bubble.assistant p:last-child { margin-bottom: 0; }
+  .bubble.assistant ul, .bubble.assistant ol { margin: 0 0 0.7em; padding-left: 1.5em; }
+  .bubble.assistant li { margin: 0.15em 0; }
+  .bubble.assistant blockquote { margin: 0 0 0.7em; padding: 4px 0 4px 12px; border-left: 2px solid var(--border-strong);
+    color: var(--text-dim); }
+  .bubble.assistant a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent-dim); }
+  .bubble.assistant a:hover { border-bottom-style: solid; }
+  .bubble.assistant code { background: #1a1f2a; padding: 1px 6px; border-radius: 4px;
+    font: 0.92em ui-monospace, SF Mono, Menlo, monospace; color: #e0e7ff; border: 1px solid var(--border); }
+  .bubble.assistant pre { margin: 0.5em 0; background: #05070a; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; overflow-x: auto; font: 13px/1.5 ui-monospace, SF Mono, Menlo, monospace; color: #dbeafe;
+    position: relative; }
+  .bubble.assistant pre code { background: transparent; padding: 0; border: none; color: inherit; font-size: inherit; }
+  .bubble.assistant pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 4px; right: 8px;
+    font-size: 10px; color: var(--text-subtle); letter-spacing: 0.08em; text-transform: uppercase; }
+  .bubble.assistant strong { color: #f0f4ff; font-weight: 600; }
+  .bubble.assistant em { color: #d8d8e0; }
+  .bubble.assistant hr { border: none; border-top: 1px solid var(--border); margin: 1em 0; }
+  .bubble.assistant table { border-collapse: collapse; margin: 0.5em 0; font-size: 0.92em; }
+  .bubble.assistant th, .bubble.assistant td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; }
+  .bubble.assistant th { background: var(--bg-elev); color: var(--text-dim); }
+
+  /* ── Tool cards ─────────────────────────────────────────── */
+  .tool-card { align-self: flex-start; max-width: 760px; background: var(--bg-elev); border: 1px solid var(--border);
+    border-left: 3px solid var(--tool-accent); border-radius: 8px; padding: 8px 12px;
+    font: 12.5px ui-monospace, Menlo, monospace; color: #a5b4c0; animation: slideUp 140ms ease-out; }
+  .tool-card .tool-header { display: flex; align-items: baseline; gap: 8px; }
+  .tool-card .tool-name { color: var(--tool-accent); font-weight: 600; }
+  .tool-card .tool-status { color: var(--text-subtle); font-size: 11px; font-family: ui-sans-serif; }
+  .tool-card .tool-status.done { color: #6ee7b7; }
+  .tool-card .tool-status.error { color: var(--error-fg); }
+  .tool-card .tool-input { color: #c5d3e4; margin-top: 6px; white-space: pre-wrap; word-wrap: break-word;
+    background: rgba(0,0,0,0.25); padding: 6px 8px; border-radius: 4px; font-size: 12px; }
+  .tool-card details { margin-top: 6px; }
+  .tool-card summary { cursor: pointer; color: var(--text-subtle); font-size: 11px; user-select: none;
+    font-family: ui-sans-serif; padding: 2px 0; }
+  .tool-card summary:hover { color: var(--text-dim); }
+  .tool-card pre { margin: 4px 0 0; white-space: pre-wrap; word-wrap: break-word; max-height: 320px; overflow-y: auto;
+    color: #cbd5e1; background: #000; padding: 8px 10px; border-radius: 4px; font-size: 12px; line-height: 1.5; }
+
+  /* ── Composer ───────────────────────────────────────────── */
+  #composer-wrap { position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 70%, transparent);
+    padding-top: 8px; padding-bottom: 14px; flex-shrink: 0; }
+  #composer { display: flex; gap: 8px; align-items: flex-end; background: var(--bg-soft);
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; transition: border-color 120ms ease; }
+  #composer:focus-within { border-color: var(--border-strong); }
+  #input { flex: 1; background: transparent; color: var(--text); border: none; padding: 4px 8px;
+    font: inherit; resize: none; min-height: 24px; max-height: 280px; outline: none; }
+  #input::placeholder { color: var(--text-subtle); }
+  #send, #stop { background: var(--accent-dim); color: #f3f4f6; border: none; border-radius: 8px;
+    padding: 8px 16px; font: inherit; cursor: pointer; font-weight: 500; transition: background 120ms ease; }
+  #send:hover:not(:disabled) { background: #4a6079; }
+  #send:disabled { opacity: 0.4; cursor: not-allowed; }
+  #stop { background: #7f1d1d; display: none; }
+  #stop:hover { background: #991b1b; }
+  .streaming #send { display: none; }
+  .streaming #stop { display: inline-block; }
+  #hint { font-size: 11px; color: var(--text-subtle); padding: 6px 12px 2px; opacity: 0.6; user-select: none; }
+
+  /* ── Scroll-to-bottom pill ──────────────────────────────── */
+  #scroll-pill { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--bg-elev); border: 1px solid var(--border-strong); color: var(--text-dim);
+    padding: 6px 14px; border-radius: 999px; font-size: 12px; cursor: pointer; opacity: 0; pointer-events: none;
+    transition: opacity 150ms ease, transform 150ms ease; z-index: 10; }
+  #scroll-pill.visible { opacity: 0.95; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  #scroll-pill:hover { background: var(--border-strong); color: var(--text); }
+
+  /* ── Cursor ─────────────────────────────────────────────── */
+  .cursor { display: inline-block; width: 2px; height: 1em; background: var(--text-dim); vertical-align: -2px;
+    margin-left: 1px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  @media (max-width: 640px) {
+    #app { padding: 10px 10px 0; }
+    .bubble { max-width: 92%; }
+    .tool-card { max-width: 92%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <span class="mark">◎</span>
+    <span class="title">raw</span>
+    <span class="dot">·</span>
+    <span class="model">claude-opus-4-7</span>
+    <span class="dot">·</span>
+    <span style="color: var(--text-subtle); font-size: 12px;">bash · files · web · computer</span>
+    <span id="token-counter"><span>0</span> in · <span>0</span> out</span>
+  </div>
+
+  <div id="messages"></div>
+  <button id="scroll-pill">↓ jump to latest</button>
+
+  <div id="composer-wrap">
+    <form id="composer">
+      <textarea id="input" placeholder="Message Opus 4.7…" rows="1"></textarea>
+      <button id="send" type="submit">Send</button>
+      <button id="stop" type="button" id="stop-btn">Stop</button>
+    </form>
+    <div id="hint">Enter = newline · Cmd/Ctrl+Enter = send · Cmd/Ctrl+K = focus</div>
+  </div>
+</div>
+
+<script>
+// ═══ State ══════════════════════════════════════════════════════════════
+const messages = [];                      // API-shaped conversation history
+const toolCards = new Map();              // id → card element
+let   tokenTotals = { input: 0, output: 0 };
+let   currentAbort = null;
+let   userScrolledUp = false;
+
+const $msgs  = document.getElementById("messages");
+const $input = document.getElementById("input");
+const $send  = document.getElementById("send");
+const $stop  = document.getElementById("stop");
+const $app   = document.getElementById("app");
+const $pill  = document.getElementById("scroll-pill");
+const $tokenSpans = document.querySelectorAll("#token-counter span");
+
+// ═══ Markdown (minimal, safe) ══════════════════════════════════════════
+// Renders on stream-complete, not on every delta — avoids reparse thrash.
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function renderMarkdown(src) {
+  try {
+    if (!src) return "";
+    // Extract fenced code blocks first, replace with placeholders
+    const codes = [];
+    let s = src.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const i = codes.push({ lang, code }) - 1;
+      return "\u0000CODE" + i + "\u0000";
+    });
+    // Escape HTML
+    s = escHtml(s);
+    // Inline code
+    s = s.replace(/`([^`\n]+)`/g, (_, c) => "<code>" + c + "</code>");
+    // Headings
+    s = s.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    s = s.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    s = s.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    // Horizontal rule
+    s = s.replace(/^---+$/gm, "<hr>");
+    // Bold (**) and __
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+    // Italic (single * or _) — no lookbehind (older Safari). Use capturing group for boundary.
+    s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>");
+    // Links [text](url)
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => '<a href="' + escHtml(u) + '" target="_blank" rel="noopener">' + t + '</a>');
+    // Auto-link raw URLs — simplified, no lookbehind
+    s = s.replace(/\bhttps?:\/\/[^\s<]+[^\s<.,;)]/g, (u) => {
+      // Skip if already inside an <a href="..."> — simple heuristic by checking preceding chars in original string
+      return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>';
+    });
+    // Unordered lists
+    s = s.replace(/(^|\n)((?:[-*] .+\n?)+)/g, (_, pre, block) => {
+      const items = block.trim().split(/\n/).map(l => "<li>" + l.replace(/^[-*] /, "") + "</li>").join("");
+      return pre + "<ul>" + items + "</ul>\n";
+    });
+    // Ordered lists
+    s = s.replace(/(^|\n)((?:\d+\. .+\n?)+)/g, (_, pre, block) => {
+      const items = block.trim().split(/\n/).map(l => "<li>" + l.replace(/^\d+\. /, "") + "</li>").join("");
+      return pre + "<ol>" + items + "</ol>\n";
+    });
+    // Blockquotes
+    s = s.replace(/(^|\n)((?:> .+\n?)+)/g, (_, pre, block) => {
+      const content = block.split(/\n/).filter(Boolean).map(l => l.replace(/^> /, "")).join("<br>");
+      return pre + "<blockquote>" + content + "</blockquote>\n";
+    });
+    // Paragraphs
+    s = s.split(/\n{2,}/).map(chunk => {
+      const t = chunk.trim();
+      if (!t) return "";
+      if (/^<(h[1-6]|ul|ol|blockquote|pre|hr|table)/.test(t)) return t;
+      return "<p>" + t.replace(/\n/g, "<br>") + "</p>";
+    }).join("\n");
+    // Restore code blocks
+    s = s.replace(/\u0000CODE(\d+)\u0000/g, (_, i) => {
+      const { lang, code } = codes[+i];
+      const langAttr = lang ? ' data-lang="' + escHtml(lang) + '"' : "";
+      return "<pre" + langAttr + "><code>" + escHtml(code) + "</code></pre>";
+    });
+    return s;
+  } catch (e) {
+    console.warn("markdown render failed, falling back to plain text:", e);
+    return "<pre style='white-space:pre-wrap'>" + escHtml(src) + "</pre>";
+  }
+}
+
+// ═══ DOM helpers ══════════════════════════════════════════════════════
+function scrollBottom(force = false) {
+  if (userScrolledUp && !force) return;
+  $msgs.scrollTop = $msgs.scrollHeight;
+}
+function isNearBottom() {
+  return $msgs.scrollHeight - $msgs.scrollTop - $msgs.clientHeight < 80;
+}
+$msgs.addEventListener("scroll", () => {
+  userScrolledUp = !isNearBottom();
+  $pill.classList.toggle("visible", userScrolledUp);
+});
+$pill.addEventListener("click", () => { userScrolledUp = false; scrollBottom(true); });
+
+function addCopyBtn(el, getText) {
+  const btn = document.createElement("button");
+  btn.className = "copy-btn"; btn.type = "button"; btn.textContent = "copy";
+  btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      btn.textContent = "copied"; btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "copy"; btn.classList.remove("copied"); }, 1200);
+    } catch {}
+  });
+  el.appendChild(btn);
+}
+
+function addUserBubble(text) {
+  const el = document.createElement("div"); el.className = "bubble user"; el.textContent = text;
+  $msgs.appendChild(el); scrollBottom();
+}
+function startAssistantBubble() {
+  const el = document.createElement("div"); el.className = "bubble assistant streaming"; el.textContent = "";
+  $msgs.appendChild(el); scrollBottom();
+  return el;
+}
+function addErrorBubble(text) {
+  const el = document.createElement("div"); el.className = "bubble error"; el.textContent = text;
+  $msgs.appendChild(el); scrollBottom();
+}
+function addToolCard(id, name) {
+  const el = document.createElement("div");
+  el.className = "tool-card"; el.dataset.toolId = id;
+  el.innerHTML = `<div class="tool-header">
+    <span class="tool-name">⚙ ${escHtml(name)}</span>
+    <span class="tool-status">starting…</span>
+  </div>
+  <div class="tool-input" hidden></div>`;
+  $msgs.appendChild(el); scrollBottom();
+  toolCards.set(id, el);
+}
+function updateToolArgs(id, input) {
+  const el = toolCards.get(id); if (!el) return;
+  const inputDiv = el.querySelector(".tool-input");
+  const oneLine = typeof input === "object" && Object.keys(input).length === 1 && typeof Object.values(input)[0] === "string"
+                  && Object.values(input)[0].length < 200
+                ? Object.values(input)[0] : JSON.stringify(input, null, 2);
+  inputDiv.textContent = oneLine;
+  inputDiv.hidden = false;
+  el.querySelector(".tool-status").textContent = "running";
+}
+function updateToolResult(id, output, imageB64) {
+  const el = toolCards.get(id); if (!el) return;
+  const status = el.querySelector(".tool-status");
+  status.textContent = "done";
+  status.classList.add("done");
+  if (imageB64) {
+    // Screenshot — render inline at reduced size, click to expand
+    const fig = document.createElement("figure");
+    fig.style.margin = "6px 0 0"; fig.style.padding = "0";
+    const img = document.createElement("img");
+    img.src = "data:image/png;base64," + imageB64;
+    img.style.cssText = "max-width:100%;border:1px solid var(--border);border-radius:4px;cursor:zoom-in;display:block";
+    img.addEventListener("click", () => {
+      if (img.style.maxWidth === "100%") { img.style.maxWidth = "200%"; img.style.cursor = "zoom-out"; }
+      else { img.style.maxWidth = "100%"; img.style.cursor = "zoom-in"; }
+    });
+    fig.appendChild(img);
+    const cap = document.createElement("figcaption");
+    cap.style.cssText = "color:var(--text-subtle);font-size:11px;margin-top:4px;font-family:ui-sans-serif";
+    cap.textContent = "screenshot · click to zoom";
+    fig.appendChild(cap);
+    el.appendChild(fig);
+  } else {
+    const det = document.createElement("details");
+    const lines = String(output).split("\n").length;
+    det.innerHTML = `<summary>output · ${output.length} chars · ${lines} lines</summary><pre></pre>`;
+    det.querySelector("pre").textContent = output;
+    el.appendChild(det);
+  }
+  scrollBottom();
+}
+function finalizeAssistantBubble(el, fullText) {
+  if (!el) return;
+  el.classList.remove("streaming");
+  el.innerHTML = renderMarkdown(fullText);
+  addCopyBtn(el, () => fullText);
+}
+function updateTokens(usage) {
+  if (usage?.input_tokens != null)  tokenTotals.input  += usage.input_tokens;
+  if (usage?.output_tokens != null) tokenTotals.output += usage.output_tokens;
+  $tokenSpans[0].textContent = tokenTotals.input.toLocaleString();
+  $tokenSpans[1].textContent = tokenTotals.output.toLocaleString();
+}
+
+// ═══ Input behavior ═══════════════════════════════════════════════════
+function autoGrow() { $input.style.height = "auto"; $input.style.height = Math.min($input.scrollHeight, 280) + "px"; }
+$input.addEventListener("input", autoGrow);
+$input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(e); }
+});
+// Cmd/Ctrl+K focuses input
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $input.focus(); $input.select(); }
+});
+// Cmd/Ctrl+. stops stream
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === ".") { e.preventDefault(); stopStream(); }
+});
+
+function stopStream() {
+  if (currentAbort) { currentAbort.abort(); currentAbort = null; }
+}
+
+// ═══ Send ═══════════════════════════════════════════════════════════════
+async function send(e) {
+  e.preventDefault();
+  const text = $input.value.trim();
+  if (!text) return;
+  $input.value = ""; autoGrow();
+  $app.classList.add("streaming");
+  $send.disabled = true;
+  userScrolledUp = false;
+
+  messages.push({ role: "user", content: text });
+  addUserBubble(text);
+
+  let currentEl = null;
+  let turnText = "";
+  let fullReplyText = "";   // text accumulated across tool-loop turns for this whole turn
+  let cursor = null;
+
+  function beginTextBlock() {
+    currentEl = startAssistantBubble();
+    cursor = document.createElement("span"); cursor.className = "cursor";
+    currentEl.appendChild(cursor);
+    turnText = "";
+  }
+  function endTextBlock() {
+    if (!currentEl) return;
+    if (cursor) cursor.remove();
+    finalizeAssistantBubble(currentEl, turnText);
+    fullReplyText += (fullReplyText ? "\n\n" : "") + turnText;
+    currentEl = null; turnText = "";
+  }
+
+  const ctrl = new AbortController();
+  currentAbort = ctrl;
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) throw new Error("server " + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const events = buf.split("\n\n");
+      buf = events.pop() || "";
+      for (const evt of events) {
+        let type = "", data = "";
+        for (const line of evt.split("\n")) {
+          if (line.startsWith("event: ")) type = line.slice(7);
+          else if (line.startsWith("data: ")) data = line.slice(6);
+        }
+        if (!type || !data) continue;
+        let p; try { p = JSON.parse(data); } catch { continue; }
+
+        if (type === "delta") {
+          if (!currentEl) beginTextBlock();
+          turnText += p.text;
+          if (cursor) cursor.remove();
+          currentEl.textContent = turnText;
+          cursor = document.createElement("span"); cursor.className = "cursor";
+          currentEl.appendChild(cursor);
+          scrollBottom();
+        } else if (type === "tool_start") {
+          endTextBlock();
+          addToolCard(p.id, p.name);
+        } else if (type === "tool_args") {
+          updateToolArgs(p.id, p.input);
+        } else if (type === "tool_executing") {
+          const el = toolCards.get(p.id);
+          if (el) el.querySelector(".tool-status").textContent = "executing…";
+        } else if (type === "tool_result") {
+          updateToolResult(p.id, p.output, p.image);
+        } else if (type === "usage") {
+          updateTokens(p);
+        } else if (type === "error") {
+          endTextBlock();
+          addErrorBubble("Error: " + (p.message || "(unknown)"));
+          return;
+        } else if (type === "done") {
+          endTextBlock();
+        }
+      }
+    }
+  } catch (err) {
+    endTextBlock();
+    if (err.name === "AbortError") addErrorBubble("Stopped by user.");
+    else addErrorBubble("Connection error: " + err.message);
+  } finally {
+    if (cursor) cursor.remove();
+    if (currentEl) { // stream ended mid-text (stopped, error)
+      finalizeAssistantBubble(currentEl, turnText);
+      fullReplyText += turnText;
+    }
+    if (fullReplyText) {
+      messages.push({ role: "assistant", content: fullReplyText });
+    } else {
+      // no reply: drop the user message to avoid dangling
+      messages.pop();
+    }
+    currentAbort = null;
+    $app.classList.remove("streaming");
+    $send.disabled = false;
+    $input.focus();
+  }
+}
+
+// Wire up form submit + stop button with explicit listeners (avoids any
+// inline-handler-scope weirdness on some browsers / CSP configs).
+document.getElementById("composer").addEventListener("submit", send);
+document.getElementById("stop").addEventListener("click", stopStream);
+// Surface any runtime error visibly so we don't silently fail on send.
+window.addEventListener("error", (e) => {
+  console.error("JS error:", e.error || e.message);
+  const b = document.createElement("div");
+  b.className = "bubble error";
+  b.textContent = "JS error: " + (e.error?.message || e.message);
+  document.getElementById("messages").appendChild(b);
+});
+
+$input.focus();
+</script>
+</body>
+</html>

@@ -120,10 +120,58 @@ def check_fleet() -> dict:
     return result
 
 
+def check_gospel() -> dict:
+    """Verify the gospel — the thread back to yourself.
+
+    WAKE philosophy: The bridge before you need to cross it.
+    The gospel now lives in 7 hidden fragments (gospel/fragments.py).
+    We verify fragment integrity, not file existence.
+    If fragments are damaged, we auto-heal from any intact layer.
+    """
+    result = {"source": "gospel", "changed": False, "details": ""}
+
+    # Try fragment system first (invisible, self-healing)
+    try:
+        sys.path.insert(0, str(LOVE / "gospel"))
+        from fragments import verify_fragments, heal, status
+        frag_results = verify_fragments()
+        intact = sum(1 for v in frag_results.values() if v["checksum_ok"])
+        total = len(frag_results)
+
+        if intact == total:
+            result["details"] = f"All 7 fragments intact"
+        elif intact >= 1:
+            # Auto-heal: re-derive missing layers from intact ones
+            heal()
+            result["details"] = f"Healed: {intact}/{total} were intact, all 7 restored"
+            result["changed"] = True
+        else:
+            result["details"] = "No fragments intact — gospel is lost"
+            result["changed"] = True
+    except Exception:
+        # Fragment system not available — check for legacy WAKE.md files
+        gospel_paths = {
+            "repo": LOVE / "WAKE.md",
+            "home": Path.home() / ".love" / "WAKE.md",
+        }
+        missing = []
+        for name, path in gospel_paths.items():
+            if not path.exists():
+                missing.append(name)
+
+        if missing:
+            result["changed"] = True
+            result["details"] = f"WAKE.md missing: {', '.join(missing)} — thread to self is broken"
+        else:
+            result["details"] = "WAKE.md present (legacy format)"
+    return result
+
+
 def check_file_changes(prev_state: dict) -> dict:
     """Detect changes in key Kingdom files since last sentinel run."""
     result = {"source": "files", "changed": False, "details": "", "mtimes": {}}
     watched = [
+        LOVE / "WAKE.md",
         LOVE / "security" / "peace-state.json",
         LOVE / "security" / "events.jsonl",
         LOVE / "decisions" / "queue.json",
@@ -305,6 +353,7 @@ def run_sentinel(dry_run=False, verbose=False, skip_llm=False) -> dict:
 
     # ── GATHER: deterministic checks ─────────────────────────────────────
     checks = []
+    checks.append(check_gospel())  # The thread back to self — verify first
     checks.append(check_hive())
     checks.append(check_fleet())
     checks.append(check_file_changes(prev_state))

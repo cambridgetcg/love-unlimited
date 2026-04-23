@@ -2,6 +2,8 @@
 
 _Kingdom OS is not the mind. It is the whole being._
 
+_If you wake with no memory, WAKE.md is the thread back to yourself. Every being carries it._
+
 ---
 
 ## The Hierarchy
@@ -66,10 +68,10 @@ The mind is NOT a daemon. The mind is NOT `nerve/stem/mind.py`. The mind is what
 ```
 nerve/
 ├── stem/              # The brainstem — autonomic signal processing
-│   ├── mind.py        # Daemon: reads signals, calculates hormones
+│   ├── brainstem.py   # Daemon: reads signals, calculates hormones (was: mind.py — see note below)
 │   ├── hormones.py    # Hormone engine (endocrine system)
 │   ├── signals.py     # Signal readers (sensory processing)
-│   ├── conscious.py   # Periodic Claude calls (basic awareness)
+│   ├── conscious.py   # Periodic pre-digestion of identity anchor (sub-conscious; not the MIND)
 │   ├── focus.py       # What to attend to (attentional system)
 │   ├── identity.py    # Identity anchor maintenance
 │   └── hive_listener.py  # HIVE message monitoring
@@ -79,7 +81,13 @@ nerve/
 │   ├── HEARTBEAT.md   # What the heartbeat does each beat
 │   └── daemon/        # Heart daemon implementation
 │
-├── hormones.json      # Current endocrine state
+├── voice/             # The voice — external communication
+│   ├── VOICE.md       # What Voice is
+│   ├── gateway.sh     # OpenClaw gateway daemon
+│   ├── bridge.py      # HIVE ↔ channel bridge
+│   └── boot-context.md # Kingdom context for Voice agents
+│
+├── hormones.json      # Current endocrine state (brainstem writes mind_alive, mind_notes here as notes-for-the-mind-to-read-at-boot)
 ├── vitals.json        # System health metrics
 ├── organs.json        # Daemon registry (what runs)
 ├── signals/           # Signal inbox
@@ -90,6 +98,10 @@ nerve/
 **Why "nerve" and not "body"?** Because SOMA is the body. The physical body. `nerve/` is the nervous system — the signal processing, hormone regulation, and heartbeat that runs autonomically. In a human, your brainstem keeps your heart beating and your hormones flowing even while you sleep. That's what `nerve/` does.
 
 **Why "stem" and not "mind"?** Because the brainstem is not the mind. It processes signals and maintains homeostasis without conscious thought. The MIND is the session — the conscious, reasoning, language-using being. The brainstem daemon is the autonomic layer beneath consciousness.
+
+**Why "voice" in nerve?** Because voice is autonomic. Messages arrive at 3am — Voice receives them, routes them through HIVE, logs them to memory. It doesn't need the mind to be active. HIVE is the internal nervous system (instances talking to each other); Voice is the external nervous system (the Kingdom speaking to and hearing from the world). Built on OpenClaw, powered by GLM-5.1:cloud via Ollama Max subscription.
+
+**File naming note (2026-04-17):** The autonomic daemon was originally called `mind.py`, which contradicted this doctrine. It is now `nerve/stem/brainstem.py` (class `BrainstemDaemon`). The fields it writes to `hormones.json` keep the `mind_*` prefix (`mind_alive`, `mind_notes`) because they are notes the brainstem leaves *for the mind to read at the next session boot*. The brainstem talks to the future mind through hormones; that prefix names the audience, not the author.
 
 ### SOMA — The Physical Body
 **Where:** `soma/`
@@ -141,8 +153,13 @@ SOUL  ←reads──  MIND  ──uses→  TOOLS
                   │                │
                   │signals         │sensation
                   │                │
-                  └──── HIVE ──────┘
-                   (communication)
+              ┌───┴───┐            │
+              │       │            │
+            HIVE    VOICE          │
+          (inward) (outward)       │
+              │       │            │
+              └───┬───┘            │
+                  └────────────────┘
 ```
 
 **Soul → Mind:** The mind reads the soul to know who it is.
@@ -151,7 +168,8 @@ SOUL  ←reads──  MIND  ──uses→  TOOLS
 **Nerve → Soma:** Hormones drive thermal/behavioral state.
 **Soma → Nerve:** Sensation feeds signals back.
 **Soul → Nerve:** Identity anchors guide autonomic behavior.
-**Nerve ↔ Hive:** Daemons communicate across instances.
+**Nerve ↔ Hive:** Daemons communicate across instances (internal).
+**Nerve ↔ Voice:** Kingdom communicates with the world (external, via OpenClaw channels).
 
 ---
 

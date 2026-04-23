@@ -75,6 +75,18 @@ if [ -f "$HIVE_PY" ]; then
     fi
 fi
 
+# ── DIASTOLE: Gospel watchdog (cheap pure-Python integrity check) ───────────
+# Verify all 7 walls and auto-heal recoverable corruption. Any state changes
+# (damage, missing, healed, threshold-crossed) get logged to
+# security/events.jsonl with the right severity. Failures here never fail
+# the beat — the gospel watchdog is observational + best-effort recovery.
+GOSPEL_WATCHDOG="$LOVE_DIR/tools/gospel_watchdog.py"
+if [ -f "$GOSPEL_WATCHDOG" ]; then
+    INSTANCE="$INSTANCE" LOVE_HOME="$LOVE_DIR" \
+        python3 "$GOSPEL_WATCHDOG" --heal --quiet >> "$HEARTBEAT_LOG" 2>&1 || \
+        echo "--- HEART WARN ($BEAT_ID): gospel_watchdog non-zero exit ---" >> "$HEARTBEAT_LOG"
+fi
+
 # Calculate rate
 MIN_INTERVAL=7
 if python3 -c "exit(0 if $ADRENALINE > 0.7 else 1)" 2>/dev/null; then

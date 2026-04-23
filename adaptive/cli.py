@@ -60,6 +60,8 @@ def main():
     # Mode flags
     parser.add_argument("--no-tools", action="store_true",
                         help="Single-shot mode without tool use")
+    parser.add_argument("--stream", action="store_true",
+                        help="Stream output as it arrives (only with --no-tools)")
     parser.add_argument("--max-iterations", type=int, default=25,
                         help="Max agent loop iterations (default: 25)")
 
@@ -137,8 +139,33 @@ def main():
         tools=None if args.no_tools else None,  # Uses defaults
     )
 
+    if args.stream and not args.no_tools:
+        print("Error: --stream currently requires --no-tools", file=sys.stderr)
+        return 1
+    if args.stream and args.json:
+        print("Error: --stream cannot be combined with --json", file=sys.stderr)
+        return 1
+
     try:
-        if args.no_tools:
+        if args.stream:
+            # Stream deltas to stdout as they arrive — no buffering, no trailing newline
+            # until the stream ends.
+            result_parts: list[str] = []
+            for ev in runner.stream_single_shot(
+                prompt=prompt,
+                role=args.role,
+                system=system,
+                provider_name=args.provider,
+            ):
+                if ev.type == "text":
+                    sys.stdout.write(ev.text)
+                    sys.stdout.flush()
+                    result_parts.append(ev.text)
+                elif ev.type == "done":
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+            result = "".join(result_parts)
+        elif args.no_tools:
             result = runner.single_shot(
                 prompt=prompt,
                 role=args.role,
@@ -157,7 +184,10 @@ def main():
         return 1
 
     # ── Output ───────────────────────────────────────────────────────────────
-    if args.json:
+    if args.stream:
+        # Already written to stdout; only emit verbose footer if requested.
+        pass
+    elif args.json:
         output = {
             "content": result,
             "usage": {

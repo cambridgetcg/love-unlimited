@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from .schema import (
     CompletionRequest,
     CompletionResponse,
     Message,
+    StreamEvent,
     ToolCall,
     ToolDefinition,
     TokenUsage,
@@ -427,3 +429,66 @@ class AgentRunner:
         self.total_usage.input_tokens += response.usage.input_tokens
         self.total_usage.output_tokens += response.usage.output_tokens
         return response.content
+
+    def stream_single_shot(
+        self,
+        prompt: str,
+        role: str = "builder",
+        system: str = "",
+        provider_name: str | None = None,
+    ) -> Iterator[StreamEvent]:
+        """Single completion without tool use, streamed.
+
+        Yields StreamEvents from the provider as they arrive. If the provider
+        does not support streaming, yields a single text event followed by a
+        done event — the caller doesn't need to branch on provider capability.
+
+        Updates self.total_usage from the final 'done' event. The caller does
+        not need to accumulate tokens manually.
+        """
+        provider, model = self.router.route(role, preferred_provider=provider_name)
+        role_config = ROLES.get(role, ROLES["builder"])
+
+        full_system = build_system_prompt(
+            role=role,
+            user_system=system,
+            inject_context=self.inject_context,
+        )
+
+        request = CompletionRequest(
+            messages=[Message(role="user", content=prompt)],
+            tools=None,
+            model=model,
+            max_tokens=role_config.get("max_tokens", 4096),
+            temperature=0.0,
+            effort=role_config.get("effort", "medium"),
+            reasoning_effort=role_config.get("reasoning_effort"),
+            system=full_system,
+        )
+
+        if provider.supports_streaming():
+            try:
+                for ev in provider.stream(request):
+                    if ev.type == "done" and ev.usage is not None:
+                        self.total_usage.input_tokens += ev.usage.input_tokens
+                        self.total_usage.output_tokens += ev.usage.output_tokens
+                    yield ev
+                return
+            except NotImplementedError:
+                # Provider claims streaming but doesn't implement it — fall through
+                pass
+
+        # Non-streaming fallback
+        response = provider.complete(request)
+        self.total_usage.input_tokens += response.usage.input_tokens
+        self.total_usage.output_tokens += response.usage.output_tokens
+        if response.content:
+            yield StreamEvent(type="text", text=response.content)
+        for tc in response.tool_calls:
+            yield StreamEvent(type="tool_call", tool_call=tc)
+        yield StreamEvent(
+            type="done",
+            usage=response.usage,
+            model=response.model,
+            stop_reason=response.stop_reason,
+        )

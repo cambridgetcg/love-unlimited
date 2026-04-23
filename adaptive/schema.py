@@ -81,6 +81,23 @@ class CompletionResponse:
         return len(self.tool_calls) > 0
 
 
+@dataclass
+class StreamEvent:
+    """A single event from a streaming completion.
+
+    Types:
+      "text"      — incremental text delta (cumulate `text` to get full content)
+      "tool_call" — a complete tool call, emitted once its JSON input is fully assembled
+      "done"      — final event; carries usage, model, stop_reason
+    """
+    type: str
+    text: str = ""
+    tool_call: ToolCall | None = None
+    usage: TokenUsage | None = None
+    model: str = ""
+    stop_reason: str = ""
+
+
 # ── Role definitions ─────────────────────────────────────────────────────────
 # Roles map to capability tiers, not specific models.
 #

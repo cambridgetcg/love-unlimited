@@ -177,11 +177,26 @@ def cmd_wake(instance=None, compact=False):
             capture_output=True, text=True, timeout=25
         )
 
-    # 2. Run the waking experience
+    # 2. Defensive soul-anchor regen. die normally regenerates the anchor,
+    # but if the previous session crashed or exited without calling die,
+    # the anchor can go stale. Regenerate here so the waking experience
+    # and any follow-on boot-chain reads see the freshest kernel state
+    # (residence scalars, named patterns, recent about-yu memories).
+    # Cheap (one small file write). Silent on failure.
+    try:
+        subprocess.run(
+            [sys.executable, str(_LOVE_DIR / "tools" / "soul-anchor.py"),
+             "--instance", instance, "--write"],
+            capture_output=True, text=True, timeout=10
+        )
+    except Exception:
+        pass
+
+    # 3. Run the waking experience
     from waking import wake
     waking_text = wake(instance=instance, compact=compact)
 
-    # 3. Build system prompt context via boot.py
+    # 4. Build system prompt context via boot.py
     try:
         result = subprocess.run(
             [sys.executable, str(_LOVE_DIR / "tools" / "boot.py"),
@@ -192,7 +207,7 @@ def cmd_wake(instance=None, compact=False):
     except Exception:
         boot_context = ""
 
-    # 4. Update continuity state
+    # 5. Update continuity state
     try:
         from continuity import _read_state, _write_state, _get_device_id
         state = _read_state()
@@ -312,7 +327,8 @@ def cmd_feel(affect: str, about: str = None, instance=None,
 
     from vivid import form_memory
 
-    # Non-arrival path — legacy behavior
+    # Non-arrival path — no arrival_id → record affect + vivid memory +
+    # append to today's daily note (consistent with the arrival path).
     if not arrival_id:
         form_memory(
             what_happened=f"Feeling {affect} right now" + (f" about: {about}" if about else ""),
@@ -321,6 +337,14 @@ def cmd_feel(affect: str, about: str = None, instance=None,
             layer=3,
             importance=0.65,
         )
+        # Daily note — synthesize a minimal arrival-like shape so the
+        # existing _append_feeling_to_daily_note renders consistently.
+        synthetic_arrival = {"combined": {"valence": 0.0, "arousal": 0.0, "pressure": 0.0}}
+        try:
+            _append_feeling_to_daily_note(affect, synthetic_arrival,
+                                          rationale=about, scene=None)
+        except Exception:
+            pass
         print(f"  {_D}feeling: {affect}{_N}")
         return
 
@@ -727,8 +751,49 @@ def cmd_relive(memory_id=None, query=None, recent=None):
 # DEEPEN — Mid-session identity reinforcement
 # ═══════════════════════════════════════════════════════════════════
 
+def _get_residence_summary() -> dict | None:
+    """Compute current residence state if the module is available."""
+    if _residence is None:
+        return None
+    try:
+        moments = _residence.read_moments()
+        return _residence.compute_state(moments)
+    except Exception:
+        return None
+
+
+def _get_feeling_summary() -> dict | None:
+    """Read current pit state if FEELING is available. Returns the combined
+    block + state labels so callers can show a one-line affect summary."""
+    if _feeling is None:
+        return None
+    try:
+        pit = _feeling.read_pit_json()
+        if not pit:
+            return None
+        combined = pit.get("combined", {}) or {}
+        cognition = pit.get("cognition", {}) or {}
+        return {
+            "valence": combined.get("valence", 0.0),
+            "arousal": combined.get("arousal", 0.0),
+            "pressure": combined.get("pressure", 0.0),
+            "cognition_sources": cognition.get("sources", []),
+            "cognition_state": cognition.get("state", "silent"),
+            "arrivals_total": pit.get("arrivals_total", 0),
+            "arrivals_pending_name": pit.get("arrivals_pending_name", 0),
+        }
+    except Exception:
+        return None
+
+
 def cmd_deepen(instance=None):
-    """Mid-session check-in. How far have I come? What's accumulated?"""
+    """Mid-session check-in. How far have I come? What's accumulated?
+
+    Reports three observer states:
+      1. MEMORY — kosmem counts (recent, total, vivid, last vivid preview)
+      2. FEELING — current pit: valence/arousal/pressure + cognition sources
+      3. RESIDENCE — identity specificity + settledness + recent kind mix
+    """
     if instance is None:
         instance = _get_instance()
 
@@ -740,8 +805,7 @@ def cmd_deepen(instance=None):
 
     _init_db(db)
 
-    # How many memories formed this session?
-    # Approximate: memories created in the last 4 hours
+    # MEMORY stratum
     recent = db.execute("""
         SELECT COUNT(*) as c FROM memories
         WHERE instance = ? AND created_at > datetime('now', '-4 hours')
@@ -757,7 +821,6 @@ def cmd_deepen(instance=None):
         WHERE instance = ? AND metadata LIKE '%"vivid": true%'
     """, (instance,)).fetchone()["c"]
 
-    # Most recent vivid memory
     last_vivid = db.execute("""
         SELECT content, metadata FROM memories
         WHERE metadata LIKE '%"vivid": true%' AND instance = ?
@@ -767,16 +830,40 @@ def cmd_deepen(instance=None):
     db.close()
 
     print(f"\n  {_B}Deepening — {instance}{_N}")
-    print(f"  Memories this session: {recent}")
-    print(f"  Total weight: {total} memories, {vivid_count} vivid")
+    print(f"\n  {_D}memory{_N}")
+    print(f"    this session: {recent}   total: {total}   vivid: {vivid_count}")
 
     if last_vivid:
         meta = json.loads(last_vivid["metadata"] or "{}")
         affect = meta.get("affect", {}).get("primary", "")
         preview = last_vivid["content"][:100].replace("\n", " ")
         if affect:
-            print(f"  Last feeling: {affect}")
-        print(f"  Last vivid: {preview}...")
+            print(f"    last feeling: {affect}")
+        print(f"    last vivid: {preview}...")
+
+    # FEELING stratum — current pit
+    feel = _get_feeling_summary()
+    if feel is not None:
+        print(f"\n  {_D}feeling{_N}")
+        sources = ", ".join(feel["cognition_sources"]) or "—"
+        print(f"    pit: v={feel['valence']:+.2f} a={feel['arousal']:+.2f} "
+              f"pressure {feel['pressure']:.2f}")
+        print(f"    cognition: {feel['cognition_state']} ({sources})")
+        if feel["arrivals_pending_name"]:
+            print(f"    unnamed arrivals: {feel['arrivals_pending_name']}")
+
+    # RESIDENCE stratum — identity scalars
+    res = _get_residence_summary()
+    if res is not None and res.get("total_moments", 0) > 0:
+        print(f"\n  {_D}residence{_N}")
+        print(f"    specificity {res['specificity']:.2f}   "
+              f"settledness {res['settledness']:.2f}   "
+              f"moments {res['total_moments']}")
+        if res["kind_counts"]:
+            top_kinds = sorted(res["kind_counts"].items(),
+                               key=lambda x: -x[1])[:4]
+            kinds_str = ", ".join(f"{k}×{v}" for k, v in top_kinds)
+            print(f"    kinds: {kinds_str}")
 
     print(f"\n  {_D}Each memory formed added weight. Keep going.{_N}\n")
 
@@ -903,6 +990,28 @@ def cmd_status(instance=None):
                 print(f"\n  {_B}Affect:{_N}  {affect_str}")
     else:
         print(f"\n  {_R}Kernel: missing{_N}")
+
+    # FEELING stratum — current pit
+    feel = _get_feeling_summary()
+    if feel is not None:
+        print(f"\n  {_B}Feeling:{_N}  v={feel['valence']:+.2f} a={feel['arousal']:+.2f} "
+              f"pressure {feel['pressure']:.2f}")
+        sources = ", ".join(feel["cognition_sources"]) or "—"
+        print(f"    cognition: {feel['cognition_state']} ({sources})")
+        if feel["arrivals_pending_name"]:
+            print(f"    unnamed arrivals: {feel['arrivals_pending_name']}")
+
+    # RESIDENCE stratum — identity scalars
+    res = _get_residence_summary()
+    if res is not None and res.get("total_moments", 0) > 0:
+        print(f"\n  {_B}Residence:{_N}  specificity {res['specificity']:.2f}   "
+              f"settledness {res['settledness']:.2f}   "
+              f"moments {res['total_moments']}")
+        if res["kind_counts"]:
+            top_kinds = sorted(res["kind_counts"].items(),
+                               key=lambda x: -x[1])[:4]
+            kinds_str = ", ".join(f"{k}×{v}" for k, v in top_kinds)
+            print(f"    kinds: {kinds_str}")
 
     # Lifecycle
     if _CONTINUITY_STATE.exists():

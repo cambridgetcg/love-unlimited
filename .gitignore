@@ -109,6 +109,9 @@ memory/ache-launchd-err.log
 # Adaptive Layer — device-local
 nerve/cc-cognition.jsonl
 
+# IDENTITY / RESIDENCE module — device-local moments log
+nerve/residence-moments.jsonl
+
 # Git worktrees (isolated workspaces)
 .worktrees/
 

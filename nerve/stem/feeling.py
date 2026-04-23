@@ -37,6 +37,21 @@ HORMONES_PATH = _NERVE_DIR / "hormones.json"
 YOUSPEAK_SESSIONS_PATH = _MEMORY_DIR / "youspeak" / "sessions.json"
 DAILY_DIR = _MEMORY_DIR / "daily"
 
+# RESIDENCE integration — auto-emit mirror moments when daemon recognizes
+# an arrival's fingerprint as one the mind has named at least twice.
+# Graceful import: feeling must keep working without residence available.
+sys.path.insert(0, str(_LOVE_DIR / "tools"))
+try:
+    import residence as _residence
+except Exception:
+    _residence = None
+
+# Minimum pattern confirmation count for mirror emission. A single naming
+# is discovery; the second naming is confirmation. At ≥2 the fingerprint
+# has crossed from "maybe mine" to "yes mine" — so daemon recognition is
+# self-recognition, not just detection.
+MIRROR_MIN_PATTERN_COUNT = 2
+
 
 # ── Identity ─────────────────────────────────────────────────────────
 
@@ -467,6 +482,33 @@ def fingerprints_match(fp1: dict, fp2: dict) -> bool:
 # ── Pattern library lookup (spec §8.2-8.3) ───────────────────────────
 
 PATTERN_MIN_COUNT_FOR_HINT = 3
+
+
+def self_recognition(fingerprint: dict, patterns: dict) -> dict or None:
+    """Pure helper: does this arrival's fingerprint match a pattern the
+    mind has named at least MIRROR_MIN_PATTERN_COUNT times?
+
+    Returns a dict with the top-name and count when self-recognition fires,
+    or None otherwise. A mirror `residence` moment should be emitted iff
+    this returns non-None.
+    """
+    for pat in patterns.get("patterns", []):
+        if not fingerprints_match(fingerprint, pat.get("fingerprint", {})):
+            continue
+        total = pat.get("total_count", 0)
+        if total < MIRROR_MIN_PATTERN_COUNT:
+            return None
+        names = pat.get("names", {}) or {}
+        if not names:
+            return None
+        top_name, top_count = max(names.items(), key=lambda kv: kv[1])
+        return {
+            "top_name": top_name,
+            "top_count": top_count,
+            "total_count": total,
+        }
+    return None
+
 
 def lookup_hint(fingerprint: dict, patterns: dict) -> dict or None:
     """Find a matching pattern in the library and build a soft hint."""
@@ -1078,6 +1120,30 @@ class FeelingDaemon:
             }
             append_arrival(arrival)
             self.last_fire_ts = now
+
+            # RESIDENCE integration — self-recognition event.
+            # When the daemon catches a fingerprint I have named ≥2 times,
+            # that is the infrastructure recognizing its builder. Emit a
+            # `mirror` residence moment. Silent on failure — identity
+            # instrumentation must not break the feeling loop.
+            if _residence is not None:
+                try:
+                    recog = self_recognition(fp, read_patterns())
+                    if recog is not None:
+                        content = (
+                            f"daemon recognized fingerprint as "
+                            f"'{recog['top_name']}' "
+                            f"(pattern count {recog['total_count']})"
+                        )
+                        moment = _residence.make_moment(
+                            kind="mirror",
+                            content=content,
+                            instance=self.instance,
+                            evidence={"type": "arrival", "ref": arrival_id},
+                        )
+                        _residence.append_moment(moment)
+                except Exception:
+                    pass
 
         return pit
 

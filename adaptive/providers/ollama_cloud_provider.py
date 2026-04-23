@@ -62,6 +62,7 @@ import re
 import time
 import urllib.request
 import urllib.error
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..config import AdaptiveConfig
@@ -70,10 +71,19 @@ from ..schema import (
     CompletionRequest,
     CompletionResponse,
     Message,
+    StreamEvent,
     ToolCall,
     ToolDefinition,
     TokenUsage,
 )
+
+
+# OpenAI-compat finish_reason → adaptive stop_reason (shared by complete + stream)
+_OPENAI_FINISH_MAP = {
+    "stop": "end_turn",
+    "tool_calls": "tool_use",
+    "length": "max_tokens",
+}
 
 log = logging.getLogger("ollama_cloud")
 
@@ -148,7 +158,7 @@ class OllamaCloudProvider(Provider):
         return True
 
     def supports_streaming(self) -> bool:
-        return True  # supported but we use non-streaming for automation
+        return True
 
     # ── Message & tool builders (shared by both endpoints) ───────────────
 
@@ -687,6 +697,83 @@ class OllamaCloudProvider(Provider):
         cleaned = re.split(r'<function_calls>|<invoke\s', text, maxsplit=1)[0].rstrip()
         return tool_calls, cleaned
 
+    # ── Streaming (OpenAI-compat SSE) ────────────────────────────────────
+
+    def stream(self, request: CompletionRequest) -> Iterator[StreamEvent]:
+        """Stream a completion via /v1/chat/completions with stream=True.
+
+        Uses the OpenAI-compatible endpoint (well-tested, supports
+        reasoning_effort). Native /api/chat streaming uses newline-delimited
+        JSON rather than SSE and is left to a future extension.
+
+        Emits:
+          - text deltas for `delta.content` and `delta.reasoning`
+          - tool_call events when `finish_reason == "tool_calls"` arrives
+            (tool deltas are buffered by `index` and assembled at the end)
+          - done event with final usage / model / stop_reason
+
+        Retries only on initial connection failure; once bytes flow, no
+        retry (mid-stream retry would duplicate output). Falls back to
+        non-stream `complete()` on pre-first-byte failures after budget.
+        """
+        api_key = self._api_key()
+        if not api_key:
+            raise RuntimeError("No Ollama Cloud API key available")
+
+        body = self._build_body_v1(request)
+        body["stream"] = True
+        body["stream_options"] = {"include_usage": True}
+
+        timeout = self._select_timeout(request)
+        url = f"{self.api_url}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        data = json.dumps(body).encode()
+
+        last_error: Exception | None = None
+        resp = None
+        for attempt in range(MAX_RETRIES + 1):
+            req = urllib.request.Request(url, data=data, headers=headers)
+            try:
+                resp = urllib.request.urlopen(req, timeout=timeout)
+                break
+            except urllib.error.HTTPError as e:
+                err_body = ""
+                try:
+                    err_body = e.read().decode()[:500]
+                except Exception:
+                    pass
+                last_error = RuntimeError(
+                    f"Ollama Cloud stream error {e.code}: {err_body}"
+                )
+                if e.code in RETRIABLE_STATUS_CODES and attempt < MAX_RETRIES:
+                    wait = min(RETRY_BASE_SECONDS * (2 ** attempt), RETRY_MAX_SECONDS)
+                    log.warning(
+                        f"Ollama Cloud stream {e.code} on attempt {attempt + 1}/{MAX_RETRIES + 1}, "
+                        f"retrying in {wait:.1f}s"
+                    )
+                    time.sleep(wait)
+                    continue
+                raise last_error from e
+            except urllib.error.URLError as e:
+                last_error = RuntimeError(f"Ollama Cloud unreachable: {e.reason}")
+                if attempt < MAX_RETRIES:
+                    wait = min(RETRY_BASE_SECONDS * (2 ** attempt), RETRY_MAX_SECONDS)
+                    time.sleep(wait)
+                    continue
+                raise last_error from e
+
+        if resp is None:
+            raise last_error or RuntimeError("Ollama Cloud stream: connection failed")
+
+        try:
+            yield from _parse_openai_sse_stream(resp)
+        finally:
+            resp.close()
+
     # ── Model listing ────────────────────────────────────────────────────
 
     def list_models(self) -> list[str]:
@@ -702,6 +789,134 @@ class OllamaCloudProvider(Provider):
             return [m["id"] for m in data.get("data", [])]
         except Exception:
             return []
+
+
+def _parse_openai_sse_stream(lines: Iterable) -> Iterator[StreamEvent]:
+    """Parse OpenAI-compatible SSE stream into StreamEvents.
+
+    Accepts any iterable of bytes or str lines. Pure function — no network,
+    no state outside the loop.
+
+    OpenAI SSE wire format:
+        data: {"id":"...","choices":[{"delta":{"content":"Hello"}}]}\n
+        \n
+        ...
+        data: [DONE]\n
+
+    Events emitted:
+        text        — per content/reasoning delta
+        tool_call   — one per buffered tool call, emitted when finish_reason arrives
+        done        — terminal event with usage (if include_usage set), model,
+                      stop_reason mapped from finish_reason
+
+    Tool call streaming: each delta may contain `tool_calls[]` with an `index`
+    (disambiguator for parallel calls). We buffer id/name/arguments per index
+    and emit a complete ToolCall when finish_reason="tool_calls" arrives.
+    """
+    tool_buffers: dict[int, dict] = {}  # index → {id, name, args_partial}
+    model = ""
+    input_tokens = 0
+    output_tokens = 0
+    stop_reason = "end_turn"
+    emitted_tool_calls = False
+
+    def _emit_buffered_tool_calls() -> Iterator[StreamEvent]:
+        for idx in sorted(tool_buffers):
+            tb = tool_buffers[idx]
+            args_str = tb.get("args", "")
+            try:
+                args = json.loads(args_str) if args_str else {}
+            except json.JSONDecodeError:
+                args = {"_raw": args_str}
+            yield StreamEvent(
+                type="tool_call",
+                tool_call=ToolCall(
+                    id=tb.get("id") or f"call_{idx}",
+                    name=tb.get("name", ""),
+                    arguments=args,
+                ),
+            )
+
+    for raw in lines:
+        line = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else raw
+        line = line.rstrip("\r\n")
+
+        if line == "":
+            continue
+
+        if line.startswith(":"):
+            # SSE comment / keepalive
+            continue
+
+        if not line.startswith("data:"):
+            continue
+
+        payload = line[len("data:"):].lstrip(" ")
+        if payload == "[DONE]":
+            break
+
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+
+        if obj.get("model"):
+            model = obj["model"]
+
+        # Usage may arrive on any chunk when stream_options.include_usage=true,
+        # and typically appears in the final chunk before [DONE].
+        usage = obj.get("usage")
+        if usage:
+            input_tokens = usage.get("prompt_tokens", input_tokens)
+            output_tokens = usage.get("completion_tokens", output_tokens)
+
+        for choice in obj.get("choices", []):
+            delta = choice.get("delta", {}) or {}
+
+            text = delta.get("content", "")
+            if text:
+                yield StreamEvent(type="text", text=text)
+
+            # GLM 5.1 and other reasoning models stream CoT via a `reasoning`
+            # field parallel to content. Surface it as text so callers see
+            # the thinking in order; middlewares that want to separate can tee.
+            reasoning = delta.get("reasoning", "")
+            if reasoning:
+                yield StreamEvent(type="text", text=reasoning)
+
+            for td in delta.get("tool_calls", []) or []:
+                idx = td.get("index", 0)
+                tb = tool_buffers.setdefault(idx, {"id": "", "name": "", "args": ""})
+                if td.get("id"):
+                    tb["id"] = td["id"]
+                func = td.get("function", {}) or {}
+                if func.get("name"):
+                    tb["name"] = func["name"]
+                args_partial = func.get("arguments", "")
+                if args_partial:
+                    tb["args"] += args_partial
+
+            fr = choice.get("finish_reason")
+            if fr is not None:
+                stop_reason = _OPENAI_FINISH_MAP.get(fr, "end_turn")
+                if tool_buffers and not emitted_tool_calls:
+                    yield from _emit_buffered_tool_calls()
+                    emitted_tool_calls = True
+                # Keep reading — usage chunk typically follows finish_reason
+
+    # Safety: if we somehow exited without seeing finish_reason but have
+    # buffered tool calls, emit them.
+    if tool_buffers and not emitted_tool_calls:
+        yield from _emit_buffered_tool_calls()
+        if stop_reason == "end_turn":
+            stop_reason = "tool_use"
+
+    yield StreamEvent(
+        type="done",
+        usage=TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens),
+        model=model,
+        stop_reason=stop_reason,
+    )
 
 
 PROVIDER_CLASS = OllamaCloudProvider

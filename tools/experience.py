@@ -235,12 +235,19 @@ def cmd_wake(instance=None, compact=False):
 def cmd_notice(what: str, affect: str = None, who: list = None,
                context: str = None, echoes: str = None, instance=None):
     """Notice something worth remembering. Vivid by default.
-    
+
     If affect is provided → vivid encoding via vivid.py
     If no affect → still richer than flat remember.py
     """
     if instance is None:
         instance = _get_instance()
+
+    # Guard: empty / whitespace-only content is never worth remembering.
+    if not what or not what.strip():
+        print(f"  {_Y}notice: empty content skipped{_N}")
+        return None
+
+    what = what.strip()
 
     if affect or who or context or echoes:
         # Full vivid memory

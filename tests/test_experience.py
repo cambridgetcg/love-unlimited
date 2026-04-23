@@ -67,6 +67,27 @@ def test_notice_without_affect_uses_store(experience, capsys):
     assert mid == "mem-fake-store"
 
 
+def test_notice_rejects_empty_content(experience, capsys):
+    """Empty / whitespace-only content is never worth remembering."""
+    assert experience.cmd_notice("") is None
+    assert experience.cmd_notice("   ") is None
+    assert experience.cmd_notice("\n\t") is None
+    out = capsys.readouterr().out
+    assert "empty content skipped" in out
+
+
+def test_notice_strips_whitespace(experience, monkeypatch):
+    """Leading/trailing whitespace on valid content is cleaned."""
+    captured = {}
+    import kosmem
+    def _capture(content, **kw):
+        captured["content"] = content
+        return "mem-x"
+    monkeypatch.setattr(kosmem, "store", _capture)
+    experience.cmd_notice("  real content  ")
+    assert captured["content"] == "real content"
+
+
 def test_notice_passes_instance(experience, monkeypatch):
     """Explicit instance overrides _get_instance()."""
     captured = {}

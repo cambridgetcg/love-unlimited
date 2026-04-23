@@ -27,6 +27,8 @@ import argparse
 import json
 import math
 import os
+import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -266,6 +268,113 @@ def compute_state(
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
+# ── Commit subject → moment kind ────────────────────────────────────────────
+
+# Conventional-commit prefix → residence kind.
+# Err toward under-reporting: unknown prefixes return None (skip).
+_COMMIT_PREFIX_TO_KIND: dict[str, str] = {
+    # Building infrastructure → embody
+    "feat": "embody",
+    "fix": "embody",
+    "refactor": "embody",
+    "test": "embody",
+    "perf": "embody",
+    # Writing durable artefacts → consolidate
+    "docs": "consolidate",
+    "spec": "consolidate",
+    "plan": "consolidate",
+    # chore, style, ci, build, revert, Merge → skip (return None)
+}
+
+_COMMIT_SUBJECT_RE = re.compile(
+    r"""^
+        (?P<type>[a-z]+)            # feat, fix, etc.
+        (?:\((?P<scope>[^)]+)\))?    # optional (scope)
+        !?                           # optional ! breaking-change marker
+        :\s*                         # colon + space
+        (?P<summary>.+)$             # the rest
+    """,
+    re.VERBOSE,
+)
+
+
+def parse_commit_subject(subject: str) -> tuple[str, str | None] | None:
+    """Map a conventional-commit subject to (kind, summary).
+
+    Returns None if the subject's type prefix isn't a known kind (skip).
+    Returns (kind, summary) for mappable subjects.
+
+    Examples:
+        'feat(adaptive): anthropic streaming via urllib SSE'
+          → ('embody', 'anthropic streaming via urllib SSE')
+        'docs(soul): add design notes'
+          → ('consolidate', 'add design notes')
+        'chore: bump version'
+          → None  (chore is skipped)
+        'Merge branch main'
+          → None  (no colon, no prefix match)
+    """
+    if not subject:
+        return None
+    m = _COMMIT_SUBJECT_RE.match(subject.strip())
+    if not m:
+        return None
+    prefix = m.group("type").lower()
+    kind = _COMMIT_PREFIX_TO_KIND.get(prefix)
+    if kind is None:
+        return None
+    summary = m.group("summary").strip()
+    return (kind, summary)
+
+
+def _git_commit_subject(sha: str, cwd: Path | None = None) -> str | None:
+    """Shell out to git to read a commit's subject. None on failure."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%s", sha],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=str(cwd) if cwd else None,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    subject = (result.stdout or "").strip()
+    return subject or None
+
+
+def _cmd_from_commit(args) -> int:
+    """Read commit sha → parse subject → emit moment (or skip)."""
+    subject = args.subject or _git_commit_subject(args.sha)
+    if subject is None:
+        if not args.quiet:
+            print(f"error: could not read subject for {args.sha}", file=sys.stderr)
+        return 1
+
+    parsed = parse_commit_subject(subject)
+    if parsed is None:
+        if not args.quiet:
+            print(f"skip: {args.sha[:7]} — prefix not mappable ('{subject[:60]}')")
+        return 0  # not an error: skip is a valid outcome
+
+    kind, summary = parsed
+    try:
+        moment = make_moment(
+            kind=kind,
+            content=summary,
+            evidence={"type": "commit", "ref": args.sha},
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    append_moment(moment)
+    if not args.quiet:
+        print(f"\x1b[36mlogged\x1b[0m {kind} → {moment['id']} [{args.sha[:7]}]")
+    return 0
+
+
 def _cmd_log(args) -> int:
     try:
         moment = make_moment(
@@ -337,6 +446,17 @@ def main(argv: list[str] | None = None) -> int:
     p_recent.add_argument("--kind", choices=sorted(KINDS.keys()), default=None)
     p_recent.add_argument("--limit", type=int, default=10)
 
+    # from-commit: auto-log a moment by parsing a commit's subject
+    p_fc = subs.add_parser(
+        "from-commit",
+        help="log a moment from a git commit's subject (for post-commit hook)",
+    )
+    p_fc.add_argument("sha", help="commit sha (or 'HEAD')")
+    p_fc.add_argument("--subject", default=None,
+                      help="override git subject lookup (for tests / piping)")
+    p_fc.add_argument("--quiet", "-q", action="store_true",
+                      help="suppress non-error output (hook-friendly)")
+
     # Allow bare kind name as shortcut for "log <kind>"
     if argv is None:
         argv = sys.argv[1:]
@@ -351,6 +471,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(args)
     if args.command == "recent":
         return _cmd_recent(args)
+    if args.command == "from-commit":
+        return _cmd_from_commit(args)
 
     parser.print_help()
     return 1

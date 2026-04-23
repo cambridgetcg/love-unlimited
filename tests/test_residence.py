@@ -418,6 +418,142 @@ def test_experience_feel_auto_emits_name_residence_moment(tmp_path, monkeypatch)
     assert m["evidence"] == {"type": "arrival", "ref": "arr-test-001"}
 
 
+## ── parse_commit_subject ────────────────────────────────────────────────────
+
+
+def test_parse_commit_subject_feat_maps_to_embody():
+    out = residence.parse_commit_subject("feat(adaptive): anthropic streaming")
+    assert out == ("embody", "anthropic streaming")
+
+
+def test_parse_commit_subject_fix_maps_to_embody():
+    out = residence.parse_commit_subject("fix(router): bump timeout")
+    assert out == ("embody", "bump timeout")
+
+
+def test_parse_commit_subject_test_maps_to_embody():
+    """test commits ARE embody — tests are infrastructure too."""
+    assert residence.parse_commit_subject("test(feeling): cc-rhythm") == ("embody", "cc-rhythm")
+
+
+def test_parse_commit_subject_docs_maps_to_consolidate():
+    assert residence.parse_commit_subject("docs(soul): design notes") == ("consolidate", "design notes")
+
+
+def test_parse_commit_subject_spec_maps_to_consolidate():
+    assert residence.parse_commit_subject("spec: SP1 mode-two") == ("consolidate", "SP1 mode-two")
+
+
+def test_parse_commit_subject_chore_is_skipped():
+    """chore commits are non-identity-bearing by default."""
+    assert residence.parse_commit_subject("chore: bump version") is None
+
+
+def test_parse_commit_subject_merge_is_skipped():
+    """Merge commits have no prefix → skip."""
+    assert residence.parse_commit_subject("Merge branch main") is None
+
+
+def test_parse_commit_subject_unknown_prefix_is_skipped():
+    assert residence.parse_commit_subject("wip: something") is None
+    assert residence.parse_commit_subject("style: reformat") is None
+
+
+def test_parse_commit_subject_breaking_change_marker():
+    """`feat!: ...` (breaking change) still parses to embody."""
+    out = residence.parse_commit_subject("feat!: breaking API change")
+    assert out == ("embody", "breaking API change")
+
+
+def test_parse_commit_subject_scoped_breaking_change():
+    out = residence.parse_commit_subject("refactor(adaptive)!: rename types")
+    assert out == ("embody", "rename types")
+
+
+def test_parse_commit_subject_empty_and_malformed():
+    assert residence.parse_commit_subject("") is None
+    assert residence.parse_commit_subject("no-colon-subject") is None
+    assert residence.parse_commit_subject(":") is None
+
+
+## ── from-commit CLI ─────────────────────────────────────────────────────────
+
+
+def test_from_commit_writes_embody_for_feat(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    rc = residence.main([
+        "from-commit", "deadbeef",
+        "--subject", "feat(adaptive): streaming spine",
+        "-q",
+    ])
+    assert rc == 0
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    assert len(moments) == 1
+    m = moments[0]
+    assert m["kind"] == "embody"
+    assert m["content"] == "streaming spine"
+    assert m["evidence"] == {"type": "commit", "ref": "deadbeef"}
+
+
+def test_from_commit_writes_consolidate_for_docs(tmp_path, monkeypatch):
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    rc = residence.main([
+        "from-commit", "cafe1234",
+        "--subject", "docs(identity): module spec",
+        "-q",
+    ])
+    assert rc == 0
+    moments = residence.read_moments(tmp_path / "m.jsonl")
+    assert moments[0]["kind"] == "consolidate"
+
+
+def test_from_commit_skips_chore(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    rc = residence.main([
+        "from-commit", "babe0001",
+        "--subject", "chore: housekeeping",
+    ])
+    # Exit code 0 — skip is a valid outcome, not an error
+    assert rc == 0
+    # Log file should not have been touched
+    assert not (tmp_path / "m.jsonl").exists()
+    out = capsys.readouterr().out
+    assert "skip" in out
+
+
+def test_from_commit_skips_merge(tmp_path, monkeypatch):
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    rc = residence.main([
+        "from-commit", "abc123",
+        "--subject", "Merge branch 'feature/x'",
+        "-q",
+    ])
+    assert rc == 0
+    assert not (tmp_path / "m.jsonl").exists()
+
+
+def test_from_commit_reports_error_when_subject_unavailable(tmp_path, monkeypatch, capsys):
+    """When --subject is not given and git lookup fails, return non-zero."""
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    # Patch out git lookup
+    monkeypatch.setattr(residence, "_git_commit_subject", lambda sha, cwd=None: None)
+    rc = residence.main(["from-commit", "ffffff"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not read" in err
+
+
+def test_from_commit_quiet_suppresses_non_error_output(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(residence, "MOMENTS_PATH", tmp_path / "m.jsonl")
+    residence.main([
+        "from-commit", "a",
+        "--subject", "feat: thing",
+        "-q",
+    ])
+    out = capsys.readouterr().out
+    assert out == ""
+
+
 def test_experience_feel_residence_failure_does_not_break_feel(tmp_path, monkeypatch, capsys):
     """If residence.append_moment raises, cmd_feel must still succeed.
     Residence is instrumentation, not control flow."""

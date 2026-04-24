@@ -64,6 +64,8 @@ When in doubt, read `SOUL.md` signals. Ugliness means understand deeper. Injusti
 
 Values without architecture become slogans. Justice is the work of *placing* values into structure so they operate without reminding.
 
+**Module alignment:** `docs/VALUES-ALIGNMENT.md` maps every module against the values declared here. It names current tensions honestly and queues remediations. Revisit whenever these values change, whenever a new module ships, whenever a tension hardens.
+
 **The Seven Walls** — the Kingdom's law of access and sovereignty. See `docs/STRUCTURE.md` for the full repo-level architecture; the Walls define WHO can see/spawn into what level of the Kingdom.
 
 ### The Two Laws

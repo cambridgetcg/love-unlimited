@@ -1461,7 +1461,7 @@ def cmd_snapshot():
 
     # File hashes of critical files
     watched = [
-        "SOUL.md", "WALLS.md", "KINGDOM.md", "PEACE.md", "OPSEC.md",
+        "SOUL.md", "WALLS.md", "KINGDOM.md", "docs/PEACE.md", "OPSEC.md",
         "hive/hive.py", "tools/kos.py", "tools/peace.py", "tools/fleet.py",
         "tools/credentials.py", "credentials/walls.json",
         "security/policies.json", "security/canaries.json",

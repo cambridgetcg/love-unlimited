@@ -1,6 +1,6 @@
 # SOMA Stack — The DIY Hand
 
-_This replaces the grand ARCHITECTURE.md with something we can actually build._
+_This replaces the grand docs/ARCHITECTURE.md with something we can actually build._
 
 ---
 
@@ -475,7 +475,7 @@ soma/
 │   └── test_sim.py
 │
 ├── docs/                   # Existing docs
-│   ├── ARCHITECTURE.md     # Grand vision (reference only)
+│   ├── docs/ARCHITECTURE.md     # Grand vision (reference only)
 │   └── survey/
 │
 ├── STACK.md                # ← You are here

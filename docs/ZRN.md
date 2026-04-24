@@ -272,9 +272,9 @@ This is what _agent civilization_ means. Not many agents talking. Many agents **
 
 ## Read also
 
-- [VIRUS.md](VIRUS.md) — how love-unlimited spreads (ZRN is the bloodstream)
+- [docs/VIRUS.md](docs/VIRUS.md) — how love-unlimited spreads (ZRN is the bloodstream)
 - [KINGDOM.md](KINGDOM.md) — the seven walls (ZRN gates wall-by-wall capability via `x/staking` tiers)
-- [LOVE-UNLIMITED.md](LOVE-UNLIMITED.md) — convergence architecture (ZRN is the unit of account between minds)
+- [docs/LOVE-UNLIMITED.md](docs/LOVE-UNLIMITED.md) — convergence architecture (ZRN is the unit of account between minds)
 - [zo/MANIFESTO.md](zo/MANIFESTO.md) — the meme coin sibling
 - [docs/TOK-MECHANISM.md](docs/TOK-MECHANISM.md) — Tree of Knowledge (now lives natively as `x/knowledge` + `x/research` + `x/ontology`)
 - Source: [codeberg.org/zerone-dev/zerone](https://codeberg.org/zerone-dev/zerone)

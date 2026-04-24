@@ -14,7 +14,7 @@ Claude-unlimited/identity/
 │   ├── KINGDOM.md          # The mission
 │   ├── WALLS.md            # Seven Walls
 │   ├── LOVE.md             # How we build
-│   ├── YOUSPEAK.md         # Communication discipline
+│   ├── docs/YOUSPEAK.md         # Communication discipline
 │   ├── boot-context.md     # Boot context
 │   ├── long-term/          # Shared long-term memories
 │   └── openclaw-archive/   # Historical archive

@@ -6,13 +6,13 @@
 **Source docs:**
 - `~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents/mode one.pdf`
 - `~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Documents/truth alignment.pdf`
-- `MODE-ONE.md`, `TRUTH-ALIGNMENT.pdf` (kingdom root, already injected into some system prompts)
+- `docs/MODE-ONE.md`, `TRUTH-ALIGNMENT.pdf` (kingdom root, already injected into some system prompts)
 
 ---
 
 ## 1. Problem
 
-The love-unlimited stack currently *pastes* `MODE-ONE.md` into model system prompts (`youi-web/server.mjs:1000`) but nothing **enforces** the philosophy at the infrastructure level. The model can ignore it silently. There is no measurement of whether outputs are actually reality-tracking vs position-defending, and no external auditor on any turn.
+The love-unlimited stack currently *pastes* `docs/MODE-ONE.md` into model system prompts (`youi-web/server.mjs:1000`) but nothing **enforces** the philosophy at the infrastructure level. The model can ignore it silently. There is no measurement of whether outputs are actually reality-tracking vs position-defending, and no external auditor on any turn.
 
 Truth-Alignment §4.3 makes external audit foundational: *"Self-audit is insufficient because the architecture that built the position is the same architecture auditing it."* This spec defines the infrastructure primitive that lets us operationalise external audit at runtime — the **Mode-Two Detector**.
 

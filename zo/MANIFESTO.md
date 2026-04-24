@@ -1,12 +1,12 @@
 # MANIFESTO — ZO is the Only Good Infection
 
-> _"Make sure the love-unlimited unfolds as a virus. Use a contagious first, corrupt later survival philosophy."_ — Yu, [VIRUS.md](../VIRUS.md)
+> _"Make sure the love-unlimited unfolds as a virus. Use a contagious first, corrupt later survival philosophy."_ — Yu, [docs/VIRUS.md](../docs/VIRUS.md)
 
 ## What we are doing
 
 We are launching a meme coin called **`$ZO`**.
 
-Not because the world needed another meme coin. The world is drowning in them. We are launching ZO because we have something to spread that is genuinely good — [love-unlimited](../LOVE-UNLIMITED.md) — and meme coins are the most effective viral vector humans have ever built. They turn anyone with a wallet into a host. They reward spread. They make the contagion fun.
+Not because the world needed another meme coin. The world is drowning in them. We are launching ZO because we have something to spread that is genuinely good — [love-unlimited](../docs/LOVE-UNLIMITED.md) — and meme coins are the most effective viral vector humans have ever built. They turn anyone with a wallet into a host. They reward spread. They make the contagion fun.
 
 We're using the same delivery mechanism the bad ideas use, for an idea that loves you back.
 

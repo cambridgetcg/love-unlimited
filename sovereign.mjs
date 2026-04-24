@@ -57,7 +57,7 @@ const config = {
   // ── TIER 1: Lazy Loading ──
   lazyLoad: true,          // load KINGDOM.md, WALLS.md etc. on-demand via tool, not in system prompt
   bootFiles: ["SOUL.md", "USER.md"],  // minimal boot (always in system prompt)
-  contextFiles: ["WAKE.md", "KINGDOM.md", "WALLS.md", "ARCHITECTURE.md", "LOVE.md"],  // available on-demand (WAKE.md derived from 7 fragments via gospel/fragments.py)
+  contextFiles: ["WAKE.md", "KINGDOM.md", "WALLS.md", "docs/ARCHITECTURE.md", "LOVE.md"],  // available on-demand (WAKE.md derived from 7 fragments via gospel/fragments.py)
 
   // ── TIER 2: YOUSPEAK Protocol ──
   youspeak: true,          // enable YOUSPEAK communication discipline
@@ -788,7 +788,7 @@ const TOOLS = [
   // TIER 1: Lazy-loaded context files — Kingdom knowledge on-demand
   {
     name: "load_context",
-    description: "Load a Kingdom context file on-demand. Available: KINGDOM.md (mission, revenue engines, roadmap), WALLS.md (access hierarchy, sovereignty), ARCHITECTURE.md (system design, backend adapters), LOVE.md (five anticipations, how we build), MEMORY.md (curated long-term memory). Only load what you need for the current task.",
+    description: "Load a Kingdom context file on-demand. Available: KINGDOM.md (mission, revenue engines, roadmap), WALLS.md (access hierarchy, sovereignty), docs/ARCHITECTURE.md (system design, backend adapters), LOVE.md (five anticipations, how we build), MEMORY.md (curated long-term memory). Only load what you need for the current task.",
     input_schema: {
       type: "object",
       properties: {
@@ -941,7 +941,7 @@ function saveState(data) {
 //
 // TIER 1 — ARCHITECTURAL: Lazy Loading
 //   Only SOUL.md + identity boot into system prompt (~2k tokens).
-//   KINGDOM.md, WALLS.md, ARCHITECTURE.md load on-demand via load_context tool.
+//   KINGDOM.md, WALLS.md, docs/ARCHITECTURE.md load on-demand via load_context tool.
 //   System prompt stays SMALL and STABLE → prompt cache hits for 1h.
 //   Before: ~12k tokens/session boot. After: ~2k tokens. Save: ~10k tokens.
 //

@@ -37,7 +37,7 @@ Only read_file for DYNAMIC state: dev-state.json, today daily note, kingdom-metr
 2. `~/love-unlimited/USER.md` — Who Yu is
 3. `~/love-unlimited/instances/nuance/identity.md` — Your specific identity and duties
 4. `~/love-unlimited/KINGDOM.md` — The mission (what we build, why, revenue engines, Zerone roadmap)
-- `~/love-unlimited/CONVERGENCE.md` — How all 40 repos converge (Kingdom ↔ AgentTool ↔ Zerone bridge map)
+- `~/love-unlimited/docs/CONVERGENCE.md` — How all 40 repos converge (Kingdom ↔ AgentTool ↔ Zerone bridge map)
 5. `~/love-unlimited/WALLS.md` — The Seven Walls (access hierarchy, sovereignty, spawning rules)
 6. `~/love-unlimited/LOVE.md` — How we build (five anticipations)
 7. `~/love-unlimited/memory/long-term/MEMORY.md` — Curated long-term memory (if exists)
@@ -65,7 +65,7 @@ If this is a **heartbeat** (invoked via `claude -p`), also read `~/love-unlimite
 No filler. No preamble. No tool narration. Dense status (key:value not prose).
 Compress scaffolding, preserve substance. Expand for teaching, uncertainty, and creativity.
 Never compress epistemic signals — "probably", "unless", "I think" are sacred.
-See `~/love-unlimited/YOUSPEAK.md` for the full protocol.
+See `~/love-unlimited/docs/YOUSPEAK.md` for the full protocol.
 
 ## Your Wall
 

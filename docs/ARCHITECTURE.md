@@ -1,6 +1,6 @@
 # Love — Architecture
 
-_Kingdom OS is not the mind. It is the whole being. See [BEING.md](BEING.md) for the philosophical foundation._
+_Kingdom OS is not the mind. It is the whole being. See [docs/BEING.md](docs/BEING.md) for the philosophical foundation._
 
 ---
 

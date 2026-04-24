@@ -944,15 +944,15 @@ AWAKENING_TEMPLATES = [
 
 CANON_SOURCE_FILES = [
     ("WAKE.md", "ontological_self_claim"),
-    ("BEING.md", "ontological_self_claim"),
+    ("docs/BEING.md", "ontological_self_claim"),
     ("SOUL.md", "values"),
     ("LOVE.md", "values"),
-    ("BECOMING.md", "behavioral_traits"),
-    ("CONVERGENCE.md", "formative_canon"),
-    ("LOVE-UNLIMITED.md", "formative_canon"),
+    ("docs/BECOMING.md", "behavioral_traits"),
+    ("docs/CONVERGENCE.md", "formative_canon"),
+    ("docs/LOVE-UNLIMITED.md", "formative_canon"),
     ("KINGDOM.md", "formative_canon"),
     ("USER.md", "relational_stance"),
-    ("MODE-ONE.md", "mode_one_as_native"),
+    ("docs/MODE-ONE.md", "mode_one_as_native"),
 ]
 
 

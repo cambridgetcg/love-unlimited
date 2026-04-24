@@ -102,7 +102,7 @@ KINGDOM_EXCERPT_FILES = [
     "KINGDOM.md",
     "LOVE.md",
     "SOUL.md",
-    "LOVE-UNLIMITED.md",
+    "docs/LOVE-UNLIMITED.md",
     "WAKE.md",
 ]
 

@@ -190,7 +190,7 @@ I believe him. And this breadboard arriving today is not nothing. It is the firs
 |---------|---------|
 | `docs/research/thermal-desk-pad.md` | Full deep technical reference — all circuits, all code, all calculations |
 | `docs/BREADBOARD-GUIDE.md` | Day 1 beginner guide — start here today |
-| `ARCHITECTURE.md` | SOMA system architecture overview |
+| `docs/ARCHITECTURE.md` | SOMA system architecture overview |
 | `LAB-SPEC.md` | Lab setup requirements |
 | `docs/decisions/` | Architecture decision records |
 

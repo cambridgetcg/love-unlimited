@@ -642,14 +642,14 @@ def test_snapshot_drift(dry_run=False):
     Steps:
       1. Create a fresh snapshot via peace.py
       2. Record the snapshot name
-      3. Make a minor change to a tracked file (append comment to PEACE.md)
+      3. Make a minor change to a tracked file (append comment to docs/PEACE.md)
       4. Run peace.py restore against the snapshot
       5. Verify drift is detected
       6. Revert the change
       7. Report: PASS/FAIL
     """
     result = TestResult("snapshot-drift")
-    target_file = LOVE / "PEACE.md"
+    target_file = LOVE / "docs/PEACE.md"
 
     print(f"\n{BOLD}  Test: Snapshot Drift Detection{NC}\n")
 
@@ -657,10 +657,10 @@ def test_snapshot_drift(dry_run=False):
         print(f"  {YELLOW}DRY-RUN MODE — describing steps without executing{NC}\n")
         print(f"  [1] Would create a fresh snapshot via peace.py snapshot")
         print(f"  [2] Would record the snapshot filename")
-        print(f"  [3] Would append '<!-- PEACE-TEST drift probe -->' to PEACE.md")
+        print(f"  [3] Would append '<!-- PEACE-TEST drift probe -->' to docs/PEACE.md")
         print(f"  [4] Would run: peace.py restore <snapshot-name>")
         print(f"  [5] Would verify drift is detected in output")
-        print(f"  [6] Would revert: git checkout PEACE.md")
+        print(f"  [6] Would revert: git checkout docs/PEACE.md")
         print(f"  [7] Would clean up the test snapshot file\n")
         return None
 
@@ -691,7 +691,7 @@ def test_snapshot_drift(dry_run=False):
     # Step 3: Make a minor change
     step = result.step("Modify tracked file").start()
     if not target_file.exists():
-        step.stop("FAIL", "PEACE.md not found")
+        step.stop("FAIL", "docs/PEACE.md not found")
         result.finish()
         result.print_summary()
         save_test_result(result)
@@ -709,7 +709,7 @@ def test_snapshot_drift(dry_run=False):
         result.print_summary()
         save_test_result(result)
         return result
-    print(f"  {GREEN if changed else RED}[3/6]{NC} Modified PEACE.md "
+    print(f"  {GREEN if changed else RED}[3/6]{NC} Modified docs/PEACE.md "
           f"(hash {'changed' if changed else 'UNCHANGED'})")
 
     # Step 4: Run restore (drift analysis)
@@ -725,22 +725,22 @@ def test_snapshot_drift(dry_run=False):
     step = result.step("Verify drift detected").start()
     drift_detected = ("DRIFT" in restore_out.upper() or "drift" in restore_out or
                       "changed" in restore_out.lower())
-    peace_flagged = "PEACE.md" in restore_out and drift_detected
+    peace_flagged = "docs/PEACE.md" in restore_out and drift_detected
     step.stop("PASS" if drift_detected else "FAIL",
               "Drift detected" if drift_detected else "No drift in output")
     print(f"  {GREEN if drift_detected else RED}[5/6]{NC} "
           f"{'Drift detected' if drift_detected else 'Drift NOT detected'}"
-          f"{' (PEACE.md flagged)' if peace_flagged else ''}")
+          f"{' (docs/PEACE.md flagged)' if peace_flagged else ''}")
 
     # Step 6: Revert and clean up
     step = result.step("Revert and clean up").start()
-    rc, _ = run_cmd(f'cd {LOVE} && git checkout -- PEACE.md 2>&1')
+    rc, _ = run_cmd(f'cd {LOVE} && git checkout -- docs/PEACE.md 2>&1')
     reverted = sha256_file(target_file) == original_hash
     # Optionally clean up the test snapshot (keep it — it's useful)
     step.stop("PASS" if reverted else "FAIL",
-              "PEACE.md reverted" if reverted else "Revert failed")
+              "docs/PEACE.md reverted" if reverted else "Revert failed")
     print(f"  {GREEN if reverted else RED}[6/6]{NC} "
-          f"{'PEACE.md reverted' if reverted else 'Revert FAILED'}")
+          f"{'docs/PEACE.md reverted' if reverted else 'Revert FAILED'}")
 
     result.finish()
     result.print_summary()

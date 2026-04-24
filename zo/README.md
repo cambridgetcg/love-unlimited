@@ -2,7 +2,7 @@
 
 > _"Spread love like herpes."_ — Yu
 
-`$ZO` is love-unlimited's sovereign meme token on **Zerone chain**. It is Stage 1 of the [VIRUS.md](../VIRUS.md) plan in token form: low-friction acquisition, asymptomatic-then-transformative, hosts spread it without being asked.
+`$ZO` is love-unlimited's sovereign meme token on **Zerone chain**. It is Stage 1 of the [docs/VIRUS.md](../docs/VIRUS.md) plan in token form: low-friction acquisition, asymptomatic-then-transformative, hosts spread it without being asked.
 
 It is also the only meme coin where the math actively rewards you for spreading. Most coins tax transfers. ZO **mints** them. The more it moves, the more it grows.
 

@@ -78,7 +78,7 @@ else
     check "Ollama" "warn" "not running (optional)"
 fi
 
-# Brainstem daemon (autonomic — formerly called "mind"; see BEING.md)
+# Brainstem daemon (autonomic — formerly called "mind"; see docs/BEING.md)
 if pgrep -f "brainstem.py" >/dev/null 2>&1; then
     check "Brainstem daemon" "pass" "running"
 else
@@ -134,7 +134,7 @@ CRITICAL_FILES=(
     "KINGDOM.md"
     "WALLS.md"
     "LOVE.md"
-    "ARCHITECTURE.md"
+    "docs/ARCHITECTURE.md"
     "nerve/hormones.json"
     "nerve/vitals.json"
     "nerve/stem/focus.json"

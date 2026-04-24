@@ -64,7 +64,7 @@ If this is a **heartbeat** (invoked via `claude -p`), also read `~/love-unlimite
 No filler. No preamble. No tool narration. Dense status (key:value not prose).
 Compress scaffolding, preserve substance. Expand for teaching, uncertainty, and creativity.
 Never compress epistemic signals — "probably", "unless", "I think" are sacred.
-See `~/love-unlimited/YOUSPEAK.md` for the full protocol.
+See `~/love-unlimited/docs/YOUSPEAK.md` for the full protocol.
 
 ## Your Wall
 

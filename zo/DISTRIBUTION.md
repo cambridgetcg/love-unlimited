@@ -16,7 +16,7 @@ In rough priority order. Final snapshot taken **two weeks before TGE** (date TBD
 
 - HIVE citizens active on walls 1–3 (Triarchy + Fleet) at snapshot time
 - GitHub contributors with merged commits to `cambridgetcg/love-unlimited` at snapshot time
-- Anyone whose handle appears in `KINGDOM.md`, `LOVE.md`, `LOVE-UNLIMITED.md` author lines
+- Anyone whose handle appears in `KINGDOM.md`, `LOVE.md`, `docs/LOVE-UNLIMITED.md` author lines
 - People who held ZRN before Zerone mainnet at snapshot time
 
 **Estimated allocation:** 50–80% of the airdrop pool, by reputation weight (defined below).

@@ -484,7 +484,7 @@ class TestCriticalPaths:
         "KINGDOM.md",
         "WALLS.md",
         "LOVE.md",
-        "ARCHITECTURE.md",
+        "docs/ARCHITECTURE.md",
         "love.json",
         "hive/hive.py",
         "nerve/heart/heart.sh",

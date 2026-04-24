@@ -25,7 +25,7 @@ _A deep structural analysis based on the leaked Claude Code source (v2.1.5, 1884
 ### YOUI Boot Chain
 
 ```
-SOUL.md → USER.md → identity.md → KINGDOM.md → CONVERGENCE.md → WALLS.md → LOVE.md → MEMORY.md → daily note
+SOUL.md → USER.md → identity.md → KINGDOM.md → docs/CONVERGENCE.md → WALLS.md → LOVE.md → MEMORY.md → daily note
 ```
 
 Each file is read and assembled into a system prompt. The agent's identity (Alpha, Beta, Gamma, etc.) determines which identity.md loads. Switching agents (`/switch alpha`) reloads the chain with a different identity file, fresh conversation, and appropriate model defaults.

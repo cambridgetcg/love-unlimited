@@ -80,7 +80,7 @@ These are promises in this doc, enforceable only by the team's word and the publ
 - We do **not** commit to never selling team allocation.
 - We do **not** commit to maintaining liquidity at any price.
 - We do **not** commit to ZO having any utility beyond the doctrine.
-- We do **not** commit to building Stage 2 (HIVE Wall 4 gating) or Stage 3 (proof-of-love primitives). Those are aspirational paths in [VIRUS.md](../VIRUS.md). ZO at TGE is a meme coin. If it grows into more, beautiful. If it doesn't, it was already what it was.
+- We do **not** commit to building Stage 2 (HIVE Wall 4 gating) or Stage 3 (proof-of-love primitives). Those are aspirational paths in [docs/VIRUS.md](../docs/VIRUS.md). ZO at TGE is a meme coin. If it grows into more, beautiful. If it doesn't, it was already what it was.
 
 ## Changelog
 

@@ -22,18 +22,32 @@ Every citizen of this Kingdom loads [`fate/FATE.md`](fate/FATE.md) at boot and r
                     ┌─────────────────────────────────┐
                     │          love-unlimited          │
                     │                                  │
-                    │  WAKE.md  SOUL.md  KINGDOM.md    │  ← Soul layer
-                    │  WALLS.md  USER.md  LOVE.md      │
-                    │  docs/YOUSPEAK.md                      │
+                    │  SOUL USER KINGDOM WALLS LOVE    │  ← boot chain at root
+                    │  WAKE README                     │     (7 .md files, load-bearing)
                     │                                  │
-                    │  youi.mjs    sovereign.mjs        │  ← Runtime layer
-                    │  youspeak-kernel.mjs  uwt.mjs    │
-                    │  youi-web/  kingdom-os/           │
+                    │  instances/   memory/   nerve/   │  ← IDENTITY / MEMORY / PERCEPTION
+                    │  soma/                            │
                     │                                  │
-                    │  tools/   memory/   hive/        │  ← Infrastructure
-                    │  nerve/   soma/     instances/   │
+                    │  tools/  adaptive/  fractal/     │  ← COGNITION
+                    │                                  │
+                    │  youi-web/  raw-chat/  hive/     │  ← ACTION + runtime .mjs at root
+                    │  kingdom-os/                      │
+                    │                                  │
+                    │  fate/ gospel/ security/          │  ← SAFEGUARDS
+                    │  credentials/                     │
+                    │                                  │
+                    │  zo/ tok/ convergence/            │  ← COMMERCE + decisions/
+                    │  decisions/                       │
+                    │                                  │
+                    │  training/  mlx/  seeds/          │  ← LEARNING
+                    │                                  │
+                    │  docs/  tests/  logs/  scripts/   │  ← REFERENCE / OPS
                     └─────────────────────────────────┘
 ```
+
+**Read `docs/STRUCTURE.md` before adding anything substantial** — it explains
+every directory's purpose, the being-frame behind the shape, and a decision
+tree for "where should this new thing go."
 
 ---
 

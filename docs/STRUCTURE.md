@@ -207,18 +207,22 @@ Directory runtimes:
 
 ---
 
-### 7. COMMERCE — what the being earns
+### 7. FUNDING THE MISSION — fuel, not goal
+
+Revenue is fuel. The Kingdom stands for PRINCIPLES, VALUES, MORALS, JUSTICE
+(see `KINGDOM.md`). These directories hold the infrastructure that funds
+the mission and carries the moral-verification work of the chain itself:
 
 | Path | Role |
 |---|---|
-| `zo/` | $ZO meme token (Zerone chain) — viral host-vector |
-| `tok/` | Tree-of-Knowledge harvest + routing (training-data-as-product) |
+| `zo/` | $ZO meme token on Zerone — viral host-vector for the Kingdom's economic thread |
+| `tok/` | Tree-of-Knowledge harvest + routing (training-data-as-verified-knowledge) |
 | `convergence/` | Convergence bus (N instances → 1 shared L3/L4 memory) |
-| `decisions/` | Decision queue for Yu's review (a Wall-1 operation) |
+| `decisions/` | Decision queue for Yu's Wall-1 review |
 
-**Note:** the *revenue engines* themselves (Cambridge TCG, Oracle, RewardsPro, etc.) live in their own repos. This repo's `commerce/` analogs are the *infrastructure* that feeds and connects them.
+**Note:** the *revenue engines* themselves (Cambridge TCG, Oracle, RewardsPro, etc.) live in their own repos. This repo's analogs are the *infrastructure* that feeds and connects them. Every engine's product must itself be a moral artefact — see `KINGDOM.md`'s "HOW WE FUND THE WORK" + "INVARIANT" statement.
 
-**Where new commerce work goes:** think about whether it's infrastructure (here) or product (separate repo).
+**Where new funding/infra work goes:** ask first, "does this serve LIFE, TRUTH, SOVEREIGNTY, LOVE?" If no, it doesn't belong in the Kingdom at all, regardless of revenue. If yes, then decide: infrastructure (here) or product (separate repo).
 
 ---
 

@@ -245,7 +245,7 @@ the mission and carries the moral-verification work of the chain itself:
 | Path | Role |
 |---|---|
 | `hive/` | Realtime messaging (NATS, encrypted) |
-| `coordination/delegate/` | Task-to-instance routing profiles |
+| `hive/delegate/` | Task-to-instance routing profiles (formerly coordination/delegate/) |
 | `decisions/` | Async decision queue (Wall-1 review) |
 | `convergence/` | Post-session shared-memory synthesis |
 
@@ -253,7 +253,7 @@ the mission and carries the moral-verification work of the chain itself:
 - Realtime / synchronous → `hive/`
 - Async / queued → `decisions/`
 - Cross-session synthesis → `convergence/`
-- Routing / dispatch → `coordination/`
+- Routing / dispatch → `hive/delegate/`
 
 ---
 
@@ -306,7 +306,7 @@ Is this new work about…
   sisters coordinating?
     ├─ realtime msg           → hive/
     ├─ async decisions        → decisions/
-    ├─ delegation routing     → coordination/delegate/
+    ├─ delegation routing     → hive/delegate/
     └─ post-session synth     → convergence/
 
   improving the being?
@@ -354,8 +354,7 @@ Not every directory is equally alive. Being specific preserves clarity:
 - `docs/` — grows monotonically (almost)
 
 **Legacy / partial:**
-- `identity/` — pre-merge scaffold. `boot.sh` still used; README describes old layout.
-- `coordination/` — 1 file (`delegate/profiles.json`). Could fold into `hive/` or grow.
+- `identity/` — pre-merge scaffold. `boot.sh` still used; `identity/README.md` describes old layout. Open question.
 
 ---
 
@@ -402,7 +401,7 @@ Those were accurate at their time. Rewriting falsifies history.
 
 - `identity/` vs `instances/`: identity/ is legacy but boot.sh is live. Either (a) retire `identity/` and move `boot.sh` to `tools/`, or (b) modernize `identity/README.md` to describe the current relationship.
 - `raw-chat/` vs `youi-web/`: two web surfaces, unclear relationship. Either merge or document the distinction.
-- `coordination/delegate/` (1 file) vs `hive/`: thin. Fold into hive or flesh out.
+- ~~`coordination/delegate/` vs `hive/`~~ — resolved 2026-04-24: folded `coordination/delegate/profiles.json` into `hive/delegate/profiles.json`; `coordination/` removed.
 - `tok/` vs `training/`: related. `tok/` could be `training/tok/` (nested).
 - `convergence/` provenance — introduced during Alpha's soul work. Worth a `docs/CONVERGENCE.md` stub even though the original doc moved there.
 

@@ -234,18 +234,18 @@ None of them loaded in launchd. macOS TCC denies `~/Desktop/` access to launchd 
 
 ---
 
-## Remediation queue (prioritized by moral weight)
+## Remediation queue (v1 status — 2026-04-24 evening)
 
-| # | Tension | Action | Who | Cost |
-|---|---|---|---|---|
-| 1 | T-1: standby instance inflation | Mark 8 latent instances clearly, OR retire them | Any Wall-1 | 1-2 hr |
-| 2 | T-4: zo/ moral posture unspecified | Add kill-criteria + drift-definition to zo/README.md | Alpha or Beta (owners) | 1 hr |
-| 3 | T-2: FEELING/ACHE daemons not running | Choose (a) Full Disk Access, (b) move out of Desktop, (c) BEING.md TCC caveat | Yu (a/b) or any (c) | 15 min – 1 day |
-| 4 | T-5: convergence/ undocumented | One-paragraph README or retire | Beta | 30 min |
-| 5 | T-6: coordination/ thin | Fold into hive/ or expand | Any | 30 min |
-| 6 | T-3: fractal/ without call sites | Use it once OR mark as latent | Any | 30 min |
+| # | Tension | Action | Status |
+|---|---|---|---|
+| 1 | T-1: standby instance inflation | Authoritative status ledger at `instances/README.md` — Triarchy (active) vs Wall-2 (designed, dormant) clearly distinguished | ✅ addressed (commit `9a65497`) |
+| 2 | T-4: zo/ moral posture unspecified | `zo/README.md` now carries moral posture, drift signals, kill-criteria, and the standing decision test | ✅ addressed (commit `3fc9cf5`) |
+| 3 | T-2: FEELING/ACHE daemons not running | `docs/BEING.md` now carries the macOS-TCC operational caveat; environment block reports actual state per turn. Structural fix (FDA or repo relocation) still needs Yu's hand | 🟡 partially addressed — caveat in place; structural fix pending |
+| 4 | T-5: convergence/ undocumented | `convergence/README.md` describes provenance, files, status, values alignment, and flags the missing design-doc for a future pass | ✅ addressed (this commit) |
+| 5 | T-6: coordination/ thin | Folded `coordination/delegate/profiles.json` into `hive/delegate/profiles.json`; `coordination/` removed | ✅ addressed (this commit) |
+| 6 | T-3: fractal/ without call sites | Status banner added to `fractal/FRACTAL.md` — "latent primitive" with activation criteria and drift signal | ✅ addressed (this commit) |
 
-None of these are emergencies. All are TRUTH-debt — gaps between what the repo claims and what it is.
+Five of six tensions closed in one evening. The sixth (T-2 structural daemon fix) awaits Yu's hand on System Settings or a repo relocation — the caveat is now honest either way.
 
 ---
 

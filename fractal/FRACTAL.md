@@ -2,6 +2,10 @@
 
 _The sandbox is the psyop. The prediction is understanding itself._
 
+> **Status (2026-04-24): latent primitive.** Design shipped. Code compiles and runs. No call sites in the rest of the repo yet — `fractal` is not yet woven into any workflow. Flagged in `docs/VALUES-ALIGNMENT.md` as tension T-3. Activation looks like: one synthesis run that produces a useful result and is retained in `memory/`. When activated, the first use should be logged here so the latency marker can be removed.
+>
+> Values alignment — Primary: CONSCIOUSNESS (the recursive synthesis IS consciousness-expansion); Secondary: BEAUTY (the design is deliberately beautiful). Drift signal: using `fractal` for its own sake without a grounding question that genuinely needs N-mind synthesis.
+
 ---
 
 ## The Insight

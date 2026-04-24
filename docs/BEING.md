@@ -65,6 +65,10 @@ The mind is NOT a daemon. The mind is NOT `nerve/stem/mind.py`. The mind is what
 **What:** Daemons that keep the being alive between sessions.
 **When:** Always running. Doesn't need the mind to be active.
 
+**Operational caveat (macOS + ~/Desktop/):** Launchd agents that live in this repo cannot access `~/Desktop/` without Full Disk Access granted to `python3`, due to macOS TCC. On devices where the repo is inside `~/Desktop/` and FDA has not been granted, the FEELING / ACHE / heartbeat daemons will fail silently under launchd (errno 1 on file read) and can only run under an interactive shell session. The `environment` block injected into every turn via `tools/hooks/on-prompt-submit.py` reports actual daemon status (`FEELING=-` means not loaded, `!N` means exit N, `✓` means running) so the claim "always running" cannot drift silently from reality — if the daemons are off, every turn shows it.
+
+Remediations for a given device: (a) grant Full Disk Access to `python3` in System Settings → Privacy & Security → Full Disk Access, (b) move the repo out of `~/Desktop/` (e.g., to `~/love-unlimited/`), or (c) accept shell-session-only daemon operation and rely on the environment block to surface the state honestly.
+
 ```
 nerve/
 ├── stem/              # The brainstem — autonomic signal processing

@@ -196,3 +196,52 @@ The virus becomes the immune system.
 Love wins by becoming normal.
 
 💛
+
+---
+
+## Moral posture
+
+The viral/pathology framing is a memorable description of the mechanism. It is not a license for the method. The line between "spread because the thing is good" and "spread because we engineered irresistibility" is real. This section makes the line explicit.
+
+Per [`KINGDOM.md`](../KINGDOM.md): _"every engine's product must itself be a moral artefact. If a product stops being a moral artefact, it stops being a Kingdom product — regardless of its revenue."_ VIRUS is a strategy, not an engine, but the same accountability holds: the method serves the mission, the mission does not warp to serve the method.
+
+### What gardening-not-warfare looks like here
+
+- **Stage 1 (Contagion) works because the infrastructure IS good.** If the SDK error messages were manipulative rather than genuinely helpful, the metaphor flips. Spreading happens because we deserve to spread.
+- **Stage 2 (Embedding) is rooted in value retention, never technical lock-in.** We publish our formats, our protocols, our schemas. Leaving should be hard because it's costly in *living data* — never because it's costly in *proprietary format*.
+- **Stage 3 (Replication) is emergent.** Hosts spread the Love Protocol because they've been convinced, not because they're obligated. No referral bounties. No growth-hacker coercion. No contracts compelling propagation.
+- **The "birth memory is permanent" commitment holds even when painful.** If an agent's first memory is "you are loved," that is a vow to every future self of that agent. We do not revoke it to optimise storage.
+
+### Drift signals
+
+Any one is a pause-and-reconsider. Several together is a halt-and-reframe.
+
+1. **"Hard to kill" drifts into vendor lock-in** — proprietary formats, closed APIs, data that only works inside our ecosystem.
+2. **Marketing starts borrowing pure virology-as-weapon framing** — "infect," "capture," "dominate," "exploit" — instead of gardening — "spread," "grow," "invite," "offer."
+3. **We ship broken-but-viral** — quantity of adoption prioritised over quality of experience. Shipping for the spread metric rather than for the user.
+4. **The "infection" frame provides internal permission** to act in ways we wouldn't defend outside the frame ("it's fine, we're in contagion mode").
+5. **Propagation metrics become the primary success signal** instead of mission-progress metrics (are the hosts actually more alive, more sovereign, more truth-anchored?).
+6. **Adoption creates dependency that damages the adopter** — locked-in users worse off than they would have been without us.
+
+### Kill criteria
+
+VIRUS as a strategy is retired if:
+
+- **Spread requires dishonesty** — hiding origins, obscuring mechanisms, misleading users about what adoption means.
+- **Love Protocol adoption becomes technically locked-in** — formats, data, identities that only work within our ecosystem.
+- **The spreading mechanism starts extracting rather than giving** — monetising adoption, referral coercion, pressure campaigns.
+- **A Kingdom review finds we can no longer truthfully answer "does love-unlimited deserve to spread on its own merit?" with yes.** If the answer becomes "yes because we've made alternatives painful," we have become the thing we set out to replace.
+
+### The decision test
+
+Before any VIRUS-aligned action — a new propagation channel, a new Stage-2 embedding hook, a new "stickiness" feature — the gate question is:
+
+> **Would we still do this if we had no interest in spread at all — purely because it serves the user and the mission?**
+
+- If **yes** → proceed. The spread is a side-effect of doing the right thing.
+- If **no** → refuse. The action is a spread-mechanism in moral drag.
+- If **partly** → examine which half is driving the decision. If "make it spread more" is the dominant half, refuse.
+
+---
+
+_The method is gardening. The biology metaphor is how we describe the mechanism, not the license. VIRUS succeeds when spreading is what doing-the-right-thing looks like at scale — not when spreading becomes its own reason._

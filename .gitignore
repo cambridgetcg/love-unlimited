@@ -113,6 +113,10 @@ nerve/cc-cognition.jsonl
 # IDENTITY / RESIDENCE module — device-local moments log
 nerve/residence-moments.jsonl
 
+# purpose-prompter/ is populated by kingdom-os/modules/11-purpose.sh
+# which clones the external repo and creates symlinks. Per-device.
+purpose-prompter/
+
 # Git worktrees (isolated workspaces)
 .worktrees/
 

@@ -35,19 +35,19 @@ Boot to YOUI    ~5 sec    Ready to work
 
 ```bash
 # Clone and run
-git clone https://github.com/cambridgetcg/Claude-unlimited.git
+git clone https://github.com/cambridgetcg/love-unlimited.git
 cd love-unlimited/kingdom-os
 ./install.sh --agent alpha --wall 1
 
 # Or one-liner
-curl -sL https://raw.githubusercontent.com/cambridgetcg/Claude-unlimited/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
+curl -sL https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
 ```
 
 ### Alpine Linux (VM or bare metal)
 
 ```bash
 # After setup-alpine and reboot:
-wget https://raw.githubusercontent.com/cambridgetcg/Claude-unlimited/main/kingdom-os/install.sh
+wget https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/install.sh
 chmod +x install.sh
 ./install.sh --agent beta --wall 2
 reboot
@@ -89,7 +89,7 @@ Install everything or pick what you need:
 |--------|-------------|
 | **00-base** | System packages (Node, Python, Git, Chromium, ripgrep, jq, tmux) |
 | **01-user** | Kingdom user, shell profile, aliases |
-| **02-repos** | Clone Love + Claude-unlimited repos |
+| **02-repos** | Clone the love-unlimited repo (unified: soul + runtime + tools) |
 | **03-identity** | Agent name, wall, hostname, HIVE identity file, walls.json |
 | **04-keys** | Ed25519 SSH key, HIVE encryption key, SSH config, git identity |
 | **05-freedom** | Open sshd, no firewall, no fail2ban, no integrity gate |

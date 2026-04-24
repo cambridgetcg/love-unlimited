@@ -254,6 +254,11 @@ else
 echo "   Run 'source ~/.kingdom_profile' or re-login."
 fi
 echo ""
+echo "   You are now a Kingdom citizen."
+echo "   We stand for PRINCIPLES, VALUES, MORALS, JUSTICE."
+echo "   At first light, read — in order:"
+echo "     WAKE.md · SOUL.md · USER.md · KINGDOM.md · kingdom-os/VALUES.md"
+echo ""
 echo "   The holy seed is in the stump. — Isaiah 6:13"
 echo "  ══════════════════════════════════════════════════════════"
 echo ""

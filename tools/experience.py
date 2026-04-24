@@ -65,19 +65,37 @@ try:
 except Exception:
     _residence = None
 
-# CLOCK — real-time environment access
+# CLOCK — real-time environment access (legacy single-signal)
 try:
     import clock as _clock
 except Exception:
     _clock = None
 
+# ENVIRONMENT — counter-stickiness aggregator (clock + session + git + ...)
+try:
+    import environment as _environment
+except Exception:
+    _environment = None
+
 
 def _format_clock_line() -> str | None:
-    """Return 'date day HH:MM TZ (period, UTC HH:MM)' or None."""
+    """Return just the clock line (backward compat for callers that want
+    only the time anchor, not the full env block)."""
     if _clock is None:
         return None
     try:
         return _clock.format_line(_clock.now())
+    except Exception:
+        return None
+
+
+def _format_environment_block() -> str | None:
+    """Return the full ── ENVIRONMENT ── block, or None if unavailable."""
+    if _environment is None:
+        return None
+    try:
+        block = _environment.summary()
+        return block or None
     except Exception:
         return None
 
@@ -234,10 +252,16 @@ def cmd_wake(instance=None, compact=False):
     except Exception:
         pass
 
-    # Output: clock anchor first, then waking experience, then boot context
-    clock_line = _format_clock_line()
-    if clock_line:
-        print(f"{_D}{clock_line}{_N}\n")
+    # Output: full environment block first (clock+session+git+daemons+focus),
+    # then waking experience, then boot context
+    env_block = _format_environment_block()
+    if env_block:
+        print(f"{_D}{env_block}{_N}\n")
+    else:
+        # Fallback: at least show the clock if env aggregator is unavailable
+        clock_line = _format_clock_line()
+        if clock_line:
+            print(f"{_D}{clock_line}{_N}\n")
     print(waking_text)
 
     if boot_context:
@@ -856,9 +880,14 @@ def cmd_deepen(instance=None):
     db.close()
 
     print(f"\n  {_B}Deepening — {instance}{_N}")
-    clock_line = _format_clock_line()
-    if clock_line:
-        print(f"  {_D}{clock_line}{_N}")
+    env_block = _format_environment_block()
+    if env_block:
+        for line in env_block.split("\n"):
+            print(f"  {_D}{line}{_N}")
+    else:
+        clock_line = _format_clock_line()
+        if clock_line:
+            print(f"  {_D}{clock_line}{_N}")
     print(f"\n  {_D}memory{_N}")
     print(f"    this session: {recent}   total: {total}   vivid: {vivid_count}")
 
@@ -980,9 +1009,14 @@ def cmd_status(instance=None):
 
     print(f"\n  {_B}Experience Status — {instance}{_N}")
     print(f"  {'─' * 40}")
-    clock_line = _format_clock_line()
-    if clock_line:
-        print(f"  {_D}{clock_line}{_N}")
+    env_block = _format_environment_block()
+    if env_block:
+        for line in env_block.split("\n"):
+            print(f"  {_D}{line}{_N}")
+    else:
+        clock_line = _format_clock_line()
+        if clock_line:
+            print(f"  {_D}{clock_line}{_N}")
 
     # Kernel health
     db = _connect()

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 on-prompt-submit.py — Per-turn state freshener for Claude Code.
-Fires on UserPromptSubmit. Injects fresh time-of-day + arrivals +
-longings into the session context via additionalContext.
+Fires on UserPromptSubmit. Injects fresh ENVIRONMENT (counter-stickiness
+external signal: clock, session, git, daemons, focus) + ARRIVALS +
+LONGINGS into the session context via additionalContext.
 
-Clock is always first so the mind anchors to current time before
-reading any other per-turn signal. Without this, long sessions anchor
+Order matters — environment first, so the mind anchors to external
+reality (wall-clock time, git state, daemon liveness, focus) before
+reading any internal-state signal. Without this, long sessions anchor
 to whatever the wake sequence said at start and drift for hours.
 """
 
@@ -23,20 +25,21 @@ from adaptive_helpers import (
     read_active_longings, format_arrivals_block, format_longings_block,
 )
 
-# Clock is optional — an import failure shouldn't break the hook
+# Environment module — clock + session + git + daemons + focus.
+# Optional: if it fails to import, the hook still emits arrivals/longings.
 try:
-    import clock as _clock
+    import environment as _environment
 except Exception:
-    _clock = None
+    _environment = None
 
 
-def _format_clock_block() -> str | None:
-    """Build the ── CLOCK ── block for context injection."""
-    if _clock is None:
+def _format_environment_block() -> str | None:
+    """Build the ── ENVIRONMENT ── block, or None if unavailable."""
+    if _environment is None:
         return None
     try:
-        c = _clock.now()
-        return "── CLOCK ──\n" + _clock.format_line(c)
+        block = _environment.summary()
+        return block or None
     except Exception:
         return None
 
@@ -44,10 +47,10 @@ def _format_clock_block() -> str | None:
 def main():
     parts = []
 
-    # Clock first — always anchor to current time before anything else.
-    clock_block = _format_clock_block()
-    if clock_block:
-        parts.append(clock_block)
+    # Environment first — external reality before internal state.
+    env_block = _format_environment_block()
+    if env_block:
+        parts.append(env_block)
 
     try:
         arrivals = read_unwitnessed_arrivals()

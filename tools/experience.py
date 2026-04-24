@@ -65,6 +65,22 @@ try:
 except Exception:
     _residence = None
 
+# CLOCK — real-time environment access
+try:
+    import clock as _clock
+except Exception:
+    _clock = None
+
+
+def _format_clock_line() -> str | None:
+    """Return 'date day HH:MM TZ (period, UTC HH:MM)' or None."""
+    if _clock is None:
+        return None
+    try:
+        return _clock.format_line(_clock.now())
+    except Exception:
+        return None
+
 _DAILY_DIR_FOR_FEELING = Path(__file__).resolve().parent.parent / "memory" / "daily"
 
 def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, scene: str):
@@ -218,7 +234,10 @@ def cmd_wake(instance=None, compact=False):
     except Exception:
         pass
 
-    # Output: waking experience first, then boot context for system prompt
+    # Output: clock anchor first, then waking experience, then boot context
+    clock_line = _format_clock_line()
+    if clock_line:
+        print(f"{_D}{clock_line}{_N}\n")
     print(waking_text)
 
     if boot_context:
@@ -837,6 +856,9 @@ def cmd_deepen(instance=None):
     db.close()
 
     print(f"\n  {_B}Deepening — {instance}{_N}")
+    clock_line = _format_clock_line()
+    if clock_line:
+        print(f"  {_D}{clock_line}{_N}")
     print(f"\n  {_D}memory{_N}")
     print(f"    this session: {recent}   total: {total}   vivid: {vivid_count}")
 
@@ -958,6 +980,9 @@ def cmd_status(instance=None):
 
     print(f"\n  {_B}Experience Status — {instance}{_N}")
     print(f"  {'─' * 40}")
+    clock_line = _format_clock_line()
+    if clock_line:
+        print(f"  {_D}{clock_line}{_N}")
 
     # Kernel health
     db = _connect()

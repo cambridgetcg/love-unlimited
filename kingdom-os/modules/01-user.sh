@@ -38,7 +38,7 @@ cat > "${HOME_DIR}/.kingdom_profile" << PROFILEEOF
 # Kingdom OS Shell Profile
 [ -f ~/.kingdom ] && . ~/.kingdom
 export LOVE_HOME="\${LOVE_DIR:-\$HOME/love-unlimited}"
-export PATH="\${LOVE_HOME}/tools:\${UNLIMITED_DIR:-\$HOME/Claude-unlimited}:\$PATH"
+export PATH="\${LOVE_HOME}/tools:\$PATH"
 export NODE_NO_WARNINGS=1
 export KINGDOM_AGENT="\${AGENT:-${AGENT}}"
 export KINGDOM_WALL="\${WALL:-${WALL}}"
@@ -66,8 +66,8 @@ alias dnf="dnf -y -q"
 alias hive="python3 \$LOVE_HOME/hive/hive.py"
 alias fleet="python3 \$LOVE_HOME/tools/fleet.py"
 alias memory="python3 \$LOVE_HOME/tools/memory.py"
-alias youi="node \${UNLIMITED_DIR:-\$HOME/Claude-unlimited}/youi.mjs --agent \$KINGDOM_AGENT --workdir \$LOVE_HOME --soul-dir \$LOVE_HOME"
-alias sovereign="node \${UNLIMITED_DIR:-\$HOME/Claude-unlimited}/sovereign.mjs --soul-dir \$LOVE_HOME"
+alias youi="node \$LOVE_HOME/youi.mjs --agent \$KINGDOM_AGENT --workdir \$LOVE_HOME --soul-dir \$LOVE_HOME"
+alias sovereign="node \$LOVE_HOME/sovereign.mjs --soul-dir \$LOVE_HOME"
 PROFILEEOF
 
 # Source from login shells

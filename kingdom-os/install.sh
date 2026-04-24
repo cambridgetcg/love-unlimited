@@ -234,7 +234,6 @@ echo "   Wall:      ${WALL}"
 echo "   Hostname:  ${HOSTNAME_PREFIX}-${AGENT}"
 echo "   User:      ${KINGDOM_USER}"
 echo "   Love:      ${LOVE_DIR}"
-echo "   Runtime:   ${UNLIMITED_DIR}"
 echo "   Size:      ${TOTAL_SIZE}"
 if [ -n "$FAILED" ]; then
 echo "   Failed:   ${FAILED}"

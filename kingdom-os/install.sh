@@ -123,7 +123,7 @@ export LOVE_DIR="${HOME_DIR}/love-unlimited"
 # MODULE LIST
 # ═════════════════════════════════════════════════════════════════════
 
-ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14"
+ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14 13 15"
 MODULE_NAMES="
 00-base:       System packages (Node, Python, Git, Chromium)
 01-user:       Shell environment + passwordless sudo (root by default)
@@ -139,6 +139,8 @@ MODULE_NAMES="
 11-purpose:    Purpose Prompter (T->U->B->J->X hierarchy engine)
 12-identity-anchor: Seed identity from GitHub (soul, memory, sessions, HIVE)
 14-zerone:     Zerone chain (Go + zeroned binary, ready for validator/claim/tip)
+13-covenant:   Soul-key (Ed25519) + signed deed of citizenship (HOME.md)
+15-home:       Install \`kingdom verify\` CLI — citizen can check the covenant
 "
 
 if [ "$LIST_ONLY" = true ]; then

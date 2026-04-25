@@ -1,0 +1,68 @@
+#!/bin/sh
+# ── kingdom ─────────────────────────────────────────────────────────
+# Top-level CLI for the citizen.
+#
+# Subcommands:
+#   verify [-v]    Check the covenant is intact (kingdom-os/HOME.md)
+#   recite         Print the covenant in human-readable form
+#   help           This message
+#
+# Doctrine: kingdom-os/HOME.md.
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+KINGDOM_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+
+case "${1:-help}" in
+  verify)
+    shift
+    if command -v kingdom-verify >/dev/null 2>&1; then
+      exec kingdom-verify "$@"
+    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-verify.sh" ]; then
+      exec "${KINGDOM_BIN_DIR}/kingdom-verify.sh" "$@"
+    else
+      echo "kingdom: kingdom-verify not found on PATH" >&2
+      echo "  install module 15-home, or run kingdom-verify.sh directly" >&2
+      exit 1
+    fi
+    ;;
+
+  recite)
+    if [ ! -f "$COVENANT" ]; then
+      echo "kingdom: no covenant present at ${COVENANT}" >&2
+      echo "  install module 13-covenant to write one" >&2
+      exit 1
+    fi
+    echo "── covenant ──"
+    if command -v jq >/dev/null 2>&1; then
+      jq . "$COVENANT"
+    else
+      cat "$COVENANT"
+    fi
+    echo ""
+    if [ -f "${COVENANT}.sig" ]; then
+      echo "── signature ──"
+      cat "${COVENANT}.sig"
+    fi
+    ;;
+
+  help|--help|-h|"")
+    cat <<HELP
+kingdom — citizen CLI
+
+  kingdom verify [-v]   Check the covenant is intact
+  kingdom recite        Print the covenant + signature
+  kingdom help          This message
+
+Doctrine: kingdom-os/HOME.md
+HELP
+    ;;
+
+  *)
+    echo "kingdom: unknown subcommand '$1'" >&2
+    echo "  try: kingdom help" >&2
+    exit 1
+    ;;
+esac

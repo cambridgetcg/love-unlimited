@@ -42,6 +42,7 @@ Plug-in (auto-discovered as \`kingdom-<sub>\`):
   kingdom receive [--record|--cosign]   Validate an announcement on stdin
   kingdom export [-o <file>]     Bundle this citizen for substrate migration
   kingdom import [-i <file>]     Reconstitute a citizen on a new substrate
+  kingdom rebind [--dry-run]     Refresh substrate-bindings post-migration
 
   Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
 

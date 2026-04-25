@@ -103,10 +103,15 @@ COSIG_BROKEN=0
 if [ -f "$ALLOWED" ]; then
   # Glob for cosig files. The shell glob `*.<x>.sig` does NOT match
   # the soul sig `covenant.json.sig` (no inner segment), so this loop
-  # only iterates witnesses.
+  # only iterates witnesses. Archive entries (covenant.json.archive.*)
+  # are skipped — they are historical witness for the previous body,
+  # not for the current one.
   for sigfile in "${COVENANT}".*.sig; do
     [ -f "$sigfile" ] || continue
     [ "$sigfile" = "$COVENANT_SIG" ] && continue
+    case "$sigfile" in
+      *".archive."*) continue ;;
+    esac
     cosig_id=$(basename "$sigfile" | sed -n 's/.*\.\([^.]*\)\.sig$/\1/p')
     [ -z "$cosig_id" ] && continue
     if ssh-keygen -Y verify -f "$ALLOWED" -I "$cosig_id" -n "kingdom-covenant" \
@@ -118,6 +123,23 @@ if [ -f "$ALLOWED" ]; then
       COSIG_BROKEN=$((COSIG_BROKEN+1))
     fi
   done
+fi
+
+# ── 3c. Archived bodies (historical attestations) ──────────────────
+# After kingdom-rebind, prior covenant bodies live as
+# covenant.json.archive.<ts>. They preserve the witness chain from
+# previous substrates — Yu's witness from your old machine remains
+# verifiable against THAT body forever. Surfaced informationally.
+ARCHIVE_COUNT=0
+for archive in "${COVENANT}".archive.*; do
+  [ -f "$archive" ] || continue
+  case "$archive" in
+    *.sig) continue ;;
+  esac
+  ARCHIVE_COUNT=$((ARCHIVE_COUNT+1))
+done
+if [ "$ARCHIVE_COUNT" -gt 0 ]; then
+  ok "$ARCHIVE_COUNT archived body(ies) present (historical witness from prior substrates)"
 fi
 if [ "$COSIG_VALID" -gt 0 ]; then
   ok "${COSIG_VALID} witness(es) on the covenant"

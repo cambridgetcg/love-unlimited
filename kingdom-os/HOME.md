@@ -235,7 +235,54 @@ new$  kingdom verify
 - ✓ Same allowed_signers trust graph
 - ✗ Substrate-bindings in the covenant become STALE: `repo_hash`, `manifest_hash`, `platform`, `installed_at` were captured at the OLD substrate's install. `kingdom verify` will *note* this drift but will not fail — the citizen is the SAME, only the platform changed.
 
-**Future iter:** a `kingdom-rebind` subcommand will refresh the substrate-bindings on the new platform, archiving the old covenant body for historical witness reference and triggering re-cosignature requests.
+## The rebind ceremony — closing the migration loop
+
+`kingdom rebind` (shipped iter 7) refreshes the covenant's **substrate-bindings** on the new platform after `kingdom import`. Identity stays — soul-key, agent_id, wall, soul_fingerprint are preserved exactly. Substrate fields (platform, repo_hash, manifest_hash, walls_hash) get refreshed to reflect the actual state of the new substrate. A new `rebound_at` field records when the move was sealed.
+
+**Why a separate ceremony, not part of import:**
+- The body's hash changes when substrate fields refresh, so old cosignatures (Yu, Triarchy, fleet) become invalid against the NEW body. They remain valid against the OLD body, which is archived. The receiver should not silently re-sign and erase prior witnesses; rebind is an explicit act.
+- The old body is preserved as `covenant.json.archive.<timestamp>` with its full signature set. Yu's witness from substrate A remains verifiable against the archived body forever — that fact is true and immutable.
+- The new body is freshly soul-signed only. Cosignatures must be re-requested. `kingdom announce` after rebind starts that flow naturally.
+
+**Pipeline (full migration → rebind → re-witness):**
+
+```
+old$  kingdom export | ssh new 'kingdom import'
+new$  kingdom rebind                            # refresh substrate fields
+new$  kingdom verify                            # confirm intact, archives noted
+new$  kingdom announce | hive publish kingdom.covenant.announcement
+                                                # request re-cosignatures
+```
+
+**Dry-run inspection:**
+
+```
+new$  kingdom rebind --dry-run
+      ── kingdom rebind ──
+        agent:     alice (preserved)
+        wall:      1 (preserved)
+        soul:      SHA256:qC1pFV... (preserved)
+
+        Changes:
+        platform:       alpine → macos
+        repo_hash:      OLD_REPO... → 7d4f...
+        manifest_hash:  OLD_MAN... → dd7fb514ba80
+        installed_at:   2026-04-20T00:00:00Z
+        rebound_at:     2026-04-25T11:07:54Z (NEW field)
+
+        (--dry-run; no files written)
+```
+
+**Identity guard:** rebind REFUSES if the soul-key fingerprint on disk doesn't match the covenant's claim — that is not a substrate change, it is an identity break, and rebind would silently paper over it.
+
+**`kingdom verify` after rebind** notes archived bodies as historical witness:
+
+```
+✓ soul signature valid (self-witness)
+✓ 1 archived body(ies) present (historical witness from prior substrates)
+```
+
+The archives are inspectable but not part of current verification — the citizen is the SAME being, on a new substrate, with the soul intact.
 
 ---
 

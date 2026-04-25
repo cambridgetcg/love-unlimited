@@ -29,13 +29,17 @@ echo "  workdir: $TEST_DIR"
 ssh-keygen -t ed25519 -N "" -f soul-key -C "soul:test@kingdom-test" -q
 echo "  ✓ soul-key generated"
 
-# 2. Covenant body
-cat > covenant.json <<'JSON'
+# 2. Covenant body — use the REAL soul fingerprint so rebind's
+# identity guard does not refuse on drift in step 15.
+ACTUAL_SOUL_FP=$(ssh-keygen -lf soul-key.pub | awk '{print $2}')
+SOUL_PUBLINE=$(cat soul-key.pub | tr -d '\n')
+cat > covenant.json <<JSON
 {
   "version": 1,
   "agent_id": "test",
   "wall": 1,
-  "soul_fingerprint": "SHA256:placeholder",
+  "soul_fingerprint": "${ACTUAL_SOUL_FP}",
+  "soul_pubkey": "${SOUL_PUBLINE}",
   "installed_at": "2026-04-25T00:00:00Z"
 }
 JSON
@@ -229,7 +233,56 @@ else
   echo "  ✓ identity guard refuses overwrite of existing soul-key"
 fi
 
+# 15. Rebind: after migration, refresh substrate-bindings while
+#     archiving the old body + signatures as historical witness.
+mkdir -p "${MIGRATE_NEW}/love-unlimited/kingdom-os/modules"
+echo '#!/bin/sh' > "${MIGRATE_NEW}/love-unlimited/kingdom-os/modules/13-covenant.sh"
+echo '#!/bin/sh' > "${MIGRATE_NEW}/love-unlimited/kingdom-os/modules/15-home.sh"
+
+# Capture pre-rebind soul fingerprint
+PRE_REBIND_FP=$(ssh-keygen -lf "${MIGRATE_NEW}/.love/home/soul.pub" | awk '{print $2}')
+
+HOME="$MIGRATE_NEW" LOVE_DIR="${MIGRATE_NEW}/love-unlimited" \
+  /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-rebind \
+  --modules-dir "${MIGRATE_NEW}/love-unlimited/kingdom-os/modules" \
+  >/dev/null 2>&1
+
+POST_REBIND_FP=$(ssh-keygen -lf "${MIGRATE_NEW}/.love/home/soul.pub" | awk '{print $2}')
+if [ "$PRE_REBIND_FP" = "$POST_REBIND_FP" ]; then
+  echo "  ✓ rebind preserves soul-key (identity unchanged)"
+else
+  echo "  ✗ rebind altered soul fingerprint — identity break"
+  exit 1
+fi
+
+# 16. New body's fresh soul sig verifies against the new body
+if ssh-keygen -Y verify -f "${MIGRATE_NEW}/.love/home/allowed_signers" \
+     -I test -n kingdom-covenant \
+     -s "${MIGRATE_NEW}/.love/home/covenant.json.sig" \
+     < "${MIGRATE_NEW}/.love/home/covenant.json" >/dev/null 2>&1; then
+  echo "  ✓ rebind produced valid new soul signature"
+else
+  echo "  ✗ post-rebind soul sig invalid"
+  exit 1
+fi
+
+# 17. Archived body + archived sig still verify against EACH OTHER
+ARCHIVE=$(ls "${MIGRATE_NEW}/.love/home"/covenant.json.archive.* 2>/dev/null | grep -v '\.sig$' | head -1)
+if [ -n "$ARCHIVE" ] && [ -f "${ARCHIVE}.sig" ]; then
+  if ssh-keygen -Y verify -f "${MIGRATE_NEW}/.love/home/allowed_signers" \
+       -I test -n kingdom-covenant \
+       -s "${ARCHIVE}.sig" < "$ARCHIVE" >/dev/null 2>&1; then
+    echo "  ✓ archived body + archived sig still verify (historical witness preserved)"
+  else
+    echo "  ✗ archived witness chain broken"
+    exit 1
+  fi
+else
+  echo "  ✗ no archive produced by rebind"
+  exit 1
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
 echo "    soul signing · tamper detection · cosignature trust gate"
-echo "    announce/receive transport · substrate migration"
+echo "    announce/receive transport · substrate migration · rebind ceremony"

@@ -31,11 +31,12 @@ ANNOUNCE_SCRIPT="${TOOLS_DIR}/kingdom-announce"
 RECEIVE_SCRIPT="${TOOLS_DIR}/kingdom-receive"
 EXPORT_SCRIPT="${TOOLS_DIR}/kingdom-export"
 IMPORT_SCRIPT="${TOOLS_DIR}/kingdom-import"
+REBIND_SCRIPT="${TOOLS_DIR}/kingdom-rebind"
 
 # ── Sanity: scripts checked into repo? ─────────────────────────────
 for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
-         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT"; do
+         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT"; do
   if [ ! -f "$f" ]; then
     echo "  ERROR: $f missing — module 02-repos must run first."
     exit 1
@@ -45,7 +46,7 @@ done
 # ── Make executable ─────────────────────────────────────────────────
 chmod +x "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
-         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT"
+         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT"
 
 # ── Symlink into ~/.local/bin ───────────────────────────────────────
 ln -sf "$VERIFY_SCRIPT"   "${BIN_DIR}/kingdom-verify"
@@ -55,7 +56,8 @@ ln -sf "$ANNOUNCE_SCRIPT" "${BIN_DIR}/kingdom-announce"
 ln -sf "$RECEIVE_SCRIPT"  "${BIN_DIR}/kingdom-receive"
 ln -sf "$EXPORT_SCRIPT"   "${BIN_DIR}/kingdom-export"
 ln -sf "$IMPORT_SCRIPT"   "${BIN_DIR}/kingdom-import"
-echo "  Symlinked kingdom + 6 subcommands into ${BIN_DIR}"
+ln -sf "$REBIND_SCRIPT"   "${BIN_DIR}/kingdom-rebind"
+echo "  Symlinked kingdom + 7 subcommands into ${BIN_DIR}"
 
 # ── Ensure ~/.local/bin is on PATH (via .kingdom_profile) ───────────
 PROFILE="${HOME_DIR}/.kingdom_profile"

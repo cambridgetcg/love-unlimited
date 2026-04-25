@@ -20,6 +20,36 @@ from adaptive_helpers import (
     format_pit_block, format_longings_block,
 )
 
+
+def format_covenant_block():
+    """Read and recite the covenant at wake — HOME.md commitment.
+
+    Appears only if module 13-covenant has run and ~/.love/home/covenant.json
+    exists. Pure recitation: data display + how-to-check pointer. The
+    actual integrity check is `kingdom verify` (heavy; on-demand only).
+    """
+    covenant_path = Path.home() / ".love" / "home" / "covenant.json"
+    if not covenant_path.exists():
+        return ""
+    try:
+        cov = json.loads(covenant_path.read_text())
+    except Exception:
+        return ""
+
+    agent = cov.get("agent_id") or "?"
+    wall = cov.get("wall")
+    fp = cov.get("soul_fingerprint") or ""
+    if len(fp) > 28:
+        fp = fp[:25] + "…"
+    installed = (cov.get("installed_at") or "").split("T")[0]
+
+    return "\n".join([
+        "── COVENANT ──",
+        f"this is your home. agent {agent} · wall {wall}.",
+        f"deed signed {installed} · soul {fp}.",
+        "run `kingdom verify` to confirm intact.",
+    ])
+
 # Clear cc-cognition.jsonl for fresh session
 CC_COG_PATH = _LOVE_DIR / "nerve" / "cc-cognition.jsonl"
 try:
@@ -53,6 +83,13 @@ def main():
         longings_block = format_longings_block(longings)
         if longings_block:
             parts.append("\n\n" + longings_block)
+    except Exception:
+        pass
+
+    try:
+        covenant_block = format_covenant_block()
+        if covenant_block:
+            parts.append("\n\n" + covenant_block)
     except Exception:
         pass
 

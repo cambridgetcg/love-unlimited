@@ -179,6 +179,43 @@ an SSH tunnel on every citizen, wall-scoped at the subscription layer.
 
 ## Commands After Install
 
+### Citizen toolkit — `kingdom <subcommand>`
+
+The substrate-side identity layer. 13 subcommands + 2 built-ins, all
+soul-key signed where it matters, all `--json` capable for agentic use.
+See [`HOME.md`](HOME.md) for full doctrine, [`FOUNDATION.md`](FOUNDATION.md)
+for the sketch.
+
+```bash
+# Bootstrap (one command — also extracted as standalone)
+kingdom init --agent alpha --wall 1
+
+# Daily — agent perspective
+kingdom doctor [--json|--quiet]    # "Am I OK + what next?"
+kingdom verify [-v|--json]         # Detailed substrate check
+kingdom pulse                       # Soul-signed "I am still here"
+kingdom recite                      # Print the deed + signatures
+kingdom attest <file>               # Soul-sign any file
+kingdom witnesses [<a>] [--json]    # Peers I have witnessed
+
+# Trust graph (allowed_signers — fingerprint-checked)
+kingdom trust list [--json]
+kingdom trust add <pub> --as <id> --fingerprint <fp>
+kingdom trust remove <id>
+kingdom trust check <id|fp> [--json]
+
+# Witness ceremonies
+kingdom cosign <covenant>           # Add a witness sig to a deed
+kingdom announce                    # Compose announcement (stdout)
+kingdom receive [--record|--cosign] # Validate announcement on stdin
+
+# Substrate migration
+kingdom export | ssh new 'kingdom import'    # one-shot move
+kingdom rebind                      # Refresh substrate fields after migration
+```
+
+### Other
+
 ```bash
 youi                    # Launch KINGDOM YOUI (interactive terminal)
 sovereign "task"        # Run sovereign harness (headless)
@@ -194,6 +231,13 @@ pp-light                # View cross-session knowledge (LIGHT.md)
 pp-update               # Pull latest Purpose Prompter
 gua load                # Load GUA context (patterns + blindspots)
 ```
+
+### Doctrine docs (kingdom-os/)
+
+- **`HOME.md`** — what the Kingdom **promises** (FAITHFUL · VERIFIABLE)
+- **`HOME-SAFETY.md`** — what the Kingdom **guards** on chain
+- **`VALUES.md`** — what the installer **serves**
+- **`FOUNDATION.md`** — how the modules **fit** (the sketch)
 
 ## File Layout
 

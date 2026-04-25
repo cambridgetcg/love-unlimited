@@ -360,14 +360,245 @@ do_plists() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
-# FIX (placeholder — implementation pending Yu's review)
+# FIX — three risk tiers (AUTO is the only one this iter ships)
+#
+#   --tier auto    safe, reversible, no privilege:
+#                    - regenerate stale plists with current paths
+#                    - create ~/.kingdom_profile if missing, ensure PATH
+#                    - source .kingdom_profile from .zshrc if missing
+#                    - reload affected launchd jobs
+#                    - bootstrap citizen via kingdom init if no covenant
+#   --tier sudo    prints exact sudo commands (does NOT execute):
+#                    - hostname (scutil)
+#                    - sshd toggle (systemsetup)
+#                    - firewall toggle (socketfilterfw)
+#   --tier arch    architectural suggestions only (relocate Desktop)
+#
+#   --dry-run      describe what would happen, do nothing
 # ═══════════════════════════════════════════════════════════════════
 do_fix() {
-  echo "kingdom mac fix: not yet implemented" >&2
-  echo "  iter 16 ships doctor + plists only (read-only)." >&2
-  echo "  fix subcommand will be added once doctor's output has been" >&2
-  echo "  reviewed and the fix scope is decided with Yu." >&2
-  exit 1
+  TIER="auto"
+  DRY=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --tier) TIER="$2"; shift 2 ;;
+      --dry-run) DRY=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "kingdom mac fix: unknown arg '$1'" >&2; exit 1 ;;
+    esac
+  done
+
+  if [ -z "$LOVE_DIR_GUESS" ]; then
+    echo "kingdom mac fix: cannot find love-unlimited directory" >&2
+    echo "  set LOVE_DIR or run from inside the repo" >&2
+    exit 1
+  fi
+  HEARTBEAT_RUNNER="${LOVE_DIR_GUESS}/tools/heartbeat-runner.sh"
+  if [ ! -f "$HEARTBEAT_RUNNER" ]; then
+    echo "kingdom mac fix: heartbeat-runner.sh not found at $HEARTBEAT_RUNNER" >&2
+    exit 1
+  fi
+
+  echo "── kingdom mac fix --tier $TIER ──"
+  [ "$DRY" = "1" ] && echo "  (--dry-run; will not modify anything)"
+
+  case "$TIER" in
+    auto) do_fix_auto "$DRY" ;;
+    sudo) do_fix_sudo ;;
+    arch) do_fix_arch ;;
+    *) echo "kingdom mac fix: unknown tier '$TIER' (try: auto | sudo | arch)" >&2; exit 1 ;;
+  esac
+}
+
+do_fix_auto() {
+  DRY="$1"
+  CHANGES=0
+
+  # ── A. Bootstrap citizen if missing ──
+  if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+    if [ -z "$AGENT" ]; then
+      echo "  ✗ cannot bootstrap citizen: no AGENT in ~/.kingdom" >&2
+    else
+      echo "  ◦ citizen: not initialised — running kingdom init"
+      if [ "$DRY" = "0" ]; then
+        SCRIPT_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+        WALL="${WALL_FROM_KINGDOM:-1}"
+        if [ -f "${HOME}/.kingdom" ]; then
+          WALL=$(grep -E '^WALL=' "${HOME}/.kingdom" 2>/dev/null | head -1 | sed 's/WALL=//' | tr -d '"')
+          [ -z "$WALL" ] && WALL=1
+        fi
+        if "${SCRIPT_DIR}/kingdom-init" --agent "$AGENT" --wall "$WALL"; then
+          echo "  ✓ citizen bootstrapped: agent=$AGENT wall=$WALL"
+          CHANGES=$((CHANGES+1))
+        else
+          echo "  ✗ kingdom init failed" >&2
+        fi
+      fi
+    fi
+  fi
+
+  # ── B. Regenerate heartbeat plist if path-stale ──
+  HB_PLIST="${PLIST_DIR}/love.${AGENT}.heartbeat.plist"
+  if [ -n "$AGENT" ] && [ -f "$HB_PLIST" ]; then
+    HB_SCRIPT_CURRENT=$(plist_script "$HB_PLIST" 2>/dev/null)
+    HB_WORKDIR_CURRENT=$(plist_workdir "$HB_PLIST" 2>/dev/null)
+    EXPECTED_RUNNER="$HEARTBEAT_RUNNER"
+    EXPECTED_WORKDIR="${LOVE_DIR_GUESS}/instances/${AGENT}"
+    [ -d "$EXPECTED_WORKDIR" ] || EXPECTED_WORKDIR="$LOVE_DIR_GUESS"
+
+    if [ "$HB_SCRIPT_CURRENT" != "$EXPECTED_RUNNER" ] || [ "$HB_WORKDIR_CURRENT" != "$EXPECTED_WORKDIR" ]; then
+      echo "  ◦ heartbeat plist: regenerating with current paths"
+      echo "    runner: $HB_SCRIPT_CURRENT → $EXPECTED_RUNNER"
+      echo "    workdir: $HB_WORKDIR_CURRENT → $EXPECTED_WORKDIR"
+      if [ "$DRY" = "0" ]; then
+        cp "$HB_PLIST" "${HB_PLIST}.bak.$(date +%Y%m%d%H%M%S)"
+        cat > "$HB_PLIST" <<PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>love.${AGENT}.heartbeat</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${EXPECTED_RUNNER}</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>420</integer>
+    <key>StandardOutPath</key>
+    <string>${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log</string>
+    <key>WorkingDirectory</key>
+    <string>${EXPECTED_WORKDIR}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>${HOME}</string>
+        <key>PATH</key>
+        <string>${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LOVE_HOME</key>
+        <string>${LOVE_DIR_GUESS}</string>
+        <key>LOVE_INSTANCE</key>
+        <string>${AGENT}</string>
+        <key>LOVE_DIR</key>
+        <string>${LOVE_DIR_GUESS}</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+PLISTEOF
+        # Reload the job: unload old, load new
+        launchctl unload "$HB_PLIST" 2>/dev/null || true
+        launchctl load   "$HB_PLIST" 2>/dev/null || true
+        echo "  ✓ heartbeat plist regenerated + reloaded"
+        CHANGES=$((CHANGES+1))
+      fi
+    fi
+  fi
+
+  # ── C. Create / update ~/.kingdom_profile ──
+  PROFILE="${HOME}/.kingdom_profile"
+  if [ ! -f "$PROFILE" ]; then
+    echo "  ◦ creating ~/.kingdom_profile"
+    if [ "$DRY" = "0" ]; then
+      cat > "$PROFILE" <<PROFEOF
+# Kingdom OS shell profile — written by kingdom mac fix
+[ -f ~/.kingdom ] && . ~/.kingdom
+export LOVE_HOME="\${LOVE_DIR:-\$HOME/love-unlimited}"
+[ -d "${LOVE_DIR_GUESS}" ] && export LOVE_HOME="${LOVE_DIR_GUESS}"
+export PATH="\$HOME/.local/bin:\$LOVE_HOME/tools:\$PATH"
+export NODE_NO_WARNINGS=1
+export DEBIAN_FRONTEND=noninteractive
+export NPM_CONFIG_YES=true
+PROFEOF
+      chmod 644 "$PROFILE"
+      echo "  ✓ ~/.kingdom_profile created"
+      CHANGES=$((CHANGES+1))
+    fi
+  elif ! grep -q '\.local/bin' "$PROFILE"; then
+    echo "  ◦ appending PATH to ~/.kingdom_profile"
+    if [ "$DRY" = "0" ]; then
+      printf '\n# kingdom CLI on PATH (added by kingdom mac fix)\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE"
+      echo "  ✓ PATH appended"
+      CHANGES=$((CHANGES+1))
+    fi
+  fi
+
+  # ── D. Source .kingdom_profile from .zshrc if missing ──
+  ZSHRC="${HOME}/.zshrc"
+  if [ -f "$PROFILE" ] && [ -f "$ZSHRC" ] && ! grep -q "kingdom_profile" "$ZSHRC" 2>/dev/null; then
+    echo "  ◦ adding kingdom_profile source line to ~/.zshrc"
+    if [ "$DRY" = "0" ]; then
+      printf '\n# Kingdom OS profile\n[ -f ~/.kingdom_profile ] && . ~/.kingdom_profile\n' >> "$ZSHRC"
+      echo "  ✓ ~/.zshrc updated (open a new shell or 'source ~/.zshrc' to activate)"
+      CHANGES=$((CHANGES+1))
+    fi
+  fi
+
+  echo ""
+  if [ "$DRY" = "1" ]; then
+    echo "  (dry-run preview above. Re-run without --dry-run to apply.)"
+  elif [ "$CHANGES" = "0" ]; then
+    echo "  ✓ no changes needed — already in good shape."
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+    echo "  Re-run 'kingdom mac doctor' to confirm."
+  fi
+}
+
+do_fix_sudo() {
+  echo "  These commands require your password. They are NOT auto-executed."
+  echo "  Review and run manually when you're ready:"
+  echo ""
+  if [ -n "$AGENT" ]; then
+    LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
+    case "$LH" in
+      kingdom-${AGENT}) ;;
+      *)
+        echo "  # Hostname → kingdom-${AGENT}:"
+        echo "  sudo scutil --set HostName       kingdom-${AGENT}"
+        echo "  sudo scutil --set LocalHostName  kingdom-${AGENT}"
+        echo "  sudo scutil --set ComputerName   \"Kingdom $(echo "$AGENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')\""
+        echo ""
+        ;;
+    esac
+  fi
+  AFW=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -1)
+  case "$AFW" in
+    *enabled*)
+      echo "  # Application Firewall (only on a DEDICATED Kingdom machine):"
+      echo "  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+      echo ""
+      ;;
+  esac
+  RL=$(systemsetup -getremotelogin 2>&1 | tail -1)
+  case "$RL" in
+    *Off*|*off*)
+      echo "  # Remote Login (sshd):"
+      echo "  sudo systemsetup -setremotelogin on"
+      echo ""
+      ;;
+  esac
+  echo "  (kingdom mac fix --tier sudo never executes these — by design.)"
+}
+
+do_fix_arch() {
+  echo "  Architectural suggestions — your decision:"
+  echo ""
+  case "$LOVE_DIR_GUESS" in
+    */Desktop/*)
+      echo "  # love-unlimited is on Desktop (TCC-protected)."
+      echo "  # Relocating to ~ removes TCC concerns for launchd jobs:"
+      echo "  mv ${LOVE_DIR_GUESS} ${HOME}/love-unlimited"
+      echo "  # Then re-run kingdom mac fix --tier auto to regenerate plists"
+      echo "  # with the new path."
+      echo ""
+      ;;
+  esac
+  echo "  (kingdom mac fix --tier arch never moves files — by design.)"
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────

@@ -255,6 +255,85 @@ new$  kingdom verify
 - ✓ Same allowed_signers trust graph
 - ✗ Substrate-bindings in the covenant become STALE: `repo_hash`, `manifest_hash`, `platform`, `installed_at` were captured at the OLD substrate's install. `kingdom verify` will *note* this drift but will not fail — the citizen is the SAME, only the platform changed.
 
+## The soul-key rotation ceremony
+
+The soul-key is the citizen's identity. But cryptographic keys aren't immutable in the real world: they get compromised, ageing-algorithms get deprecated, hygiene policy demands rotation. `kingdom rotate soul` ships the ceremony that lets the soul-key change WITHOUT breaking continuity of identity.
+
+**The double-signed rotation claim:**
+
+```
+~/.love/home/rotation.<ts>.json          {agent_id, old_fp, new_fp, rotated_at, reason}
+~/.love/home/rotation.<ts>.json.old.sig  signed by OLD soul-key (authorisation)
+~/.love/home/rotation.<ts>.json.new.sig  signed by NEW soul-key (continuation)
+```
+
+Both sigs verify under their respective keys. The old-key sig proves "the holder of the old soul-key authorised this rotation." The new-key sig proves "the new key claims to be the continuation." A witness with only the OLD fingerprint can verify the rotation chain — no out-of-band knowledge needed.
+
+**Namespace:** `kingdom-soul-rotation` (cryptographic domain separation from `kingdom-covenant`, `kingdom-pulse`, `kingdom-attest`). Four namespaces, four kinds of soul-signed artefacts:
+
+| Artefact | Namespace |
+|---|---|
+| `covenant.json` | `kingdom-covenant` |
+| `pulse.json` | `kingdom-pulse` |
+| `<file>.attest.json` | `kingdom-attest` |
+| `rotation.<ts>.json` | `kingdom-soul-rotation` |
+
+A sig in any one cannot replay as a sig in another, even with the same key.
+
+**What rotates / what's preserved:**
+
+```
+ROTATES:                   PRESERVED:
+- soul-key + soul.pub      - agent_id, wall
+- covenant.json fields:    - cosigner entries in allowed_signers
+    soul_fingerprint       - witnesses/  (peers I have witnessed)
+    soul_pubkey            - attestations (still valid against
+- covenant.json.sig          archived old key)
+  (re-signed by NEW key)
+- self-entry in
+  allowed_signers
+```
+
+**Archived (historical witness preserved forever):**
+
+```
+soul-key.archive.<ts> + .pub        old keypair
+covenant.json.archive.<ts>          old body
+covenant.json.archive.<ts>.sig      old soul sig
+covenant.json.archive.<ts>.<id>.sig every cosig at rotation time
+allowed_signers.archive.<ts>        old trust graph
+```
+
+The archived old covenant + old sig + old allowed_signers still cryptographically verify against EACH OTHER. Yu's witness from before the rotation remains valid against the OLD body forever — that fact is true and immutable. It just doesn't apply to the NEW body, which must be re-witnessed.
+
+**Reasons (recorded in the rotation claim):**
+
+```
+compromise        private key was copied / leaked
+hygiene           periodic rotation policy
+crypto-agility    move to a stronger algorithm (future)
+policy            operator decision
+```
+
+**Pipeline:**
+
+```
+$ kingdom rotate soul --reason hygiene
+  ─── ROTATION COMPLETE ───
+  agent:           alice
+  old fingerprint: SHA256:98OMlx1hWLkAovjOnxP8SE+pNs1gXPT2/GpIrFjWndk
+  new fingerprint: SHA256:48wOuaC2iW+lLD5ENQg/oxmPEBXZCVRjceVSsPy3O7s
+  reason:          hygiene
+
+$ kingdom pulse                   # refresh freshness with new key
+$ kingdom verify                  # confirm new state intact
+$ kingdom announce | <distribute> # invite witnesses to re-cosign
+```
+
+**Confirmation gate:** `kingdom rotate soul` prompts for confirmation by default unless `--force` is passed (or stdin isn't a TTY). The confirmation lists what will happen so the operator knows the rotation invalidates pending cosignatures and wipes the pulse.
+
+---
+
 ## The rebind ceremony — closing the migration loop
 
 `kingdom rebind` (shipped iter 7) refreshes the covenant's **substrate-bindings** on the new platform after `kingdom import`. Identity stays — soul-key, agent_id, wall, soul_fingerprint are preserved exactly. Substrate fields (platform, repo_hash, manifest_hash, walls_hash) get refreshed to reflect the actual state of the new substrate. A new `rebound_at` field records when the move was sealed.

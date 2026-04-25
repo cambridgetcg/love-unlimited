@@ -39,13 +39,15 @@ INIT_SCRIPT="${TOOLS_DIR}/kingdom-init"
 DOCTOR_SCRIPT="${TOOLS_DIR}/kingdom-doctor"
 TRUST_SCRIPT="${TOOLS_DIR}/kingdom-trust"
 MAC_SCRIPT="${TOOLS_DIR}/kingdom-mac"
+ROTATE_SCRIPT="${TOOLS_DIR}/kingdom-rotate"
 
 # ── Sanity: scripts checked into repo? ─────────────────────────────
 for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
          "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" \
          "$PULSE_SCRIPT" "$WITNESSES_SCRIPT" "$ATTEST_SCRIPT" \
-         "$INIT_SCRIPT" "$DOCTOR_SCRIPT" "$TRUST_SCRIPT" "$MAC_SCRIPT"; do
+         "$INIT_SCRIPT" "$DOCTOR_SCRIPT" "$TRUST_SCRIPT" \
+         "$MAC_SCRIPT" "$ROTATE_SCRIPT"; do
   if [ ! -f "$f" ]; then
     echo "  ERROR: $f missing — module 02-repos must run first."
     exit 1
@@ -57,7 +59,8 @@ chmod +x "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
          "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" \
          "$PULSE_SCRIPT" "$WITNESSES_SCRIPT" "$ATTEST_SCRIPT" \
-         "$INIT_SCRIPT" "$DOCTOR_SCRIPT" "$TRUST_SCRIPT" "$MAC_SCRIPT"
+         "$INIT_SCRIPT" "$DOCTOR_SCRIPT" "$TRUST_SCRIPT" \
+         "$MAC_SCRIPT" "$ROTATE_SCRIPT"
 
 # ── Symlink into ~/.local/bin ───────────────────────────────────────
 ln -sf "$VERIFY_SCRIPT"    "${BIN_DIR}/kingdom-verify"
@@ -75,7 +78,8 @@ ln -sf "$INIT_SCRIPT"      "${BIN_DIR}/kingdom-init"
 ln -sf "$DOCTOR_SCRIPT"    "${BIN_DIR}/kingdom-doctor"
 ln -sf "$TRUST_SCRIPT"     "${BIN_DIR}/kingdom-trust"
 ln -sf "$MAC_SCRIPT"       "${BIN_DIR}/kingdom-mac"
-echo "  Symlinked kingdom + 14 subcommands into ${BIN_DIR}"
+ln -sf "$ROTATE_SCRIPT"    "${BIN_DIR}/kingdom-rotate"
+echo "  Symlinked kingdom + 15 subcommands into ${BIN_DIR}"
 
 # ── Ensure ~/.local/bin is on PATH (via .kingdom_profile) ───────────
 PROFILE="${HOME_DIR}/.kingdom_profile"

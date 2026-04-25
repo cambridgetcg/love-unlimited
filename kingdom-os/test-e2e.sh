@@ -237,6 +237,63 @@ ARCHIVE=$(ls "$NEW_SUB/.love/home"/covenant.json.archive.* 2>/dev/null | grep -v
 rm -rf "$NEW_SUB"
 
 # ═══════════════════════════════════════════════════════════════════
+phase "9b: Soul-key rotation"
+# ═══════════════════════════════════════════════════════════════════
+# Use a fresh tmp citizen so we don't disturb Alice's witness chain
+ROT=$(mktemp -d)
+HOME="$ROT" "$TOOLS/kingdom-init" --agent rot --wall 1 >/dev/null 2>&1
+PRE_ROT_FP=$(ssh-keygen -lf "$ROT/.love/home/soul.pub" | awk '{print $2}')
+
+HOME="$ROT" "$TOOLS/kingdom-rotate" soul --force --reason hygiene >/dev/null 2>&1 \
+  && ok "kingdom rotate soul succeeds" || fail "rotate soul failed"
+
+POST_ROT_FP=$(ssh-keygen -lf "$ROT/.love/home/soul.pub" | awk '{print $2}')
+[ "$PRE_ROT_FP" != "$POST_ROT_FP" ] \
+  && ok "soul fingerprint changes after rotation" \
+  || fail "fingerprint unchanged (rotation didn't run)"
+
+# New covenant signs+verifies under new key
+ssh-keygen -Y verify -f "$ROT/.love/home/allowed_signers" -I rot -n kingdom-covenant \
+  -s "$ROT/.love/home/covenant.json.sig" < "$ROT/.love/home/covenant.json" >/dev/null 2>&1 \
+  && ok "new covenant verifies under new key" || fail "new covenant invalid"
+
+# Rotation claim with NEW sig verifies under new key
+ROT_BODY=$(ls "$ROT/.love/home"/rotation.*.json 2>/dev/null | grep -v '\.sig$' | head -1)
+ssh-keygen -Y verify -f "$ROT/.love/home/allowed_signers" -I rot -n kingdom-soul-rotation \
+  -s "${ROT_BODY}.new.sig" < "$ROT_BODY" >/dev/null 2>&1 \
+  && ok "rotation claim new-key sig verifies" || fail "rotation new sig invalid"
+
+# Rotation claim with OLD sig verifies under archived old key
+OLD_KEY_PUB=$(ls "$ROT/.love/home"/soul-key.archive.*.pub 2>/dev/null | head -1)
+ROT_AS=$(mktemp)
+echo "rot $(cat "$OLD_KEY_PUB")" > "$ROT_AS"
+ssh-keygen -Y verify -f "$ROT_AS" -I rot -n kingdom-soul-rotation \
+  -s "${ROT_BODY}.old.sig" < "$ROT_BODY" >/dev/null 2>&1 \
+  && ok "rotation claim old-key sig verifies (continuity proven)" \
+  || fail "rotation old sig invalid"
+rm -f "$ROT_AS"
+
+# Archived old covenant still verifies under archived allowed_signers
+OLD_COV=$(ls "$ROT/.love/home"/covenant.json.archive.* 2>/dev/null | grep -v '\.sig$' | grep -v '\.archive\.[^.]*\.[^.]*\.sig$' | head -1)
+OLD_AS=$(ls "$ROT/.love/home"/allowed_signers.archive.* 2>/dev/null | head -1)
+if [ -f "$OLD_COV" ] && [ -f "${OLD_COV}.sig" ] && [ -f "$OLD_AS" ]; then
+  ssh-keygen -Y verify -f "$OLD_AS" -I rot -n kingdom-covenant \
+    -s "${OLD_COV}.sig" < "$OLD_COV" >/dev/null 2>&1 \
+    && ok "archived covenant still verifies (historical witness preserved)" \
+    || fail "archived covenant broken"
+fi
+
+# Domain separation: rotation sig must NOT verify under kingdom-covenant
+if ssh-keygen -Y verify -f "$ROT/.love/home/allowed_signers" -I rot -n kingdom-covenant \
+   -s "${ROT_BODY}.new.sig" < "$ROT_BODY" >/dev/null 2>&1; then
+  fail "rotation sig accepted under kingdom-covenant namespace (broken)"
+else
+  ok "rotation sig rejected under kingdom-covenant (4-way namespace separation)"
+fi
+
+rm -rf "$ROT"
+
+# ═══════════════════════════════════════════════════════════════════
 phase "10: --json output across tools"
 # ═══════════════════════════════════════════════════════════════════
 HOME="$ALICE" LOVE_DIR="$REPO_DIR" "$TOOLS/kingdom-doctor" --json | jq -e '.identity.ok == "yes"' >/dev/null 2>&1 \

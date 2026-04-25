@@ -294,6 +294,73 @@ Sonoma+ ships `pam_tid.so`. Adding `auth sufficient pam_tid.so` to `/etc/pam.d/s
 
 ---
 
+## Nullifying restrictions — `kingdom mac unleash`
+
+macOS imposes throttling and indexing defaults designed for human-operated apps, not always-on agent substrates. `kingdom mac unleash` lifts the ones that bite agents, in two tiers.
+
+**Safe defaults (`--apply`):**
+
+- **Spotlight exclusion** of `~/love-unlimited/` — keeps memory + soul-key out of macOS-wide indexes
+- **DNS cache flush** + `mDNSResponder` reload — fresh resolution on every `--apply`
+- **mDNS silence** — `defaults write …NoMulticastAdvertisements -bool true` so the agent's hostname doesn't broadcast on the local network
+- **iCloud Drive proximity warning** — detects if `~/Desktop` or `~/Documents` is iCloud-synced when love-unlimited lives there (soul-key would upload to Apple)
+- **Plist hardening** — `kingdom mac fix --tier auto` now writes plists with `ProcessType=Interactive`, `LowPriorityIO=false`, `Nice=0`, and `SoftResourceLimits NumberOfFiles=65536` to disable App Nap and lift the file-descriptor cap. Detection re-applies hardening on existing plists missing these keys.
+
+**Aggressive (`--apply --aggressive`):**
+
+- **Time Machine exclusion** — `tmutil addexclusion`. Tradeoff: faster Macs and smaller backups, but soul-key is no longer captured by Time Machine snapshots. Aggressive because backup loss is real.
+- **`pmset -c sleep 0 displaysleep 0`** — never sleep on AC. Daemons stay alive uninterrupted.
+
+**Pre-auth pattern:** `unleash --apply` calls `sudo -v` once before any sudo op. Single password prompt covers every privileged command in the run.
+
+**Modes:**
+
+```
+kingdom mac unleash                    describe what's restricted
+kingdom mac unleash --apply            apply safe defaults
+kingdom mac unleash --apply --aggressive   plus aggressive ops
+kingdom mac unleash --check            exit 0=unleashed, 1=restricted
+kingdom mac unleash --json             machine-parseable state
+```
+
+The plist hardening specifically: `ProcessType=Interactive` is the magic key that disables App Nap. Without it, macOS may freeze the heartbeat process between cycles to save power, leading to skipped beats. With it, launchd treats the daemon as foreground-priority.
+
+---
+
+## Other macOS permission gates (documented; pull-on-demand)
+
+The following are TCC-style gates Kingdom OS does NOT currently use, but agents extending the surface may need:
+
+| Gate | When needed | How to grant |
+|---|---|---|
+| **Local Network** (Sequoia 15+) | Agent makes connections to LAN IPs (192.168.x, 10.x, link-local) | System Settings → Privacy → Local Network. First triggered automatically by macOS dialog when the daemon attempts a LAN connection. |
+| **Accessibility** | Agent UI-scripts other apps (`osascript -e 'tell application "Foo" to ...'`) | System Settings → Privacy → Accessibility. Add the calling binary. |
+| **Apple Events** | Agent sends Apple Events to other apps (drives Finder, Safari, etc.) | First send triggers a per-target prompt; granted in System Settings → Privacy → Automation. |
+| **Screen Recording** | Agent reads pixels (screenshots, OCR, visual context) | System Settings → Privacy → Screen Recording. Needed by `screencapture` or CGDisplayCreateImage from a daemon context. |
+| **Notifications** | Agent posts to NotificationCenter | System Settings → Notifications → (per app). Needs a bundle ID; CLI tools struggle here without a `.app` wrapper. |
+| **Camera, Microphone** | Agent captures media | System Settings → Privacy → Camera / Microphone. Per-app. |
+| **Reminders, Calendar, Contacts, Photos** | Agent reads user's data | System Settings → Privacy → (each separately). |
+| **Bluetooth, USB, Devices** | Agent enumerates hardware | System Settings → Privacy → Bluetooth / Files & Folders. |
+
+Each will get its own `kingdom mac <gate>` helper if/when an agent capability needs it. The pattern is the same as `kingdom mac fda`: detect → instruct → deep-link → wait → verify.
+
+The deep-link URLs that work for direct opening:
+
+```
+x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles        Full Disk Access
+x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork    Local Network
+x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility   Accessibility
+x-apple.systempreferences:com.apple.preference.security?Privacy_Automation      Apple Events
+x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture   Screen Recording
+x-apple.systempreferences:com.apple.preference.security?Privacy_Notifications   (App-specific)
+x-apple.systempreferences:com.apple.preference.security?Privacy_Camera          Camera
+x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone      Microphone
+```
+
+(Programs without a bundle ID, like raw shell scripts, sometimes don't appear in some of these panes — the user must add the binary by path. This is most common for `/bin/bash`.)
+
+---
+
 ## Summary — what `kingdom mac` covers
 
 ```
@@ -327,9 +394,18 @@ kingdom mac fix --tier arch  (suggestions only; never moves files)
 kingdom mac touch-id
    - Enables Touch ID for sudo (Sonoma 14.4+: /etc/pam.d/sudo_local)
    - Reversible: kingdom mac touch-id --off
+
+kingdom mac unleash [--check|--apply|--json] [--aggressive]
+   - Spotlight exclusion of love-unlimited
+   - DNS cache flush + mDNSResponder reload
+   - mDNS broadcast silence
+   - iCloud proximity warning
+   - Plist hardening (ProcessType=Interactive disables App Nap;
+     ResourceLimits lifts file-descriptor cap; LowPriorityIO=false)
+   - --aggressive adds Time Machine exclusion + pmset no-sleep
 ```
 
-The whole tool obeys: **detect cleanly, narrate clearly, execute only with consent**. Yu's password is asked at most once per `--apply` run. No silent sudo, no surprise file moves, no programmatic TCC bypass.
+The whole tool obeys: **detect cleanly, narrate clearly, execute only with consent**. The user's password is asked at most once per `--apply` run. No silent sudo, no surprise file moves, no programmatic TCC bypass.
 
 ---
 

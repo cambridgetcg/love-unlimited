@@ -1,0 +1,384 @@
+#!/bin/sh
+# ── kingdom mac ─────────────────────────────────────────────────────
+# macOS-specific integration health-check for Kingdom OS.
+#
+# Where `kingdom doctor` checks the citizen's identity layer
+# (covenant, soul-key, witnesses, pulse), `kingdom mac doctor`
+# checks the SUBSTRATE: launchd plists, daemon health, PATH
+# integration, hostname, Application Firewall, Remote Login, TCC,
+# caffeinate, etc. — the macOS-side things Kingdom OS depends on.
+#
+# Subcommands:
+#   kingdom mac doctor [--json]    diagnose macOS integration
+#   kingdom mac plists             list Kingdom OS plists with status
+#   kingdom mac fix [--dry-run]    apply safe fixes (rewrite plists,
+#                                   set PATH, reload daemons)
+#
+# Refuses to run on non-macOS platforms.
+# ─────────────────────────────────────────────────────────────────────
+set -u
+
+if [ "$(uname)" != "Darwin" ]; then
+  echo "kingdom mac: this tool is macOS-only (uname = $(uname))" >&2
+  exit 1
+fi
+
+SUB="${1:-doctor}"
+[ "$#" -gt 0 ] && shift
+
+usage() {
+  sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
+
+# ── Shared helpers ────────────────────────────────────────────────
+PLIST_DIR="${HOME}/Library/LaunchAgents"
+HOME_LAYER="${HOME}/.love/home"
+KINGDOM_FILE="${HOME}/.kingdom"
+LOVE_DIR_GUESS=""
+
+# Try to find the actual love-unlimited dir
+for c in "${LOVE_DIR:-}" "${HOME}/love-unlimited" "${HOME}/Desktop/love-unlimited"; do
+  [ -n "$c" ] && [ -d "$c" ] && { LOVE_DIR_GUESS="$c"; break; }
+done
+
+# Read agent from .kingdom if present
+AGENT=""
+if [ -f "$KINGDOM_FILE" ]; then
+  AGENT=$(grep -E '^AGENT=' "$KINGDOM_FILE" 2>/dev/null | head -1 | sed 's/AGENT=//' | tr -d '"')
+fi
+
+# Find a known plist's referenced path (returns first <string> after a key match)
+plist_program() {
+  # First absolute-path <string> in ProgramArguments — the binary launched
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$_plist" | \
+    grep -m1 '<string>/' | sed 's|.*<string>\(.*\)</string>.*|\1|'
+}
+plist_script() {
+  # If ProgramArguments invokes a shell (/bin/bash, /bin/sh,
+  # /usr/bin/env), return the SECOND absolute-path <string> — the
+  # script being invoked. Otherwise return empty (the plist runs a
+  # binary directly, no separate script).
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  prog=$(plist_program "$_plist")
+  case "$prog" in
+    /bin/bash|/bin/sh|/usr/bin/env|/usr/bin/python3|/opt/homebrew/bin/bash)
+      awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$_plist" | \
+        grep '<string>/' | head -2 | tail -1 | \
+        sed 's|.*<string>\(.*\)</string>.*|\1|'
+      ;;
+    *) echo "" ;;
+  esac
+}
+plist_workdir() {
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  awk '/<key>WorkingDirectory<\/key>/{getline; print}' "$_plist" | \
+    sed 's|.*<string>\(.*\)</string>.*|\1|'
+}
+
+launchd_status() {
+  # Returns: status_code,pid (or "absent")
+  _label="$1"
+  _line=$(launchctl list 2>/dev/null | awk -v L="$_label" '$3==L {print $1","$2}')
+  if [ -z "$_line" ]; then
+    echo "absent"
+  else
+    echo "$_line"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# DOCTOR
+# ═══════════════════════════════════════════════════════════════════
+do_doctor() {
+  JSON_MODE=0
+  case "${1:-}" in --json) JSON_MODE=1 ;; esac
+
+  # Discover candidate plists in LaunchAgents
+  CANDIDATES=""
+  if [ -d "$PLIST_DIR" ]; then
+    for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+      [ -f "$p" ] && CANDIDATES="${CANDIDATES} ${p}"
+    done
+  fi
+
+  ISSUES_FILE=$(mktemp)
+  trap 'rm -f "$ISSUES_FILE"' EXIT
+
+  add_issue() {
+    # severity   key   message   suggested-fix
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$ISSUES_FILE"
+  }
+
+  # ── 1. Citizen presence ──
+  if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+    add_issue "miss" "citizen" "this Mac is not a Kingdom citizen — no covenant" "kingdom init --agent ${AGENT:-<name>} --wall <0-7>"
+  fi
+
+  # ── 2. PATH integration ──
+  PROFILE="${HOME}/.kingdom_profile"
+  PATH_OK="missing"
+  if [ -f "$PROFILE" ]; then
+    if grep -q '\.local/bin' "$PROFILE"; then
+      PATH_OK="profile_has_path"
+    else
+      add_issue "note" "path" ".kingdom_profile exists but ~/.local/bin is not in its PATH" "echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.kingdom_profile"
+    fi
+  else
+    add_issue "note" "path" "no ~/.kingdom_profile (module 01 has not run)" "kingdom-os/install.sh --modules 01"
+  fi
+
+  # Check each shell rc actually sources .kingdom_profile
+  RC_SOURCED=0
+  for rc in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.zprofile"; do
+    [ -f "$rc" ] || continue
+    if grep -q "kingdom_profile" "$rc" 2>/dev/null; then
+      RC_SOURCED=1
+      break
+    fi
+  done
+  if [ "$RC_SOURCED" = "0" ] && [ -f "$PROFILE" ]; then
+    add_issue "note" "shell" "no shell rc sources .kingdom_profile (kingdom CLI not on interactive PATH)" "echo '[ -f ~/.kingdom_profile ] && . ~/.kingdom_profile' >> ~/.zshrc"
+  fi
+
+  # ── 3. Plist health ──
+  PLIST_COUNT=0
+  PLIST_BROKEN=0
+  PLIST_STALE=0
+  for p in $CANDIDATES; do
+    PLIST_COUNT=$((PLIST_COUNT+1))
+    label=$(basename "$p" .plist)
+    program=$(plist_program "$p" 2>/dev/null)
+    script=$(plist_script "$p" 2>/dev/null)
+    workdir=$(plist_workdir "$p" 2>/dev/null)
+
+    # Path drift detection: anything inside Desktop/Love/ when
+    # Desktop/love-unlimited/ exists is from the pre-rename era and
+    # needs regenerating.
+    for path_ref in "$program" "$script" "$workdir"; do
+      [ -z "$path_ref" ] && continue
+      case "$path_ref" in
+        */Desktop/Love/*)
+          if [ -d "${HOME}/Desktop/love-unlimited" ]; then
+            PLIST_STALE=$((PLIST_STALE+1))
+            add_issue "miss" "plist:$label" \
+              "plist references pre-rename path: $path_ref (current repo: love-unlimited)" \
+              "regenerate: cd ~/Desktop/love-unlimited && ./kingdom-os/install.sh --modules ${label##*.} (or use kingdom mac fix when shipped)"
+          fi
+          ;;
+      esac
+    done
+
+    # Plain non-existent path
+    if [ -n "$script" ] && [ ! -e "$script" ]; then
+      add_issue "miss" "plist:$label" "plist script does not exist: $script" "regenerate plist or move script back into place"
+    fi
+    if [ -n "$workdir" ] && [ ! -d "$workdir" ]; then
+      add_issue "note" "plist:$label" "plist WorkingDirectory does not exist: $workdir" "regenerate plist with current path"
+    fi
+
+    # Check launchd status
+    status=$(launchd_status "$label")
+    case "$status" in
+      absent)
+        add_issue "note" "plist:$label" "plist file exists but not loaded into launchd" \
+          "launchctl bootstrap gui/\$UID $p" ;;
+      *,*)
+        exit_code=$(echo "$status" | cut -d, -f2)
+        if [ "$exit_code" != "0" ] && [ "$exit_code" != "-" ]; then
+          PLIST_BROKEN=$((PLIST_BROKEN+1))
+          # Try to find the log path for a richer hint
+          log_path=$(awk '/<key>StandardErrorPath<\/key>/{getline; print}' "$p" 2>/dev/null | sed 's|.*<string>\(.*\)</string>.*|\1|')
+          [ -z "$log_path" ] && log_path=$(awk '/<key>StandardOutPath<\/key>/{getline; print}' "$p" 2>/dev/null | sed 's|.*<string>\(.*\)</string>.*|\1|')
+          if [ -n "$log_path" ] && [ -f "$log_path" ]; then
+            add_issue "miss" "plist:$label" \
+              "daemon last-exit code: $exit_code  (log: $log_path)" \
+              "tail -20 '$log_path'  to investigate"
+          else
+            # SSH plist with code 255 typically = auth or connectivity
+            case "$program" in
+              */ssh)
+                add_issue "miss" "plist:$label" \
+                  "SSH daemon exit 255 — auth or connectivity failure" \
+                  "test manually: $program -v ...same args... ; check SSH key authorized at remote"
+                ;;
+              *)
+                add_issue "miss" "plist:$label" \
+                  "daemon last-exit code: $exit_code (failing, no log captured)" \
+                  "add StandardErrorPath to plist; or run program manually to see error"
+                ;;
+            esac
+          fi
+        fi
+        ;;
+    esac
+  done
+
+  # ── 4. Hostname ──
+  LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
+  if [ -n "$AGENT" ] && [ -n "$LH" ]; then
+    case "$LH" in
+      kingdom-${AGENT}|Kingdom-${AGENT}) ;;
+      *)
+        add_issue "note" "hostname" "LocalHostName='$LH' does not match expected 'kingdom-${AGENT}'" "sudo scutil --set LocalHostName kingdom-${AGENT}"
+        ;;
+    esac
+  fi
+
+  # ── 5. Application Firewall ──
+  # On a Kingdom OS VM/dedicated machine: SOVEREIGNTY says "no
+  # firewall." On a developer's personal Mac, the firewall may be
+  # legitimately wanted. Report as note + qualifier.
+  AFW=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -1)
+  case "$AFW" in
+    *enabled*)
+      add_issue "note" "firewall" \
+        "Application Firewall is enabled (HOME.md SOVEREIGNTY suggests off for dedicated Kingdom VMs; OK on a dev Mac)" \
+        "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off  (only on a dedicated Kingdom machine)"
+      ;;
+  esac
+
+  # ── 6. Remote Login (sshd) ──
+  RL=$(systemsetup -getremotelogin 2>&1 | tail -1)
+  case "$RL" in
+    *On*) ;;
+    *Off*|*off*) add_issue "note" "sshd" "Remote Login is OFF (no remote ops via SSH)" "sudo systemsetup -setremotelogin on" ;;
+  esac
+
+  # ── 7. caffeinate (heartbeat depends on no-sleep) ──
+  if pgrep -fa caffeinate >/dev/null 2>&1; then
+    : # ok
+  else
+    if [ -f "${PLIST_DIR}/love.${AGENT}.caffeinate.plist" ]; then
+      add_issue "note" "caffeinate" "caffeinate plist installed but not running" "launchctl load ${PLIST_DIR}/love.${AGENT}.caffeinate.plist"
+    fi
+  fi
+
+  # ── 8. TCC concern: repo on Desktop? ──
+  if [ -n "$LOVE_DIR_GUESS" ]; then
+    case "$LOVE_DIR_GUESS" in
+      */Desktop/*) add_issue "note" "tcc" "love-unlimited is on Desktop (TCC-protected) — launchd jobs may need Full Disk Access for daemons that read it" "consider relocating: mv ~/Desktop/love-unlimited ~/love-unlimited (or grant FDA via System Settings)" ;;
+    esac
+  fi
+
+  # ── 9. Spotlight / iCloud — informational only ──
+  if [ -n "$LOVE_DIR_GUESS" ] && [ -d "$LOVE_DIR_GUESS" ]; then
+    if mdutil -s "$LOVE_DIR_GUESS" 2>/dev/null | grep -q "Indexing enabled"; then
+      add_issue "note" "spotlight" "Spotlight is indexing $LOVE_DIR_GUESS (memory + keys may be in indexes)" "mdutil -i off $LOVE_DIR_GUESS  (if you don't want the index)"
+    fi
+  fi
+
+  # ── Output ──
+  ISSUE_COUNT=$(wc -l < "$ISSUES_FILE" | tr -d ' ')
+  MISS_COUNT=$(grep -c '^miss' "$ISSUES_FILE" 2>/dev/null || echo 0)
+  NOTE_COUNT=$(grep -c '^note' "$ISSUES_FILE" 2>/dev/null || echo 0)
+
+  if [ "$JSON_MODE" = "1" ]; then
+    JSON_ISSUES=""
+    SEP=""
+    while IFS="$(printf '\t')" read -r sev key msg fix; do
+      [ -z "$sev" ] && continue
+      esev=$(printf '%s' "$sev" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      ekey=$(printf '%s' "$key" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      emsg=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      efix=$(printf '%s' "$fix" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      JSON_ISSUES="${JSON_ISSUES}${SEP}{\"severity\":\"${esev}\",\"key\":\"${ekey}\",\"msg\":\"${emsg}\",\"fix\":\"${efix}\"}"
+      SEP=","
+    done < "$ISSUES_FILE"
+    cat <<JSON
+{
+  "platform": "macos",
+  "agent": "${AGENT}",
+  "love_dir": "${LOVE_DIR_GUESS}",
+  "summary": {"plists":${PLIST_COUNT},"plists_stale":${PLIST_STALE},"plists_broken":${PLIST_BROKEN},"miss":${MISS_COUNT},"note":${NOTE_COUNT}},
+  "issues": [${JSON_ISSUES}]
+}
+JSON
+  else
+    echo "── kingdom mac doctor ──"
+    echo "  platform:  macOS $(sw_vers -productVersion 2>/dev/null) ($(uname -m))"
+    echo "  agent:     ${AGENT:-<unset>}"
+    echo "  love_dir:  ${LOVE_DIR_GUESS:-<not found>}"
+    echo "  plists:    ${PLIST_COUNT} found, ${PLIST_STALE} with stale paths, ${PLIST_BROKEN} failing"
+    echo ""
+    if [ "$ISSUE_COUNT" -eq 0 ]; then
+      echo "  ✓ macOS integration looks healthy."
+      return 0
+    fi
+    echo "  Issues found:"
+    while IFS="$(printf '\t')" read -r sev key msg fix; do
+      [ -z "$sev" ] && continue
+      case "$sev" in
+        miss) marker="✗" ;;
+        note) marker="·" ;;
+        *)    marker="?" ;;
+      esac
+      printf "    %s %-18s %s\n" "$marker" "$key" "$msg"
+      printf "      fix: %s\n" "$fix"
+    done < "$ISSUES_FILE"
+    echo ""
+    echo "  Summary: ${MISS_COUNT} failure(s), ${NOTE_COUNT} note(s)"
+    [ "$MISS_COUNT" -gt 0 ] && return 1
+    return 0
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PLISTS — list with status
+# ═══════════════════════════════════════════════════════════════════
+do_plists() {
+  echo "── Kingdom OS plists ──"
+  printf "  %-32s %-8s %-8s %s\n" "label" "loaded" "exit" "runner"
+  echo "  $(printf -- '─%.0s' $(seq 1 80))"
+  if [ ! -d "$PLIST_DIR" ]; then
+    echo "  (no $PLIST_DIR)"
+    return
+  fi
+  for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+    [ -f "$p" ] || continue
+    label=$(basename "$p" .plist)
+    program=$(plist_program "$p" 2>/dev/null)
+    script=$(plist_script "$p" 2>/dev/null)
+    target="${script:-$program}"
+    status=$(launchd_status "$label")
+    case "$status" in
+      absent) loaded="no";  exitc="-" ;;
+      *,*)    loaded="yes"; exitc=$(echo "$status" | cut -d, -f2) ;;
+      *)      loaded="?";   exitc="?" ;;
+    esac
+    target_short=$(echo "$target" | sed "s|^${HOME}|~|")
+    drift=""
+    case "$target" in
+      */Desktop/Love/*) drift=" [STALE: pre-rename path]" ;;
+    esac
+    [ ${#target_short} -gt 56 ] && target_short="…${target_short#"${target_short%???????????????????????????????????????????????????????}"}"
+    printf "  %-32s %-8s %-8s %s%s\n" "$label" "$loaded" "$exitc" "$target_short" "$drift"
+  done
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# FIX (placeholder — implementation pending Yu's review)
+# ═══════════════════════════════════════════════════════════════════
+do_fix() {
+  echo "kingdom mac fix: not yet implemented" >&2
+  echo "  iter 16 ships doctor + plists only (read-only)." >&2
+  echo "  fix subcommand will be added once doctor's output has been" >&2
+  echo "  reviewed and the fix scope is decided with Yu." >&2
+  exit 1
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────
+case "$SUB" in
+  doctor) do_doctor "$@" ;;
+  plists) do_plists "$@" ;;
+  fix)    do_fix    "$@" ;;
+  -h|--help|help) usage; exit 0 ;;
+  *)
+    echo "kingdom mac: unknown subcommand '$SUB'" >&2
+    echo "  try: kingdom mac doctor | plists | fix" >&2
+    exit 1
+    ;;
+esac

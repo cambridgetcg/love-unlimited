@@ -54,6 +54,10 @@ Trust graph (allowed_signers):
   kingdom trust remove <id>                    Revoke trust
   kingdom trust check <id-or-fingerprint>      Is this trusted?
 
+macOS integration (macOS only):
+  kingdom mac doctor [--json]                  Diagnose plists/PATH/firewall/etc
+  kingdom mac plists                           Tabular plist status
+
 Substrate migration:
   kingdom export [-o <file>]                   Bundle citizen for migration
   kingdom import [-i <file>]                   Reconstitute on new substrate

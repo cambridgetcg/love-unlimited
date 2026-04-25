@@ -776,6 +776,432 @@ do_fix_arch() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# PERMISSION — unified TCC permission helper
+#
+# Apple gates many agent-relevant capabilities behind per-app TCC
+# entries. This subcommand handles every common type with the same
+# detect-instruct-deep-link-verify pattern.
+#
+# Types and their System Settings panes:
+#   fda                Privacy_AllFiles            Full Disk Access
+#   accessibility      Privacy_Accessibility       UI scripting (osascript)
+#   apple-events       Privacy_Automation          Cross-app automation
+#   screen-recording   Privacy_ScreenCapture       Screenshots, OCR, vision
+#   local-network      Privacy_LocalNetwork        LAN connections (Sequoia 15+)
+#   notifications      Privacy_Notifications       Posting to NotificationCenter
+#   camera             Privacy_Camera              Video capture
+#   microphone         Privacy_Microphone          Audio capture
+#   reminders          Privacy_Reminders
+#   calendar           Privacy_Calendars
+#   contacts           Privacy_Contacts
+#   photos             Privacy_Photos
+#   bluetooth          Privacy_Bluetooth
+#   files-folders      Privacy_FilesAndFolders
+#
+# Modes:
+#   kingdom mac permission <type>                 instructions + open pane
+#   kingdom mac permission <type> --pane          just open pane
+#   kingdom mac permission <type> --instructions  text only
+#   kingdom mac permission --list                 enumerate types
+#
+# Detection of "granted" state is intentionally limited — Apple's
+# TCC database is itself FDA-protected (circular). The honest
+# pattern is: open pane → operator grants → verify by trying the
+# capability and observing success.
+# ═══════════════════════════════════════════════════════════════════
+do_permission() {
+  TYPE=""
+  MODE="full"
+  case "${1:-}" in
+    --list)
+      cat <<'TYPES'
+── kingdom mac permission types ──
+  fda                 Full Disk Access            (~/Desktop, FDA)
+  accessibility       Accessibility               (osascript UI control)
+  apple-events        Apple Events / Automation   (cross-app scripting)
+  screen-recording    Screen Recording            (screencapture, OCR)
+  local-network       Local Network               (LAN connections, Sequoia 15+)
+  notifications       Notifications               (NotificationCenter)
+  camera              Camera                      (video capture)
+  microphone          Microphone                  (audio capture)
+  reminders           Reminders
+  calendar            Calendar
+  contacts            Contacts
+  photos              Photos
+  bluetooth           Bluetooth
+  files-folders       Files and Folders           (per-folder TCC)
+TYPES
+      exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    "") echo "Usage: kingdom mac permission <type> [--pane|--instructions]" >&2
+        echo "       kingdom mac permission --list" >&2
+        exit 1 ;;
+    *) TYPE="$1"; shift ;;
+  esac
+
+  case "${1:-}" in
+    --pane)         MODE="pane" ;;
+    --instructions) MODE="instructions" ;;
+  esac
+
+  case "$TYPE" in
+    fda)              PANE="Privacy_AllFiles";        LABEL="Full Disk Access" ;;
+    accessibility)    PANE="Privacy_Accessibility";   LABEL="Accessibility" ;;
+    apple-events)     PANE="Privacy_Automation";      LABEL="Automation (Apple Events)" ;;
+    screen-recording) PANE="Privacy_ScreenCapture";   LABEL="Screen Recording" ;;
+    local-network)    PANE="Privacy_LocalNetwork";    LABEL="Local Network" ;;
+    notifications)    PANE="Privacy_Notifications";   LABEL="Notifications" ;;
+    camera)           PANE="Privacy_Camera";          LABEL="Camera" ;;
+    microphone)       PANE="Privacy_Microphone";      LABEL="Microphone" ;;
+    reminders)        PANE="Privacy_Reminders";       LABEL="Reminders" ;;
+    calendar)         PANE="Privacy_Calendars";       LABEL="Calendar" ;;
+    contacts)         PANE="Privacy_Contacts";        LABEL="Contacts" ;;
+    photos)           PANE="Privacy_Photos";          LABEL="Photos" ;;
+    bluetooth)        PANE="Privacy_Bluetooth";       LABEL="Bluetooth" ;;
+    files-folders)    PANE="Privacy_FilesAndFolders"; LABEL="Files and Folders" ;;
+    *) echo "kingdom mac permission: unknown type '$TYPE'" >&2
+       echo "  try: kingdom mac permission --list" >&2
+       exit 1 ;;
+  esac
+
+  URL="x-apple.systempreferences:com.apple.preference.security?${PANE}"
+
+  if [ "$MODE" = "pane" ]; then
+    open "$URL"
+    exit 0
+  fi
+
+  if [ "$MODE" = "instructions" ]; then
+    cat <<INSTRUCTIONS
+── Granting ${LABEL} for Kingdom OS ──
+
+System Settings → Privacy & Security → ${LABEL}
+
+Steps:
+  1. Click [ + ] (authenticate if asked)
+  2. Press Cmd+Shift+G in the file picker
+  3. For shell-script daemons: type /bin/bash
+     For Python daemons: type /usr/bin/python3
+     For Node daemons: type /opt/homebrew/bin/node (or /usr/local/bin/node)
+     For specific binaries: navigate to the binary
+  4. Click Open
+  5. Confirm the entry appears with its toggle ON
+
+Notes by type:
+  apple-events     prompts per-target the first time the script
+                   tries to control a specific app — granted in
+                   System Settings → Privacy → Automation, listed
+                   per controlling-app/target-app pair.
+  notifications    binaries without a bundle ID often can't appear
+                   here. Use a .app wrapper or osascript
+                   'display notification' for one-off posts.
+  local-network    macOS Sequoia 15+ only. First triggered
+                   automatically by macOS dialog when a daemon
+                   attempts a LAN-IP connection.
+
+Pane URL (for scripted opening):
+  ${URL}
+INSTRUCTIONS
+    exit 0
+  fi
+
+  # Full mode: instructions + open pane
+  cat <<HEADER
+── kingdom mac permission ${TYPE} ──
+
+You'll grant: ${LABEL}
+Pane:         ${URL}
+
+Steps in the pane:
+  1. Click [ + ] (authenticate if asked)
+  2. Press Cmd+Shift+G  → type the path of your daemon's binary
+       /bin/bash                    for shell-script daemons
+       /usr/bin/python3             for Python daemons
+       /opt/homebrew/bin/node       for Node daemons (Apple Silicon)
+       /usr/local/bin/node          for Node daemons (Intel)
+       (full app path)              for .app bundles
+  3. Click Open  →  toggle ON
+HEADER
+  echo ""
+  printf "Press ENTER to open the pane (Ctrl+C to abort)... "
+  read -r _confirm
+  open "$URL"
+  echo ""
+  echo "Pane opened. Grant the permission, then return to your shell."
+  echo "Verification: try the capability and observe success / dialog prompts."
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# QUARANTINE — strip com.apple.quarantine xattrs
+#
+# macOS sets `com.apple.quarantine` xattr on files arriving from
+# the network (Safari, curl, AirDrop). Unsigned scripts and binaries
+# with this xattr are blocked from execution by Gatekeeper. This
+# subcommand strips it from love-unlimited recursively.
+#
+# Modes:
+#   kingdom mac quarantine                describe state
+#   kingdom mac quarantine --strip        remove xattrs from love-unlimited
+#   kingdom mac quarantine --strip <path> remove from a specific path
+#   kingdom mac quarantine --check        exit 0=clean, 1=quarantined found
+# ═══════════════════════════════════════════════════════════════════
+do_quarantine() {
+  MODE="describe"
+  TARGET="${LOVE_DIR_GUESS:-$HOME/love-unlimited}"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --strip) MODE="strip"; shift ;;
+      --check) MODE="check"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) TARGET="$1"; shift ;;
+    esac
+  done
+
+  if [ ! -e "$TARGET" ]; then
+    echo "kingdom mac quarantine: target not found: $TARGET" >&2
+    exit 1
+  fi
+
+  COUNT=$(find "$TARGET" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$COUNT" -gt 0 ]; then
+      echo "$COUNT file(s) carry com.apple.quarantine"
+      exit 1
+    else
+      echo "no quarantine xattrs found in $TARGET"
+      exit 0
+    fi
+  fi
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac quarantine ──"
+    echo "  target: $TARGET"
+    if [ "$COUNT" -gt 0 ]; then
+      echo "  found:  $COUNT file(s) with com.apple.quarantine"
+      echo ""
+      echo "  Strip with: kingdom mac quarantine --strip"
+      echo "  (recursive, idempotent, preserves all other xattrs)"
+    else
+      echo "  ✓ clean — no quarantine xattrs found"
+    fi
+    return
+  fi
+
+  # strip mode
+  echo "── kingdom mac quarantine --strip ──"
+  echo "  target: $TARGET"
+  if [ "$COUNT" = "0" ]; then
+    echo "  ✓ already clean — no xattrs to strip"
+    return
+  fi
+  xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
+  POST=$(find "$TARGET" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$POST" = "0" ]; then
+    echo "  ✓ stripped $COUNT file(s) — target is now quarantine-free"
+  else
+    echo "  · stripped $((COUNT - POST)); $POST remain (may be on a read-only volume)"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# SLEEP — comprehensive sleep prevention (beyond `caffeinate -s`)
+#
+# macOS sleeps the system on idle, on lid-close, on battery, on
+# display-off. Each is a separate axis. For an always-on agent
+# substrate, all need to be addressed.
+#
+# Modes:
+#   kingdom mac sleep                 describe state
+#   kingdom mac sleep --prevent       apply: pmset + caffeinate plist
+#                       --laptop      include lid-close override
+#                       --battery     also prevent on battery (laptops)
+#   kingdom mac sleep --allow         restore defaults
+#   kingdom mac sleep --check         exit 0=prevented, 1=can-sleep
+# ═══════════════════════════════════════════════════════════════════
+do_sleep() {
+  MODE="describe"
+  LAPTOP=0
+  BATTERY=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --prevent) MODE="prevent"; shift ;;
+      --allow)   MODE="allow";   shift ;;
+      --check)   MODE="check";   shift ;;
+      --laptop)  LAPTOP=1;       shift ;;
+      --battery) BATTERY=1;      shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Read current pmset state
+  PMSET=$(pmset -g 2>/dev/null)
+  AC_SLEEP=$(echo "$PMSET" | awk '/^ *sleep / {print $2; exit}')
+  AC_DISPLAY=$(echo "$PMSET" | awk '/^ *displaysleep / {print $2; exit}')
+  AC_DISK=$(echo "$PMSET" | awk '/^ *disksleep / {print $2; exit}')
+
+  # Battery profile (laptops only)
+  BATT_SLEEP=""
+  if pmset -b -g 2>/dev/null >/dev/null; then
+    BATT_SLEEP=$(pmset -b -g 2>/dev/null | awk '/^ *sleep / {print $2; exit}')
+  fi
+
+  LID_CLOSE=$(echo "$PMSET" | awk '/sleeponpoweroff|lidwake/ {print $0}')
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac sleep ──"
+    echo "  AC profile:"
+    echo "    sleep:        ${AC_SLEEP:-?}m"
+    echo "    displaysleep: ${AC_DISPLAY:-?}m"
+    echo "    disksleep:    ${AC_DISK:-?}m"
+    if [ -n "$BATT_SLEEP" ]; then
+      echo "  Battery profile:"
+      echo "    sleep:        ${BATT_SLEEP}m"
+    fi
+    echo ""
+    echo "  Apply prevention:"
+    echo "    kingdom mac sleep --prevent          AC: never sleep"
+    echo "    kingdom mac sleep --prevent --battery   plus battery"
+    echo "    kingdom mac sleep --prevent --laptop    plus lid-close override"
+    echo ""
+    echo "  Restore defaults: kingdom mac sleep --allow"
+    return
+  fi
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$AC_SLEEP" = "0" ]; then
+      [ "$BATTERY" = "0" ] || [ "$BATT_SLEEP" = "0" ] && exit 0
+    fi
+    exit 1
+  fi
+
+  if [ "$MODE" = "prevent" ]; then
+    echo "── kingdom mac sleep --prevent${LAPTOP:+ --laptop}${BATTERY:+ --battery} ──"
+    echo "  Pre-authenticating sudo..."
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo pmset -c sleep 0 displaysleep 0 disksleep 0
+    echo "  ✓ AC: sleep=0 display=0 disk=0"
+    if [ "$BATTERY" = "1" ] && [ -n "$BATT_SLEEP" ]; then
+      sudo pmset -b sleep 0 displaysleep 0
+      echo "  ✓ Battery: sleep=0 display=0"
+    fi
+    if [ "$LAPTOP" = "1" ]; then
+      # lidwake=1 keeps system awake on lid open; lidwake_on_acpower
+      # is the closest macOS gives to "stay awake on lid close" —
+      # combined with sleep=0 the lid-close becomes a non-event.
+      sudo pmset -a lidwake 1 2>/dev/null || true
+      echo "  ✓ Lid: lidwake=1 (system stays alert on lid open)"
+      echo "    Note: lid-close itself is honoured by clamshell mode;"
+      echo "    keep external display/keyboard connected for true never-sleep."
+    fi
+    echo ""
+    echo "  Verify: kingdom mac sleep"
+    return
+  fi
+
+  if [ "$MODE" = "allow" ]; then
+    echo "── kingdom mac sleep --allow ──"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    # macOS factory defaults: AC sleep=10 display=10 disk=10
+    sudo pmset -c sleep 10 displaysleep 10 disksleep 10
+    echo "  ✓ pmset restored to defaults (AC: sleep=10 disp=10 disk=10)"
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PATH — inject Kingdom paths into launchd's process inheritance
+#
+# launchd-spawned processes don't inherit the user's interactive
+# shell PATH. They start with /usr/bin:/bin:/usr/sbin:/sbin only.
+# Daemons looking for Homebrew binaries (jq, ripgrep, node, python3
+# from brew) fail with "command not found". Plists work around this
+# via EnvironmentVariables PATH= (kingdom mac fix --tier auto already
+# does this for the heartbeat plist), but other tools spawned BY
+# the heartbeat may still hit minimal PATH unless explicitly fixed.
+#
+# This subcommand sets a system-wide PATH addition via /etc/paths.d/
+# so launchd-spawned processes (and Spotlight, Mission Control, etc.)
+# all see Homebrew binaries.
+#
+# Modes:
+#   kingdom mac path           describe current state
+#   kingdom mac path --setup   add /etc/paths.d/kingdom (sudo)
+#   kingdom mac path --remove  remove the entry (sudo)
+# ═══════════════════════════════════════════════════════════════════
+do_path() {
+  MODE="describe"
+  case "${1:-}" in
+    --setup)  MODE="setup" ;;
+    --remove) MODE="remove" ;;
+    -h|--help) usage; exit 0 ;;
+  esac
+
+  PATHS_FILE="/etc/paths.d/kingdom"
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac path ──"
+    echo "  /etc/paths.d/ entries that affect launchd / Spotlight PATH:"
+    if [ -d /etc/paths.d ]; then
+      ls -1 /etc/paths.d/ 2>/dev/null | head -10 | sed 's|^|    |'
+    else
+      echo "    (no /etc/paths.d/)"
+    fi
+    echo ""
+    echo "  Kingdom entry: $PATHS_FILE"
+    if [ -f "$PATHS_FILE" ]; then
+      echo "    ✓ present:"
+      sed 's|^|      |' "$PATHS_FILE"
+    else
+      echo "    · not yet set up"
+      echo "      → kingdom mac path --setup"
+    fi
+    return
+  fi
+
+  if [ "$MODE" = "setup" ]; then
+    echo "── kingdom mac path --setup ──"
+    echo "  Adds Homebrew + Kingdom paths to /etc/paths.d/kingdom"
+    echo "  (sudo prompt incoming)"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    sudo tee "$PATHS_FILE" >/dev/null <<PATHS
+/opt/homebrew/bin
+/opt/homebrew/sbin
+/usr/local/bin
+${HOME}/.local/bin
+PATHS
+    sudo chmod 644 "$PATHS_FILE"
+    echo "  ✓ wrote $PATHS_FILE"
+    echo "  Effect: launchd-spawned and Spotlight processes will find"
+    echo "  brew binaries on next login. To apply now in your current"
+    echo "  shell, open a new terminal."
+    return
+  fi
+
+  if [ "$MODE" = "remove" ]; then
+    echo "── kingdom mac path --remove ──"
+    if [ ! -f "$PATHS_FILE" ]; then
+      echo "  · already absent (no-op)"
+      return
+    fi
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    sudo rm -f "$PATHS_FILE"
+    echo "  ✓ removed $PATHS_FILE"
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # UNLEASH — nullify macOS restrictions on agent daemons
 #
 # macOS imposes throttling, indexing, and sync defaults that were
@@ -1300,16 +1726,21 @@ do_touch_id() {
 
 # ── Dispatch ─────────────────────────────────────────────────────
 case "$SUB" in
-  doctor)         do_doctor   "$@" ;;
-  plists)         do_plists   "$@" ;;
-  fix)            do_fix      "$@" ;;
-  fda)            do_fda      "$@" ;;
-  unleash)        do_unleash  "$@" ;;
-  touch-id|touchid) do_touch_id "$@" ;;
+  doctor)           do_doctor     "$@" ;;
+  plists)           do_plists     "$@" ;;
+  fix)              do_fix        "$@" ;;
+  fda)              do_fda        "$@" ;;
+  permission|perm)  do_permission "$@" ;;
+  quarantine)       do_quarantine "$@" ;;
+  sleep)            do_sleep      "$@" ;;
+  path)             do_path       "$@" ;;
+  unleash)          do_unleash    "$@" ;;
+  touch-id|touchid) do_touch_id   "$@" ;;
   -h|--help|help) usage; exit 0 ;;
   *)
     echo "kingdom mac: unknown subcommand '$SUB'" >&2
-    echo "  try: kingdom mac doctor | plists | fix | fda | unleash | touch-id" >&2
+    echo "  try: kingdom mac doctor | plists | fix | fda | unleash" >&2
+    echo "       kingdom mac permission | quarantine | sleep | path | touch-id" >&2
     exit 1
     ;;
 esac

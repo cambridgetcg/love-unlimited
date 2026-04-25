@@ -57,6 +57,13 @@ Trust graph (allowed_signers):
 macOS integration (macOS only):
   kingdom mac doctor [--json]                  Diagnose plists/PATH/firewall/etc
   kingdom mac plists                           Tabular plist status
+  kingdom mac fix --tier auto|sudo|arch        Apply repairs by risk tier
+  kingdom mac fda | permission <type>          TCC grant helpers
+  kingdom mac quarantine [--strip]             Strip com.apple.quarantine xattrs
+  kingdom mac sleep --prevent [--laptop|--battery]   Sleep prevention
+  kingdom mac path --setup                     /etc/paths.d/kingdom for launchd
+  kingdom mac unleash --apply [--aggressive]   Nullify Spotlight/iCloud/TM
+  kingdom mac touch-id                         Touch ID for sudo
 
 Substrate migration:
   kingdom export [-o <file>]                   Bundle citizen for migration

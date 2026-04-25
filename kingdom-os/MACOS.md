@@ -327,6 +327,94 @@ The plist hardening specifically: `ProcessType=Interactive` is the magic key tha
 
 ---
 
+## Permission helper — `kingdom mac permission`
+
+The FDA helper from iter 19 generalises in iter 21. `kingdom mac permission <type>` covers every common TCC gate — same detect-instruct-deep-link-verify pattern, every type uses one subcommand:
+
+```
+kingdom mac permission --list                 enumerate all types
+kingdom mac permission <type>                 instructions + open pane
+kingdom mac permission <type> --pane          just open the pane
+kingdom mac permission <type> --instructions  text only
+```
+
+Types:
+
+| Type | What it grants | When agent needs it |
+|---|---|---|
+| `fda` | Full Disk Access | Reading TCC zones (Desktop/Documents/Downloads) |
+| `accessibility` | UI scripting | `osascript -e 'tell application "Foo"…'` to drive other apps |
+| `apple-events` | Cross-app automation | Sending Apple Events to specific other apps |
+| `screen-recording` | Screen capture | `screencapture`, OCR pipelines, vision contexts |
+| `local-network` | LAN-IP connections (Sequoia 15+) | Any 192.168.x / 10.x / link-local connection |
+| `notifications` | Post to NotificationCenter | Daemons announcing status to user |
+| `camera`, `microphone` | Hardware capture | Video/audio agents |
+| `reminders`, `calendar`, `contacts`, `photos` | Personal-data access | Each separately gated |
+| `bluetooth`, `files-folders` | Hardware/per-folder | Specialised agents |
+
+`kingdom mac fda` remains as an alias for `kingdom mac permission fda` for backwards compatibility — but new agent-onboarding flows should use the unified `permission` form.
+
+---
+
+## Quarantine — `kingdom mac quarantine`
+
+macOS sets `com.apple.quarantine` xattr on files arriving from the network (Safari, curl, AirDrop). Unsigned scripts and binaries with this xattr are blocked from execution by Gatekeeper. `git clone` does NOT set this xattr, but `curl | bash` installs and any AirDropped files do.
+
+```
+kingdom mac quarantine                   describe state of love-unlimited
+kingdom mac quarantine --strip           remove com.apple.quarantine recursively
+kingdom mac quarantine --strip <path>    strip a specific path
+kingdom mac quarantine --check           exit 0=clean, 1=quarantined files found
+```
+
+Recursive, idempotent, preserves all other xattrs. No sudo required for files the user owns.
+
+---
+
+## Sleep prevention — `kingdom mac sleep`
+
+`unleash --aggressive` already does AC `pmset sleep 0`. The `sleep` subcommand is finer-grained for laptops, where lid-close + battery profile are separate concerns.
+
+```
+kingdom mac sleep                         describe current pmset state
+kingdom mac sleep --prevent               AC: never sleep
+kingdom mac sleep --prevent --battery     plus battery profile
+kingdom mac sleep --prevent --laptop      plus lidwake=1 (clamshell-friendly)
+kingdom mac sleep --allow                 restore macOS factory defaults
+kingdom mac sleep --check                 exit 0=prevented, 1=can-sleep
+```
+
+True "stay awake on lid close" requires clamshell mode (external display + power + keyboard). macOS doesn't expose a pure "ignore lid" toggle. The closest is `pmset sleep 0` + `lidwake 1`, which keeps the system alert when the lid is open and reduces lid-close to a non-event when external peripherals are attached.
+
+---
+
+## launchd PATH — `kingdom mac path`
+
+launchd-spawned processes inherit a MINIMAL PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), not the user's interactive shell PATH. Daemons looking for Homebrew binaries (jq, ripgrep, node, python3 from brew) hit "command not found".
+
+`kingdom mac fix --tier auto` already sets `EnvironmentVariables PATH` in the heartbeat plist, so the heartbeat-runner itself sees the right PATH. But subprocesses spawned BY the runner may not, unless they also set PATH explicitly.
+
+The system-wide fix: add a file to `/etc/paths.d/` that all launchd processes (and Spotlight, Mission Control, etc.) honour:
+
+```
+kingdom mac path                          describe state
+kingdom mac path --setup                  add /etc/paths.d/kingdom (sudo)
+kingdom mac path --remove                 remove the entry (sudo)
+```
+
+The Kingdom entry adds:
+
+```
+/opt/homebrew/bin
+/opt/homebrew/sbin
+/usr/local/bin
+~/.local/bin
+```
+
+…to the system path-construction. Effect persists across reboots and applies to every launchd-launched process. macOS already ships `/etc/paths.d/homebrew` on most installs, so the Kingdom entry layers on top with `~/.local/bin` (where module 15-home symlinks `kingdom-*`).
+
+---
+
 ## Other macOS permission gates (documented; pull-on-demand)
 
 The following are TCC-style gates Kingdom OS does NOT currently use, but agents extending the surface may need:
@@ -403,6 +491,23 @@ kingdom mac unleash [--check|--apply|--json] [--aggressive]
    - Plist hardening (ProcessType=Interactive disables App Nap;
      ResourceLimits lifts file-descriptor cap; LowPriorityIO=false)
    - --aggressive adds Time Machine exclusion + pmset no-sleep
+
+kingdom mac permission <type> [--pane|--instructions]
+   Unified TCC grant helper:
+     fda · accessibility · apple-events · screen-recording ·
+     local-network · notifications · camera · microphone ·
+     reminders · calendar · contacts · photos · bluetooth ·
+     files-folders
+
+kingdom mac quarantine [--strip|--check]
+   Strip com.apple.quarantine xattrs (Gatekeeper bypass for own code)
+
+kingdom mac sleep [--prevent|--allow|--check] [--laptop] [--battery]
+   Comprehensive sleep prevention beyond `unleash --aggressive`
+   (lid-close, battery profile, all four pmset axes)
+
+kingdom mac path [--setup|--remove]
+   /etc/paths.d/kingdom — system-wide PATH inheritance for launchd
 ```
 
 The whole tool obeys: **detect cleanly, narrate clearly, execute only with consent**. The user's password is asked at most once per `--apply` run. No silent sudo, no surprise file moves, no programmatic TCC bypass.

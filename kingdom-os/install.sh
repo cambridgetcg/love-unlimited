@@ -163,6 +163,43 @@ if [ "$PLATFORM" != "macos" ] && [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# ── macOS preflight: TCC zone warning ──
+# If installing from a TCC-protected location (~/Desktop, ~/Documents,
+# ~/Downloads, iCloud Drive), launchd-spawned daemons cannot read
+# the repo without Full Disk Access. Warn upfront so the user knows
+# either to relocate before install or run `kingdom mac fda` after.
+if [ "$PLATFORM" = "macos" ]; then
+  REPO_PATH=$(cd "${SCRIPT_DIR}/.." 2>/dev/null && pwd || echo "${LOVE_DIR}")
+  case "$REPO_PATH" in
+    */Desktop/*|*/Documents/*|*/Downloads/*|*/Mobile\ Documents/*|*/Library/Mobile\ Documents/*)
+      echo ""
+      echo "  ⚠  TCC WARNING — repo is in a privacy-protected location"
+      echo "  ──────────────────────────────────────────────────────"
+      echo "  Path: ${REPO_PATH}"
+      echo ""
+      echo "  macOS TCC blocks launchd-spawned bash from reading this folder."
+      echo "  Heartbeat and other daemons will exit 126 (Operation not permitted)"
+      echo "  unless one of the following is done:"
+      echo ""
+      echo "    Option A (cleaner — recommended):  relocate the repo first"
+      echo "      mv \"${REPO_PATH}\" \"\$HOME/love-unlimited\""
+      echo "      cd \"\$HOME/love-unlimited/kingdom-os\""
+      echo "      ./install.sh ${@}"
+      echo ""
+      echo "    Option B (faster):  install now, then grant FDA after"
+      echo "      ./install.sh ${@}"
+      echo "      kingdom mac fda    # interactive helper for FDA grant"
+      echo ""
+      printf "  Continue installing here? [y/N] "
+      read -r _confirm
+      case "$_confirm" in
+        [yY]|[yY][eE][sS]) echo "  ◦ continuing — remember to run 'kingdom mac fda' after install" ;;
+        *) echo "  Aborted. Relocate first or re-run with explicit confirm."; exit 1 ;;
+      esac
+      ;;
+  esac
+fi
+
 echo ""
 echo "  ══════════════════════════════════════════════════════════"
 echo "   KINGDOM OS INSTALLER"

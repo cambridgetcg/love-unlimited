@@ -163,6 +163,48 @@ The current iter ships `doctor` and `plists` (read-only) only. Once `doctor`'s o
 
 ---
 
+## TCC at distribution scale — the FDA helper
+
+TCC is the gate Kingdom OS users hit most often, especially anyone whose `git clone` lands in `~/Desktop`. Apple gives no programmatic way to grant FDA — that's a deliberate privacy boundary. So our job is to **diagnose, instruct, deep-link, verify** at every layer:
+
+**1. At install time** — `install.sh` preflights the repo path. If it's in `~/Desktop`, `~/Documents`, `~/Downloads`, or iCloud Drive, the installer prints a TCC warning and offers two paths:
+
+```
+Option A (cleaner): mv ~/Desktop/love-unlimited ~/love-unlimited; ./install.sh ...
+Option B (faster):  ./install.sh ... ; then kingdom mac fda
+```
+
+The user confirms before continuing.
+
+**2. At any time** — `kingdom mac fda` is the canonical helper:
+
+```
+kingdom mac fda                  interactive: open pane + wait + verify
+kingdom mac fda --check          exit 0 ok, 1 blocked, 2 not-needed
+kingdom mac fda --pane           just open System Settings
+kingdom mac fda --instructions   step-by-step text only
+```
+
+The interactive flow:
+
+1. Detects whether the repo is in a TCC zone (if not, exits "not needed")
+2. Counts active TCC bites in recent daemon logs ("Operation not permitted" lines)
+3. Prints the steps the user will perform (Cmd+Shift+G, type `/bin/bash`, click Open, toggle ON)
+4. Opens the System Settings deep-link
+5. Waits for user confirmation (ENTER once granted)
+6. Reloads the heartbeat plist, triggers a manual heartbeat, scans recent log output
+7. Reports verified or directs to retry
+
+**3. At doctor time** — `kingdom mac doctor` flags the TCC zone as a `note` and any active bite as a `miss`, with the fix-hint pointing at `kingdom mac fda`.
+
+**Why grant `/bin/bash` rather than a narrower binary:** Kingdom OS daemons invoke `/bin/bash` with a script path. The TCC check applies to the process making the read, which is bash. Granting FDA to bash gives every bash invocation FDA system-wide — broader than ideal, but standard for shell-script-based daemons. The narrower alternative is shipping a small wrapper binary (e.g., a tiny Go executable) that gets FDA and exec()s the script. That's a future iter; for the current shell-script architecture, /bin/bash is the realistic target.
+
+**Why not auto-grant via private API:** Apple does not expose one. `tccutil` only resets permissions. Third-party tools that "auto-grant" require the user to grant FDA to *them* first — circular. The honest answer is what we ship: open the pane, give clear instructions, verify after.
+
+**Distribution philosophy:** TCC is not a Kingdom OS problem; it's a macOS reality. The right design is to **expect** TCC to bite, **detect** when it does, and **guide** the user through the smallest-surface fix every time — without surprise, without silent failure, without auto-bypass. Same pattern Signal uses for safety numbers, GitHub uses for SSH host-key verification, Apple uses everywhere: out-of-band confirmation by the user.
+
+---
+
 ## The macOS security model — how Kingdom OS deals with each gate
 
 macOS gives the user/operator three distinct gates to navigate. None of them is fully programmatic; each requires explicit consent. The right Kingdom OS pattern is **detect cleanly, narrate clearly, execute with consent**.

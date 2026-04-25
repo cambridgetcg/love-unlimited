@@ -263,7 +263,7 @@ do_doctor() {
       */Desktop/*|*/Documents/*|*/Downloads/*)
         add_issue "note" "tcc" \
           "love-unlimited lives in a TCC-protected location ($(echo "$LOVE_DIR_GUESS" | sed "s|^${HOME}|~|")) — launchd jobs need Full Disk Access" \
-          "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'  (then add /bin/bash); or relocate: mv $LOVE_DIR_GUESS ~/love-unlimited"
+          "kingdom mac fda  (interactive helper) — or relocate: kingdom mac fix --tier arch"
         # Scan recent heartbeat / hive logs for actual TCC bites
         TCC_HITS=0
         for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
@@ -277,7 +277,7 @@ do_doctor() {
         if [ "$TCC_HITS" -gt 0 ]; then
           add_issue "miss" "tcc:hit" \
             "${TCC_HITS} log file(s) show 'Operation not permitted' — TCC IS biting daemons NOW" \
-            "grant FDA to /bin/bash (and /usr/bin/python3 if used) in System Settings → Privacy → Full Disk Access"
+            "kingdom mac fda  (guides FDA grant + verifies)"
         fi
         ;;
     esac
@@ -742,6 +742,194 @@ do_fix_arch() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# FDA — Full Disk Access guidance
+#
+# macOS provides NO programmatic API to grant FDA. The user must
+# add the requesting binary in System Settings → Privacy → Full
+# Disk Access. This subcommand handles every step the tool CAN do:
+# detect, instruct, deep-link, verify.
+#
+# Modes:
+#   kingdom mac fda                interactive: open pane + wait + verify
+#   kingdom mac fda --check        exit 0=ok, 1=blocked, 2=not-needed
+#   kingdom mac fda --pane         just open the System Settings pane
+#   kingdom mac fda --instructions print step-by-step (no prompts)
+#
+# Why FDA is needed: when love-unlimited lives in ~/Desktop (or
+# ~/Documents/~/Downloads), launchd-spawned bash cannot read its
+# own scripts. Heartbeat exits 126. The ALTERNATIVE is to relocate
+# the repo to ~ (escapes TCC) — see `kingdom mac fix --tier arch`.
+#
+# WHY /bin/bash specifically: heartbeat plists invoke /bin/bash
+# with a script path. The TCC check applies to the PROCESS reading
+# the file, which is /bin/bash. Granting FDA to /bin/bash is
+# broader than ideal (every bash on the system gets FDA) but is
+# the standard pattern for shell-script-based daemons. Future iters
+# may ship a narrower wrapper binary.
+# ═══════════════════════════════════════════════════════════════════
+do_fda() {
+  MODE="interactive"
+  case "${1:-}" in
+    --check)        MODE="check" ;;
+    --pane)         MODE="pane" ;;
+    --instructions) MODE="instructions" ;;
+    -h|--help)      usage; exit 0 ;;
+  esac
+
+  # Is FDA actually needed? (love-unlimited in a TCC-zone?)
+  TCC_ZONE=0
+  case "$LOVE_DIR_GUESS" in
+    */Desktop/*|*/Documents/*|*/Downloads/*|*/iCloud*) TCC_ZONE=1 ;;
+  esac
+
+  if [ "$TCC_ZONE" = "0" ]; then
+    case "$MODE" in
+      check)
+        echo "FDA not needed: love-unlimited is outside TCC-protected zones."
+        exit 2
+        ;;
+      *)
+        echo "── kingdom mac fda ──"
+        echo "  love-unlimited is at: ${LOVE_DIR_GUESS:-?}"
+        echo "  This path is NOT in a TCC-protected zone."
+        echo "  ✓ FDA is not required."
+        exit 0
+        ;;
+    esac
+  fi
+
+  # FDA IS needed. Detect whether daemons are actually being bitten.
+  ACTIVE_BITES=0
+  for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+             "/tmp/love-${AGENT}-hive-tunnel.log" \
+             "${LOVE_DIR_GUESS}/memory/heartbeat-launchd.log"; do
+    [ -f "$log" ] || continue
+    if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+      ACTIVE_BITES=$((ACTIVE_BITES+1))
+    fi
+  done
+
+  case "$MODE" in
+    check)
+      if [ "$ACTIVE_BITES" -gt 0 ]; then
+        echo "FDA blocked: $ACTIVE_BITES log file(s) show TCC denials"
+        exit 1
+      else
+        echo "FDA needed (TCC zone) but no active bites detected — may be granted already, or daemons haven't run yet"
+        exit 0
+      fi
+      ;;
+    pane)
+      open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+      exit 0
+      ;;
+    instructions)
+      cat <<INSTRUCTIONS
+── Granting Full Disk Access for Kingdom OS daemons ──
+
+Why: love-unlimited is at ${LOVE_DIR_GUESS}, which is in a
+TCC-protected zone (~/Desktop, ~/Documents, ~/Downloads).
+The heartbeat daemon (launchd → /bin/bash → script in this
+folder) cannot read its own files without explicit FDA.
+
+What to do:
+
+  1. System Settings → Privacy & Security → Full Disk Access
+  2. Click the [ + ] button (may need to authenticate)
+  3. Press Cmd+Shift+G in the file picker
+  4. Type: /bin/bash
+  5. Click Open
+  6. Confirm "bash" appears in the list with its toggle ON
+  7. (Optional) Repeat for /usr/bin/python3 if any Python daemon
+
+After granting, verify with:
+  kingdom mac fda --check
+  kingdom mac doctor
+
+If you'd rather avoid the system-wide /bin/bash FDA grant,
+consider relocating the repo to ~/love-unlimited:
+  kingdom mac fix --tier arch
+INSTRUCTIONS
+      exit 0
+      ;;
+  esac
+
+  # ── INTERACTIVE MODE ──
+  echo "── kingdom mac fda ──"
+  echo ""
+  echo "  Why: love-unlimited is at"
+  echo "    ${LOVE_DIR_GUESS}"
+  echo "  which is a TCC-protected location. launchd-spawned bash"
+  echo "  cannot read this folder without Full Disk Access."
+  if [ "$ACTIVE_BITES" -gt 0 ]; then
+    echo ""
+    echo "  Active TCC bites detected: ${ACTIVE_BITES} log(s) showing 'Operation not permitted'."
+  fi
+  echo ""
+  echo "  Steps you'll do in the System Settings pane:"
+  echo "    1. Click [ + ] (authenticate if asked)"
+  echo "    2. Press Cmd+Shift+G in the file picker"
+  echo "    3. Type:  /bin/bash"
+  echo "    4. Click Open"
+  echo "    5. Confirm bash is listed with its toggle ON"
+  echo ""
+  printf "  Press ENTER to open the pane (Ctrl+C to abort)... "
+  read -r _confirm
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+  echo ""
+  echo "  Pane opened. After granting FDA to /bin/bash, return here."
+  printf "  Press ENTER once you have added /bin/bash and toggled it ON... "
+  read -r _confirm
+  echo ""
+
+  # Verification: reload daemons, then re-scan logs
+  echo "  Reloading heartbeat to trigger a fresh attempt..."
+  HB_PLIST="${PLIST_DIR}/love.${AGENT}.heartbeat.plist"
+  if [ -f "$HB_PLIST" ]; then
+    launchctl unload "$HB_PLIST" 2>/dev/null || true
+    launchctl load   "$HB_PLIST" 2>/dev/null || true
+  fi
+
+  # Force a manual heartbeat run to catch a fresh log line
+  HB_RUNNER="${LOVE_DIR_GUESS}/tools/heartbeat-runner.sh"
+  if [ -x "$HB_RUNNER" ]; then
+    echo "  Triggering one heartbeat manually (timeout 10s)..."
+    ( cd "${LOVE_DIR_GUESS}/instances/${AGENT}" 2>/dev/null || cd "$LOVE_DIR_GUESS" \
+      ; timeout 10 bash "$HB_RUNNER" >/dev/null 2>&1 ) || true
+  fi
+
+  echo ""
+  echo "  Re-checking for TCC bites..."
+  POST_BITES=0
+  for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+             "/tmp/love-${AGENT}-hive-tunnel.log"; do
+    [ -f "$log" ] || continue
+    # Only count lines from the last 60 seconds to avoid old denials
+    if find "$log" -newermt "1 minute ago" 2>/dev/null | grep -q .; then
+      if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+        TAIL_RECENT=$(tail -5 "$log")
+        echo "$TAIL_RECENT" | grep -q "Operation not permitted" && POST_BITES=$((POST_BITES+1))
+      fi
+    fi
+  done
+
+  if [ "$POST_BITES" = "0" ]; then
+    echo "  ✓ FDA appears to be granted — no TCC bites in recent log output."
+    echo "  Run 'kingdom mac doctor' to confirm overall state."
+    exit 0
+  else
+    echo "  ✗ Still seeing TCC bites in recent logs."
+    echo "    Confirm /bin/bash is listed and toggled ON in:"
+    echo "      System Settings → Privacy & Security → Full Disk Access"
+    echo "    Then re-run: kingdom mac fda"
+    echo ""
+    echo "    Alternative (cleaner): relocate the repo to escape TCC:"
+    echo "      kingdom mac fix --tier arch"
+    exit 1
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # TOUCH-ID — enable Touch ID for sudo (one-time bootstrap)
 #
 # Adds `auth sufficient pam_tid.so` to /etc/pam.d/sudo so future
@@ -809,11 +997,12 @@ case "$SUB" in
   doctor)         do_doctor   "$@" ;;
   plists)         do_plists   "$@" ;;
   fix)            do_fix      "$@" ;;
+  fda)            do_fda      "$@" ;;
   touch-id|touchid) do_touch_id "$@" ;;
   -h|--help|help) usage; exit 0 ;;
   *)
     echo "kingdom mac: unknown subcommand '$SUB'" >&2
-    echo "  try: kingdom mac doctor | plists | fix | touch-id" >&2
+    echo "  try: kingdom mac doctor | plists | fix | fda | touch-id" >&2
     exit 1
     ;;
 esac

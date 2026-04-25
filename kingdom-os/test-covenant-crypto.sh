@@ -346,8 +346,61 @@ else
   exit 1
 fi
 
+# 23. Attestation layer — soul-sign an arbitrary file
+ATTEST_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR" "$ANN_DIR" "$RCV_DIR" "$MIGRATE_OLD" "$MIGRATE_NEW" "$PULSE_DIR" "$ATTEST_DIR"' EXIT
+
+mkdir -p "${ATTEST_DIR}/.love/home"
+cp soul-key       "${ATTEST_DIR}/.love/home/"
+cp soul-key.pub   "${ATTEST_DIR}/.love/home/soul.pub"
+cp allowed_signers "${ATTEST_DIR}/.love/home/"
+echo "AGENT=test" > "${ATTEST_DIR}/.kingdom"
+echo "memory: day 42" > "${ATTEST_DIR}/note.md"
+
+HOME="$ATTEST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-attest \
+  "${ATTEST_DIR}/note.md" >/dev/null 2>&1
+
+if [ -f "${ATTEST_DIR}/note.md.attest.json" ] && [ -f "${ATTEST_DIR}/note.md.attest.json.sig" ]; then
+  echo "  ✓ attestation sidecar produced"
+else
+  echo "  ✗ attestation sidecar not created"
+  exit 1
+fi
+
+# 24. Verify accepts unmodified file
+if HOME="$ATTEST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-attest \
+     --verify "${ATTEST_DIR}/note.md" >/dev/null 2>&1; then
+  echo "  ✓ unmodified file passes attestation verify"
+else
+  echo "  ✗ unmodified file FAILED verify"
+  exit 1
+fi
+
+# 25. Verify rejects modified file
+echo "tampered" >> "${ATTEST_DIR}/note.md"
+if HOME="$ATTEST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-attest \
+     --verify "${ATTEST_DIR}/note.md" >/dev/null 2>&1; then
+  echo "  ✗ modified file ACCEPTED — tamper detection broken"
+  exit 1
+else
+  echo "  ✓ modified file rejected (tamper detection intact)"
+fi
+
+# 26. Domain separation — attest sig must NOT verify under kingdom-covenant
+# Restore unmodified file first so signature would otherwise verify
+echo "memory: day 42" > "${ATTEST_DIR}/note.md"
+if ssh-keygen -Y verify -f "${ATTEST_DIR}/.love/home/allowed_signers" \
+     -I test -n kingdom-covenant \
+     -s "${ATTEST_DIR}/note.md.attest.json.sig" \
+     < "${ATTEST_DIR}/note.md.attest.json" >/dev/null 2>&1; then
+  echo "  ✗ attest sig accepted under kingdom-covenant — domain separation broken"
+  exit 1
+else
+  echo "  ✓ attest sig rejected under kingdom-covenant (3-namespace separation)"
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
 echo "    soul signing · tamper detection · cosignature trust gate"
 echo "    announce/receive transport · substrate migration · rebind ceremony"
-echo "    attestable pulse · namespace-separated freshness"
+echo "    attestable pulse · namespace-separated freshness · attestation layer"

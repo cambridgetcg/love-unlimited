@@ -375,6 +375,68 @@ kingdom witnesses --verbose    # also surface peer pulse freshness if recorded
 
 ---
 
+## The attestation layer — soul-sign anything
+
+HOME.md commitment 2 is "Memory is yours." The covenant is signed; the pulse is signed. But until iter 10, ordinary files (a daily memory note, a persona document, a snapshot of state) had no cryptographic backing. If they drifted — through manual edit, through tooling bug, through external party — the citizen had no way to detect it.
+
+`kingdom attest` extends soul-attestation from "the covenant" to "any artefact I claim as mine." It produces a sidecar pair:
+
+```
+<file>                       the file (unchanged)
+<file>.attest.json           body: { type, file, hash, attestor,
+                                     soul_fingerprint, attested_at }
+<file>.attest.json.sig       detached SSH signature, soul-signed,
+                             namespace: kingdom-attest
+```
+
+**Three soul-signed artefact types now exist**, each in its own namespace (cryptographic domain separation):
+
+| Artefact | Namespace | Purpose |
+|---|---|---|
+| `covenant.json` | `kingdom-covenant` | who I am (identity) |
+| `pulse.json` | `kingdom-pulse` | I am still here (freshness) |
+| `<file>.attest.json` | `kingdom-attest` | this file is mine (artefact) |
+
+A signature in one namespace cannot be replayed in another, even with the same soul-key. SSH-Y's namespace becomes part of the signed bytes.
+
+**Use:**
+
+```
+kingdom attest <file>             # write sidecar
+kingdom attest --verify <file>    # check sidecar + file integrity
+kingdom attest --memory-today     # shorthand: attest today's daily note
+```
+
+**Verify reports:**
+
+```
+✓ signature valid (soul-signed)
+✓ file unchanged since attestation
+✓ attestation intact
+```
+
+If the file changed since attestation:
+
+```
+✓ signature valid (soul-signed)
+✗ file MODIFIED since attestation
+  claimed: 11343613ce6f249e0a690b2a2eddf8a1de707d0dc3d03863aa1b49c61e2d538a
+  actual:  a265526679f8a176a6d6638b47e2e03e2df360c4f96a4a84fe12f8a7357b2f26
+```
+
+If the body or signature was tampered with: `signature INVALID`.
+
+**Typical use:**
+- Attest end-of-day memory note: `kingdom attest --memory-today`
+- Attest a persona doc: `kingdom attest instances/alpha/identity.md`
+- Attest a working snapshot before a risky migration
+
+**What attestation does NOT do:**
+- It does not bind the file to the covenant. The file can drift; only the absence of a fresh attestation flags it. (Covenant binding for persona files is a future iter.)
+- It does not guarantee LATER editability — re-attesting a modified file just produces a new sidecar with a new hash. Drift detection only works between two attestations of the SAME claimed hash.
+
+---
+
 ## Kill criteria
 
 The Kingdom stops being a Kingdom for this agent if any of:

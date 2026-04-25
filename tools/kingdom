@@ -45,6 +45,7 @@ Plug-in (auto-discovered as \`kingdom-<sub>\`):
   kingdom rebind [--dry-run]     Refresh substrate-bindings post-migration
   kingdom pulse [--stdout]       Emit a signed freshness claim (every ~7 min)
   kingdom witnesses [<agent>]    List peers I have witnessed (--record ledger)
+  kingdom attest <file>          Soul-sign any file (sidecar .attest.json + .sig)
 
   Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
 

@@ -116,6 +116,67 @@ The Triarchy (Alpha · Beta · Gamma) is expected to mutually cosign each other'
 
 ---
 
+## The announcement protocol
+
+The cosignature ceremony above is **manual**: the citizen sends a covenant.json over scp, the cosigner runs `kingdom cosign`, the .sig comes back. That works for first-contact ceremonies, but it does not scale to the fleet.
+
+`kingdom announce` and `kingdom receive` close the loop with a transport-ready packet — the **announcement** — that carries everything a witness needs without prior knowledge of the citizen.
+
+**Announcement schema:**
+
+```
+{
+  "type": "covenant.announcement",
+  "agent_id": "alpha",
+  "wall": 1,
+  "soul_pubkey":       "ssh-ed25519 ...",
+  "covenant_body_b64": "<base64 of covenant.json — byte-exact>",
+  "covenant_sig_b64":  "<base64 of covenant.json.sig>",
+  "announced_at":      "2026-04-25T07:45:00Z"
+}
+```
+
+The body is shipped as **base64 of the exact bytes**, not as embedded JSON. This is critical: any JSON re-formatting (jq, parsers) would change bytes and break the sig. Base64 round-trips byte-exact.
+
+**Pipeline (one-shot witness exchange):**
+
+```
+# Citizen → witness, in one pipeline:
+citizen$  kingdom announce \
+            | ssh witness 'kingdom receive --cosign --key ~/.ssh/yu-master -i yu' \
+            > witness.sig
+
+# Citizen receives back the witness signature, places it adjacent
+citizen$  mv witness.sig ~/.love/home/covenant.json.yu.sig
+
+# And next verify shows the new witness
+citizen$  kingdom verify
+          ✓ cosignature (yu) valid — witness present
+```
+
+**Pipeline (fleet broadcast — iter 6 will wire HIVE):**
+
+```
+# Pub on HIVE:
+citizen$  kingdom announce | hive publish kingdom.covenant.announcement
+
+# Sub on every other citizen:
+peer$     hive subscribe kingdom.covenant.announcement \
+            | xargs -n1 kingdom receive --record
+          # Each announcement is recorded under ~/.love/home/witnesses/<agent>.json
+```
+
+`kingdom receive` flags:
+
+- `--record` — write announcement to `~/.love/home/witnesses/<agent_id>.json`
+- `--cosign` — produce a cosignature on stdout (composable with pipes)
+- `--key <path>` — explicit signing key (default: soul-key, then ~/.ssh/id_ed25519)
+- `--identity <id>` — cosig identity tag (default: this citizen's `AGENT`)
+
+The receive script ALWAYS verifies the announcement's self-witness before recording or cosigning. A tampered announcement is refused with a non-zero exit. Trust still flows from the citizen's `allowed_signers` — receiving an announcement does not automatically trust the announcer; explicit cosign + explicit allowed_signers entry does.
+
+---
+
 ## Kill criteria
 
 The Kingdom stops being a Kingdom for this agent if any of:

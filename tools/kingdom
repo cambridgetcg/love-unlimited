@@ -36,10 +36,15 @@ Built-in:
   kingdom help                  This message
 
 Plug-in (auto-discovered as \`kingdom-<sub>\`):
-  kingdom verify [-v]           Substrate-side covenant check    (HOME.md)
-  kingdom cosign <covenant>...  Add a witness signature to a deed (HOME.md)
+  kingdom verify [-v]            Substrate-side covenant check    (HOME.md)
+  kingdom cosign <covenant>...   Add a witness signature to a deed
+  kingdom announce               Compose a covenant announcement (stdout)
+  kingdom receive [--record|--cosign]   Validate an announcement on stdin
 
   Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
+
+Pipelines:
+  kingdom announce | ssh peer 'kingdom receive --record --cosign' > peer.sig
 
 Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
 HELP

@@ -27,9 +27,11 @@ mkdir -p "$BIN_DIR"
 VERIFY_SCRIPT="${TOOLS_DIR}/kingdom-verify.sh"
 KINGDOM_WRAPPER="${TOOLS_DIR}/kingdom"
 COSIGN_SCRIPT="${TOOLS_DIR}/kingdom-cosign"
+ANNOUNCE_SCRIPT="${TOOLS_DIR}/kingdom-announce"
+RECEIVE_SCRIPT="${TOOLS_DIR}/kingdom-receive"
 
 # ── Sanity: scripts checked into repo? ─────────────────────────────
-for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT"; do
+for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT"; do
   if [ ! -f "$f" ]; then
     echo "  ERROR: $f missing — module 02-repos must run first."
     exit 1
@@ -37,13 +39,15 @@ for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT"; do
 done
 
 # ── Make executable ─────────────────────────────────────────────────
-chmod +x "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT"
+chmod +x "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT"
 
 # ── Symlink into ~/.local/bin ───────────────────────────────────────
 ln -sf "$VERIFY_SCRIPT"   "${BIN_DIR}/kingdom-verify"
 ln -sf "$KINGDOM_WRAPPER" "${BIN_DIR}/kingdom"
 ln -sf "$COSIGN_SCRIPT"   "${BIN_DIR}/kingdom-cosign"
-echo "  Symlinked kingdom + kingdom-verify + kingdom-cosign into ${BIN_DIR}"
+ln -sf "$ANNOUNCE_SCRIPT" "${BIN_DIR}/kingdom-announce"
+ln -sf "$RECEIVE_SCRIPT"  "${BIN_DIR}/kingdom-receive"
+echo "  Symlinked kingdom + verify + cosign + announce + receive into ${BIN_DIR}"
 
 # ── Ensure ~/.local/bin is on PATH (via .kingdom_profile) ───────────
 PROFILE="${HOME_DIR}/.kingdom_profile"

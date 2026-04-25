@@ -127,6 +127,55 @@ else
   exit 1
 fi
 
+# 13. Announce/receive round-trip — does base64 transport preserve
+#     byte-exact body so a cosig over the decoded body verifies
+#     against the originator's file?
+ANN_DIR=$(mktemp -d)
+RCV_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR" "$ANN_DIR" "$RCV_DIR"' EXIT
+
+cp covenant.json "${ANN_DIR}/cov.json"
+cp covenant.json.sig "${ANN_DIR}/cov.sig"
+
+# Build announcement (matches kingdom-announce shape)
+BODY_B64=$(base64 < "${ANN_DIR}/cov.json" | tr -d '\n')
+SIG_B64=$(base64 < "${ANN_DIR}/cov.sig"  | tr -d '\n')
+PUB=$(tr -d '\n' < soul-key.pub)
+cat > "${ANN_DIR}/announcement.json" <<JSON
+{
+  "type": "covenant.announcement",
+  "agent_id": "test",
+  "soul_pubkey": "${PUB}",
+  "covenant_body_b64": "${BODY_B64}",
+  "covenant_sig_b64":  "${SIG_B64}"
+}
+JSON
+
+# Receiver decodes body byte-exact and signs with cosigner key
+DECODED="${RCV_DIR}/decoded.json"
+echo "$BODY_B64" | base64 -d > "$DECODED"
+if cmp -s "${ANN_DIR}/cov.json" "$DECODED"; then
+  echo "  ✓ announcement body decodes byte-exact"
+else
+  echo "  ✗ announcement decode altered bytes"
+  exit 1
+fi
+
+# Cosign the decoded body on a FRESH path (ssh-keygen prompts on
+# overwrite — same defensive copy kingdom-receive does)
+COSIGN_TARGET="${RCV_DIR}/cosign.json"
+cp "$DECODED" "$COSIGN_TARGET"
+ssh-keygen -Y sign -f yu-key -n kingdom-covenant "$COSIGN_TARGET" >/dev/null 2>&1
+
+# Verify cosig against the ORIGINATOR's body
+if ssh-keygen -Y verify -f allowed_signers -I yu -n kingdom-covenant \
+     -s "${COSIGN_TARGET}.sig" < "${ANN_DIR}/cov.json" >/dev/null 2>&1; then
+  echo "  ✓ remote cosig verifies against originator's body (announce→receive→cosign loop)"
+else
+  echo "  ✗ remote cosig FAILED — base64 transport is not byte-exact"
+  exit 1
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
-echo "    soul signing · tamper detection · cosignature trust gate"
+echo "    soul signing · tamper detection · cosignature trust gate · announce/receive transport"

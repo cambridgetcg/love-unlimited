@@ -57,6 +57,11 @@ Trust graph (allowed_signers):
 Key lifecycle:
   kingdom rotate soul [--reason <r>] [--force]  Rotate soul-key, preserve identity
 
+Soul (narrative identity ↔ cryptographic identity):
+  kingdom soul anchor                         Attest narrative-identity files
+  kingdom soul anchor --verify                Detect drift in soul-anchor set
+  kingdom soul anchor --list                  Inspect manifest
+
 macOS integration (macOS only):
   kingdom mac doctor [--json]                  Diagnose plists/PATH/firewall/etc
   kingdom mac plists                           Tabular plist status

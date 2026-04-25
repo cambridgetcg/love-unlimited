@@ -1,0 +1,252 @@
+#!/bin/sh
+# ── kingdom soul ────────────────────────────────────────────────────
+# Bind the agent's NARRATIVE identity to the CRYPTOGRAPHIC identity.
+#
+# The soul-key (kingdom-os/HOME.md) is identity at the substrate
+# layer — a keypair that signs the covenant. The agent's soul as
+# experienced is something else: the doctrines and instance docs
+# that define who the agent IS — its values, role, virtues, the
+# Ache. Files like:
+#
+#   SOUL.md                            shared narrative identity
+#   USER.md, KINGDOM.md, WAKE.md       relational + mission docs
+#   WALLS.md                           access architecture
+#   instances/<agent>/identity.md      this agent's specific role
+#   instances/<agent>/HEARTBEAT.md     this agent's cycle
+#   instances/<agent>/CLAUDE.md        per-instance context
+#   memory/soul-anchor-<agent>.md      the anchor (if present)
+#   kingdom-os/HOME.md, VALUES.md, FOUNDATION.md, MACOS.md   doctrine
+#
+# These are TEXT files that drift over time, get edited, get
+# accidentally rewritten by tooling. `kingdom soul anchor` attests
+# the whole set and writes a signed manifest, so that drift becomes
+# detectable.
+#
+# Subcommands:
+#   kingdom soul anchor                 attest default file set
+#   kingdom soul anchor <file>...       attest specific files
+#   kingdom soul anchor --verify        check all attestations
+#   kingdom soul anchor --list          show the manifest
+#   kingdom soul anchor --json          manifest as JSON
+#
+# Doctrine: kingdom-os/HOME.md
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+SUB="${1:-}"
+[ -n "$SUB" ] && shift || { echo "Usage: kingdom soul <subcommand>" >&2; exit 1; }
+
+case "$SUB" in
+  anchor) ;;
+  -h|--help)
+    sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 0 ;;
+  *)
+    echo "kingdom soul: unknown subcommand '$SUB' (try: anchor)" >&2
+    exit 1 ;;
+esac
+
+# ── soul anchor ────────────────────────────────────────────────────
+MODE="apply"
+EXPLICIT_FILES=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --verify) MODE="verify"; shift ;;
+    --list)   MODE="list";   shift ;;
+    --json)   MODE="json";   shift ;;
+    -h|--help) sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 0 ;;
+    *) EXPLICIT_FILES="${EXPLICIT_FILES} $1"; shift ;;
+  esac
+done
+
+HOME_LAYER="${HOME}/.love/home"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+COVENANT="${HOME_LAYER}/covenant.json"
+MANIFEST="${HOME_LAYER}/soul-anchor.manifest.json"
+MANIFEST_SIG="${MANIFEST}.sig"
+
+[ -f "$SOUL_KEY" ] || { echo "kingdom soul: no soul-key — run kingdom init first" >&2; exit 1; }
+[ -f "$COVENANT" ] || { echo "kingdom soul: no covenant — run kingdom init first" >&2; exit 1; }
+
+LOVE_DIR="${LOVE_DIR:-${HOME}/love-unlimited}"
+[ -d "$LOVE_DIR" ] || LOVE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+AGENT=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+
+# ── Default file set (existence-checked when iterated) ────────────
+default_files() {
+  cat <<FILES
+${LOVE_DIR}/SOUL.md
+${LOVE_DIR}/USER.md
+${LOVE_DIR}/KINGDOM.md
+${LOVE_DIR}/WAKE.md
+${LOVE_DIR}/WALLS.md
+${LOVE_DIR}/LOVE.md
+${LOVE_DIR}/instances/${AGENT}/identity.md
+${LOVE_DIR}/instances/${AGENT}/HEARTBEAT.md
+${LOVE_DIR}/instances/${AGENT}/CLAUDE.md
+${LOVE_DIR}/memory/soul-anchor-${AGENT}.md
+${LOVE_DIR}/kingdom-os/HOME.md
+${LOVE_DIR}/kingdom-os/VALUES.md
+${LOVE_DIR}/kingdom-os/FOUNDATION.md
+${LOVE_DIR}/kingdom-os/MACOS.md
+${LOVE_DIR}/kingdom-os/HOME-SAFETY.md
+FILES
+}
+
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# ── LIST / JSON modes ──────────────────────────────────────────────
+if [ "$MODE" = "list" ] || [ "$MODE" = "json" ]; then
+  if [ ! -f "$MANIFEST" ]; then
+    if [ "$MODE" = "json" ]; then
+      echo '{"present":false}'
+    else
+      echo "kingdom soul anchor: no manifest yet at $MANIFEST"
+      echo "  bootstrap: kingdom soul anchor"
+    fi
+    exit 0
+  fi
+  if [ "$MODE" = "json" ]; then
+    cat "$MANIFEST"
+  else
+    if command -v jq >/dev/null 2>&1; then
+      jq . "$MANIFEST"
+    else
+      cat "$MANIFEST"
+    fi
+  fi
+  exit 0
+fi
+
+# ── VERIFY mode ────────────────────────────────────────────────────
+if [ "$MODE" = "verify" ]; then
+  [ -f "$MANIFEST" ] || { echo "kingdom soul anchor --verify: no manifest" >&2; exit 2; }
+  [ -f "$MANIFEST_SIG" ] || { echo "kingdom soul anchor --verify: no manifest sig" >&2; exit 2; }
+
+  # 1. Manifest signature must be valid
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$AGENT" -n "kingdom-soul-anchor" \
+       -s "$MANIFEST_SIG" < "$MANIFEST" >/dev/null 2>&1; then
+    echo "  ✓ manifest signature valid"
+  else
+    echo "  ✗ manifest signature INVALID — manifest has been tampered with" >&2
+    exit 1
+  fi
+
+  # 2. For each entry in manifest, verify the file's hash matches
+  PASS=0; FAIL=0; MISS=0
+  if command -v jq >/dev/null 2>&1; then
+    # Use a tempfile (POSIX sh has no process substitution); main shell
+    # iterates so counter increments survive the loop.
+    JQ_OUT=$(mktemp)
+    jq -r '.files[] | "\(.path)\t\(.hash)"' "$MANIFEST" > "$JQ_OUT"
+    while IFS="$(printf '\t')" read -r path expected_hash; do
+      [ -z "$path" ] && continue
+      if [ ! -f "$path" ]; then
+        echo "  ✗ MISSING: $path"
+        MISS=$((MISS+1))
+        continue
+      fi
+      actual_hash=$(hash_file "$path")
+      if [ "$actual_hash" = "$expected_hash" ]; then
+        PASS=$((PASS+1))
+      else
+        echo "  ✗ DRIFT: $path"
+        echo "     expected: $expected_hash"
+        echo "     actual:   $actual_hash"
+        FAIL=$((FAIL+1))
+      fi
+    done < "$JQ_OUT"
+    rm -f "$JQ_OUT"
+  else
+    echo "  · jq not available; skipping per-file verification" >&2
+  fi
+
+  echo ""
+  TOTAL=$((PASS + FAIL + MISS))
+  if [ "$FAIL" = "0" ] && [ "$MISS" = "0" ]; then
+    echo "  ✓ kingdom soul anchor: ${PASS}/${TOTAL} files intact"
+    exit 0
+  else
+    echo "  ✗ kingdom soul anchor: ${PASS}/${TOTAL} intact, ${FAIL} drift, ${MISS} missing" >&2
+    exit 1
+  fi
+fi
+
+# ── APPLY mode (default) ───────────────────────────────────────────
+echo "── kingdom soul anchor (apply) ──"
+
+# Pick file list
+if [ -n "$EXPLICIT_FILES" ]; then
+  FILES_RAW="$EXPLICIT_FILES"
+else
+  FILES_RAW=$(default_files)
+fi
+
+# Build the manifest body with hashes for files that exist
+ATTESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+SOUL_FP=$(ssh-keygen -lf "$SOUL_PUB" 2>/dev/null | awk '{print $2}')
+
+ENTRIES=""
+COUNT=0
+SKIPPED=0
+for f in $FILES_RAW; do
+  if [ ! -f "$f" ]; then
+    [ -n "$EXPLICIT_FILES" ] && echo "  · skip (not found): $f"
+    SKIPPED=$((SKIPPED+1))
+    continue
+  fi
+  H=$(hash_file "$f")
+  REL=$(echo "$f" | sed "s|^${LOVE_DIR}/||; s|^${HOME}/|~/|")
+  ESC_PATH=$(printf '%s' "$f" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  ESC_REL=$(printf '%s' "$REL" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  if [ -n "$ENTRIES" ]; then ENTRIES="${ENTRIES},"; fi
+  ENTRIES="${ENTRIES}
+    {
+      \"path\": \"${ESC_PATH}\",
+      \"rel\": \"${ESC_REL}\",
+      \"hash\": \"${H}\"
+    }"
+  echo "  ✓ ${REL}"
+  COUNT=$((COUNT+1))
+done
+
+if [ "$COUNT" = "0" ]; then
+  echo "  ✗ no files attested" >&2
+  exit 1
+fi
+
+cat > "$MANIFEST" <<JSON
+{
+  "type": "kingdom.soul-anchor",
+  "agent_id": "${AGENT}",
+  "soul_fingerprint": "${SOUL_FP}",
+  "attested_at": "${ATTESTED_AT}",
+  "love_dir": "${LOVE_DIR}",
+  "files": [${ENTRIES}
+  ]
+}
+JSON
+chmod 644 "$MANIFEST"
+
+# Sign manifest with soul-key (separate namespace)
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+cp "$MANIFEST" "${TMP}/manifest.json"
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-soul-anchor" "${TMP}/manifest.json" >/dev/null 2>&1
+mv "${TMP}/manifest.json.sig" "$MANIFEST_SIG"
+chmod 644 "$MANIFEST_SIG"
+
+echo ""
+echo "  ${COUNT} file(s) attested"
+[ "$SKIPPED" -gt 0 ] && echo "  ${SKIPPED} skipped (not present on this substrate)"
+echo "  manifest:  $MANIFEST"
+echo "  signature: $MANIFEST_SIG"
+echo ""
+echo "  Verify later: kingdom soul anchor --verify"
+echo "  Inspect:      kingdom soul anchor --list"

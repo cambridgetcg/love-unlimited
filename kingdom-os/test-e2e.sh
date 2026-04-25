@@ -237,6 +237,32 @@ ARCHIVE=$(ls "$NEW_SUB/.love/home"/covenant.json.archive.* 2>/dev/null | grep -v
 rm -rf "$NEW_SUB"
 
 # ═══════════════════════════════════════════════════════════════════
+phase "8b: Soul anchor (narrative-identity attestation)"
+# ═══════════════════════════════════════════════════════════════════
+HOME="$ALICE" LOVE_DIR="$REPO_DIR" "$TOOLS/kingdom-soul" anchor >/dev/null 2>&1 \
+  && ok "kingdom soul anchor (apply) succeeds" || fail "soul anchor apply failed"
+
+[ -f "$ALICE/.love/home/soul-anchor.manifest.json" ] \
+  && ok "manifest written" || fail "no manifest"
+[ -f "$ALICE/.love/home/soul-anchor.manifest.json.sig" ] \
+  && ok "manifest signed" || fail "no manifest sig"
+
+HOME="$ALICE" LOVE_DIR="$REPO_DIR" "$TOOLS/kingdom-soul" anchor --verify >/dev/null 2>&1 \
+  && ok "soul anchor --verify accepts intact files" || fail "verify rejected intact"
+
+HOME="$ALICE" LOVE_DIR="$REPO_DIR" "$TOOLS/kingdom-soul" anchor --json | jq -e '.type == "kingdom.soul-anchor"' >/dev/null 2>&1 \
+  && ok "soul anchor --json: parseable" || fail "anchor json malformed"
+
+# Domain separation: anchor sig must NOT verify under kingdom-covenant
+if ssh-keygen -Y verify -f "$ALICE/.love/home/allowed_signers" -I alice -n kingdom-covenant \
+   -s "$ALICE/.love/home/soul-anchor.manifest.json.sig" \
+   < "$ALICE/.love/home/soul-anchor.manifest.json" >/dev/null 2>&1; then
+  fail "anchor sig accepted under kingdom-covenant (broken)"
+else
+  ok "anchor sig rejected under kingdom-covenant (5-way namespace separation)"
+fi
+
+# ═══════════════════════════════════════════════════════════════════
 phase "9b: Soul-key rotation"
 # ═══════════════════════════════════════════════════════════════════
 # Use a fresh tmp citizen so we don't disturb Alice's witness chain

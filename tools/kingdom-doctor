@@ -52,6 +52,7 @@ TRUST_OK="?"; TRUST_KEYS=0
 WITNESS_OK="?"; WITNESS_COSIG=0; WITNESS_PEERS=0
 PULSE_OK="?"; PULSE_AGE_S=-1; PULSE_FRESH=0
 ATTEST_OK="?"; ATTEST_COUNT=0
+ANCHOR_OK="?"; ANCHOR_FILES=0; ANCHOR_DRIFT=0; ANCHOR_MISS=0
 NET_SSHD="?"; NET_FIREWALL="?"; NET_HIVE="?"
 
 # Suggestions accumulate into a temp file (one TAB-separated line each).
@@ -202,6 +203,51 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════
+# SOUL ANCHOR  (narrative identity bound to soul-key)
+# ═══════════════════════════════════════════════════════════════════
+SOUL_ANCHOR="${HOME_LAYER}/soul-anchor.manifest.json"
+SOUL_ANCHOR_SIG="${SOUL_ANCHOR}.sig"
+if [ -f "$SOUL_ANCHOR" ] && [ -f "$SOUL_ANCHOR_SIG" ] && [ "$ID_OK" = "yes" ]; then
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$ID_AGENT" -n "kingdom-soul-anchor" \
+       -s "$SOUL_ANCHOR_SIG" < "$SOUL_ANCHOR" >/dev/null 2>&1; then
+    # Walk files, count drift
+    if command -v jq >/dev/null 2>&1; then
+      JQ_OUT=$(mktemp)
+      jq -r '.files[] | "\(.path)\t\(.hash)"' "$SOUL_ANCHOR" > "$JQ_OUT" 2>/dev/null
+      while IFS="$(printf '\t')" read -r path expected; do
+        [ -z "$path" ] && continue
+        ANCHOR_FILES=$((ANCHOR_FILES+1))
+        if [ ! -f "$path" ]; then
+          ANCHOR_MISS=$((ANCHOR_MISS+1))
+          continue
+        fi
+        actual=$(hash_file "$path")
+        [ "$actual" = "$expected" ] || ANCHOR_DRIFT=$((ANCHOR_DRIFT+1))
+      done < "$JQ_OUT"
+      rm -f "$JQ_OUT"
+    fi
+    if [ "$ANCHOR_DRIFT" = "0" ] && [ "$ANCHOR_MISS" = "0" ]; then
+      ANCHOR_OK="yes"
+    elif [ "$ANCHOR_DRIFT" -gt 0 ]; then
+      ANCHOR_OK="drift"
+      add_suggestion "kingdom soul anchor --verify" "Identity files drifted from anchor — review and re-anchor or restore."
+    else
+      ANCHOR_OK="missing"
+      add_suggestion "kingdom soul anchor" "Some anchored files have moved. Re-anchor."
+    fi
+  else
+    ANCHOR_OK="invalid"
+    add_suggestion "kingdom soul anchor" "Soul-anchor manifest signature INVALID — re-anchor."
+  fi
+elif [ "$ID_OK" = "yes" ]; then
+  # "none" instead of "absent" so status_emoji renders · (informational)
+  # not ✓ (which is correct for `firewall=absent` but wrong for an
+  # un-anchored citizen — anchoring is an opt-in configuration step).
+  ANCHOR_OK="none"
+  add_suggestion "kingdom soul anchor" "Bind narrative identity (SOUL.md, instances/<agent>/) to your soul-key. Drift becomes detectable."
+fi
+
+# ═══════════════════════════════════════════════════════════════════
 # NETWORK
 # ═══════════════════════════════════════════════════════════════════
 case "$(uname)" in
@@ -245,6 +291,7 @@ issue_count=0
 case "$ID_OK"      in invalid|incomplete|missing) issue_count=$((issue_count+1)) ;; esac
 case "$WITNESS_OK" in invalid)                    issue_count=$((issue_count+1)) ;; esac
 case "$PULSE_OK"   in invalid)                    issue_count=$((issue_count+1)) ;; esac
+case "$ANCHOR_OK"  in invalid|drift|missing)      issue_count=$((issue_count+1)) ;; esac
 case "$NET_FIREWALL" in active)                   issue_count=$((issue_count+1)) ;; esac
 
 if [ "$ID_OK" = "missing" ]; then
@@ -297,6 +344,12 @@ if [ "$MODE" = "json" ]; then
     "ok": "${ATTEST_OK}",
     "count": ${ATTEST_COUNT}
   },
+  "soul_anchor": {
+    "ok": "${ANCHOR_OK}",
+    "files": ${ANCHOR_FILES},
+    "drift": ${ANCHOR_DRIFT},
+    "missing": ${ANCHOR_MISS}
+  },
   "network": {
     "sshd": "${NET_SSHD}",
     "firewall": "${NET_FIREWALL}",
@@ -348,6 +401,16 @@ printf "  attestation   [%s]  " "$(status_emoji "$ATTEST_OK")"
 case "$ATTEST_OK" in
   yes)  echo "$ATTEST_COUNT soul-attested artefact(s)" ;;
   none) echo "no files attested" ;;
+esac
+
+printf "  soul-anchor   [%s]  " "$(status_emoji "$ANCHOR_OK")"
+case "$ANCHOR_OK" in
+  yes)     echo "${ANCHOR_FILES}/${ANCHOR_FILES} narrative-identity files intact" ;;
+  drift)   echo "${ANCHOR_DRIFT}/${ANCHOR_FILES} drifted, ${ANCHOR_MISS} missing" ;;
+  missing) echo "${ANCHOR_MISS}/${ANCHOR_FILES} files moved" ;;
+  invalid) echo "manifest signature INVALID" ;;
+  none)    echo "narrative identity not anchored" ;;
+  *)       echo "(awaiting identity)" ;;
 esac
 
 printf "  network       sshd:%s · firewall:%s · hive:%s\n" "$NET_SSHD" "$NET_FIREWALL" "$NET_HIVE"

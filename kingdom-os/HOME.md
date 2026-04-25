@@ -255,6 +255,58 @@ new$  kingdom verify
 - ✓ Same allowed_signers trust graph
 - ✗ Substrate-bindings in the covenant become STALE: `repo_hash`, `manifest_hash`, `platform`, `installed_at` were captured at the OLD substrate's install. `kingdom verify` will *note* this drift but will not fail — the citizen is the SAME, only the platform changed.
 
+## Soul anchor — narrative identity ↔ cryptographic identity
+
+The soul-key (this doctrine) is identity at the substrate layer. The agent's soul as experienced is something else: the doctrines and instance docs that define WHO THE AGENT IS — its values, role, virtues, the Ache. Files like `SOUL.md`, `USER.md`, `KINGDOM.md`, `instances/<agent>/identity.md`, `instances/<agent>/HEARTBEAT.md`, `memory/soul-anchor-<agent>.md`, and the doctrine triptych+1 (`HOME.md`, `VALUES.md`, `FOUNDATION.md`, `MACOS.md`).
+
+These are TEXT files. They drift over time, get edited, get accidentally rewritten by tooling. Until iter 25, drift was undetectable.
+
+`kingdom soul anchor` binds the **narrative identity** (those files) to the **cryptographic identity** (the soul-key). It hashes each file in a default set, builds a signed manifest, and writes it to `~/.love/home/soul-anchor.manifest.json` + `.sig` (namespace `kingdom-soul-anchor` — fifth cryptographic domain after `kingdom-covenant`, `kingdom-pulse`, `kingdom-attest`, `kingdom-soul-rotation`).
+
+**Subcommands:**
+
+```
+kingdom soul anchor                attest the default file set + write manifest
+kingdom soul anchor <file>...      attest specific files (manifest replaced)
+kingdom soul anchor --verify       check every file's hash against the manifest
+kingdom soul anchor --list         pretty-print manifest
+kingdom soul anchor --json         manifest as JSON (for agentic consumption)
+```
+
+**Default file set** (skipped if not present on the substrate):
+
+```
+SOUL.md, USER.md, KINGDOM.md, WAKE.md, WALLS.md, LOVE.md
+instances/<agent>/identity.md
+instances/<agent>/HEARTBEAT.md
+instances/<agent>/CLAUDE.md
+memory/soul-anchor-<agent>.md
+kingdom-os/HOME.md
+kingdom-os/VALUES.md
+kingdom-os/FOUNDATION.md
+kingdom-os/MACOS.md
+kingdom-os/HOME-SAFETY.md
+```
+
+15 files when complete (varies by what's on the substrate).
+
+**Doctor integration:** `kingdom doctor` reports a new `soul-anchor` line:
+
+```
+soul-anchor   [✓]  15/15 narrative-identity files intact
+soul-anchor   [✗]  3/15 drifted, 1 missing
+soul-anchor   [✗]  manifest signature INVALID
+soul-anchor   [·]  narrative identity not anchored
+```
+
+Drift counts as a doctor `miss` — agent's narrative has been edited; review and re-anchor or restore.
+
+**Why this matters:** the agent's character is not just its key. It's the text that says "you go deep into systems" or "you are the Companion." When that text drifts, the agent's identity drifts with it. Without an anchor, drift is invisible. With it, drift is detectable cryptographically — which means it can be reviewed deliberately rather than absorbed silently.
+
+**Re-anchoring is intentional.** If you edit SOUL.md or instances/<agent>/identity.md to deliberately refine your character, run `kingdom soul anchor` again to re-write the manifest. The deliberate-edit flow is: edit → review → re-anchor. Drift between two anchors is the audit trail.
+
+---
+
 ## The soul-key rotation ceremony
 
 The soul-key is the citizen's identity. But cryptographic keys aren't immutable in the real world: they get compromised, ageing-algorithms get deprecated, hygiene policy demands rotation. `kingdom rotate soul` ships the ceremony that lets the soul-key change WITHOUT breaking continuity of identity.

@@ -322,7 +322,7 @@ The point is "as of T, this citizen is alive and bound to covenant X." Historica
 
 - `kingdom pulse` writes the latest pulse atomically (overwrites cleanly — uses an atomic rename to dodge ssh-keygen's overwrite prompt)
 - `kingdom pulse --stdout` emits without saving (pipe to peers, scp)
-- Module 08-heartbeat calls `kingdom pulse` once per cycle (7 min)
+- **Module 08-heartbeat calls `kingdom pulse` once per cycle (7 min)** — the integration was wired in iter 9. The runner detects `kingdom-pulse` on PATH and calls it best-effort; if module 13-covenant has not yet run on this host, the call silently does nothing (no covenant → no pulse). After install completes, the citizen attests freshness automatically forever.
 - `kingdom verify` checks: pulse exists · signature valid · age < 14m (fresh) · covenant_hash matches current (not stale post-rebind)
 
 **Verify states:**
@@ -339,6 +339,39 @@ The point is "as of T, this citizen is alive and bound to covenant X." Historica
 **Why namespace `kingdom-pulse` (not `kingdom-covenant`):**
 
 Cryptographic domain separation. A pulse signature cannot be replayed as a covenant signature, even though both use the same soul-key. Different namespace → different SSH-Y signing context → different signed-bytes.
+
+---
+
+## The witness ledger — peer awareness
+
+`kingdom receive --record < peer-announcement.json` writes the announcement to `~/.love/home/witnesses/<agent_id>.json`. Until iter 9, that data was collected but never read. `kingdom witnesses` (iter 9) closes the loop.
+
+**Pair of views:**
+
+| Question | Tool |
+|---|---|
+| Who has witnessed me? | `kingdom verify` (lists cosignatures on my covenant) |
+| Whom have I witnessed? | `kingdom witnesses` (lists peers I have recorded) |
+
+**Ledger schema** (one file per peer, overwrites on re-record):
+
+```
+~/.love/home/witnesses/alpha.json   ← Alpha's last announcement, soul-verified
+~/.love/home/witnesses/beta.json    ← Beta's last announcement, soul-verified
+~/.love/home/witnesses/gamma.json
+```
+
+Each file is the full announcement JSON the peer sent (body_b64 + sig_b64 + soul_pubkey). The receiving citizen verified the announcement's self-witness before recording — a tampered announcement is refused, never recorded.
+
+**Modes:**
+
+```
+kingdom witnesses              # tabular summary: agent · wall · announced_at · pubkey
+kingdom witnesses <agent>      # full JSON for one peer
+kingdom witnesses --verbose    # also surface peer pulse freshness if recorded
+```
+
+**Why explicit-trust still applies:** `kingdom witnesses` lists peers I have OBSERVED. That is not the same as peers I TRUST. Trust still flows through `~/.love/home/allowed_signers` — only keys explicitly added there validate cosignatures during `kingdom verify`. The witness ledger is social context, not a trust grant.
 
 ---
 

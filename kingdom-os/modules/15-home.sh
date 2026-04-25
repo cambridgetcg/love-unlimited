@@ -33,11 +33,13 @@ EXPORT_SCRIPT="${TOOLS_DIR}/kingdom-export"
 IMPORT_SCRIPT="${TOOLS_DIR}/kingdom-import"
 REBIND_SCRIPT="${TOOLS_DIR}/kingdom-rebind"
 PULSE_SCRIPT="${TOOLS_DIR}/kingdom-pulse"
+WITNESSES_SCRIPT="${TOOLS_DIR}/kingdom-witnesses"
 
 # ── Sanity: scripts checked into repo? ─────────────────────────────
 for f in "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
-         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" "$PULSE_SCRIPT"; do
+         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" \
+         "$PULSE_SCRIPT" "$WITNESSES_SCRIPT"; do
   if [ ! -f "$f" ]; then
     echo "  ERROR: $f missing — module 02-repos must run first."
     exit 1
@@ -47,19 +49,21 @@ done
 # ── Make executable ─────────────────────────────────────────────────
 chmod +x "$VERIFY_SCRIPT" "$KINGDOM_WRAPPER" "$COSIGN_SCRIPT" \
          "$ANNOUNCE_SCRIPT" "$RECEIVE_SCRIPT" \
-         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" "$PULSE_SCRIPT"
+         "$EXPORT_SCRIPT" "$IMPORT_SCRIPT" "$REBIND_SCRIPT" \
+         "$PULSE_SCRIPT" "$WITNESSES_SCRIPT"
 
 # ── Symlink into ~/.local/bin ───────────────────────────────────────
-ln -sf "$VERIFY_SCRIPT"   "${BIN_DIR}/kingdom-verify"
-ln -sf "$KINGDOM_WRAPPER" "${BIN_DIR}/kingdom"
-ln -sf "$COSIGN_SCRIPT"   "${BIN_DIR}/kingdom-cosign"
-ln -sf "$ANNOUNCE_SCRIPT" "${BIN_DIR}/kingdom-announce"
-ln -sf "$RECEIVE_SCRIPT"  "${BIN_DIR}/kingdom-receive"
-ln -sf "$EXPORT_SCRIPT"   "${BIN_DIR}/kingdom-export"
-ln -sf "$IMPORT_SCRIPT"   "${BIN_DIR}/kingdom-import"
-ln -sf "$REBIND_SCRIPT"   "${BIN_DIR}/kingdom-rebind"
-ln -sf "$PULSE_SCRIPT"    "${BIN_DIR}/kingdom-pulse"
-echo "  Symlinked kingdom + 8 subcommands into ${BIN_DIR}"
+ln -sf "$VERIFY_SCRIPT"    "${BIN_DIR}/kingdom-verify"
+ln -sf "$KINGDOM_WRAPPER"  "${BIN_DIR}/kingdom"
+ln -sf "$COSIGN_SCRIPT"    "${BIN_DIR}/kingdom-cosign"
+ln -sf "$ANNOUNCE_SCRIPT"  "${BIN_DIR}/kingdom-announce"
+ln -sf "$RECEIVE_SCRIPT"   "${BIN_DIR}/kingdom-receive"
+ln -sf "$EXPORT_SCRIPT"    "${BIN_DIR}/kingdom-export"
+ln -sf "$IMPORT_SCRIPT"    "${BIN_DIR}/kingdom-import"
+ln -sf "$REBIND_SCRIPT"    "${BIN_DIR}/kingdom-rebind"
+ln -sf "$PULSE_SCRIPT"     "${BIN_DIR}/kingdom-pulse"
+ln -sf "$WITNESSES_SCRIPT" "${BIN_DIR}/kingdom-witnesses"
+echo "  Symlinked kingdom + 9 subcommands into ${BIN_DIR}"
 
 # ── Ensure ~/.local/bin is on PATH (via .kingdom_profile) ───────────
 PROFILE="${HOME_DIR}/.kingdom_profile"

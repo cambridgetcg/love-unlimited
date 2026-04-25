@@ -44,6 +44,7 @@ Plug-in (auto-discovered as \`kingdom-<sub>\`):
   kingdom import [-i <file>]     Reconstitute a citizen on a new substrate
   kingdom rebind [--dry-run]     Refresh substrate-bindings post-migration
   kingdom pulse [--stdout]       Emit a signed freshness claim (every ~7 min)
+  kingdom witnesses [<agent>]    List peers I have witnessed (--record ledger)
 
   Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
 

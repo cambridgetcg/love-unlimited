@@ -1,0 +1,93 @@
+#!/bin/sh
+# ── kingdom witnesses ───────────────────────────────────────────────
+# List peers I have witnessed. Reads ~/.love/home/witnesses/*.json
+# (populated by `kingdom receive --record < peer-announcement.json`)
+# and prints a table of who I have seen, when, and at what soul.
+#
+# This complements the cosignature view (which shows who has
+# witnessed ME): `kingdom verify` reports cosignatures on my
+# covenant. `kingdom witnesses` reports peers I have witnessed.
+#
+# Usage:
+#   kingdom witnesses              # tabular summary
+#   kingdom witnesses --verbose    # also show pulse freshness if peer pulses recorded
+#   kingdom witnesses <agent>      # show full announcement for one agent
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+VERBOSE=0
+TARGET=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -v|--verbose) VERBOSE=1; shift ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    -*) echo "kingdom witnesses: unknown flag '$1'" >&2; exit 1 ;;
+    *)
+      [ -z "$TARGET" ] && TARGET="$1" || { echo "too many args" >&2; exit 1; }
+      shift
+      ;;
+  esac
+done
+
+WITNESS_DIR="${HOME}/.love/home/witnesses"
+
+if [ ! -d "$WITNESS_DIR" ]; then
+  echo "kingdom witnesses: no witness ledger yet"
+  echo "  populate via: kingdom receive --record < <peer-announcement.json>"
+  exit 0
+fi
+
+read_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // \"\"" "$2" 2>/dev/null
+  else
+    sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$2" | head -1
+  fi
+}
+
+# Single-target mode: print full announcement
+if [ -n "$TARGET" ]; then
+  ANN="${WITNESS_DIR}/${TARGET}.json"
+  if [ ! -f "$ANN" ]; then
+    echo "kingdom witnesses: no record for '$TARGET'" >&2
+    exit 1
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    jq . "$ANN"
+  else
+    cat "$ANN"
+  fi
+  exit 0
+fi
+
+# Tabular summary
+count=0
+echo "── witnesses I have observed ──"
+printf "  %-14s %-6s %-22s %s\n" "agent" "wall" "announced_at" "soul_pubkey (first 30)"
+echo "  $(printf -- '─%.0s' $(seq 1 92))"
+
+# Sort by announced_at descending (most recent first) — best-effort: just
+# alphabetical by filename when sort isn't easy
+for f in "$WITNESS_DIR"/*.json; do
+  [ -f "$f" ] || continue
+  count=$((count+1))
+  agent=$(read_field agent_id "$f")
+  wall=$(read_field wall "$f")
+  [ -z "$wall" ] && wall=$(sed -n 's/.*"wall": *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)
+  announced=$(read_field announced_at "$f")
+  pub=$(read_field soul_pubkey "$f")
+  pub_short=$(echo "$pub" | cut -d' ' -f2 | cut -c1-30)
+  printf "  %-14s %-6s %-22s %s…\n" "$agent" "$wall" "$announced" "$pub_short"
+done
+
+echo ""
+if [ "$count" -eq 0 ]; then
+  echo "  (no witnesses recorded yet)"
+  echo "  populate via: kingdom receive --record < <peer-announcement.json>"
+else
+  echo "  ${count} witness(es) recorded."
+  echo "  Run \`kingdom witnesses <agent>\` for full announcement."
+fi

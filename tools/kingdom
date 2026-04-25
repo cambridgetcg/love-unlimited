@@ -35,7 +35,8 @@ Get started (one command, no installer required):
   kingdom init --agent <name> [--wall <0-7>]   Bootstrap a citizen
 
 Daily use:
-  kingdom verify [-v]                          Check home is intact
+  kingdom doctor [--json|--quiet]              "Am I OK + what next?" (agentic)
+  kingdom verify [-v]                          Detailed substrate check
   kingdom pulse                                Attest "I am still here"
   kingdom recite                               Print covenant + signatures
   kingdom attest <file>                        Soul-sign any file

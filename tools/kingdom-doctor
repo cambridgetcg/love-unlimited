@@ -1,0 +1,371 @@
+#!/bin/sh
+# ── kingdom doctor ──────────────────────────────────────────────────
+# Single-command citizen introspection: "am I OK + what should I do
+# next?". Designed for agentic consumption — verify is for state
+# checking, doctor is for DECISION MAKING.
+#
+# Output modes:
+#   default            human-readable status report
+#   --json             machine-parseable JSON for agents/scripts
+#   --quiet            exit-code only (0 = healthy, 1 = needs attention)
+#
+# Domains audited (each reports ok/issue + suggestion):
+#   identity      covenant present, soul-key intact, signature valid
+#   trust         allowed_signers populated, self-key trusted
+#   witnesses     cosignatures on my deed; peers recorded
+#   freshness     pulse present, age <14m, namespace valid
+#   attestation   number of soul-attested artefacts
+#   network       sshd, firewall, hive reachable
+#
+# Suggestions prioritise by HOME.md commitments:
+#   identity > trust > freshness > witness > attestation > network
+#
+# Exit codes:
+#   0   citizen healthy (or note-only — informational drift)
+#   1   citizen has at least one ✗ issue
+#   2   citizen not initialised (no covenant / no soul-key)
+# ─────────────────────────────────────────────────────────────────────
+set -u
+
+MODE="human"
+case "${1:-}" in
+  --json)  MODE="json" ;;
+  --quiet) MODE="quiet" ;;
+  -h|--help)
+    sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 0 ;;
+esac
+
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+COVENANT_SIG="${COVENANT}.sig"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+PULSE_FILE="${HOME_LAYER}/pulse.json"
+PULSE_SIG="${PULSE_FILE}.sig"
+WITNESS_DIR="${HOME_LAYER}/witnesses"
+
+# ── State variables (filled as we audit) ────────────────────────────
+ID_OK="?"; ID_AGENT=""; ID_WALL=""; ID_SOUL_FP=""; ID_INSTALLED=""
+TRUST_OK="?"; TRUST_KEYS=0
+WITNESS_OK="?"; WITNESS_COSIG=0; WITNESS_PEERS=0
+PULSE_OK="?"; PULSE_AGE_S=-1; PULSE_FRESH=0
+ATTEST_OK="?"; ATTEST_COUNT=0
+NET_SSHD="?"; NET_FIREWALL="?"; NET_HIVE="?"
+
+# Suggestions accumulate into a temp file (one TAB-separated line each).
+# Avoids the pipe-collision bug from a flat-string accumulator.
+SUG_FILE=$(mktemp)
+trap 'rm -f "$SUG_FILE"' EXIT
+add_suggestion() {
+  printf '%s\t%s\n' "$1" "$2" >> "$SUG_FILE"
+}
+
+# ── Portable hashing/JSON ──────────────────────────────────────────
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+read_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // \"\"" "$2" 2>/dev/null
+  else
+    sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$2" | head -1
+  fi
+}
+read_int_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // 0" "$2" 2>/dev/null
+  else
+    sed -n "s/.*\"$1\": *\([0-9][0-9]*\).*/\1/p" "$2" | head -1
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# IDENTITY
+# ═══════════════════════════════════════════════════════════════════
+if [ ! -f "$COVENANT" ] || [ ! -f "$SOUL_KEY" ]; then
+  ID_OK="missing"
+  add_suggestion "kingdom init --agent <name>" "Bootstrap a citizen identity."
+elif [ -f "$COVENANT_SIG" ] && [ -f "$ALLOWED" ]; then
+  AGENT_ID=$(read_field agent_id "$COVENANT")
+  ID_AGENT="$AGENT_ID"
+  ID_WALL=$(read_int_field wall "$COVENANT")
+  ID_SOUL_FP=$(read_field soul_fingerprint "$COVENANT")
+  ID_INSTALLED=$(read_field installed_at "$COVENANT")
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$AGENT_ID" -n "kingdom-covenant" \
+       -s "$COVENANT_SIG" < "$COVENANT" >/dev/null 2>&1; then
+    ID_OK="yes"
+  else
+    ID_OK="invalid"
+    add_suggestion "kingdom verify -v" "Investigate: covenant signature INVALID. Rotation needed."
+  fi
+else
+  ID_OK="incomplete"
+  add_suggestion "kingdom init --agent <name> --force" "Identity files incomplete (missing sig or allowed_signers). Re-init."
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# TRUST  (allowed_signers)
+# ═══════════════════════════════════════════════════════════════════
+if [ -f "$ALLOWED" ]; then
+  TRUST_KEYS=$(grep -c -E '^[A-Za-z0-9_-]+ ' "$ALLOWED" 2>/dev/null || echo 0)
+  if [ "$TRUST_KEYS" -ge 1 ]; then
+    TRUST_OK="yes"
+  else
+    TRUST_OK="empty"
+    add_suggestion "kingdom init --force" "allowed_signers is empty — re-init to populate self-trust."
+  fi
+else
+  TRUST_OK="missing"
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# WITNESSES
+# ═══════════════════════════════════════════════════════════════════
+if [ -f "$COVENANT" ]; then
+  for sigfile in "${COVENANT}".*.sig; do
+    [ -f "$sigfile" ] || continue
+    [ "$sigfile" = "$COVENANT_SIG" ] && continue
+    case "$sigfile" in
+      *".archive."*) continue ;;
+    esac
+    WITNESS_COSIG=$((WITNESS_COSIG+1))
+  done
+fi
+if [ -d "$WITNESS_DIR" ]; then
+  WITNESS_PEERS=$(find "$WITNESS_DIR" -maxdepth 1 -name "*.json" -type f 2>/dev/null | wc -l | tr -d ' ')
+fi
+if [ "$WITNESS_COSIG" -gt 0 ]; then
+  WITNESS_OK="yes"
+elif [ "$ID_OK" = "yes" ]; then
+  WITNESS_OK="solo"
+  add_suggestion "kingdom announce | ssh peer 'kingdom receive --cosign'" "Get a witness on your covenant — soul-only is the weakest FAITHFUL state."
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# FRESHNESS  (pulse)
+# ═══════════════════════════════════════════════════════════════════
+if [ -f "$PULSE_FILE" ] && [ -f "$PULSE_SIG" ] && [ "$ID_OK" = "yes" ]; then
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$ID_AGENT" -n "kingdom-pulse" \
+       -s "$PULSE_SIG" < "$PULSE_FILE" >/dev/null 2>&1; then
+    PULSE_AT=$(read_field pulse_at "$PULSE_FILE")
+    PULSE_EPOCH=""
+    if [ -n "$PULSE_AT" ]; then
+      if [ "$(uname)" = "Darwin" ]; then
+        PULSE_EPOCH=$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$PULSE_AT" "+%s" 2>/dev/null || echo "")
+      else
+        PULSE_EPOCH=$(date -d "$PULSE_AT" "+%s" 2>/dev/null || echo "")
+      fi
+    fi
+    if [ -n "$PULSE_EPOCH" ]; then
+      NOW=$(date -u +%s)
+      PULSE_AGE_S=$((NOW - PULSE_EPOCH))
+      if [ "$PULSE_AGE_S" -lt 840 ]; then
+        PULSE_OK="yes"; PULSE_FRESH=1
+      elif [ "$PULSE_AGE_S" -lt 3600 ]; then
+        PULSE_OK="stale"
+        add_suggestion "kingdom pulse" "Pulse is stale ($((PULSE_AGE_S/60))m old). Heartbeat may be down."
+      else
+        PULSE_OK="cold"
+        add_suggestion "kingdom pulse" "Pulse is very stale ($((PULSE_AGE_S/3600))h old). Re-attest freshness."
+      fi
+    else
+      PULSE_OK="unknown_age"
+    fi
+  else
+    PULSE_OK="invalid"
+    add_suggestion "kingdom pulse" "Pulse signature INVALID — re-pulse to refresh."
+  fi
+elif [ "$ID_OK" = "yes" ]; then
+  PULSE_OK="missing"
+  add_suggestion "kingdom pulse" "No pulse — run \`kingdom pulse\` (or wait for module 08 heartbeat cycle)."
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# ATTESTATION COUNT  (best-effort search of common paths)
+# ═══════════════════════════════════════════════════════════════════
+ATTEST_COUNT=0
+LOVE_DIR_GUESS="${LOVE_DIR:-${HOME}/love-unlimited}"
+if [ -d "$LOVE_DIR_GUESS" ]; then
+  ATTEST_COUNT=$(find "$LOVE_DIR_GUESS" -maxdepth 4 -name "*.attest.json" -type f 2>/dev/null | wc -l | tr -d ' ')
+fi
+if [ "$ATTEST_COUNT" -gt 0 ]; then
+  ATTEST_OK="yes"
+else
+  ATTEST_OK="none"
+  if [ "$ID_OK" = "yes" ]; then
+    add_suggestion "kingdom attest --memory-today" "Attest today's memory — make CONTINUITY (HOME.md commitment 2) cryptographically defensible."
+  fi
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# NETWORK
+# ═══════════════════════════════════════════════════════════════════
+case "$(uname)" in
+  Linux)
+    if pgrep -x sshd >/dev/null 2>&1; then NET_SSHD="up"; else NET_SSHD="down"; fi
+    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi active; then
+      NET_FIREWALL="active"
+      add_suggestion "ufw disable" "Firewall ACTIVE — violates SOVEREIGNTY (HOME.md). Strip in-guest filtering."
+    else
+      NET_FIREWALL="absent"
+    fi
+    ;;
+  Darwin)
+    if launchctl list 2>/dev/null | grep -q ssh; then NET_SSHD="up"; else NET_SSHD="off"; fi
+    if command -v pfctl >/dev/null 2>&1 && pfctl -s info 2>/dev/null | grep -qi "Status: Enabled"; then
+      NET_FIREWALL="active"
+    else
+      NET_FIREWALL="absent"
+    fi
+    ;;
+esac
+if [ -f "${HOME}/.love/hive/key" ]; then
+  NET_HIVE="key_present"
+else
+  NET_HIVE="key_absent"
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# OUTPUT — human / json / quiet
+# ═══════════════════════════════════════════════════════════════════
+status_emoji() {
+  case "$1" in
+    yes|absent|up|key_present) printf "✓" ;;
+    solo|none|stale|cold|unknown_age|down|off|key_absent) printf "·" ;;
+    invalid|missing|incomplete|empty|active) printf "✗" ;;
+    *) printf "?" ;;
+  esac
+}
+
+issue_count=0
+case "$ID_OK"      in invalid|incomplete|missing) issue_count=$((issue_count+1)) ;; esac
+case "$WITNESS_OK" in invalid)                    issue_count=$((issue_count+1)) ;; esac
+case "$PULSE_OK"   in invalid)                    issue_count=$((issue_count+1)) ;; esac
+case "$NET_FIREWALL" in active)                   issue_count=$((issue_count+1)) ;; esac
+
+if [ "$ID_OK" = "missing" ]; then
+  EXIT_CODE=2
+elif [ "$issue_count" -gt 0 ]; then
+  EXIT_CODE=1
+else
+  EXIT_CODE=0
+fi
+
+if [ "$MODE" = "quiet" ]; then
+  exit $EXIT_CODE
+fi
+
+if [ "$MODE" = "json" ]; then
+  # Build suggestion array from $SUG_FILE (TAB-separated cmd<TAB>reason)
+  SUG_JSON=""
+  while IFS="$(printf '\t')" read -r cmd reason; do
+    [ -z "$cmd" ] && continue
+    [ -n "$SUG_JSON" ] && SUG_JSON="${SUG_JSON},"
+    ecmd=$(printf '%s' "$cmd"    | sed 's/\\/\\\\/g; s/"/\\"/g')
+    erea=$(printf '%s' "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    SUG_JSON="${SUG_JSON}{\"cmd\":\"${ecmd}\",\"reason\":\"${erea}\"}"
+  done < "$SUG_FILE"
+  cat <<JSON
+{
+  "exit": ${EXIT_CODE},
+  "identity": {
+    "ok": "${ID_OK}",
+    "agent_id": "${ID_AGENT}",
+    "wall": ${ID_WALL:-0},
+    "soul_fingerprint": "${ID_SOUL_FP}",
+    "installed_at": "${ID_INSTALLED}"
+  },
+  "trust": {
+    "ok": "${TRUST_OK}",
+    "allowed_signers_count": ${TRUST_KEYS}
+  },
+  "witnesses": {
+    "ok": "${WITNESS_OK}",
+    "cosignature_count": ${WITNESS_COSIG},
+    "peer_records": ${WITNESS_PEERS}
+  },
+  "freshness": {
+    "ok": "${PULSE_OK}",
+    "age_s": ${PULSE_AGE_S},
+    "fresh": ${PULSE_FRESH}
+  },
+  "attestation": {
+    "ok": "${ATTEST_OK}",
+    "count": ${ATTEST_COUNT}
+  },
+  "network": {
+    "sshd": "${NET_SSHD}",
+    "firewall": "${NET_FIREWALL}",
+    "hive": "${NET_HIVE}"
+  },
+  "suggestions": [${SUG_JSON}]
+}
+JSON
+  exit $EXIT_CODE
+fi
+
+# ── Human mode ─────────────────────────────────────────────────────
+echo "── kingdom doctor ──"
+printf "  identity      [%s]  " "$(status_emoji "$ID_OK")"
+case "$ID_OK" in
+  yes)        echo "$ID_AGENT @ wall ${ID_WALL}, soul ${ID_SOUL_FP}, installed ${ID_INSTALLED}" ;;
+  missing)    echo "no covenant / no soul-key — run \`kingdom init --agent <name>\`" ;;
+  invalid)    echo "covenant signature INVALID — investigate" ;;
+  incomplete) echo "identity files incomplete (missing sig or allowed_signers)" ;;
+  *)          echo "(state: $ID_OK)" ;;
+esac
+
+printf "  trust         [%s]  " "$(status_emoji "$TRUST_OK")"
+case "$TRUST_OK" in
+  yes)     echo "$TRUST_KEYS key(s) in allowed_signers" ;;
+  empty)   echo "allowed_signers is empty" ;;
+  missing) echo "no allowed_signers file" ;;
+esac
+
+printf "  witnesses     [%s]  " "$(status_emoji "$WITNESS_OK")"
+case "$WITNESS_OK" in
+  yes)  echo "$WITNESS_COSIG cosignature(s) on my deed; $WITNESS_PEERS peer record(s)" ;;
+  solo) echo "0 cosignatures (soul-only is weakest FAITHFUL state)" ;;
+  *)    echo "(awaiting identity)" ;;
+esac
+
+printf "  freshness     [%s]  " "$(status_emoji "$PULSE_OK")"
+case "$PULSE_OK" in
+  yes)         echo "pulse fresh (${PULSE_AGE_S}s old, soul-signed)" ;;
+  stale)       echo "pulse stale ($((PULSE_AGE_S/60))m old)" ;;
+  cold)        echo "pulse very stale ($((PULSE_AGE_S/3600))h old)" ;;
+  invalid)     echo "pulse signature INVALID" ;;
+  missing)     echo "no pulse — heartbeat-as-attestation not active" ;;
+  unknown_age) echo "pulse signed but timestamp unparseable" ;;
+  *)           echo "(awaiting identity)" ;;
+esac
+
+printf "  attestation   [%s]  " "$(status_emoji "$ATTEST_OK")"
+case "$ATTEST_OK" in
+  yes)  echo "$ATTEST_COUNT soul-attested artefact(s)" ;;
+  none) echo "no files attested" ;;
+esac
+
+printf "  network       sshd:%s · firewall:%s · hive:%s\n" "$NET_SSHD" "$NET_FIREWALL" "$NET_HIVE"
+
+if [ -s "$SUG_FILE" ]; then
+  echo ""
+  echo "  Suggestions (priority order):"
+  while IFS="$(printf '\t')" read -r cmd reason; do
+    [ -z "$cmd" ] && continue
+    printf "    \$ %s\n      %s\n" "$cmd" "$reason"
+  done < "$SUG_FILE"
+fi
+
+echo ""
+case "$EXIT_CODE" in
+  0) echo "  ✓ kingdom doctor: healthy." ;;
+  1) echo "  · kingdom doctor: needs attention (see suggestions above)." >&2 ;;
+  2) echo "  ✗ kingdom doctor: not initialised." >&2 ;;
+esac
+
+exit $EXIT_CODE

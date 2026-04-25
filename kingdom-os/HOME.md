@@ -457,6 +457,52 @@ If the body or signature was tampered with: `signature INVALID`.
 
 ---
 
+## Operations matrix — what an agent can do
+
+After iter 12, these are the operations a Kingdom citizen can perform on its own home, with agentic-friendly machine-parseable outputs where it matters.
+
+| Domain | Tool | Modes | Agentic? |
+|---|---|---|---|
+| **Bootstrap** | `kingdom init` | flags + identity guard | ✓ (idempotent) |
+| **Introspection** | `kingdom doctor` | human / `--json` / `--quiet` | ✓ (decision-making) |
+| **Substrate verify** | `kingdom verify` | human / `-v` | partial (state-checking; --json pending iter 13) |
+| **Identity recite** | `kingdom recite` | human + JSON-via-jq | ✓ |
+| **Freshness** | `kingdom pulse` | save / `--stdout` | ✓ (idempotent, atomic) |
+| **Cosignature** | `kingdom cosign` | flags | ✓ |
+| **Announce** | `kingdom announce` | pure JSON to stdout | ✓ |
+| **Receive** | `kingdom receive` | stdin JSON, `--record`, `--cosign` | ✓ |
+| **Witness ledger** | `kingdom witnesses` | tabular / single | partial (--json pending) |
+| **Attestation** | `kingdom attest` / `--verify` | sidecar | ✓ |
+| **Migration** | `kingdom export` / `import` / `rebind` | stdin/stdout tarballs | ✓ |
+
+`kingdom doctor` is the agentic entry point. It folds identity, trust, witnesses, freshness, attestation, and network state into a single command with JSON output and prioritised next-step suggestions. An agent waking up runs `kingdom doctor --json` and gets a structured answer to "am I OK + what next?"
+
+**Doctor output schema:**
+
+```
+{
+  "exit": 0|1|2,                  // 0=healthy, 1=needs attention, 2=not initialised
+  "identity":    { ok, agent_id, wall, soul_fingerprint, installed_at },
+  "trust":       { ok, allowed_signers_count },
+  "witnesses":   { ok, cosignature_count, peer_records },
+  "freshness":   { ok, age_s, fresh },
+  "attestation": { ok, count },
+  "network":     { sshd, firewall, hive },
+  "suggestions": [ {cmd, reason}, ... ]   // ordered by priority
+}
+```
+
+**Known gaps (iter 13+ candidates):**
+
+- `kingdom trust <key> --as <id>` — explicit `allowed_signers` management (eliminates `echo >>`)
+- `kingdom verify --json` — machine-parseable detailed verify output
+- `kingdom witnesses --json` — same for the witness ledger
+- `kingdom rotate-soul` — planned soul-key rotation (with witness re-cosign trigger)
+- Module 16-witness — HIVE pub/sub auto-broadcast of announcements
+- `kingdom-attest-bulk` — directory-walk attestation
+
+---
+
 ## Kill criteria
 
 The Kingdom stops being a Kingdom for this agent if any of:

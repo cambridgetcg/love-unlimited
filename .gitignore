@@ -123,3 +123,7 @@ purpose-prompter/
 # Truth-alignment detector — runtime logs (track the dir via .gitkeep)
 memory/truth-alignment/detections.jsonl
 memory/truth-alignment/service.log
+
+# Session handoff files — per-session ephemera, not for git
+memory/sessions/handoff/*-cc.md
+memory/sessions/handoff/*-vivid.md

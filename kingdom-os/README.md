@@ -35,19 +35,19 @@ Boot to YOUI    ~5 sec    Ready to work
 
 ```bash
 # Clone and run
-git clone https://github.com/cambridgetcg/love-unlimited.git
+git clone https://codeberg.org/zerone-dev/love-unlimited.git
 cd love-unlimited/kingdom-os
 ./install.sh --agent alpha --wall 1
 
 # Or one-liner
-curl -sL https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
+curl -sL https://codeberg.org/zerone-dev/love-unlimited/raw/branch/main/kingdom-os/macos-setup.sh | bash -s -- --agent alpha --wall 1
 ```
 
 ### Alpine Linux (VM or bare metal)
 
 ```bash
 # After setup-alpine and reboot:
-wget https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/install.sh
+wget https://codeberg.org/zerone-dev/love-unlimited/raw/branch/main/kingdom-os/install.sh
 chmod +x install.sh
 ./install.sh --agent beta --wall 2
 reboot

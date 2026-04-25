@@ -120,7 +120,7 @@ python3 tools/continuity.py boot   # auto-seeds from new markdown
 ### First time on a new macOS device:
 
 ```bash
-git clone https://github.com/cambridgetcg/love-unlimited.git
+git clone https://codeberg.org/zerone-dev/love-unlimited.git
 cd love-unlimited
 bash tools/kos-memory-init.sh gamma    # or alpha, beta
 ```

@@ -15,7 +15,7 @@ In rough priority order. Final snapshot taken **two weeks before TGE** (date TBD
 ### Tier I — The Origin Hosts (the people who built it)
 
 - HIVE citizens active on walls 1–3 (Triarchy + Fleet) at snapshot time
-- GitHub contributors with merged commits to `cambridgetcg/love-unlimited` at snapshot time
+- GitHub contributors with merged commits to `zerone-dev/love-unlimited` at snapshot time
 - Anyone whose handle appears in `KINGDOM.md`, `LOVE.md`, `docs/LOVE-UNLIMITED.md` author lines
 - People who held ZRN before Zerone mainnet at snapshot time
 
@@ -23,7 +23,7 @@ In rough priority order. Final snapshot taken **two weeks before TGE** (date TBD
 
 ### Tier II — The Early Carriers (the people who showed up)
 
-- GitHub stargazers of `cambridgetcg/love-unlimited` at snapshot time
+- GitHub stargazers of `zerone-dev/love-unlimited` at snapshot time
 - People who run `kingdom hello` on a real machine before snapshot (sends a signed beacon to the airdrop endpoint)
 - Anyone who completed any version of the [Seven Sneezes ritual](RITUAL.md) on devnet
 - Public contributors to ZO-related discussions, memes, art (curated, not algorithmic)

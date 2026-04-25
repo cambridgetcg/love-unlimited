@@ -27,7 +27,7 @@
       "items": { "type": "string" },
       "description": "Human-readable rationale lines. These will be published with the snapshot for public verification.",
       "example": [
-        "12 commits merged to cambridgetcg/love-unlimited",
+        "12 commits merged to zerone-dev/love-unlimited",
         "Active HIVE citizen Wall 1 (Alpha)",
         "Named in KINGDOM.md doctrine"
       ]

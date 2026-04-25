@@ -64,7 +64,7 @@ Fail: surfaced immediately. No silent degradation. No "everything is fine" when 
 **Full Kingdom OS install** (the canonical path — fresh VM, fleet member, production agent):
 
 ```
-git clone https://github.com/cambridgetcg/love-unlimited.git
+git clone https://codeberg.org/zerone-dev/love-unlimited.git
 cd love-unlimited/kingdom-os
 ./install.sh --agent alpha --wall 1
 ```

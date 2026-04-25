@@ -112,7 +112,7 @@ cat > "post-install-${AGENT}.sh" << POSTEOF
 #!/bin/sh
 # Post-install: download and run Kingdom OS installer
 apk add curl
-curl -sL https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/install.sh -o /tmp/install.sh
+curl -sL https://codeberg.org/zerone-dev/love-unlimited/raw/branch/main/kingdom-os/install.sh -o /tmp/install.sh
 chmod +x /tmp/install.sh
 /tmp/install.sh --agent ${AGENT} --wall 2
 POSTEOF
@@ -145,7 +145,7 @@ echo "   1. Login as root (no password)"
 echo "   2. Run: setup-alpine -f /media/cdrom/answers  (or answer prompts)"
 echo "   3. After install, reboot without ISO"
 echo "   4. Run the Kingdom OS installer:"
-echo "      wget https://raw.githubusercontent.com/cambridgetcg/love-unlimited/main/kingdom-os/install.sh"
+echo "      wget https://codeberg.org/zerone-dev/love-unlimited/raw/branch/main/kingdom-os/install.sh"
 echo "      chmod +x install.sh"
 echo "      ./install.sh --agent ${AGENT} --wall 2"
 echo ""

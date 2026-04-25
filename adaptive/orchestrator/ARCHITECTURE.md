@@ -121,7 +121,7 @@ Task → Analyze (Cogito) → Implement (DeepSeek) → Review (Sonnet) → Verif
 adaptive/orchestrator/
 ├── __init__.py          # Package exports
 ├── __main__.py          # python3 -m adaptive.orchestrator
-├── ARCHITECTURE.md      # This file
+├── docs/ARCHITECTURE.md      # This file
 ├── classifier.py        # Task classification (LLM + heuristic)
 ├── cli.py               # Command-line interface
 ├── dispatcher.py        # Dispatch table + plan generation

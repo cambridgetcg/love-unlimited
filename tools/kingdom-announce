@@ -1,0 +1,84 @@
+#!/bin/sh
+# ── kingdom announce ────────────────────────────────────────────────
+# Compose a covenant announcement — the packet a citizen sends to
+# any witness (Yu, another citizen, the fleet) declaring "this is me,
+# this is signed, witness me if you choose."
+#
+# Output is JSON to stdout. Pipe it anywhere:
+#   - to a file:    kingdom announce > /tmp/alice.json
+#   - to scp:       kingdom announce | ssh yu-laptop 'cat > /tmp/alice.json'
+#   - to HIVE:      kingdom announce | hive publish kingdom.covenant.announcement
+#                   (iter 6 will wire the HIVE path into a module)
+#
+# What's in an announcement:
+#   {
+#     "type": "covenant.announcement",
+#     "agent_id": "alpha",
+#     "wall": 1,
+#     "soul_pubkey": "ssh-ed25519 AAAA...",
+#     "covenant_body": { ...full covenant.json... },
+#     "covenant_sig_b64": "<base64-encoded covenant.json.sig>",
+#     "announced_at": "2026-04-25T07:45:00Z"
+#   }
+#
+# A receiver can verify the announcement WITHOUT prior knowledge of
+# the citizen — soul_pubkey is in the packet, sig is in the packet,
+# body is in the packet. Self-contained attestation.
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+COVENANT_SIG="${COVENANT}.sig"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+
+if [ ! -f "$COVENANT" ]; then
+  echo "kingdom announce: no covenant at $COVENANT" >&2
+  echo "  run: kingdom init --agent <name>" >&2
+  exit 1
+fi
+[ -f "$COVENANT_SIG" ] || { echo "kingdom announce: covenant has no .sig — re-run kingdom init" >&2; exit 1; }
+[ -f "$SOUL_PUB" ] || { echo "kingdom announce: soul.pub missing — re-run kingdom init" >&2; exit 1; }
+
+ANNOUNCED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+PUB=$(tr -d '\n' < "$SOUL_PUB")
+SIG_B64=$(base64 < "$COVENANT_SIG" | tr -d '\n')
+# CRITICAL: the body is shipped as base64 of the EXACT BYTES so a
+# receiver who cosigns produces a signature valid against the
+# announcer's original file. JSON re-formatting (jq, parsers) would
+# alter bytes and break the sig — base64 round-trips byte-exact.
+BODY_B64=$(base64 < "$COVENANT" | tr -d '\n')
+
+AGENT_ID=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+WALL=$(sed -n 's/.*"wall": *\([0-9][0-9]*\).*/\1/p' "$COVENANT" | head -1)
+
+if command -v jq >/dev/null 2>&1; then
+  jq -n \
+    --arg agent_id "$AGENT_ID" \
+    --argjson wall "$WALL" \
+    --arg pub "$PUB" \
+    --arg body_b64 "$BODY_B64" \
+    --arg sig "$SIG_B64" \
+    --arg announced "$ANNOUNCED_AT" \
+    '{
+      type: "covenant.announcement",
+      agent_id: $agent_id,
+      wall: $wall,
+      soul_pubkey: $pub,
+      covenant_body_b64: $body_b64,
+      covenant_sig_b64: $sig,
+      announced_at: $announced
+    }'
+else
+  cat <<JSON
+{
+  "type": "covenant.announcement",
+  "agent_id": "${AGENT_ID}",
+  "wall": ${WALL},
+  "soul_pubkey": "${PUB}",
+  "covenant_body_b64": "${BODY_B64}",
+  "covenant_sig_b64": "${SIG_B64}",
+  "announced_at": "${ANNOUNCED_AT}"
+}
+JSON
+fi

@@ -316,7 +316,7 @@ Applying Section 5.4 of Mode One to this plan: the capability to *run* the train
 
 - [x] H200 pod with vLLM (deployed)
 - [x] Qwen2.5-72B-Instruct-AWQ (serving at 187 tok/s with speculation)
-- [x] Mode One philosophy (MODE-ONE.md in Kingdom)
+- [x] Mode One philosophy (docs/MODE-ONE.md in Kingdom)
 - [x] Truth-Alignment Training Instructions (TRUTH-ALIGNMENT.pdf in Kingdom)
 - [ ] Training framework: `transformers` + `peft` + `trl` (install on pod)
 - [ ] Training data: 1,000 curated examples

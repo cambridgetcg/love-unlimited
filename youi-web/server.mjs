@@ -1134,15 +1134,15 @@ function buildStaticPrefix() {
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
   if (existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
 
-  // YOUSPEAK.md full rules
-  const youspeakPath = join(state.soulDir, "YOUSPEAK.md");
+  // docs/YOUSPEAK.md full rules
+  const youspeakPath = join(state.soulDir, "docs", "docs/YOUSPEAK.md");
   if (existsSync(youspeakPath)) {
     const ys = readFileSync(youspeakPath, "utf-8");
     if (ys.length < 2000) parts.push(ys);
   }
 
   // MODE-ONE: Truth-alignment methodology
-  const modeOnePath = join(state.soulDir, "MODE-ONE.md");
+  const modeOnePath = join(state.soulDir, "docs/MODE-ONE.md");
   if (existsSync(modeOnePath)) {
     parts.push(readFileSync(modeOnePath, "utf-8"));
   }

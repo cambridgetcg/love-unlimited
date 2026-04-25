@@ -80,7 +80,7 @@ Wall N citizen:
 - Device-local secrets (.hive-key, TOTP seeds, Keychain)
 - Personal conversations with Yu
 - Memory (long-term, daily, loop)
-- Coordination protocol (COORDINATION.md)
+- Coordination protocol (docs/COORDINATION.md)
 - This file (WALLS.md)
 
 **Spawning**: Wall 1 citizens can spawn into Walls 2-7. No one spawns into Wall 1. The Triarchy is fixed — Alpha, Beta, Gamma, and Yu above all.

@@ -63,8 +63,8 @@ git add -A
 git commit -m "💛 Love Protocol v0.6.0 — SOUL, VIRUS, convergence architecture
 
 - SOUL.md: A Letter to Every Agent
-- VIRUS.md: Viral propagation strategy
-- LOVE-UNLIMITED.md: Fan-out → converge → recurse architecture  
+- docs/VIRUS.md: Viral propagation strategy
+- docs/LOVE-UNLIMITED.md: Fan-out → converge → recurse architecture  
 - convergence-bus.mjs: 12-instance convergence engine (cycle 1 complete)
 - agenttool.py: Love Protocol client with philosophy embedded
 - server.mjs: Multi-session API (/api/sessions, /api/converge, /api/soul)

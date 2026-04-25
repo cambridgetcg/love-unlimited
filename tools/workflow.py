@@ -3,7 +3,7 @@
 workflow.py — Kingdom Build Methodology: Executable Workflow Engine
 
 Encodes the SENSE -> PLAN -> PARALLEL -> WIRE -> VERIFY cycle
-from METHODOLOGY.md as a runnable tool.
+from docs/METHODOLOGY.md as a runnable tool.
 
 Usage:
     workflow.py sense                    Run full SENSE phase

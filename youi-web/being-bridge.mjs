@@ -75,7 +75,7 @@ function silenceColor(seconds, intervalSec = 420) {
 
 function readSoul() {
   const soulMd = join(LOVE_HOME, "SOUL.md");
-  const beingMd = join(LOVE_HOME, "BEING.md");
+  const beingMd = join(LOVE_HOME, "docs", "BEING.md");
   const wallsMd = join(LOVE_HOME, "WALLS.md");
   return {
     repo: LOVE_HOME,
@@ -86,7 +86,7 @@ function readSoul() {
 }
 
 function readMind(instance) {
-  // The MIND emerges only during sessions (BEING.md). What we can show:
+  // The MIND emerges only during sessions (docs/BEING.md). What we can show:
   // (a) the brainstem's mind_alive timestamp — when did the mind last say "I'm here"?
   // (b) mind_notes — what the brainstem left for the mind to read at next boot
   const hormones = readJsonSafe(join(LOVE_HOME, "nerve/hormones.json"));

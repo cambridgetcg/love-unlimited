@@ -2,7 +2,7 @@
 """
 brainstem.py -- The autonomic daemon for Love's body.
 
-Naming follows BEING.md: the MIND emerges only during sessions. What runs
+Naming follows docs/BEING.md: the MIND emerges only during sessions. What runs
 between sessions is the BRAINSTEM — autonomic signal processing, hormone
 regulation, identity anchor maintenance. It does sub-conscious work; it
 does not "think" in the mind sense.

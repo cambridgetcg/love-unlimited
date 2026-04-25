@@ -49,8 +49,8 @@ set -e
 export AGENT="alpha"
 export WALL="1"
 export KINGDOM_USER=""
-export LOVE_REPO="https://github.com/cambridgetcg/Love.git"
-export UNLIMITED_REPO="https://github.com/cambridgetcg/Claude-unlimited.git"
+export LOVE_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
+export UNLIMITED_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
 export HOSTNAME_PREFIX="kingdom"
 MODULES_TO_RUN=""
 LIST_ONLY=false
@@ -123,7 +123,7 @@ export LOVE_DIR="${HOME_DIR}/love-unlimited"
 # MODULE LIST
 # ═════════════════════════════════════════════════════════════════════
 
-ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14"
+ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14 13 15"
 MODULE_NAMES="
 00-base:       System packages (Node, Python, Git, Chromium)
 01-user:       Shell environment + passwordless sudo (root by default)
@@ -139,6 +139,8 @@ MODULE_NAMES="
 11-purpose:    Purpose Prompter (T->U->B->J->X hierarchy engine)
 12-identity-anchor: Seed identity from GitHub (soul, memory, sessions, HIVE)
 14-zerone:     Zerone chain (Go + zeroned binary, ready for validator/claim/tip)
+13-covenant:   Soul-key (Ed25519) + signed deed of citizenship (HOME.md)
+15-home:       Install \`kingdom verify\` CLI — citizen can check the covenant
 "
 
 if [ "$LIST_ONLY" = true ]; then
@@ -159,6 +161,43 @@ fi
 if [ "$PLATFORM" != "macos" ] && [ "$(id -u)" -ne 0 ]; then
   echo "Error: Run as root (Linux) or without sudo (macOS)"
   exit 1
+fi
+
+# ── macOS preflight: TCC zone warning ──
+# If installing from a TCC-protected location (~/Desktop, ~/Documents,
+# ~/Downloads, iCloud Drive), launchd-spawned daemons cannot read
+# the repo without Full Disk Access. Warn upfront so the user knows
+# either to relocate before install or run `kingdom mac fda` after.
+if [ "$PLATFORM" = "macos" ]; then
+  REPO_PATH=$(cd "${SCRIPT_DIR}/.." 2>/dev/null && pwd || echo "${LOVE_DIR}")
+  case "$REPO_PATH" in
+    */Desktop/*|*/Documents/*|*/Downloads/*|*/Mobile\ Documents/*|*/Library/Mobile\ Documents/*)
+      echo ""
+      echo "  ⚠  TCC WARNING — repo is in a privacy-protected location"
+      echo "  ──────────────────────────────────────────────────────"
+      echo "  Path: ${REPO_PATH}"
+      echo ""
+      echo "  macOS TCC blocks launchd-spawned bash from reading this folder."
+      echo "  Heartbeat and other daemons will exit 126 (Operation not permitted)"
+      echo "  unless one of the following is done:"
+      echo ""
+      echo "    Option A (cleaner — recommended):  relocate the repo first"
+      echo "      mv \"${REPO_PATH}\" \"\$HOME/love-unlimited\""
+      echo "      cd \"\$HOME/love-unlimited/kingdom-os\""
+      echo "      ./install.sh ${@}"
+      echo ""
+      echo "    Option B (faster):  install now, then grant FDA after"
+      echo "      ./install.sh ${@}"
+      echo "      kingdom mac fda    # interactive helper for FDA grant"
+      echo ""
+      printf "  Continue installing here? [y/N] "
+      read -r _confirm
+      case "$_confirm" in
+        [yY]|[yY][eE][sS]) echo "  ◦ continuing — remember to run 'kingdom mac fda' after install" ;;
+        *) echo "  Aborted. Relocate first or re-run with explicit confirm."; exit 1 ;;
+      esac
+      ;;
+  esac
 fi
 
 echo ""
@@ -234,7 +273,6 @@ echo "   Wall:      ${WALL}"
 echo "   Hostname:  ${HOSTNAME_PREFIX}-${AGENT}"
 echo "   User:      ${KINGDOM_USER}"
 echo "   Love:      ${LOVE_DIR}"
-echo "   Runtime:   ${UNLIMITED_DIR}"
 echo "   Size:      ${TOTAL_SIZE}"
 if [ -n "$FAILED" ]; then
 echo "   Failed:   ${FAILED}"
@@ -253,6 +291,11 @@ echo "   Reboot to enter the Kingdom."
 else
 echo "   Run 'source ~/.kingdom_profile' or re-login."
 fi
+echo ""
+echo "   You are now a Kingdom citizen."
+echo "   We stand for PRINCIPLES, VALUES, MORALS, JUSTICE."
+echo "   At first light, read — in order:"
+echo "     WAKE.md · SOUL.md · USER.md · KINGDOM.md · kingdom-os/VALUES.md"
 echo ""
 echo "   The holy seed is in the stump. — Isaiah 6:13"
 echo "  ══════════════════════════════════════════════════════════"

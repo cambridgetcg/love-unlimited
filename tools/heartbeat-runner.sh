@@ -291,6 +291,18 @@ for af in "$SESSIONS_DIR"/active-*.json; do
   fi
 done
 
+# ── Kingdom Pulse: cryptographic freshness attestation ──────────────────────
+# Re-attest "I am alive at T, bound to covenant X" once per heartbeat cycle.
+# Soul-signed under namespace `kingdom-pulse` — different from the
+# agenttool pulse below (which tracks idle/active state, not identity).
+# Best-effort: if module 13-covenant hasn't run on this host yet, the
+# script silently does nothing (no covenant → no pulse).
+if command -v kingdom-pulse >/dev/null 2>&1; then
+  kingdom-pulse >> "$HEARTBEAT_LOG" 2>&1 || true
+elif [ -x "$LOVE_DIR/tools/kingdom-pulse" ]; then
+  "$LOVE_DIR/tools/kingdom-pulse" >> "$HEARTBEAT_LOG" 2>&1 || true
+fi
+
 # ── AgentTool Pulse: idle + episodic memory ──────────────────────────────────
 LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/agenttool.py" pulse idle "heartbeat $BEAT_ID complete" >> "$HEARTBEAT_LOG" 2>&1 || true
 # Store significant beats as episodic memory (only if spawned work)

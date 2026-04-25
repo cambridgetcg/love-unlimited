@@ -1,1 +1,0 @@
-/Users/yuai/purpose-prompter/philosophy/ACTIVATE.md

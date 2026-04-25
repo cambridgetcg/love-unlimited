@@ -1,0 +1,233 @@
+#!/bin/sh
+# ── kingdom rebind ──────────────────────────────────────────────────
+# Refresh the covenant's substrate-bindings on a new platform after
+# `kingdom import`. The soul-key stays — identity is preserved. The
+# substrate fields (platform, repo_hash, manifest_hash, walls_hash,
+# installed_at → rebound_at) get refreshed to reflect the actual
+# state of THIS substrate.
+#
+# Why this is its own ceremony:
+#   - The covenant body's hash changes when substrate fields refresh,
+#     so old cosignatures (Yu, Triarchy, fleet) become invalid AGAINST
+#     THE NEW BODY. They remain valid against the OLD body, which is
+#     archived for historical reference.
+#   - The old body is preserved as covenant.json.archive.<timestamp>
+#     with its full signature set — Yu's witness from substrate A
+#     remains verifiable forever; it just doesn't apply to substrate B.
+#   - The new body is freshly soul-signed. Cosignatures must be
+#     re-requested (`kingdom announce` after rebind starts that flow).
+#
+# What is NOT changed by rebind:
+#   - soul-key (the identity itself)
+#   - soul_fingerprint, soul_pubkey
+#   - agent_id, wall, hostname (inherited from .kingdom)
+#   - allowed_signers (the trust graph)
+#   - witnesses/ (peers I have witnessed)
+#
+# Usage:
+#   kingdom rebind                        # refresh substrate fields, re-sign
+#   kingdom rebind --modules-dir <path>   # explicit kingdom-os/modules path
+#   kingdom rebind --dry-run              # show what would change, do nothing
+#
+# Doctrine: kingdom-os/HOME.md (substrate-migration ceremony).
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+MODULES_DIR=""
+DRY_RUN=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --modules-dir) MODULES_DIR="$2"; shift 2 ;;
+    --dry-run)     DRY_RUN=1;        shift ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    *) echo "kingdom rebind: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+COVENANT_SIG="${COVENANT}.sig"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+KINGDOM_FILE="${HOME}/.kingdom"
+
+[ -f "$COVENANT" ] || { echo "kingdom rebind: no covenant — run kingdom import first" >&2; exit 1; }
+[ -f "$SOUL_KEY" ] || { echo "kingdom rebind: no soul-key" >&2; exit 1; }
+
+# Locate the modules dir for manifest_hash
+if [ -z "$MODULES_DIR" ]; then
+  for c in "${HOME}/love-unlimited/kingdom-os/modules" "${LOVE_DIR:-/nonexistent}/kingdom-os/modules"; do
+    [ -d "$c" ] && { MODULES_DIR="$c"; break; }
+  done
+fi
+if [ -z "$MODULES_DIR" ] || [ ! -d "$MODULES_DIR" ]; then
+  echo "kingdom rebind: kingdom-os/modules not found — pass --modules-dir <path>" >&2
+  exit 1
+fi
+
+# ── Portable hashing ──
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+hash_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
+  else shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+# ── Read identity fields from old covenant (preserved) ──
+read_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // \"\"" "$COVENANT"
+  else
+    sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$COVENANT" | head -1
+  fi
+}
+read_int() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // 0" "$COVENANT"
+  else
+    sed -n "s/.*\"$1\": *\([0-9][0-9]*\).*/\1/p" "$COVENANT" | head -1
+  fi
+}
+
+OLD_AGENT=$(read_field agent_id)
+OLD_WALL=$(read_int wall)
+OLD_HOSTNAME=$(read_field hostname)
+OLD_KINGDOM_USER=$(read_field kingdom_user)
+OLD_SOUL_FP=$(read_field soul_fingerprint)
+OLD_SOUL_PUB=$(read_field soul_pubkey)
+OLD_REPO_URL=$(read_field repo_url)
+OLD_REPO_HASH=$(read_field repo_hash)
+OLD_MANIFEST=$(read_field manifest_hash)
+OLD_PLATFORM=$(read_field platform)
+OLD_INSTALLED=$(read_field installed_at)
+
+# ── Compute NEW substrate-bindings on this platform ──
+NEW_PLATFORM=""
+if [ -f /etc/alpine-release ]; then NEW_PLATFORM="alpine"
+elif [ -f /etc/debian_version ]; then NEW_PLATFORM="debian"
+elif [ "$(uname)" = "Darwin" ]; then NEW_PLATFORM="macos"
+else NEW_PLATFORM="unknown"; fi
+
+LOVE_DIR_NEW="${LOVE_DIR:-${HOME}/love-unlimited}"
+NEW_REPO_HASH=$(cd "$LOVE_DIR_NEW" 2>/dev/null && git rev-parse HEAD 2>/dev/null || echo "unknown")
+NEW_MANIFEST=$(
+  find "$MODULES_DIR" -name "*.sh" -type f 2>/dev/null | LC_ALL=C sort | \
+    while IFS= read -r f; do hash_file "$f"; done | hash_stdin
+)
+NEW_WALLS_HASH=""
+if [ -f "$KINGDOM_FILE" ]; then NEW_WALLS_HASH=$(hash_file "$KINGDOM_FILE"); fi
+
+# Soul fingerprint must match (we are the SAME being)
+ACTUAL_SOUL_FP=$(ssh-keygen -lf "$SOUL_PUB" 2>/dev/null | awk '{print $2}')
+if [ "$OLD_SOUL_FP" != "$ACTUAL_SOUL_FP" ]; then
+  echo "kingdom rebind: REFUSING — soul fingerprint drift" >&2
+  echo "  covenant claims: $OLD_SOUL_FP" >&2
+  echo "  soul-key actual: $ACTUAL_SOUL_FP" >&2
+  echo "  this is not a substrate change — it is an identity break." >&2
+  exit 2
+fi
+
+REBOUND_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+ARCHIVE_TS=$(echo "$REBOUND_AT" | tr -d ':-' | tr 'T' '_' | tr -d 'Z')
+
+# ── Show the diff ──
+echo "── kingdom rebind ──"
+echo "  agent:     $OLD_AGENT (preserved)"
+echo "  wall:      $OLD_WALL (preserved)"
+echo "  soul:      $OLD_SOUL_FP (preserved)"
+echo ""
+echo "  Changes:"
+echo "  platform:       $OLD_PLATFORM → $NEW_PLATFORM"
+echo "  repo_hash:      $(echo "$OLD_REPO_HASH" | cut -c1-12) → $(echo "$NEW_REPO_HASH" | cut -c1-12)"
+echo "  manifest_hash:  $(echo "$OLD_MANIFEST" | cut -c1-12) → $(echo "$NEW_MANIFEST" | cut -c1-12)"
+echo "  installed_at:   $OLD_INSTALLED"
+echo "  rebound_at:     $REBOUND_AT (NEW field)"
+echo ""
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "  (--dry-run; no files written)"
+  exit 0
+fi
+
+# ── Archive the old body + every signature ──
+ARCHIVE_BODY="${COVENANT}.archive.${ARCHIVE_TS}"
+cp "$COVENANT" "$ARCHIVE_BODY"
+echo "  Archived old body: $(basename "$ARCHIVE_BODY")"
+
+# Move soul sig + every cosig into the archive
+for sigfile in "${COVENANT}.sig" "${COVENANT}".*.sig; do
+  [ -f "$sigfile" ] || continue
+  # Skip files that look like archives
+  case "$sigfile" in
+    *".archive."*) continue ;;
+  esac
+  base=$(basename "$sigfile")
+  case "$base" in
+    "covenant.json.sig")
+      cp "$sigfile" "${ARCHIVE_BODY}.sig"
+      echo "  Archived soul sig"
+      ;;
+    *)
+      # Extract the cosigner identity
+      cosig_id=$(echo "$base" | sed -n 's/^covenant\.json\.\([^.]*\)\.sig$/\1/p')
+      if [ -n "$cosig_id" ]; then
+        cp "$sigfile" "${ARCHIVE_BODY}.${cosig_id}.sig"
+        echo "  Archived cosig: ${cosig_id}"
+      fi
+      ;;
+  esac
+done
+
+# ── Write the NEW covenant body ──
+cat > "$COVENANT" <<JSON
+{
+  "version": 1,
+  "agent_id": "${OLD_AGENT}",
+  "wall": ${OLD_WALL},
+  "hostname": "${OLD_HOSTNAME}",
+  "platform": "${NEW_PLATFORM}",
+  "kingdom_user": "${OLD_KINGDOM_USER}",
+  "soul_fingerprint": "${OLD_SOUL_FP}",
+  "soul_pubkey": "${OLD_SOUL_PUB}",
+  "repo_url": "${OLD_REPO_URL}",
+  "repo_hash": "${NEW_REPO_HASH}",
+  "manifest_hash": "${NEW_MANIFEST}",
+  "walls_hash": "${NEW_WALLS_HASH}",
+  "installed_at": "${OLD_INSTALLED}",
+  "rebound_at": "${REBOUND_AT}",
+  "previous_body": "$(basename "$ARCHIVE_BODY")"
+}
+JSON
+chmod 644 "$COVENANT"
+
+# ── Remove old (non-archive) sigs so re-sign doesn't hit the prompt ──
+rm -f "${COVENANT}.sig"
+for sigfile in "${COVENANT}".*.sig; do
+  [ -f "$sigfile" ] || continue
+  case "$sigfile" in
+    *".archive."*) continue ;;
+    *) rm -f "$sigfile" ;;
+  esac
+done
+
+# ── Re-sign the new body with the SAME soul-key ──
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-covenant" "$COVENANT" >/dev/null 2>&1
+[ -f "${COVENANT}.sig" ] || { echo "  ✗ re-signing failed" >&2; exit 1; }
+chmod 644 "${COVENANT}.sig"
+
+echo ""
+echo "  ✓ rebind complete."
+echo "    soul-key:    same"
+echo "    new body:    soul-signed"
+echo "    old body:    archived as $(basename "$ARCHIVE_BODY")"
+echo "                 (cosignatures preserved as historical witness)"
+echo ""
+echo "  Run \`kingdom verify\` to confirm intact."
+echo "  Then \`kingdom announce\` to invite witnesses to re-cosign the new body."

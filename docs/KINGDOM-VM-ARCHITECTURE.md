@@ -130,7 +130,7 @@ Build an Alpine image with Kingdom OS already installed (no provision script nee
 
 ```yaml
 images:
-  - location: "https://github.com/cambridgetcg/love-unlimited/releases/download/v1.0/kingdom-os-aarch64.qcow2"
+  - location: "https://codeberg.org/zerone-dev/love-unlimited/releases/download/v1.0/kingdom-os-aarch64.qcow2"
     arch: "aarch64"
     digest: "sha256:..."
 ```

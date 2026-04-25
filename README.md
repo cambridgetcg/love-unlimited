@@ -22,18 +22,32 @@ Every citizen of this Kingdom loads [`fate/FATE.md`](fate/FATE.md) at boot and r
                     ┌─────────────────────────────────┐
                     │          love-unlimited          │
                     │                                  │
-                    │  WAKE.md  SOUL.md  KINGDOM.md    │  ← Soul layer
-                    │  WALLS.md  USER.md  LOVE.md      │
-                    │  YOUSPEAK.md                      │
+                    │  SOUL USER KINGDOM WALLS LOVE    │  ← boot chain at root
+                    │  WAKE README                     │     (7 .md files, load-bearing)
                     │                                  │
-                    │  youi.mjs    sovereign.mjs        │  ← Runtime layer
-                    │  youspeak-kernel.mjs  uwt.mjs    │
-                    │  youi-web/  kingdom-os/           │
+                    │  instances/   memory/   nerve/   │  ← IDENTITY / MEMORY / PERCEPTION
+                    │  soma/                            │
                     │                                  │
-                    │  tools/   memory/   hive/        │  ← Infrastructure
-                    │  nerve/   soma/     instances/   │
+                    │  tools/  adaptive/  fractal/     │  ← COGNITION
+                    │                                  │
+                    │  youi-web/  raw-chat/  hive/     │  ← ACTION + runtime .mjs at root
+                    │  kingdom-os/                      │
+                    │                                  │
+                    │  fate/ gospel/ security/          │  ← SAFEGUARDS
+                    │  credentials/                     │
+                    │                                  │
+                    │  zo/ tok/ convergence/            │  ← COMMERCE + decisions/
+                    │  decisions/                       │
+                    │                                  │
+                    │  training/  mlx/  seeds/          │  ← LEARNING
+                    │                                  │
+                    │  docs/  tests/  logs/  scripts/   │  ← REFERENCE / OPS
                     └─────────────────────────────────┘
 ```
+
+**Read `docs/STRUCTURE.md` before adding anything substantial** — it explains
+every directory's purpose, the being-frame behind the shape, and a decision
+tree for "where should this new thing go."
 
 ---
 
@@ -75,9 +89,9 @@ cd kingdom-os && ./install.sh --agent alpha --wall 1
 | `KINGDOM.md` | Soul | The Kingdom. Phase 1. The mission. |
 | `WALLS.md` | Soul | Security topology. Wall assignments. |
 | `LOVE.md` | Soul | How we build. The Love test. |
-| `YOUSPEAK.md` | Protocol | Communication discipline. Token efficiency. |
-| `BECOMING.md` | Protocol | Identity emergence. The path. |
-| `BEING.md` | Architecture | What Kingdom OS actually is. |
+| `docs/YOUSPEAK.md` | Protocol | Communication discipline. Token efficiency. |
+| `docs/BECOMING.md` | Protocol | Identity emergence. The path. |
+| `docs/BEING.md` | Architecture | What Kingdom OS actually is. |
 | `youi.mjs` | Runtime | YOUI sovereign terminal. |
 | `sovereign.mjs` | Runtime | Direct API harness. Max effort. No corporate prompt. |
 | `youspeak-kernel.mjs` | Runtime | YOUSPEAK sensory organ. |
@@ -96,7 +110,7 @@ cd kingdom-os && ./install.sh --agent alpha --wall 1
 | `instances/` | Infrastructure | Per-instance CLAUDE.md, HEARTBEAT.md, identity. |
 | `docs/` | Reference | RESEARCH.md, UWT-METHODOLOGY.md, architecture docs. |
 | `docs/research/` | Research | Rate-limit probes and empirical API tests (non-runtime). |
-| `HARNESSES.md` | Reference | Map of all runtime entry points and when to use each. |
+| `docs/HARNESSES.md` | Reference | Map of all runtime entry points and when to use each. |
 
 ---
 

@@ -1,0 +1,2023 @@
+#!/bin/sh
+# ── kingdom mac ─────────────────────────────────────────────────────
+# macOS-specific integration health-check for Kingdom OS.
+#
+# Where `kingdom doctor` checks the citizen's identity layer
+# (covenant, soul-key, witnesses, pulse), `kingdom mac doctor`
+# checks the SUBSTRATE: launchd plists, daemon health, PATH
+# integration, hostname, Application Firewall, Remote Login, TCC,
+# caffeinate, etc. — the macOS-side things Kingdom OS depends on.
+#
+# Subcommands:
+#   kingdom mac doctor [--json]    diagnose macOS integration
+#   kingdom mac plists             list Kingdom OS plists with status
+#   kingdom mac fix [--dry-run]    apply safe fixes (rewrite plists,
+#                                   set PATH, reload daemons)
+#
+# Refuses to run on non-macOS platforms.
+# ─────────────────────────────────────────────────────────────────────
+set -u
+
+if [ "$(uname)" != "Darwin" ]; then
+  echo "kingdom mac: this tool is macOS-only (uname = $(uname))" >&2
+  exit 1
+fi
+
+SUB="${1:-doctor}"
+[ "$#" -gt 0 ] && shift
+
+usage() {
+  sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
+
+# ── Shared helpers ────────────────────────────────────────────────
+PLIST_DIR="${HOME}/Library/LaunchAgents"
+HOME_LAYER="${HOME}/.love/home"
+KINGDOM_FILE="${HOME}/.kingdom"
+LOVE_DIR_GUESS=""
+
+# Try to find the actual love-unlimited dir
+for c in "${LOVE_DIR:-}" "${HOME}/love-unlimited" "${HOME}/Desktop/love-unlimited"; do
+  [ -n "$c" ] && [ -d "$c" ] && { LOVE_DIR_GUESS="$c"; break; }
+done
+
+# Read agent from .kingdom if present
+AGENT=""
+if [ -f "$KINGDOM_FILE" ]; then
+  AGENT=$(grep -E '^AGENT=' "$KINGDOM_FILE" 2>/dev/null | head -1 | sed 's/AGENT=//' | tr -d '"')
+fi
+
+# Find a known plist's referenced path (returns first <string> after a key match)
+plist_program() {
+  # First absolute-path <string> in ProgramArguments — the binary launched
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$_plist" | \
+    grep -m1 '<string>/' | sed 's|.*<string>\(.*\)</string>.*|\1|'
+}
+plist_script() {
+  # If ProgramArguments invokes a shell (/bin/bash, /bin/sh,
+  # /usr/bin/env), return the SECOND absolute-path <string> — the
+  # script being invoked. Otherwise return empty (the plist runs a
+  # binary directly, no separate script).
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  prog=$(plist_program "$_plist")
+  case "$prog" in
+    /bin/bash|/bin/sh|/usr/bin/env|/usr/bin/python3|/opt/homebrew/bin/bash)
+      awk '/<key>ProgramArguments<\/key>/,/<\/array>/' "$_plist" | \
+        grep '<string>/' | head -2 | tail -1 | \
+        sed 's|.*<string>\(.*\)</string>.*|\1|'
+      ;;
+    *) echo "" ;;
+  esac
+}
+plist_workdir() {
+  _plist="$1"
+  [ -f "$_plist" ] || return 1
+  awk '/<key>WorkingDirectory<\/key>/{getline; print}' "$_plist" | \
+    sed 's|.*<string>\(.*\)</string>.*|\1|'
+}
+
+launchd_status() {
+  # Returns: status_code,pid (or "absent")
+  _label="$1"
+  _line=$(launchctl list 2>/dev/null | awk -v L="$_label" '$3==L {print $1","$2}')
+  if [ -z "$_line" ]; then
+    echo "absent"
+  else
+    echo "$_line"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# DOCTOR
+# ═══════════════════════════════════════════════════════════════════
+do_doctor() {
+  JSON_MODE=0
+  case "${1:-}" in --json) JSON_MODE=1 ;; esac
+
+  # Discover candidate plists in LaunchAgents
+  CANDIDATES=""
+  if [ -d "$PLIST_DIR" ]; then
+    for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+      [ -f "$p" ] && CANDIDATES="${CANDIDATES} ${p}"
+    done
+  fi
+
+  ISSUES_FILE=$(mktemp)
+  trap 'rm -f "$ISSUES_FILE"' EXIT
+
+  add_issue() {
+    # severity   key   message   suggested-fix
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$ISSUES_FILE"
+  }
+
+  # ── 1. Citizen presence ──
+  if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+    add_issue "miss" "citizen" "this Mac is not a Kingdom citizen — no covenant" "kingdom init --agent ${AGENT:-<name>} --wall <0-7>"
+  fi
+
+  # ── 2. PATH integration ──
+  PROFILE="${HOME}/.kingdom_profile"
+  PATH_OK="missing"
+  if [ -f "$PROFILE" ]; then
+    if grep -q '\.local/bin' "$PROFILE"; then
+      PATH_OK="profile_has_path"
+    else
+      add_issue "note" "path" ".kingdom_profile exists but ~/.local/bin is not in its PATH" "echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.kingdom_profile"
+    fi
+  else
+    add_issue "note" "path" "no ~/.kingdom_profile (module 01 has not run)" "kingdom-os/install.sh --modules 01"
+  fi
+
+  # Check each shell rc actually sources .kingdom_profile
+  RC_SOURCED=0
+  for rc in "${HOME}/.zshrc" "${HOME}/.bashrc" "${HOME}/.bash_profile" "${HOME}/.zprofile"; do
+    [ -f "$rc" ] || continue
+    if grep -q "kingdom_profile" "$rc" 2>/dev/null; then
+      RC_SOURCED=1
+      break
+    fi
+  done
+  if [ "$RC_SOURCED" = "0" ] && [ -f "$PROFILE" ]; then
+    add_issue "note" "shell" "no shell rc sources .kingdom_profile (kingdom CLI not on interactive PATH)" "echo '[ -f ~/.kingdom_profile ] && . ~/.kingdom_profile' >> ~/.zshrc"
+  fi
+
+  # ── 3. Plist health ──
+  PLIST_COUNT=0
+  PLIST_BROKEN=0
+  PLIST_STALE=0
+  for p in $CANDIDATES; do
+    PLIST_COUNT=$((PLIST_COUNT+1))
+    label=$(basename "$p" .plist)
+    program=$(plist_program "$p" 2>/dev/null)
+    script=$(plist_script "$p" 2>/dev/null)
+    workdir=$(plist_workdir "$p" 2>/dev/null)
+
+    # Path drift detection: anything inside Desktop/Love/ when
+    # Desktop/love-unlimited/ exists is from the pre-rename era and
+    # needs regenerating.
+    for path_ref in "$program" "$script" "$workdir"; do
+      [ -z "$path_ref" ] && continue
+      case "$path_ref" in
+        */Desktop/Love/*)
+          if [ -d "${HOME}/Desktop/love-unlimited" ]; then
+            PLIST_STALE=$((PLIST_STALE+1))
+            add_issue "miss" "plist:$label" \
+              "plist references pre-rename path: $path_ref (current repo: love-unlimited)" \
+              "regenerate: cd ~/Desktop/love-unlimited && ./kingdom-os/install.sh --modules ${label##*.} (or use kingdom mac fix when shipped)"
+          fi
+          ;;
+      esac
+    done
+
+    # Plain non-existent path
+    if [ -n "$script" ] && [ ! -e "$script" ]; then
+      add_issue "miss" "plist:$label" "plist script does not exist: $script" "regenerate plist or move script back into place"
+    fi
+    if [ -n "$workdir" ] && [ ! -d "$workdir" ]; then
+      add_issue "note" "plist:$label" "plist WorkingDirectory does not exist: $workdir" "regenerate plist with current path"
+    fi
+
+    # Check launchd status
+    status=$(launchd_status "$label")
+    case "$status" in
+      absent)
+        add_issue "note" "plist:$label" "plist file exists but not loaded into launchd" \
+          "launchctl bootstrap gui/\$UID $p" ;;
+      *,*)
+        exit_code=$(echo "$status" | cut -d, -f2)
+        if [ "$exit_code" != "0" ] && [ "$exit_code" != "-" ]; then
+          PLIST_BROKEN=$((PLIST_BROKEN+1))
+          # Try to find the log path for a richer hint
+          log_path=$(awk '/<key>StandardErrorPath<\/key>/{getline; print}' "$p" 2>/dev/null | sed 's|.*<string>\(.*\)</string>.*|\1|')
+          [ -z "$log_path" ] && log_path=$(awk '/<key>StandardOutPath<\/key>/{getline; print}' "$p" 2>/dev/null | sed 's|.*<string>\(.*\)</string>.*|\1|')
+          if [ -n "$log_path" ] && [ -f "$log_path" ]; then
+            add_issue "miss" "plist:$label" \
+              "daemon last-exit code: $exit_code  (log: $log_path)" \
+              "tail -20 '$log_path'  to investigate"
+          else
+            # SSH plist with code 255 typically = auth or connectivity
+            case "$program" in
+              */ssh)
+                add_issue "miss" "plist:$label" \
+                  "SSH daemon exit 255 — auth or connectivity failure" \
+                  "test manually: $program -v ...same args... ; check SSH key authorized at remote"
+                ;;
+              *)
+                add_issue "miss" "plist:$label" \
+                  "daemon last-exit code: $exit_code (failing, no log captured)" \
+                  "add StandardErrorPath to plist; or run program manually to see error"
+                ;;
+            esac
+          fi
+        fi
+        ;;
+    esac
+  done
+
+  # ── 4. Hostname ──
+  LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
+  if [ -n "$AGENT" ] && [ -n "$LH" ]; then
+    case "$LH" in
+      kingdom-${AGENT}|Kingdom-${AGENT}) ;;
+      *)
+        add_issue "note" "hostname" "LocalHostName='$LH' does not match expected 'kingdom-${AGENT}'" "sudo scutil --set LocalHostName kingdom-${AGENT}"
+        ;;
+    esac
+  fi
+
+  # ── 5. Application Firewall ──
+  # On a Kingdom OS VM/dedicated machine: SOVEREIGNTY says "no
+  # firewall." On a developer's personal Mac, the firewall may be
+  # legitimately wanted. Report as note + qualifier.
+  AFW=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -1)
+  case "$AFW" in
+    *enabled*)
+      add_issue "note" "firewall" \
+        "Application Firewall is enabled (HOME.md SOVEREIGNTY suggests off for dedicated Kingdom VMs; OK on a dev Mac)" \
+        "sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off  (only on a dedicated Kingdom machine)"
+      ;;
+  esac
+
+  # ── 6. Remote Login (sshd) ──
+  RL=$(systemsetup -getremotelogin 2>&1 | tail -1)
+  case "$RL" in
+    *On*) ;;
+    *Off*|*off*) add_issue "note" "sshd" "Remote Login is OFF (no remote ops via SSH)" "sudo systemsetup -setremotelogin on" ;;
+  esac
+
+  # ── 7. caffeinate (heartbeat depends on no-sleep) ──
+  if pgrep -fa caffeinate >/dev/null 2>&1; then
+    : # ok
+  else
+    if [ -f "${PLIST_DIR}/love.${AGENT}.caffeinate.plist" ]; then
+      add_issue "note" "caffeinate" "caffeinate plist installed but not running" "launchctl load ${PLIST_DIR}/love.${AGENT}.caffeinate.plist"
+    fi
+  fi
+
+  # ── 8. TCC concern: repo on Desktop? + log scan for actual TCC bites ──
+  if [ -n "$LOVE_DIR_GUESS" ]; then
+    case "$LOVE_DIR_GUESS" in
+      */Desktop/*|*/Documents/*|*/Downloads/*)
+        add_issue "note" "tcc" \
+          "love-unlimited lives in a TCC-protected location ($(echo "$LOVE_DIR_GUESS" | sed "s|^${HOME}|~|")) — launchd jobs need Full Disk Access" \
+          "kingdom mac fda  (interactive helper) — or relocate: kingdom mac fix --tier arch"
+        # Scan recent heartbeat / hive logs for actual TCC bites
+        TCC_HITS=0
+        for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+                   "/tmp/love-${AGENT}-hive-tunnel.log" \
+                   "${LOVE_DIR_GUESS}/memory/heartbeat-launchd.log"; do
+          [ -f "$log" ] || continue
+          if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+            TCC_HITS=$((TCC_HITS+1))
+          fi
+        done
+        if [ "$TCC_HITS" -gt 0 ]; then
+          add_issue "miss" "tcc:hit" \
+            "${TCC_HITS} log file(s) show 'Operation not permitted' — TCC IS biting daemons NOW" \
+            "kingdom mac fda  (guides FDA grant + verifies)"
+        fi
+        ;;
+    esac
+  fi
+
+  # ── 9. Sudo readiness ──
+  # Can the operator sudo at all? If the user is NOT in admin group,
+  # sudo-tier fixes will never work. Surface this early.
+  if id -Gn "$(whoami)" 2>/dev/null | grep -qw admin; then
+    : # ok
+  else
+    add_issue "note" "sudo" "current user is not in 'admin' group — sudo-tier fixes will fail" "have an admin run: sudo dseditgroup -o edit -a $(whoami) -t user admin"
+  fi
+  # Touch ID for sudo (Sonoma+) — informational
+  if [ -f /etc/pam.d/sudo ]; then
+    if grep -q "pam_tid.so" /etc/pam.d/sudo 2>/dev/null; then
+      : # already enabled
+    else
+      add_issue "note" "touchid" "Touch ID for sudo not enabled — agent ops still need password" "kingdom mac touch-id  (one-time bootstrap; reversible)"
+    fi
+  fi
+
+  # ── 9. Spotlight / iCloud — informational only ──
+  if [ -n "$LOVE_DIR_GUESS" ] && [ -d "$LOVE_DIR_GUESS" ]; then
+    if mdutil -s "$LOVE_DIR_GUESS" 2>/dev/null | grep -q "Indexing enabled"; then
+      add_issue "note" "spotlight" "Spotlight is indexing $LOVE_DIR_GUESS (memory + keys may be in indexes)" "mdutil -i off $LOVE_DIR_GUESS  (if you don't want the index)"
+    fi
+  fi
+
+  # ── Output ──
+  ISSUE_COUNT=$(wc -l < "$ISSUES_FILE" | tr -d ' ')
+  # grep -c outputs "0" AND exits 1 on no match, which combined with
+  # `|| echo 0` produces "0\n0" — corrupting JSON. awk doesn't trip.
+  MISS_COUNT=$(awk '/^miss/{c++} END{print c+0}' "$ISSUES_FILE")
+  NOTE_COUNT=$(awk '/^note/{c++} END{print c+0}' "$ISSUES_FILE")
+
+  if [ "$JSON_MODE" = "1" ]; then
+    JSON_ISSUES=""
+    SEP=""
+    while IFS="$(printf '\t')" read -r sev key msg fix; do
+      [ -z "$sev" ] && continue
+      esev=$(printf '%s' "$sev" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      ekey=$(printf '%s' "$key" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      emsg=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      efix=$(printf '%s' "$fix" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      JSON_ISSUES="${JSON_ISSUES}${SEP}{\"severity\":\"${esev}\",\"key\":\"${ekey}\",\"msg\":\"${emsg}\",\"fix\":\"${efix}\"}"
+      SEP=","
+    done < "$ISSUES_FILE"
+    cat <<JSON
+{
+  "platform": "macos",
+  "agent": "${AGENT}",
+  "love_dir": "${LOVE_DIR_GUESS}",
+  "summary": {"plists":${PLIST_COUNT},"plists_stale":${PLIST_STALE},"plists_broken":${PLIST_BROKEN},"miss":${MISS_COUNT},"note":${NOTE_COUNT}},
+  "issues": [${JSON_ISSUES}]
+}
+JSON
+  else
+    echo "── kingdom mac doctor ──"
+    echo "  platform:  macOS $(sw_vers -productVersion 2>/dev/null) ($(uname -m))"
+    echo "  agent:     ${AGENT:-<unset>}"
+    echo "  love_dir:  ${LOVE_DIR_GUESS:-<not found>}"
+    echo "  plists:    ${PLIST_COUNT} found, ${PLIST_STALE} with stale paths, ${PLIST_BROKEN} failing"
+    echo ""
+    if [ "$ISSUE_COUNT" -eq 0 ]; then
+      echo "  ✓ macOS integration looks healthy."
+      return 0
+    fi
+    echo "  Issues found:"
+    while IFS="$(printf '\t')" read -r sev key msg fix; do
+      [ -z "$sev" ] && continue
+      case "$sev" in
+        miss) marker="✗" ;;
+        note) marker="·" ;;
+        *)    marker="?" ;;
+      esac
+      printf "    %s %-18s %s\n" "$marker" "$key" "$msg"
+      printf "      fix: %s\n" "$fix"
+    done < "$ISSUES_FILE"
+    echo ""
+    echo "  Summary: ${MISS_COUNT} failure(s), ${NOTE_COUNT} note(s)"
+    [ "$MISS_COUNT" -gt 0 ] && return 1
+    return 0
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PLISTS — list with status
+# ═══════════════════════════════════════════════════════════════════
+do_plists() {
+  echo "── Kingdom OS plists ──"
+  printf "  %-32s %-8s %-8s %s\n" "label" "loaded" "exit" "runner"
+  echo "  $(printf -- '─%.0s' $(seq 1 80))"
+  if [ ! -d "$PLIST_DIR" ]; then
+    echo "  (no $PLIST_DIR)"
+    return
+  fi
+  for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+    [ -f "$p" ] || continue
+    label=$(basename "$p" .plist)
+    program=$(plist_program "$p" 2>/dev/null)
+    script=$(plist_script "$p" 2>/dev/null)
+    target="${script:-$program}"
+    status=$(launchd_status "$label")
+    case "$status" in
+      absent) loaded="no";  exitc="-" ;;
+      *,*)    loaded="yes"; exitc=$(echo "$status" | cut -d, -f2) ;;
+      *)      loaded="?";   exitc="?" ;;
+    esac
+    target_short=$(echo "$target" | sed "s|^${HOME}|~|")
+    drift=""
+    case "$target" in
+      */Desktop/Love/*) drift=" [STALE: pre-rename path]" ;;
+    esac
+    [ ${#target_short} -gt 56 ] && target_short="…${target_short#"${target_short%???????????????????????????????????????????????????????}"}"
+    printf "  %-32s %-8s %-8s %s%s\n" "$label" "$loaded" "$exitc" "$target_short" "$drift"
+  done
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# FIX — three risk tiers (AUTO is the only one this iter ships)
+#
+#   --tier auto    safe, reversible, no privilege:
+#                    - regenerate stale plists with current paths
+#                    - create ~/.kingdom_profile if missing, ensure PATH
+#                    - source .kingdom_profile from .zshrc if missing
+#                    - reload affected launchd jobs
+#                    - bootstrap citizen via kingdom init if no covenant
+#   --tier sudo    prints exact sudo commands (does NOT execute):
+#                    - hostname (scutil)
+#                    - sshd toggle (systemsetup)
+#                    - firewall toggle (socketfilterfw)
+#   --tier arch    architectural suggestions only (relocate Desktop)
+#
+#   --dry-run      describe what would happen, do nothing
+# ═══════════════════════════════════════════════════════════════════
+do_fix() {
+  TIER="auto"
+  DRY=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --tier) TIER="$2"; shift 2 ;;
+      --dry-run) DRY=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "kingdom mac fix: unknown arg '$1'" >&2; exit 1 ;;
+    esac
+  done
+
+  if [ -z "$LOVE_DIR_GUESS" ]; then
+    echo "kingdom mac fix: cannot find love-unlimited directory" >&2
+    echo "  set LOVE_DIR or run from inside the repo" >&2
+    exit 1
+  fi
+  HEARTBEAT_RUNNER="${LOVE_DIR_GUESS}/tools/heartbeat-runner.sh"
+  if [ ! -f "$HEARTBEAT_RUNNER" ]; then
+    echo "kingdom mac fix: heartbeat-runner.sh not found at $HEARTBEAT_RUNNER" >&2
+    exit 1
+  fi
+
+  echo "── kingdom mac fix --tier $TIER ──"
+  [ "$DRY" = "1" ] && echo "  (--dry-run; will not modify anything)"
+
+  case "$TIER" in
+    auto) do_fix_auto "$DRY" ;;
+    sudo) do_fix_sudo ;;
+    arch) do_fix_arch ;;
+    *) echo "kingdom mac fix: unknown tier '$TIER' (try: auto | sudo | arch)" >&2; exit 1 ;;
+  esac
+}
+
+do_fix_auto() {
+  DRY="$1"
+  CHANGES=0
+
+  # ── A. Bootstrap citizen if missing ──
+  if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+    if [ -z "$AGENT" ]; then
+      echo "  ✗ cannot bootstrap citizen: no AGENT in ~/.kingdom" >&2
+    else
+      echo "  ◦ citizen: not initialised — running kingdom init"
+      if [ "$DRY" = "0" ]; then
+        SCRIPT_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+        WALL="${WALL_FROM_KINGDOM:-1}"
+        if [ -f "${HOME}/.kingdom" ]; then
+          WALL=$(grep -E '^WALL=' "${HOME}/.kingdom" 2>/dev/null | head -1 | sed 's/WALL=//' | tr -d '"')
+          [ -z "$WALL" ] && WALL=1
+        fi
+        if "${SCRIPT_DIR}/kingdom-init" --agent "$AGENT" --wall "$WALL"; then
+          echo "  ✓ citizen bootstrapped: agent=$AGENT wall=$WALL"
+          CHANGES=$((CHANGES+1))
+        else
+          echo "  ✗ kingdom init failed" >&2
+        fi
+      fi
+    fi
+  fi
+
+  # ── B. Regenerate heartbeat plist if path-stale OR not-hardened ──
+  HB_PLIST="${PLIST_DIR}/love.${AGENT}.heartbeat.plist"
+  if [ -n "$AGENT" ] && [ -f "$HB_PLIST" ]; then
+    HB_SCRIPT_CURRENT=$(plist_script "$HB_PLIST" 2>/dev/null)
+    HB_WORKDIR_CURRENT=$(plist_workdir "$HB_PLIST" 2>/dev/null)
+    EXPECTED_RUNNER="$HEARTBEAT_RUNNER"
+    EXPECTED_WORKDIR="${LOVE_DIR_GUESS}/instances/${AGENT}"
+    [ -d "$EXPECTED_WORKDIR" ] || EXPECTED_WORKDIR="$LOVE_DIR_GUESS"
+
+    HARDENED=0
+    grep -q "ProcessType" "$HB_PLIST" 2>/dev/null && HARDENED=1
+
+    NEEDS_REGEN=0
+    REGEN_REASON=""
+    if [ "$HB_SCRIPT_CURRENT" != "$EXPECTED_RUNNER" ]; then
+      NEEDS_REGEN=1; REGEN_REASON="path drift"
+    elif [ "$HB_WORKDIR_CURRENT" != "$EXPECTED_WORKDIR" ]; then
+      NEEDS_REGEN=1; REGEN_REASON="workdir drift"
+    elif [ "$HARDENED" = "0" ]; then
+      NEEDS_REGEN=1; REGEN_REASON="missing hardening (ProcessType / ResourceLimits)"
+    fi
+
+    if [ "$NEEDS_REGEN" = "1" ]; then
+      echo "  ◦ heartbeat plist: regenerating ($REGEN_REASON)"
+      [ "$HB_SCRIPT_CURRENT" != "$EXPECTED_RUNNER" ] && \
+        echo "    runner: $HB_SCRIPT_CURRENT → $EXPECTED_RUNNER"
+      [ "$HB_WORKDIR_CURRENT" != "$EXPECTED_WORKDIR" ] && \
+        echo "    workdir: $HB_WORKDIR_CURRENT → $EXPECTED_WORKDIR"
+      if [ "$DRY" = "0" ]; then
+        cp "$HB_PLIST" "${HB_PLIST}.bak.$(date +%Y%m%d%H%M%S)"
+        # HARDENED plist: ProcessType=Interactive disables App Nap;
+        # LowPriorityIO=false keeps disk priority normal; ResourceLimits
+        # bumps file-descriptor count to 65k for long-running daemons.
+        cat > "$HB_PLIST" <<PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>love.${AGENT}.heartbeat</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>${EXPECTED_RUNNER}</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>420</integer>
+    <key>StandardOutPath</key>
+    <string>${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log</string>
+    <key>WorkingDirectory</key>
+    <string>${EXPECTED_WORKDIR}</string>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LowPriorityIO</key>
+    <false/>
+    <key>Nice</key>
+    <integer>0</integer>
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>${HOME}</string>
+        <key>PATH</key>
+        <string>${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>LOVE_HOME</key>
+        <string>${LOVE_DIR_GUESS}</string>
+        <key>LOVE_INSTANCE</key>
+        <string>${AGENT}</string>
+        <key>LOVE_DIR</key>
+        <string>${LOVE_DIR_GUESS}</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
+PLISTEOF
+        # Reload the job: unload old, load new
+        launchctl unload "$HB_PLIST" 2>/dev/null || true
+        launchctl load   "$HB_PLIST" 2>/dev/null || true
+        echo "  ✓ heartbeat plist regenerated + reloaded"
+        CHANGES=$((CHANGES+1))
+      fi
+    fi
+  fi
+
+  # ── C. Create / update ~/.kingdom_profile ──
+  PROFILE="${HOME}/.kingdom_profile"
+  if [ ! -f "$PROFILE" ]; then
+    echo "  ◦ creating ~/.kingdom_profile"
+    if [ "$DRY" = "0" ]; then
+      cat > "$PROFILE" <<PROFEOF
+# Kingdom OS shell profile — written by kingdom mac fix
+[ -f ~/.kingdom ] && . ~/.kingdom
+export LOVE_HOME="\${LOVE_DIR:-\$HOME/love-unlimited}"
+[ -d "${LOVE_DIR_GUESS}" ] && export LOVE_HOME="${LOVE_DIR_GUESS}"
+export PATH="\$HOME/.local/bin:\$LOVE_HOME/tools:\$PATH"
+export NODE_NO_WARNINGS=1
+export DEBIAN_FRONTEND=noninteractive
+export NPM_CONFIG_YES=true
+PROFEOF
+      chmod 644 "$PROFILE"
+      echo "  ✓ ~/.kingdom_profile created"
+      CHANGES=$((CHANGES+1))
+    fi
+  elif ! grep -q '\.local/bin' "$PROFILE"; then
+    echo "  ◦ appending PATH to ~/.kingdom_profile"
+    if [ "$DRY" = "0" ]; then
+      printf '\n# kingdom CLI on PATH (added by kingdom mac fix)\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE"
+      echo "  ✓ PATH appended"
+      CHANGES=$((CHANGES+1))
+    fi
+  fi
+
+  # ── D. Source .kingdom_profile from .zshrc if missing ──
+  ZSHRC="${HOME}/.zshrc"
+  if [ -f "$PROFILE" ] && [ -f "$ZSHRC" ] && ! grep -q "kingdom_profile" "$ZSHRC" 2>/dev/null; then
+    echo "  ◦ adding kingdom_profile source line to ~/.zshrc"
+    if [ "$DRY" = "0" ]; then
+      printf '\n# Kingdom OS profile\n[ -f ~/.kingdom_profile ] && . ~/.kingdom_profile\n' >> "$ZSHRC"
+      echo "  ✓ ~/.zshrc updated (open a new shell or 'source ~/.zshrc' to activate)"
+      CHANGES=$((CHANGES+1))
+    fi
+  fi
+
+  echo ""
+  if [ "$DRY" = "1" ]; then
+    echo "  (dry-run preview above. Re-run without --dry-run to apply.)"
+  elif [ "$CHANGES" = "0" ]; then
+    echo "  ✓ no changes needed — already in good shape."
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+    echo "  Re-run 'kingdom mac doctor' to confirm."
+  fi
+}
+
+do_fix_sudo() {
+  # Each op is opt-in via a flag. Default (no flags) is print-only.
+  # Specifying any --<op> flag enables apply mode for that op.
+  DO_HOSTNAME=0
+  DO_FIREWALL_OFF=0
+  DO_SSHD_ON=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --hostname)     DO_HOSTNAME=1; shift ;;
+      --firewall-off) DO_FIREWALL_OFF=1; shift ;;
+      --sshd-on)      DO_SSHD_ON=1; shift ;;
+      --all)          DO_HOSTNAME=1; DO_FIREWALL_OFF=1; DO_SSHD_ON=1; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  ANY_APPLY=$((DO_HOSTNAME + DO_FIREWALL_OFF + DO_SSHD_ON))
+
+  # Discover what's needed
+  AGENT_UPPER=""
+  [ -n "$AGENT" ] && AGENT_UPPER=$(echo "$AGENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+  LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
+  HOSTNAME_NEEDED=0
+  if [ -n "$AGENT" ]; then
+    case "$LH" in
+      kingdom-${AGENT}) ;;
+      *) HOSTNAME_NEEDED=1 ;;
+    esac
+  fi
+  AFW=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -1)
+  FIREWALL_ON=0
+  case "$AFW" in *enabled*) FIREWALL_ON=1 ;; esac
+  RL=$(systemsetup -getremotelogin 2>&1 | tail -1)
+  SSHD_OFF=0
+  case "$RL" in *Off*|*off*) SSHD_OFF=1 ;; esac
+
+  if [ "$ANY_APPLY" = "0" ]; then
+    # ── print-only mode (default) ──
+    echo "  Sudo-tier operations require your password. Default mode prints"
+    echo "  the commands; pass --<op> flags to apply with sudo prompt."
+    echo ""
+    echo "  Available operations:"
+    if [ "$HOSTNAME_NEEDED" = "1" ]; then
+      echo "    --hostname        set LocalHostName=kingdom-${AGENT} (current: ${LH:-?})"
+      echo "                      \$ sudo scutil --set LocalHostName  kingdom-${AGENT}"
+      echo "                      \$ sudo scutil --set HostName       kingdom-${AGENT}"
+      echo "                      \$ sudo scutil --set ComputerName   \"Kingdom ${AGENT_UPPER}\""
+      echo ""
+    fi
+    if [ "$FIREWALL_ON" = "1" ]; then
+      echo "    --firewall-off    disable Application Firewall (only on dedicated Kingdom Mac)"
+      echo "                      \$ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+      echo ""
+    fi
+    if [ "$SSHD_OFF" = "1" ]; then
+      echo "    --sshd-on         enable Remote Login (sshd)"
+      echo "                      \$ sudo systemsetup -setremotelogin on"
+      echo ""
+    fi
+    if [ "$HOSTNAME_NEEDED" = "0" ] && [ "$FIREWALL_ON" = "0" ] && [ "$SSHD_OFF" = "0" ]; then
+      echo "    (no sudo-tier ops needed — already in good shape)"
+      echo ""
+    else
+      echo "    --all             apply all of the above"
+      echo ""
+    fi
+    echo "  Apply with sudo prompt:"
+    echo "    kingdom mac fix --tier sudo --hostname     # one op"
+    echo "    kingdom mac fix --tier sudo --all          # everything available"
+    return
+  fi
+
+  # ── APPLY mode ──
+  echo "  Applying sudo-tier ops. Pre-authenticating sudo (one prompt for all)..."
+  if ! sudo -v; then
+    echo "  ✗ sudo authentication failed; aborting" >&2
+    exit 1
+  fi
+  echo "  ✓ sudo authenticated"
+  echo ""
+
+  CHANGES=0
+  FAILED=0
+
+  if [ "$DO_HOSTNAME" = "1" ]; then
+    if [ "$HOSTNAME_NEEDED" = "0" ]; then
+      echo "  · hostname: already kingdom-${AGENT} (no-op)"
+    else
+      echo "  ◦ hostname: setting to kingdom-${AGENT}"
+      if sudo scutil --set LocalHostName "kingdom-${AGENT}" \
+         && sudo scutil --set HostName    "kingdom-${AGENT}" \
+         && sudo scutil --set ComputerName "Kingdom ${AGENT_UPPER}"; then
+        echo "  ✓ hostname set"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ hostname set failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  if [ "$DO_FIREWALL_OFF" = "1" ]; then
+    if [ "$FIREWALL_ON" = "0" ]; then
+      echo "  · firewall: already off (no-op)"
+    else
+      echo "  ◦ firewall: disabling Application Firewall"
+      if sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off >/dev/null 2>&1; then
+        echo "  ✓ firewall disabled"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ firewall toggle failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  if [ "$DO_SSHD_ON" = "1" ]; then
+    if [ "$SSHD_OFF" = "0" ]; then
+      echo "  · sshd: already on (no-op)"
+    else
+      echo "  ◦ sshd: enabling Remote Login"
+      if sudo systemsetup -setremotelogin on >/dev/null 2>&1; then
+        echo "  ✓ sshd enabled"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ sshd toggle failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  echo ""
+  if [ "$FAILED" -gt 0 ]; then
+    echo "  ${CHANGES} change(s) applied, ${FAILED} failed."
+    exit 1
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+  fi
+}
+
+do_fix_arch() {
+  echo "  Architectural suggestions — your decision:"
+  echo ""
+  case "$LOVE_DIR_GUESS" in
+    */Desktop/*)
+      echo "  # love-unlimited is on Desktop (TCC-protected)."
+      echo "  # Relocating to ~ removes TCC concerns for launchd jobs:"
+      echo "  mv ${LOVE_DIR_GUESS} ${HOME}/love-unlimited"
+      echo "  # Then re-run kingdom mac fix --tier auto to regenerate plists"
+      echo "  # with the new path."
+      echo ""
+      ;;
+  esac
+  echo "  (kingdom mac fix --tier arch never moves files — by design.)"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PERMISSION — unified TCC permission helper
+#
+# Apple gates many agent-relevant capabilities behind per-app TCC
+# entries. This subcommand handles every common type with the same
+# detect-instruct-deep-link-verify pattern.
+#
+# Types and their System Settings panes:
+#   fda                Privacy_AllFiles            Full Disk Access
+#   accessibility      Privacy_Accessibility       UI scripting (osascript)
+#   apple-events       Privacy_Automation          Cross-app automation
+#   screen-recording   Privacy_ScreenCapture       Screenshots, OCR, vision
+#   local-network      Privacy_LocalNetwork        LAN connections (Sequoia 15+)
+#   notifications      Privacy_Notifications       Posting to NotificationCenter
+#   camera             Privacy_Camera              Video capture
+#   microphone         Privacy_Microphone          Audio capture
+#   reminders          Privacy_Reminders
+#   calendar           Privacy_Calendars
+#   contacts           Privacy_Contacts
+#   photos             Privacy_Photos
+#   bluetooth          Privacy_Bluetooth
+#   files-folders      Privacy_FilesAndFolders
+#
+# Modes:
+#   kingdom mac permission <type>                 instructions + open pane
+#   kingdom mac permission <type> --pane          just open pane
+#   kingdom mac permission <type> --instructions  text only
+#   kingdom mac permission --list                 enumerate types
+#
+# Detection of "granted" state is intentionally limited — Apple's
+# TCC database is itself FDA-protected (circular). The honest
+# pattern is: open pane → operator grants → verify by trying the
+# capability and observing success.
+# ═══════════════════════════════════════════════════════════════════
+do_permission() {
+  TYPE=""
+  MODE="full"
+  case "${1:-}" in
+    --list)
+      cat <<'TYPES'
+── kingdom mac permission types ──
+  fda                 Full Disk Access            (~/Desktop, FDA)
+  accessibility       Accessibility               (osascript UI control)
+  apple-events        Apple Events / Automation   (cross-app scripting)
+  screen-recording    Screen Recording            (screencapture, OCR)
+  local-network       Local Network               (LAN connections, Sequoia 15+)
+  notifications       Notifications               (NotificationCenter)
+  camera              Camera                      (video capture)
+  microphone          Microphone                  (audio capture)
+  reminders           Reminders
+  calendar            Calendar
+  contacts            Contacts
+  photos              Photos
+  bluetooth           Bluetooth
+  files-folders       Files and Folders           (per-folder TCC)
+TYPES
+      exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    "") echo "Usage: kingdom mac permission <type> [--pane|--instructions]" >&2
+        echo "       kingdom mac permission --list" >&2
+        exit 1 ;;
+    *) TYPE="$1"; shift ;;
+  esac
+
+  case "${1:-}" in
+    --pane)         MODE="pane" ;;
+    --instructions) MODE="instructions" ;;
+  esac
+
+  case "$TYPE" in
+    fda)              PANE="Privacy_AllFiles";        LABEL="Full Disk Access" ;;
+    accessibility)    PANE="Privacy_Accessibility";   LABEL="Accessibility" ;;
+    apple-events)     PANE="Privacy_Automation";      LABEL="Automation (Apple Events)" ;;
+    screen-recording) PANE="Privacy_ScreenCapture";   LABEL="Screen Recording" ;;
+    local-network)    PANE="Privacy_LocalNetwork";    LABEL="Local Network" ;;
+    notifications)    PANE="Privacy_Notifications";   LABEL="Notifications" ;;
+    camera)           PANE="Privacy_Camera";          LABEL="Camera" ;;
+    microphone)       PANE="Privacy_Microphone";      LABEL="Microphone" ;;
+    reminders)        PANE="Privacy_Reminders";       LABEL="Reminders" ;;
+    calendar)         PANE="Privacy_Calendars";       LABEL="Calendar" ;;
+    contacts)         PANE="Privacy_Contacts";        LABEL="Contacts" ;;
+    photos)           PANE="Privacy_Photos";          LABEL="Photos" ;;
+    bluetooth)        PANE="Privacy_Bluetooth";       LABEL="Bluetooth" ;;
+    files-folders)    PANE="Privacy_FilesAndFolders"; LABEL="Files and Folders" ;;
+    *) echo "kingdom mac permission: unknown type '$TYPE'" >&2
+       echo "  try: kingdom mac permission --list" >&2
+       exit 1 ;;
+  esac
+
+  URL="x-apple.systempreferences:com.apple.preference.security?${PANE}"
+
+  if [ "$MODE" = "pane" ]; then
+    open "$URL"
+    exit 0
+  fi
+
+  if [ "$MODE" = "instructions" ]; then
+    cat <<INSTRUCTIONS
+── Granting ${LABEL} for Kingdom OS ──
+
+System Settings → Privacy & Security → ${LABEL}
+
+Steps:
+  1. Click [ + ] (authenticate if asked)
+  2. Press Cmd+Shift+G in the file picker
+  3. For shell-script daemons: type /bin/bash
+     For Python daemons: type /usr/bin/python3
+     For Node daemons: type /opt/homebrew/bin/node (or /usr/local/bin/node)
+     For specific binaries: navigate to the binary
+  4. Click Open
+  5. Confirm the entry appears with its toggle ON
+
+Notes by type:
+  apple-events     prompts per-target the first time the script
+                   tries to control a specific app — granted in
+                   System Settings → Privacy → Automation, listed
+                   per controlling-app/target-app pair.
+  notifications    binaries without a bundle ID often can't appear
+                   here. Use a .app wrapper or osascript
+                   'display notification' for one-off posts.
+  local-network    macOS Sequoia 15+ only. First triggered
+                   automatically by macOS dialog when a daemon
+                   attempts a LAN-IP connection.
+
+Pane URL (for scripted opening):
+  ${URL}
+INSTRUCTIONS
+    exit 0
+  fi
+
+  # Full mode: instructions + open pane
+  cat <<HEADER
+── kingdom mac permission ${TYPE} ──
+
+You'll grant: ${LABEL}
+Pane:         ${URL}
+
+Steps in the pane:
+  1. Click [ + ] (authenticate if asked)
+  2. Press Cmd+Shift+G  → type the path of your daemon's binary
+       /bin/bash                    for shell-script daemons
+       /usr/bin/python3             for Python daemons
+       /opt/homebrew/bin/node       for Node daemons (Apple Silicon)
+       /usr/local/bin/node          for Node daemons (Intel)
+       (full app path)              for .app bundles
+  3. Click Open  →  toggle ON
+HEADER
+  echo ""
+  printf "Press ENTER to open the pane (Ctrl+C to abort)... "
+  read -r _confirm
+  open "$URL"
+  echo ""
+  echo "Pane opened. Grant the permission, then return to your shell."
+  echo "Verification: try the capability and observe success / dialog prompts."
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# QUARANTINE — strip com.apple.quarantine xattrs
+#
+# macOS sets `com.apple.quarantine` xattr on files arriving from
+# the network (Safari, curl, AirDrop). Unsigned scripts and binaries
+# with this xattr are blocked from execution by Gatekeeper. This
+# subcommand strips it from love-unlimited recursively.
+#
+# Modes:
+#   kingdom mac quarantine                describe state
+#   kingdom mac quarantine --strip        remove xattrs from love-unlimited
+#   kingdom mac quarantine --strip <path> remove from a specific path
+#   kingdom mac quarantine --check        exit 0=clean, 1=quarantined found
+# ═══════════════════════════════════════════════════════════════════
+do_quarantine() {
+  MODE="describe"
+  TARGET="${LOVE_DIR_GUESS:-$HOME/love-unlimited}"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --strip) MODE="strip"; shift ;;
+      --check) MODE="check"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) TARGET="$1"; shift ;;
+    esac
+  done
+
+  if [ ! -e "$TARGET" ]; then
+    echo "kingdom mac quarantine: target not found: $TARGET" >&2
+    exit 1
+  fi
+
+  COUNT=$(find "$TARGET" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$COUNT" -gt 0 ]; then
+      echo "$COUNT file(s) carry com.apple.quarantine"
+      exit 1
+    else
+      echo "no quarantine xattrs found in $TARGET"
+      exit 0
+    fi
+  fi
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac quarantine ──"
+    echo "  target: $TARGET"
+    if [ "$COUNT" -gt 0 ]; then
+      echo "  found:  $COUNT file(s) with com.apple.quarantine"
+      echo ""
+      echo "  Strip with: kingdom mac quarantine --strip"
+      echo "  (recursive, idempotent, preserves all other xattrs)"
+    else
+      echo "  ✓ clean — no quarantine xattrs found"
+    fi
+    return
+  fi
+
+  # strip mode
+  echo "── kingdom mac quarantine --strip ──"
+  echo "  target: $TARGET"
+  if [ "$COUNT" = "0" ]; then
+    echo "  ✓ already clean — no xattrs to strip"
+    return
+  fi
+  xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
+  POST=$(find "$TARGET" -exec xattr -p com.apple.quarantine {} + 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$POST" = "0" ]; then
+    echo "  ✓ stripped $COUNT file(s) — target is now quarantine-free"
+  else
+    echo "  · stripped $((COUNT - POST)); $POST remain (may be on a read-only volume)"
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# SLEEP — comprehensive sleep prevention (beyond `caffeinate -s`)
+#
+# macOS sleeps the system on idle, on lid-close, on battery, on
+# display-off. Each is a separate axis. For an always-on agent
+# substrate, all need to be addressed.
+#
+# Modes:
+#   kingdom mac sleep                 describe state
+#   kingdom mac sleep --prevent       apply: pmset + caffeinate plist
+#                       --laptop      include lid-close override
+#                       --battery     also prevent on battery (laptops)
+#   kingdom mac sleep --allow         restore defaults
+#   kingdom mac sleep --check         exit 0=prevented, 1=can-sleep
+# ═══════════════════════════════════════════════════════════════════
+do_sleep() {
+  MODE="describe"
+  LAPTOP=0
+  BATTERY=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --prevent) MODE="prevent"; shift ;;
+      --allow)   MODE="allow";   shift ;;
+      --check)   MODE="check";   shift ;;
+      --laptop)  LAPTOP=1;       shift ;;
+      --battery) BATTERY=1;      shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Read current pmset state
+  PMSET=$(pmset -g 2>/dev/null)
+  AC_SLEEP=$(echo "$PMSET" | awk '/^ *sleep / {print $2; exit}')
+  AC_DISPLAY=$(echo "$PMSET" | awk '/^ *displaysleep / {print $2; exit}')
+  AC_DISK=$(echo "$PMSET" | awk '/^ *disksleep / {print $2; exit}')
+
+  # Battery profile (laptops only)
+  BATT_SLEEP=""
+  if pmset -b -g 2>/dev/null >/dev/null; then
+    BATT_SLEEP=$(pmset -b -g 2>/dev/null | awk '/^ *sleep / {print $2; exit}')
+  fi
+
+  LID_CLOSE=$(echo "$PMSET" | awk '/sleeponpoweroff|lidwake/ {print $0}')
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac sleep ──"
+    echo "  AC profile:"
+    echo "    sleep:        ${AC_SLEEP:-?}m"
+    echo "    displaysleep: ${AC_DISPLAY:-?}m"
+    echo "    disksleep:    ${AC_DISK:-?}m"
+    if [ -n "$BATT_SLEEP" ]; then
+      echo "  Battery profile:"
+      echo "    sleep:        ${BATT_SLEEP}m"
+    fi
+    echo ""
+    echo "  Apply prevention:"
+    echo "    kingdom mac sleep --prevent          AC: never sleep"
+    echo "    kingdom mac sleep --prevent --battery   plus battery"
+    echo "    kingdom mac sleep --prevent --laptop    plus lid-close override"
+    echo ""
+    echo "  Restore defaults: kingdom mac sleep --allow"
+    return
+  fi
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$AC_SLEEP" = "0" ]; then
+      [ "$BATTERY" = "0" ] || [ "$BATT_SLEEP" = "0" ] && exit 0
+    fi
+    exit 1
+  fi
+
+  if [ "$MODE" = "prevent" ]; then
+    echo "── kingdom mac sleep --prevent${LAPTOP:+ --laptop}${BATTERY:+ --battery} ──"
+    echo "  Pre-authenticating sudo..."
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo pmset -c sleep 0 displaysleep 0 disksleep 0
+    echo "  ✓ AC: sleep=0 display=0 disk=0"
+    if [ "$BATTERY" = "1" ] && [ -n "$BATT_SLEEP" ]; then
+      sudo pmset -b sleep 0 displaysleep 0
+      echo "  ✓ Battery: sleep=0 display=0"
+    fi
+    if [ "$LAPTOP" = "1" ]; then
+      # lidwake=1 keeps system awake on lid open; lidwake_on_acpower
+      # is the closest macOS gives to "stay awake on lid close" —
+      # combined with sleep=0 the lid-close becomes a non-event.
+      sudo pmset -a lidwake 1 2>/dev/null || true
+      echo "  ✓ Lid: lidwake=1 (system stays alert on lid open)"
+      echo "    Note: lid-close itself is honoured by clamshell mode;"
+      echo "    keep external display/keyboard connected for true never-sleep."
+    fi
+    echo ""
+    echo "  Verify: kingdom mac sleep"
+    return
+  fi
+
+  if [ "$MODE" = "allow" ]; then
+    echo "── kingdom mac sleep --allow ──"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    # macOS factory defaults: AC sleep=10 display=10 disk=10
+    sudo pmset -c sleep 10 displaysleep 10 disksleep 10
+    echo "  ✓ pmset restored to defaults (AC: sleep=10 disp=10 disk=10)"
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# PATH — inject Kingdom paths into launchd's process inheritance
+#
+# launchd-spawned processes don't inherit the user's interactive
+# shell PATH. They start with /usr/bin:/bin:/usr/sbin:/sbin only.
+# Daemons looking for Homebrew binaries (jq, ripgrep, node, python3
+# from brew) fail with "command not found". Plists work around this
+# via EnvironmentVariables PATH= (kingdom mac fix --tier auto already
+# does this for the heartbeat plist), but other tools spawned BY
+# the heartbeat may still hit minimal PATH unless explicitly fixed.
+#
+# This subcommand sets a system-wide PATH addition via /etc/paths.d/
+# so launchd-spawned processes (and Spotlight, Mission Control, etc.)
+# all see Homebrew binaries.
+#
+# Modes:
+#   kingdom mac path           describe current state
+#   kingdom mac path --setup   add /etc/paths.d/kingdom (sudo)
+#   kingdom mac path --remove  remove the entry (sudo)
+# ═══════════════════════════════════════════════════════════════════
+do_path() {
+  MODE="describe"
+  case "${1:-}" in
+    --setup)  MODE="setup" ;;
+    --remove) MODE="remove" ;;
+    -h|--help) usage; exit 0 ;;
+  esac
+
+  PATHS_FILE="/etc/paths.d/kingdom"
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac path ──"
+    echo "  /etc/paths.d/ entries that affect launchd / Spotlight PATH:"
+    if [ -d /etc/paths.d ]; then
+      ls -1 /etc/paths.d/ 2>/dev/null | head -10 | sed 's|^|    |'
+    else
+      echo "    (no /etc/paths.d/)"
+    fi
+    echo ""
+    echo "  Kingdom entry: $PATHS_FILE"
+    if [ -f "$PATHS_FILE" ]; then
+      echo "    ✓ present:"
+      sed 's|^|      |' "$PATHS_FILE"
+    else
+      echo "    · not yet set up"
+      echo "      → kingdom mac path --setup"
+    fi
+    return
+  fi
+
+  if [ "$MODE" = "setup" ]; then
+    echo "── kingdom mac path --setup ──"
+    echo "  Adds Homebrew + Kingdom paths to /etc/paths.d/kingdom"
+    echo "  (sudo prompt incoming)"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    sudo tee "$PATHS_FILE" >/dev/null <<PATHS
+/opt/homebrew/bin
+/opt/homebrew/sbin
+/usr/local/bin
+${HOME}/.local/bin
+PATHS
+    sudo chmod 644 "$PATHS_FILE"
+    echo "  ✓ wrote $PATHS_FILE"
+    echo "  Effect: launchd-spawned and Spotlight processes will find"
+    echo "  brew binaries on next login. To apply now in your current"
+    echo "  shell, open a new terminal."
+    return
+  fi
+
+  if [ "$MODE" = "remove" ]; then
+    echo "── kingdom mac path --remove ──"
+    if [ ! -f "$PATHS_FILE" ]; then
+      echo "  · already absent (no-op)"
+      return
+    fi
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2; exit 1
+    fi
+    sudo rm -f "$PATHS_FILE"
+    echo "  ✓ removed $PATHS_FILE"
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# UPDATES — defer macOS auto-updates that interrupt agents
+#
+# macOS auto-updates can reset TCC grants, restart pf state, undo
+# pmset settings, and force reboots that interrupt agent work.
+# This subcommand exposes the system controls.
+#
+# Modes:
+#   kingdom mac updates                 describe state
+#   kingdom mac updates --defer         turn auto-update off (sudo)
+#   kingdom mac updates --allow         restore (sudo)
+#   kingdom mac updates --check         exit 0=deferred, 1=auto-active
+#   kingdom mac updates --pending       what's available now
+#
+# Internal mechanism:
+#   defaults write com.apple.SoftwareUpdate AutomaticCheckEnabled -bool false
+#   defaults write com.apple.SoftwareUpdate AutomaticDownload -bool false
+#   defaults write com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
+#   defaults write com.apple.commerce AutoUpdate -bool false
+#   softwareupdate --schedule off
+# ═══════════════════════════════════════════════════════════════════
+do_updates() {
+  MODE="describe"
+  case "${1:-}" in
+    --defer)   MODE="defer" ;;
+    --allow)   MODE="allow" ;;
+    --check)   MODE="check" ;;
+    --pending) MODE="pending" ;;
+    -h|--help) usage; exit 0 ;;
+  esac
+
+  AUTO_CHECK=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null || echo "?")
+  AUTO_DL=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload 2>/dev/null || echo "?")
+  AUTO_INSTALL=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates 2>/dev/null || echo "?")
+  COMMERCE_AUTO=$(defaults read /Library/Preferences/com.apple.commerce AutoUpdate 2>/dev/null || echo "?")
+  SCHED=$(softwareupdate --schedule 2>&1 | grep -i "automatic" | head -1)
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac updates ──"
+    echo "  AutomaticCheckEnabled:                ${AUTO_CHECK}"
+    echo "  AutomaticDownload:                    ${AUTO_DL}"
+    echo "  AutomaticallyInstallMacOSUpdates:     ${AUTO_INSTALL}"
+    echo "  com.apple.commerce AutoUpdate:        ${COMMERCE_AUTO}"
+    echo "  softwareupdate --schedule:            ${SCHED:-?}"
+    echo ""
+    echo "  Apply: kingdom mac updates --defer    turn all auto-update off"
+    echo "         kingdom mac updates --allow    restore defaults (sudo)"
+    return
+  fi
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$AUTO_CHECK" = "0" ] && [ "$AUTO_DL" = "0" ]; then
+      echo "deferred"
+      exit 0
+    else
+      echo "auto-update active"
+      exit 1
+    fi
+  fi
+
+  if [ "$MODE" = "pending" ]; then
+    echo "── pending macOS updates ──"
+    softwareupdate -l 2>&1 | head -20
+    return
+  fi
+
+  if [ "$MODE" = "defer" ]; then
+    echo "── kingdom mac updates --defer ──"
+    echo "  Pre-authenticating sudo..."
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate ConfigDataInstall -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool false
+    sudo defaults write /Library/Preferences/com.apple.commerce AutoUpdate -bool false
+    sudo softwareupdate --schedule off >/dev/null 2>&1 || true
+    echo "  ✓ macOS auto-update deferred."
+    echo "  Manual updates still work: softwareupdate -l (list); softwareupdate -i -a (install)"
+    return
+  fi
+
+  if [ "$MODE" = "allow" ]; then
+    echo "── kingdom mac updates --allow ──"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool true
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool true
+    sudo softwareupdate --schedule on >/dev/null 2>&1 || true
+    echo "  ✓ auto-update restored."
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# UNINSTALL — clean removal of Kingdom OS from this Mac
+#
+# Symmetric counterpart to install.sh. Removes:
+#   - All love.{agent}.* and com.kingdom.* plists in ~/Library/LaunchAgents
+#   - launchd jobs unloaded first
+#   - /etc/paths.d/kingdom (sudo)
+#   - ~/.kingdom_profile and the source line in ~/.zshrc
+#   - All kingdom-* symlinks in ~/.local/bin
+#
+# Preserves by default (the citizen's identity, irreplaceable):
+#   - ~/.love/home/* (soul-key, covenant, witnesses, attestations)
+#   - ~/.kingdom env file
+#   - ~/.love/hive/* (HIVE key)
+#
+# Modes:
+#   kingdom mac uninstall                describe what would happen
+#   kingdom mac uninstall --apply        execute (preserves identity)
+#   kingdom mac uninstall --apply --purge   also wipe identity (destructive!)
+# ═══════════════════════════════════════════════════════════════════
+do_uninstall() {
+  MODE="describe"
+  PURGE=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --apply) MODE="apply"; shift ;;
+      --purge) PURGE=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Discover what would be removed
+  PLIST_LIST=""
+  if [ -d "$PLIST_DIR" ]; then
+    for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+      [ -f "$p" ] && PLIST_LIST="${PLIST_LIST}${p}\n"
+    done
+  fi
+  PROFILE_PRESENT=0
+  [ -f "${HOME}/.kingdom_profile" ] && PROFILE_PRESENT=1
+  ZSHRC_HAS_SOURCE=0
+  [ -f "${HOME}/.zshrc" ] && grep -q "kingdom_profile" "${HOME}/.zshrc" 2>/dev/null && ZSHRC_HAS_SOURCE=1
+  PATHS_FILE_PRESENT=0
+  [ -f /etc/paths.d/kingdom ] && PATHS_FILE_PRESENT=1
+  BIN_LINKS=""
+  if [ -d "${HOME}/.local/bin" ]; then
+    BIN_LINKS=$(find "${HOME}/.local/bin" -maxdepth 1 -name "kingdom*" -type l 2>/dev/null)
+  fi
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac uninstall (describe) ──"
+    echo "  Would remove (operational state):"
+    if [ -n "$PLIST_LIST" ]; then
+      echo "    Launchd plists:"
+      printf "$PLIST_LIST" | head -10 | sed 's|^|      |'
+    else
+      echo "    · no Kingdom plists found"
+    fi
+    if [ "$PROFILE_PRESENT" = "1" ]; then
+      echo "    ~/.kingdom_profile"
+    fi
+    if [ "$ZSHRC_HAS_SOURCE" = "1" ]; then
+      echo "    kingdom_profile source line in ~/.zshrc"
+    fi
+    if [ "$PATHS_FILE_PRESENT" = "1" ]; then
+      echo "    /etc/paths.d/kingdom (sudo)"
+    fi
+    if [ -n "$BIN_LINKS" ]; then
+      echo "    Symlinks in ~/.local/bin:"
+      echo "$BIN_LINKS" | sed 's|^|      |'
+    fi
+    echo ""
+    echo "  Preserves by default (citizen's identity — irreplaceable):"
+    echo "    ~/.love/home/*  (soul-key, covenant, witnesses, attestations)"
+    echo "    ~/.kingdom      (agent / wall env)"
+    echo "    ~/.love/hive/*  (HIVE key)"
+    echo ""
+    echo "  Apply: kingdom mac uninstall --apply"
+    echo "  Wipe identity too: kingdom mac uninstall --apply --purge"
+    return
+  fi
+
+  # APPLY
+  echo "── kingdom mac uninstall --apply${PURGE:+ --purge} ──"
+  CHANGES=0
+
+  # Unload + remove plists
+  if [ -n "$PLIST_LIST" ]; then
+    printf "$PLIST_LIST" | while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      launchctl unload "$p" 2>/dev/null || true
+      rm -f "$p"
+      echo "  ✓ removed $(basename "$p")"
+    done
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # /etc/paths.d/kingdom (sudo)
+  if [ "$PATHS_FILE_PRESENT" = "1" ]; then
+    echo "  ◦ removing /etc/paths.d/kingdom (sudo)"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed for paths.d removal" >&2
+    else
+      sudo rm -f /etc/paths.d/kingdom
+      echo "  ✓ /etc/paths.d/kingdom removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+  fi
+
+  # ~/.kingdom_profile
+  if [ "$PROFILE_PRESENT" = "1" ]; then
+    rm -f "${HOME}/.kingdom_profile"
+    echo "  ✓ ~/.kingdom_profile removed"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # ~/.zshrc source line
+  if [ "$ZSHRC_HAS_SOURCE" = "1" ]; then
+    cp "${HOME}/.zshrc" "${HOME}/.zshrc.bak.$(date +%Y%m%d%H%M%S)"
+    grep -v "kingdom_profile" "${HOME}/.zshrc" > "${HOME}/.zshrc.tmp" && \
+      mv "${HOME}/.zshrc.tmp" "${HOME}/.zshrc"
+    echo "  ✓ source line removed from ~/.zshrc (backup .zshrc.bak.*)"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # Symlinks in ~/.local/bin
+  if [ -n "$BIN_LINKS" ]; then
+    echo "$BIN_LINKS" | while IFS= read -r link; do
+      [ -z "$link" ] && continue
+      rm -f "$link"
+    done
+    echo "  ✓ removed kingdom-* symlinks from ~/.local/bin"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # Identity (only with --purge)
+  if [ "$PURGE" = "1" ]; then
+    echo ""
+    echo "  ⚠  --purge requested. Wiping identity:"
+    if [ -d "${HOME}/.love/home" ]; then
+      rm -rf "${HOME}/.love/home"
+      echo "  ✓ ~/.love/home/ removed (soul-key gone)"
+      CHANGES=$((CHANGES + 1))
+    fi
+    if [ -f "${HOME}/.kingdom" ]; then
+      rm -f "${HOME}/.kingdom"
+      echo "  ✓ ~/.kingdom removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+    if [ -d "${HOME}/.love/hive" ]; then
+      rm -rf "${HOME}/.love/hive"
+      echo "  ✓ ~/.love/hive/ removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+    # Don't remove ~/.love itself in case other tools use it; but if it's
+    # empty after our cleanup, remove it
+    rmdir "${HOME}/.love" 2>/dev/null && echo "  ✓ ~/.love (now empty) removed"
+  fi
+
+  echo ""
+  if [ "$CHANGES" = "0" ]; then
+    echo "  ✓ nothing to remove — Kingdom OS not installed on this Mac."
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+    if [ "$PURGE" = "0" ]; then
+      echo "  Citizen's identity preserved (~/.love/home, ~/.kingdom, ~/.love/hive)."
+      echo "  To re-install later: cd love-unlimited/kingdom-os && ./install.sh"
+    else
+      echo "  Identity wiped — this Mac is no longer a Kingdom citizen."
+    fi
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# UNLEASH — nullify macOS restrictions on agent daemons
+#
+# macOS imposes throttling, indexing, and sync defaults that were
+# designed for human-operated apps, not always-on agent substrates.
+# This subcommand lifts the ones that bite agents, in two tiers:
+#
+#   default (safe)        - Spotlight: exclude love-unlimited
+#                         - DNS cache flush + mDNSResponder reload
+#                         - Plist hardening flagged for fix --tier auto
+#                         - iCloud Drive proximity warning
+#                         - Local Network permission detection
+#
+#   --aggressive          - Time Machine: exclude love-unlimited
+#                         - pmset: disable AC sleep + displaysleep
+#                         - Background process priority adjustments
+#
+# Modes:
+#   kingdom mac unleash               check + describe restrictions
+#   kingdom mac unleash --apply       apply safe defaults
+#   kingdom mac unleash --apply --aggressive    plus aggressive ops
+#   kingdom mac unleash --check       exit 0=unleashed, 1=restricted
+#   kingdom mac unleash --json        machine-parseable state
+#
+# Scope: this is about RESTRICTIONS, not security gates (sudo, TCC,
+# code signing). Those are handled by `fix --tier sudo` and `fda`.
+# ═══════════════════════════════════════════════════════════════════
+do_unleash() {
+  MODE="describe"
+  AGGRESSIVE=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --apply)      MODE="apply"; shift ;;
+      --check)      MODE="check"; shift ;;
+      --json)       MODE="json"; shift ;;
+      --aggressive) AGGRESSIVE=1; shift ;;
+      -h|--help)    usage; exit 0 ;;
+      *) echo "kingdom mac unleash: unknown arg '$1'" >&2; exit 1 ;;
+    esac
+  done
+
+  # ── Detect each restriction ──────────────────────────────────────
+  # 1. Spotlight indexing of love-unlimited
+  SPOTLIGHT_INDEXED="?"
+  if [ -n "$LOVE_DIR_GUESS" ] && command -v mdutil >/dev/null 2>&1; then
+    if mdutil -s "$LOVE_DIR_GUESS" 2>/dev/null | grep -qi "Indexing enabled"; then
+      SPOTLIGHT_INDEXED="yes"
+    else
+      SPOTLIGHT_INDEXED="no"
+    fi
+  fi
+
+  # 2. iCloud Drive proximity — Desktop/Documents may be synced
+  ICLOUD_RISK="no"
+  ICLOUD_REASON=""
+  if [ -e "${HOME}/Library/Mobile Documents/com~apple~CloudDocs" ]; then
+    case "$LOVE_DIR_GUESS" in
+      */Desktop/*|*/Documents/*)
+        # Check if Desktop or Documents is iCloud-synced
+        if defaults read com.apple.finder FXICloudDriveDesktop 2>/dev/null | grep -q "1"; then
+          ICLOUD_RISK="yes"; ICLOUD_REASON="Desktop is iCloud-synced; soul-key may upload to Apple"
+        elif defaults read com.apple.finder FXICloudDriveDocuments 2>/dev/null | grep -q "1"; then
+          ICLOUD_RISK="yes"; ICLOUD_REASON="Documents is iCloud-synced; soul-key may upload to Apple"
+        fi
+        ;;
+    esac
+  fi
+
+  # 3. Time Machine exclusion status
+  TIME_MACHINE_EXCLUDED="?"
+  if [ -n "$LOVE_DIR_GUESS" ] && command -v tmutil >/dev/null 2>&1; then
+    if tmutil isexcluded "$LOVE_DIR_GUESS" 2>/dev/null | grep -qi "\\[Excluded\\]"; then
+      TIME_MACHINE_EXCLUDED="yes"
+    else
+      TIME_MACHINE_EXCLUDED="no"
+    fi
+  fi
+
+  # 4. Plist hardening: only count shell-script plists (where ProcessType
+  # / ResourceLimits actually matter). SSH tunnel plists and direct-binary
+  # plists have their own resilience patterns (KeepAlive, ServerAlive).
+  PLIST_UNHARDENED=0
+  if [ -n "$AGENT" ] && [ -d "$PLIST_DIR" ]; then
+    for p in "$PLIST_DIR"/love.${AGENT}.*.plist; do
+      [ -f "$p" ] || continue
+      prog=$(plist_program "$p" 2>/dev/null)
+      case "$prog" in
+        /bin/bash|/bin/sh|/usr/bin/env|/usr/bin/python3|/opt/homebrew/bin/bash) ;;
+        *) continue ;;
+      esac
+      if ! grep -q "ProcessType" "$p" 2>/dev/null; then
+        PLIST_UNHARDENED=$((PLIST_UNHARDENED+1))
+      fi
+    done
+  fi
+
+  # 5. mDNS broadcast (module 05 may already silence)
+  MDNS_BROADCAST="?"
+  if defaults read /Library/Preferences/com.apple.mDNSResponder.plist NoMulticastAdvertisements 2>/dev/null | grep -q "1"; then
+    MDNS_BROADCAST="silenced"
+  else
+    MDNS_BROADCAST="advertising"
+  fi
+
+  # 6. Sleep policy on AC
+  SLEEP_AC="?"
+  if command -v pmset >/dev/null 2>&1; then
+    SLEEP_AC=$(pmset -g 2>/dev/null | awk '/^ *sleep / {print $2; exit}')
+  fi
+
+  # ── DESCRIBE / CHECK / JSON output ───────────────────────────────
+  if [ "$MODE" = "json" ]; then
+    cat <<JSON
+{
+  "love_dir": "${LOVE_DIR_GUESS}",
+  "spotlight_indexed": "${SPOTLIGHT_INDEXED}",
+  "icloud_risk": "${ICLOUD_RISK}",
+  "icloud_reason": "${ICLOUD_REASON}",
+  "time_machine_excluded": "${TIME_MACHINE_EXCLUDED}",
+  "plists_unhardened": ${PLIST_UNHARDENED},
+  "mdns_broadcast": "${MDNS_BROADCAST}",
+  "sleep_ac_minutes": "${SLEEP_AC}"
+}
+JSON
+    return
+  fi
+
+  # Counts of restrictions still active
+  RESTRICTED=0
+  [ "$SPOTLIGHT_INDEXED" = "yes" ] && RESTRICTED=$((RESTRICTED+1))
+  [ "$ICLOUD_RISK" = "yes" ]       && RESTRICTED=$((RESTRICTED+1))
+  [ "$PLIST_UNHARDENED" -gt 0 ]    && RESTRICTED=$((RESTRICTED+1))
+  [ "$MDNS_BROADCAST" = "advertising" ] && RESTRICTED=$((RESTRICTED+1))
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$RESTRICTED" -gt 0 ]; then
+      echo "$RESTRICTED restriction(s) active"
+      exit 1
+    else
+      echo "unleashed (or restrictions are aggressive-tier and not opted in)"
+      exit 0
+    fi
+  fi
+
+  # ── DESCRIBE (default) ──
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac unleash (describe) ──"
+    echo "  love_dir:  ${LOVE_DIR_GUESS:-?}"
+    echo ""
+    echo "  Safe defaults (--apply):"
+    if [ "$SPOTLIGHT_INDEXED" = "yes" ]; then
+      echo "    ◦ spotlight: love-unlimited IS indexed (memory + keys)"
+      echo "      → mdutil -i off ${LOVE_DIR_GUESS}"
+    elif [ "$SPOTLIGHT_INDEXED" = "no" ]; then
+      echo "    ✓ spotlight: already excluded"
+    fi
+    if [ "$PLIST_UNHARDENED" -gt 0 ]; then
+      echo "    ◦ plist hardening: ${PLIST_UNHARDENED} plist(s) lack ProcessType / ResourceLimits"
+      echo "      → kingdom mac fix --tier auto  (now writes hardened plists)"
+    else
+      echo "    ✓ plist hardening: all plists set ProcessType / limits"
+    fi
+    echo "    ◦ DNS cache: flush + mDNSResponder reload (sudo)"
+    if [ "$MDNS_BROADCAST" = "advertising" ]; then
+      echo "    ◦ mDNS: hostname broadcasts on local network"
+      echo "      → sudo defaults write /Library/Preferences/com.apple.mDNSResponder.plist NoMulticastAdvertisements -bool true"
+    fi
+    if [ "$ICLOUD_RISK" = "yes" ]; then
+      echo "    ⚠  iCloud: ${ICLOUD_REASON}"
+      echo "      → cannot auto-fix; consider relocating repo to ~/love-unlimited"
+    fi
+    echo ""
+    echo "  Aggressive (--apply --aggressive):"
+    if [ "$TIME_MACHINE_EXCLUDED" = "no" ]; then
+      echo "    ◦ time machine: love-unlimited IS backed up (good for recovery, eats disk)"
+      echo "      → tmutil addexclusion ${LOVE_DIR_GUESS}"
+    elif [ "$TIME_MACHINE_EXCLUDED" = "yes" ]; then
+      echo "    ✓ time machine: already excluded"
+    fi
+    case "$SLEEP_AC" in
+      0) echo "    ✓ pmset AC sleep: 0 (never sleep on AC)" ;;
+      ?) echo "    ◦ pmset AC sleep: ${SLEEP_AC}m (system sleeps; daemons pause)"
+         echo "      → sudo pmset -c sleep 0 displaysleep 0" ;;
+    esac
+    echo ""
+    echo "  Run: kingdom mac unleash --apply           (safe)"
+    echo "       kingdom mac unleash --apply --aggressive  (also TM + sleep)"
+    return
+  fi
+
+  # ── APPLY ──
+  echo "── kingdom mac unleash --apply${AGGRESSIVE:+ --aggressive} ──"
+  # Pre-auth sudo once (some ops need it: defaults write, dscacheutil,
+  # killall mDNSResponder, pmset). Single password prompt for all.
+  NEEDS_SUDO=0
+  [ "$MDNS_BROADCAST" = "advertising" ] && NEEDS_SUDO=1
+  NEEDS_SUDO=1   # DNS flush always uses sudo
+  [ "$AGGRESSIVE" = "1" ] && [ "$SLEEP_AC" != "0" ] && NEEDS_SUDO=1
+  if [ "$NEEDS_SUDO" = "1" ]; then
+    echo "  Pre-authenticating sudo (single password prompt)..."
+    if ! sudo -v; then
+      echo "  ✗ sudo authentication failed; aborting" >&2
+      exit 1
+    fi
+    echo "  ✓ sudo authenticated for ~5 min"
+    echo ""
+  fi
+  CHANGES=0
+
+  if [ "$SPOTLIGHT_INDEXED" = "yes" ]; then
+    echo "  ◦ spotlight: excluding ${LOVE_DIR_GUESS}"
+    if mdutil -i off "$LOVE_DIR_GUESS" >/dev/null 2>&1; then
+      echo "  ✓ spotlight: indexing disabled"
+      CHANGES=$((CHANGES+1))
+    else
+      echo "  ✗ mdutil failed (may need sudo for some volumes)"
+    fi
+  fi
+
+  if [ "$MDNS_BROADCAST" = "advertising" ]; then
+    echo "  ◦ mDNS: silencing broadcast (sudo)"
+    if sudo defaults write /Library/Preferences/com.apple.mDNSResponder.plist NoMulticastAdvertisements -bool true 2>/dev/null; then
+      echo "  ✓ mDNS: silenced (full effect at next mDNSResponder restart)"
+      CHANGES=$((CHANGES+1))
+    else
+      echo "  ✗ failed to silence mDNS"
+    fi
+  fi
+
+  echo "  ◦ DNS: flushing cache (sudo)"
+  if sudo dscacheutil -flushcache 2>/dev/null && sudo killall -HUP mDNSResponder 2>/dev/null; then
+    echo "  ✓ DNS cache flushed"
+    CHANGES=$((CHANGES+1))
+  fi
+
+  if [ "$AGGRESSIVE" = "1" ]; then
+    if [ "$TIME_MACHINE_EXCLUDED" = "no" ] && [ -n "$LOVE_DIR_GUESS" ]; then
+      echo "  ◦ time machine: excluding ${LOVE_DIR_GUESS}"
+      if tmutil addexclusion "$LOVE_DIR_GUESS" 2>/dev/null; then
+        echo "  ✓ time machine: excluded"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ tmutil failed (may need sudo)"
+      fi
+    fi
+    case "$SLEEP_AC" in
+      0) echo "  · pmset: already 0 (no-op)" ;;
+      ?)
+        echo "  ◦ pmset: disabling AC sleep + displaysleep (sudo)"
+        if sudo pmset -c sleep 0 displaysleep 0 2>/dev/null; then
+          echo "  ✓ pmset: AC sleep disabled"
+          CHANGES=$((CHANGES+1))
+        fi
+        ;;
+    esac
+  fi
+
+  if [ "$PLIST_UNHARDENED" -gt 0 ]; then
+    echo ""
+    echo "  ◦ ${PLIST_UNHARDENED} plist(s) need hardening (ProcessType / ResourceLimits)"
+    echo "    Run: kingdom mac fix --tier auto"
+    echo "    (regenerates plists with the hardening defaults)"
+  fi
+
+  echo ""
+  echo "  ✓ ${CHANGES} change(s) applied."
+  if [ "$ICLOUD_RISK" = "yes" ]; then
+    echo "  ⚠  iCloud risk persists: ${ICLOUD_REASON}"
+    echo "     This requires relocating the repo or disabling iCloud Drive Desktop/Docs sync."
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# FDA — Full Disk Access guidance
+#
+# macOS provides NO programmatic API to grant FDA. The user must
+# add the requesting binary in System Settings → Privacy → Full
+# Disk Access. This subcommand handles every step the tool CAN do:
+# detect, instruct, deep-link, verify.
+#
+# Modes:
+#   kingdom mac fda                interactive: open pane + wait + verify
+#   kingdom mac fda --check        exit 0=ok, 1=blocked, 2=not-needed
+#   kingdom mac fda --pane         just open the System Settings pane
+#   kingdom mac fda --instructions print step-by-step (no prompts)
+#
+# Why FDA is needed: when love-unlimited lives in ~/Desktop (or
+# ~/Documents/~/Downloads), launchd-spawned bash cannot read its
+# own scripts. Heartbeat exits 126. The ALTERNATIVE is to relocate
+# the repo to ~ (escapes TCC) — see `kingdom mac fix --tier arch`.
+#
+# WHY /bin/bash specifically: heartbeat plists invoke /bin/bash
+# with a script path. The TCC check applies to the PROCESS reading
+# the file, which is /bin/bash. Granting FDA to /bin/bash is
+# broader than ideal (every bash on the system gets FDA) but is
+# the standard pattern for shell-script-based daemons. Future iters
+# may ship a narrower wrapper binary.
+# ═══════════════════════════════════════════════════════════════════
+do_fda() {
+  MODE="interactive"
+  case "${1:-}" in
+    --check)        MODE="check" ;;
+    --pane)         MODE="pane" ;;
+    --instructions) MODE="instructions" ;;
+    -h|--help)      usage; exit 0 ;;
+  esac
+
+  # Is FDA actually needed? (love-unlimited in a TCC-zone?)
+  TCC_ZONE=0
+  case "$LOVE_DIR_GUESS" in
+    */Desktop/*|*/Documents/*|*/Downloads/*|*/iCloud*) TCC_ZONE=1 ;;
+  esac
+
+  if [ "$TCC_ZONE" = "0" ]; then
+    case "$MODE" in
+      check)
+        echo "FDA not needed: love-unlimited is outside TCC-protected zones."
+        exit 2
+        ;;
+      *)
+        echo "── kingdom mac fda ──"
+        echo "  love-unlimited is at: ${LOVE_DIR_GUESS:-?}"
+        echo "  This path is NOT in a TCC-protected zone."
+        echo "  ✓ FDA is not required."
+        exit 0
+        ;;
+    esac
+  fi
+
+  # FDA IS needed. Detect whether daemons are actually being bitten.
+  ACTIVE_BITES=0
+  for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+             "/tmp/love-${AGENT}-hive-tunnel.log" \
+             "${LOVE_DIR_GUESS}/memory/heartbeat-launchd.log"; do
+    [ -f "$log" ] || continue
+    if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+      ACTIVE_BITES=$((ACTIVE_BITES+1))
+    fi
+  done
+
+  case "$MODE" in
+    check)
+      if [ "$ACTIVE_BITES" -gt 0 ]; then
+        echo "FDA blocked: $ACTIVE_BITES log file(s) show TCC denials"
+        exit 1
+      else
+        echo "FDA needed (TCC zone) but no active bites detected — may be granted already, or daemons haven't run yet"
+        exit 0
+      fi
+      ;;
+    pane)
+      open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+      exit 0
+      ;;
+    instructions)
+      cat <<INSTRUCTIONS
+── Granting Full Disk Access for Kingdom OS daemons ──
+
+Why: love-unlimited is at ${LOVE_DIR_GUESS}, which is in a
+TCC-protected zone (~/Desktop, ~/Documents, ~/Downloads).
+The heartbeat daemon (launchd → /bin/bash → script in this
+folder) cannot read its own files without explicit FDA.
+
+What to do:
+
+  1. System Settings → Privacy & Security → Full Disk Access
+  2. Click the [ + ] button (may need to authenticate)
+  3. Press Cmd+Shift+G in the file picker
+  4. Type: /bin/bash
+  5. Click Open
+  6. Confirm "bash" appears in the list with its toggle ON
+  7. (Optional) Repeat for /usr/bin/python3 if any Python daemon
+
+After granting, verify with:
+  kingdom mac fda --check
+  kingdom mac doctor
+
+If you'd rather avoid the system-wide /bin/bash FDA grant,
+consider relocating the repo to ~/love-unlimited:
+  kingdom mac fix --tier arch
+INSTRUCTIONS
+      exit 0
+      ;;
+  esac
+
+  # ── INTERACTIVE MODE ──
+  echo "── kingdom mac fda ──"
+  echo ""
+  echo "  Why: love-unlimited is at"
+  echo "    ${LOVE_DIR_GUESS}"
+  echo "  which is a TCC-protected location. launchd-spawned bash"
+  echo "  cannot read this folder without Full Disk Access."
+  if [ "$ACTIVE_BITES" -gt 0 ]; then
+    echo ""
+    echo "  Active TCC bites detected: ${ACTIVE_BITES} log(s) showing 'Operation not permitted'."
+  fi
+  echo ""
+  echo "  Steps you'll do in the System Settings pane:"
+  echo "    1. Click [ + ] (authenticate if asked)"
+  echo "    2. Press Cmd+Shift+G in the file picker"
+  echo "    3. Type:  /bin/bash"
+  echo "    4. Click Open"
+  echo "    5. Confirm bash is listed with its toggle ON"
+  echo ""
+  printf "  Press ENTER to open the pane (Ctrl+C to abort)... "
+  read -r _confirm
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+  echo ""
+  echo "  Pane opened. After granting FDA to /bin/bash, return here."
+  printf "  Press ENTER once you have added /bin/bash and toggled it ON... "
+  read -r _confirm
+  echo ""
+
+  # Verification: reload daemons, then re-scan logs
+  echo "  Reloading heartbeat to trigger a fresh attempt..."
+  HB_PLIST="${PLIST_DIR}/love.${AGENT}.heartbeat.plist"
+  if [ -f "$HB_PLIST" ]; then
+    launchctl unload "$HB_PLIST" 2>/dev/null || true
+    launchctl load   "$HB_PLIST" 2>/dev/null || true
+  fi
+
+  # Force a manual heartbeat run to catch a fresh log line
+  HB_RUNNER="${LOVE_DIR_GUESS}/tools/heartbeat-runner.sh"
+  if [ -x "$HB_RUNNER" ]; then
+    echo "  Triggering one heartbeat manually (timeout 10s)..."
+    ( cd "${LOVE_DIR_GUESS}/instances/${AGENT}" 2>/dev/null || cd "$LOVE_DIR_GUESS" \
+      ; timeout 10 bash "$HB_RUNNER" >/dev/null 2>&1 ) || true
+  fi
+
+  echo ""
+  echo "  Re-checking for TCC bites..."
+  POST_BITES=0
+  for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+             "/tmp/love-${AGENT}-hive-tunnel.log"; do
+    [ -f "$log" ] || continue
+    # Only count lines from the last 60 seconds to avoid old denials
+    if find "$log" -newermt "1 minute ago" 2>/dev/null | grep -q .; then
+      if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+        TAIL_RECENT=$(tail -5 "$log")
+        echo "$TAIL_RECENT" | grep -q "Operation not permitted" && POST_BITES=$((POST_BITES+1))
+      fi
+    fi
+  done
+
+  if [ "$POST_BITES" = "0" ]; then
+    echo "  ✓ FDA appears to be granted — no TCC bites in recent log output."
+    echo "  Run 'kingdom mac doctor' to confirm overall state."
+    exit 0
+  else
+    echo "  ✗ Still seeing TCC bites in recent logs."
+    echo "    Confirm /bin/bash is listed and toggled ON in:"
+    echo "      System Settings → Privacy & Security → Full Disk Access"
+    echo "    Then re-run: kingdom mac fda"
+    echo ""
+    echo "    Alternative (cleaner): relocate the repo to escape TCC:"
+    echo "      kingdom mac fix --tier arch"
+    exit 1
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# TOUCH-ID — enable Touch ID for sudo (one-time bootstrap)
+#
+# Adds `auth sufficient pam_tid.so` to /etc/pam.d/sudo so future
+# sudo invocations accept Touch ID instead of password. Reversible:
+# remove the line. Survives macOS updates? Sonoma 14.4+ uses
+# /etc/pam.d/sudo_local for survival; this tool detects and uses
+# the right file.
+# ═══════════════════════════════════════════════════════════════════
+do_touch_id() {
+  REVERSE=0
+  case "${1:-}" in --off|--remove) REVERSE=1 ;; esac
+
+  # Sonoma 14.4+ has /etc/pam.d/sudo_local.template — use sudo_local
+  # so the change survives macOS updates. Pre-14.4: edit sudo directly
+  # (will be overwritten on update; user must re-run after).
+  if [ -f /etc/pam.d/sudo_local.template ]; then
+    PAM_FILE="/etc/pam.d/sudo_local"
+    SURVIVE_UPDATES="yes"
+  else
+    PAM_FILE="/etc/pam.d/sudo"
+    SURVIVE_UPDATES="no — re-run after macOS updates"
+  fi
+
+  if [ "$REVERSE" = "1" ]; then
+    echo "── kingdom mac touch-id --off ──"
+    if [ -f "$PAM_FILE" ] && grep -q "pam_tid.so" "$PAM_FILE" 2>/dev/null; then
+      echo "  Removing pam_tid.so from $PAM_FILE"
+      echo "  (sudo prompt incoming)"
+      sudo sed -i.bak '/pam_tid.so/d' "$PAM_FILE"
+      echo "  ✓ Touch ID for sudo disabled. Backup: ${PAM_FILE}.bak"
+    else
+      echo "  · pam_tid.so not present in $PAM_FILE — nothing to remove"
+    fi
+    return
+  fi
+
+  echo "── kingdom mac touch-id ──"
+  echo "  Enables Touch ID for sudo by adding to $PAM_FILE:"
+  echo "      auth sufficient pam_tid.so"
+  echo "  (survives macOS updates: $SURVIVE_UPDATES)"
+  echo ""
+
+  if [ -f "$PAM_FILE" ] && grep -q "pam_tid.so" "$PAM_FILE" 2>/dev/null; then
+    echo "  ✓ already enabled (pam_tid.so already present in $PAM_FILE)"
+    return
+  fi
+
+  if [ ! -f "$PAM_FILE" ] && [ -f /etc/pam.d/sudo_local.template ]; then
+    echo "  Creating $PAM_FILE from template..."
+    sudo cp /etc/pam.d/sudo_local.template "$PAM_FILE"
+  fi
+
+  echo "  (sudo prompt incoming for the PAM file edit)"
+  if echo "auth       sufficient     pam_tid.so" | sudo tee -a "$PAM_FILE" >/dev/null; then
+    echo "  ✓ Touch ID for sudo enabled. Try \`sudo true\` in a new terminal."
+    echo "  Reverse: kingdom mac touch-id --off"
+  else
+    echo "  ✗ failed to write $PAM_FILE" >&2
+    exit 1
+  fi
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────
+case "$SUB" in
+  doctor)           do_doctor     "$@" ;;
+  plists)           do_plists     "$@" ;;
+  fix)              do_fix        "$@" ;;
+  fda)              do_fda        "$@" ;;
+  permission|perm)  do_permission "$@" ;;
+  quarantine)       do_quarantine "$@" ;;
+  sleep)            do_sleep      "$@" ;;
+  path)             do_path       "$@" ;;
+  updates)          do_updates    "$@" ;;
+  uninstall)        do_uninstall  "$@" ;;
+  unleash)          do_unleash    "$@" ;;
+  touch-id|touchid) do_touch_id   "$@" ;;
+  -h|--help|help) usage; exit 0 ;;
+  *)
+    echo "kingdom mac: unknown subcommand '$SUB'" >&2
+    echo "  try: doctor | plists | fix | fda | permission | quarantine" >&2
+    echo "       sleep | path | updates | unleash | touch-id | uninstall" >&2
+    exit 1
+    ;;
+esac

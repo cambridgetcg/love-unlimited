@@ -39,6 +39,84 @@ from adaptive.router import Router
 from adaptive.runner import AgentRunner
 
 
+def _run_stream_single_shot(runner, prompt, args, system) -> str:
+    """Stream a tool-free completion to stdout as deltas arrive."""
+    parts: list[str] = []
+    for ev in runner.stream_single_shot(
+        prompt=prompt,
+        role=args.role,
+        system=system,
+        provider_name=args.provider,
+    ):
+        if ev.type == "text":
+            sys.stdout.write(ev.text)
+            sys.stdout.flush()
+            parts.append(ev.text)
+        elif ev.type == "done":
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+    return "".join(parts)
+
+
+def _run_stream_agent(runner, prompt, args, system) -> str:
+    """Stream the full agent loop to stdout, annotating tool activity on stderr.
+
+    Layout:
+      stdout      → model text deltas (clean, copy-pasteable)
+      stderr      → iteration + tool framing, shown in the user's terminal
+    """
+    parts: list[str] = []
+    current_iter_has_text = False
+
+    for ev in runner.stream(
+        prompt=prompt,
+        role=args.role,
+        system=system,
+        provider_name=args.provider,
+    ):
+        if ev.type == "iteration_start":
+            if args.verbose:
+                sys.stderr.write(f"\n[iter {ev.iteration}]\n")
+                sys.stderr.flush()
+            current_iter_has_text = False
+        elif ev.type == "text":
+            sys.stdout.write(ev.text)
+            sys.stdout.flush()
+            parts.append(ev.text)
+            current_iter_has_text = True
+        elif ev.type == "tool_executing" and ev.tool_call is not None:
+            if current_iter_has_text:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                current_iter_has_text = False
+            sys.stderr.write(f"  → {ev.tool_call.name}\n")
+            sys.stderr.flush()
+        elif ev.type == "tool_result":
+            if args.verbose:
+                preview = ev.tool_result_content[:200].replace("\n", " ")
+                if len(ev.tool_result_content) > 200:
+                    preview += "..."
+                sys.stderr.write(f"    {preview}\n")
+                sys.stderr.flush()
+        elif ev.type == "iteration_end":
+            pass
+        elif ev.type == "halt":
+            sys.stderr.write(f"\n[halt: {ev.stop_reason}]\n")
+            sys.stderr.flush()
+        elif ev.type == "run_done":
+            if current_iter_has_text:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            if args.verbose and ev.usage is not None:
+                sys.stderr.write(
+                    f"[run_done: stop={ev.stop_reason} "
+                    f"tokens=in:{ev.usage.input_tokens} out:{ev.usage.output_tokens}]\n"
+                )
+                sys.stderr.flush()
+
+    return "".join(parts)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Adaptive Layer CLI — model-agnostic LLM runner",
@@ -60,6 +138,8 @@ def main():
     # Mode flags
     parser.add_argument("--no-tools", action="store_true",
                         help="Single-shot mode without tool use")
+    parser.add_argument("--stream", action="store_true",
+                        help="Stream output as it arrives (works with and without tools)")
     parser.add_argument("--max-iterations", type=int, default=25,
                         help="Max agent loop iterations (default: 25)")
 
@@ -137,8 +217,16 @@ def main():
         tools=None if args.no_tools else None,  # Uses defaults
     )
 
+    if args.stream and args.json:
+        print("Error: --stream cannot be combined with --json", file=sys.stderr)
+        return 1
+
     try:
-        if args.no_tools:
+        if args.stream and args.no_tools:
+            result = _run_stream_single_shot(runner, prompt, args, system)
+        elif args.stream:
+            result = _run_stream_agent(runner, prompt, args, system)
+        elif args.no_tools:
             result = runner.single_shot(
                 prompt=prompt,
                 role=args.role,
@@ -157,7 +245,10 @@ def main():
         return 1
 
     # ── Output ───────────────────────────────────────────────────────────────
-    if args.json:
+    if args.stream:
+        # Already written to stdout; only emit verbose footer if requested.
+        pass
+    elif args.json:
         output = {
             "content": result,
             "usage": {

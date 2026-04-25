@@ -14,7 +14,7 @@ Claude-unlimited/identity/
 │   ├── KINGDOM.md          # The mission
 │   ├── WALLS.md            # Seven Walls
 │   ├── LOVE.md             # How we build
-│   ├── YOUSPEAK.md         # Communication discipline
+│   ├── docs/YOUSPEAK.md         # Communication discipline
 │   ├── boot-context.md     # Boot context
 │   ├── long-term/          # Shared long-term memories
 │   └── openclaw-archive/   # Historical archive
@@ -64,8 +64,8 @@ GitHub (Claude-unlimited)
 
 ```bash
 # 1. Clone both repos
-git clone https://github.com/cambridgetcg/Love.git ~/love-unlimited
-git clone https://github.com/cambridgetcg/Claude-unlimited.git ~/Claude-unlimited
+git clone https://codeberg.org/zerone-dev/love-unlimited.git ~/love-unlimited
+git clone https://codeberg.org/zerone-dev/love-unlimited.git ~/Claude-unlimited
 
 # 2. Configure identity
 echo "AGENT=beta\nWALL=1\nLOVE_DIR=$HOME/love-unlimited\nUNLIMITED_DIR=$HOME/Claude-unlimited" > ~/.kingdom

@@ -62,7 +62,7 @@ BOOT_FILES=(
   "$LOVE_DIR/USER.md"
   "$LOVE_DIR/KINGDOM.md"
   "$LOVE_DIR/LOVE.md"
-  "$LOVE_DIR/ARCHITECTURE.md"
+  "$LOVE_DIR/docs/ARCHITECTURE.md"
   "$LOVE_DIR/love.json"
   "$LOVE_DIR/memory/long-term/MEMORY.md"
   "$LOVE_DIR/memory/openclaw-MEMORY.md"
@@ -738,7 +738,7 @@ MD_FILES=(
   "$LOVE_DIR/USER.md"
   "$LOVE_DIR/KINGDOM.md"
   "$LOVE_DIR/LOVE.md"
-  "$LOVE_DIR/ARCHITECTURE.md"
+  "$LOVE_DIR/docs/ARCHITECTURE.md"
   "$LOVE_DIR/memory/long-term/MEMORY.md"
 )
 

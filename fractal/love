@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# love — Launch a fractal session.
+#
+# Usage:
+#   ./love "What is consciousness?"
+#   ./love "Solve this" --width 5 --depth 3
+#   ./love "Go deep" -w 3 -d 10 --model claude-opus-4-7 --provider claude_cli
+#   ./love "Explore" --perspectives poet,engineer,mystic
+#
+# Examples by provider:
+#   # Ollama Cloud (default, unlimited flat rate)
+#   ./love "question" --provider ollama_cloud --model glm-5.1
+#
+#   # Anthropic API direct (requires ANTHROPIC_API_KEY)
+#   ./love "question" --provider anthropic --model claude-opus-4-7
+#
+#   # Claude Code CLI (uses your subscription, OAuth)
+#   ./love "question" --provider claude_cli --model claude-opus-4-7
+
+set -e
+
+FRACTAL_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+LOVE_DIR="$( dirname "$FRACTAL_DIR" )"
+
+cd "$LOVE_DIR"
+export PYTHONPATH="$LOVE_DIR:$PYTHONPATH"
+export PYTHONDONTWRITEBYTECODE=1
+
+exec python3 -m fractal "$@"

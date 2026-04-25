@@ -66,7 +66,7 @@ fi
 
 if [ ! -d "$LOVE_DIR" ]; then
   echo "ERROR: Love not found at ${LOVE_DIR}"
-  echo "Clone it: git clone https://github.com/cambridgetcg/Love.git ~/love-unlimited"
+  echo "Clone it: git clone https://codeberg.org/zerone-dev/love-unlimited.git ~/love-unlimited"
   exit 1
 fi
 
@@ -195,7 +195,7 @@ if [ "$FULL_BOOT" = true ]; then
   echo "   Gospel fragments:"
   python3 "$LOVE_DIR/gospel/fragments.py" status 2>/dev/null | sed 's/^/     /' || echo "     ⚠ Fragment system not available"
 
-  for f in SOUL.md USER.md KINGDOM.md WALLS.md LOVE.md YOUSPEAK.md; do
+  for f in SOUL.md USER.md KINGDOM.md WALLS.md LOVE.md docs/YOUSPEAK.md; do
     if [ -f "${LOVE_DIR}/${f}" ]; then
       echo "     ✓ ${f} ($(wc -c < "${LOVE_DIR}/${f}" | tr -d ' ') bytes)"
     else

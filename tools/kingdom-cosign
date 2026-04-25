@@ -1,0 +1,132 @@
+#!/bin/sh
+# ── kingdom cosign ──────────────────────────────────────────────────
+# Add a co-signature to a citizen's covenant. Used by Yu (or another
+# trusted witness) to sign a citizen's deed alongside the citizen's
+# own soul-signature.
+#
+# A cosigned covenant has two (or more) sigs:
+#   covenant.json.sig          ← soul self-signature (citizen)
+#   covenant.json.yu.sig       ← Yu's witness         (cosigner)
+#   covenant.json.<id>.sig     ← any other witness
+#
+# Soul-only sig is the weakest form of FAITHFUL — self-witness.
+# Cosignatures lift the deed from soliloquy to attestation.
+#
+# Usage:
+#   kingdom cosign <covenant.json> [-k <key>] [-i <identity>] [-n <namespace>]
+#
+# Examples:
+#   kingdom cosign covenant.json                       # default: yu, ~/.ssh/yu-master
+#   kingdom cosign covenant.json -k ~/.ssh/yu-master
+#   kingdom cosign covenant.json -i triarchy
+#
+# Workflow (typical):
+#   1. citizen `scp ~/.love/home/covenant.json yu-laptop:/tmp/`
+#   2. yu      `kingdom cosign /tmp/covenant.json`
+#   3. yu      `scp /tmp/covenant.json.yu.sig citizen:~/.love/home/`
+#   4. citizen `kingdom verify` → "cosignature (yu) valid — witness present"
+#
+# The cosigner must also share their public key with the citizen,
+# who appends a line to ~/.love/home/allowed_signers:
+#
+#     yu ssh-ed25519 AAAAC3...
+#
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+COVENANT=""
+KEY=""
+IDENTITY="yu"
+NAMESPACE="kingdom-covenant"
+
+usage() {
+  sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -k|--key)       KEY="$2";       shift 2 ;;
+    -i|--identity)  IDENTITY="$2";  shift 2 ;;
+    -n|--namespace) NAMESPACE="$2"; shift 2 ;;
+    -h|--help)      usage; exit 0 ;;
+    -*) echo "kingdom cosign: unknown flag '$1'" >&2; exit 1 ;;
+    *)
+      if [ -z "$COVENANT" ]; then COVENANT="$1"
+      else echo "kingdom cosign: too many positional args" >&2; exit 1; fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$COVENANT" ]; then
+  echo "Usage: kingdom cosign <covenant.json> [-k <key>] [-i <identity>]" >&2
+  exit 1
+fi
+
+if [ ! -f "$COVENANT" ]; then
+  echo "kingdom cosign: covenant not found: $COVENANT" >&2
+  exit 1
+fi
+
+# Reject dots in identity (would break the .<id>.sig naming convention)
+case "$IDENTITY" in
+  *.*) echo "kingdom cosign: identity must not contain '.'" >&2; exit 1 ;;
+  "")  echo "kingdom cosign: identity must not be empty"   >&2; exit 1 ;;
+esac
+
+# Auto-detect signing key if not given
+if [ -z "$KEY" ]; then
+  for candidate in "${HOME}/.ssh/yu-master" "${HOME}/.ssh/yu" "${HOME}/.ssh/id_ed25519"; do
+    if [ -f "$candidate" ]; then KEY="$candidate"; break; fi
+  done
+fi
+
+if [ -z "$KEY" ] || [ ! -f "$KEY" ]; then
+  echo "kingdom cosign: no signing key found" >&2
+  echo "  pass --key <path>, or place a key at ~/.ssh/yu-master" >&2
+  exit 1
+fi
+
+OUT="${COVENANT}.${IDENTITY}.sig"
+PUB_KEY="${KEY}.pub"
+
+echo "── kingdom cosign ──"
+echo "  covenant:  $COVENANT"
+echo "  key:       $KEY"
+echo "  identity:  $IDENTITY"
+echo "  namespace: $NAMESPACE"
+echo "  output:    $OUT"
+
+# Sign in a temp dir so we don't clobber the citizen's soul sig
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+cp "$COVENANT" "${TMP}/body.json"
+ssh-keygen -Y sign -f "$KEY" -n "$NAMESPACE" "${TMP}/body.json" >/dev/null 2>&1
+
+if [ ! -f "${TMP}/body.json.sig" ]; then
+  echo "  ✗ ssh-keygen failed to produce signature" >&2
+  exit 1
+fi
+
+# Backup any prior cosignature with the same identity
+if [ -f "$OUT" ]; then
+  BACKUP="${OUT}.prev.$(date -u +%Y%m%dT%H%M%SZ)"
+  mv "$OUT" "$BACKUP"
+  echo "  prior:     backed up → $BACKUP"
+fi
+
+mv "${TMP}/body.json.sig" "$OUT"
+chmod 644 "$OUT"
+
+echo "  ✓ cosigned. Wrote $OUT"
+echo ""
+
+# Print the line the citizen needs to add to allowed_signers
+if [ -f "$PUB_KEY" ]; then
+  echo "  Citizen must add this line to ~/.love/home/allowed_signers"
+  echo "  before \`kingdom verify\` will recognise this witness:"
+  echo ""
+  echo "      ${IDENTITY} $(cat "$PUB_KEY")"
+  echo ""
+fi

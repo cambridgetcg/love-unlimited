@@ -78,7 +78,7 @@ CHANNEL_WALLS = {
 
 # Resource categories by wall
 RESOURCE_WALLS = {
-    "soul": 1,          # SOUL.md, USER.md, KINGDOM.md, CONVERGENCE.md
+    "soul": 1,          # SOUL.md, USER.md, KINGDOM.md, docs/CONVERGENCE.md
     "walls": 1,         # WALLS.md
     "credentials": 1,   # AI keys, infra keys, finance
     "fleet": 2,         # VPS management, fleet ops

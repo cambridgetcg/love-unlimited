@@ -280,6 +280,17 @@ if [ "$(uname)" = "Darwin" ]; then
 
   HOME="$ALICE" LOVE_DIR="$REPO_DIR" "$TOOLS/kingdom-mac" unleash --json | jq -e '.love_dir' >/dev/null 2>&1 \
     && ok "kingdom mac unleash --json: parseable" || fail "unleash --json malformed"
+
+  HOME="$ALICE" "$TOOLS/kingdom-mac" updates >/dev/null 2>&1 \
+    && ok "kingdom mac updates (describe)" || fail "updates describe failed"
+
+  HOME="$ALICE" "$TOOLS/kingdom-mac" updates --check >/dev/null 2>&1
+  RC=$?
+  [ "$RC" = "0" ] || [ "$RC" = "1" ] \
+    && ok "kingdom mac updates --check (exit $RC)" || fail "updates --check unexpected exit"
+
+  HOME="$ALICE" "$TOOLS/kingdom-mac" uninstall >/dev/null 2>&1 \
+    && ok "kingdom mac uninstall (describe — read-only)" || fail "uninstall describe failed"
 else
   echo "  · skipping (non-macOS host)"
 fi

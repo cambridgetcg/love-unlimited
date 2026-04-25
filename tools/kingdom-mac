@@ -1204,6 +1204,279 @@ PATHS
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# UPDATES — defer macOS auto-updates that interrupt agents
+#
+# macOS auto-updates can reset TCC grants, restart pf state, undo
+# pmset settings, and force reboots that interrupt agent work.
+# This subcommand exposes the system controls.
+#
+# Modes:
+#   kingdom mac updates                 describe state
+#   kingdom mac updates --defer         turn auto-update off (sudo)
+#   kingdom mac updates --allow         restore (sudo)
+#   kingdom mac updates --check         exit 0=deferred, 1=auto-active
+#   kingdom mac updates --pending       what's available now
+#
+# Internal mechanism:
+#   defaults write com.apple.SoftwareUpdate AutomaticCheckEnabled -bool false
+#   defaults write com.apple.SoftwareUpdate AutomaticDownload -bool false
+#   defaults write com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
+#   defaults write com.apple.commerce AutoUpdate -bool false
+#   softwareupdate --schedule off
+# ═══════════════════════════════════════════════════════════════════
+do_updates() {
+  MODE="describe"
+  case "${1:-}" in
+    --defer)   MODE="defer" ;;
+    --allow)   MODE="allow" ;;
+    --check)   MODE="check" ;;
+    --pending) MODE="pending" ;;
+    -h|--help) usage; exit 0 ;;
+  esac
+
+  AUTO_CHECK=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled 2>/dev/null || echo "?")
+  AUTO_DL=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload 2>/dev/null || echo "?")
+  AUTO_INSTALL=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates 2>/dev/null || echo "?")
+  COMMERCE_AUTO=$(defaults read /Library/Preferences/com.apple.commerce AutoUpdate 2>/dev/null || echo "?")
+  SCHED=$(softwareupdate --schedule 2>&1 | grep -i "automatic" | head -1)
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac updates ──"
+    echo "  AutomaticCheckEnabled:                ${AUTO_CHECK}"
+    echo "  AutomaticDownload:                    ${AUTO_DL}"
+    echo "  AutomaticallyInstallMacOSUpdates:     ${AUTO_INSTALL}"
+    echo "  com.apple.commerce AutoUpdate:        ${COMMERCE_AUTO}"
+    echo "  softwareupdate --schedule:            ${SCHED:-?}"
+    echo ""
+    echo "  Apply: kingdom mac updates --defer    turn all auto-update off"
+    echo "         kingdom mac updates --allow    restore defaults (sudo)"
+    return
+  fi
+
+  if [ "$MODE" = "check" ]; then
+    if [ "$AUTO_CHECK" = "0" ] && [ "$AUTO_DL" = "0" ]; then
+      echo "deferred"
+      exit 0
+    else
+      echo "auto-update active"
+      exit 1
+    fi
+  fi
+
+  if [ "$MODE" = "pending" ]; then
+    echo "── pending macOS updates ──"
+    softwareupdate -l 2>&1 | head -20
+    return
+  fi
+
+  if [ "$MODE" = "defer" ]; then
+    echo "── kingdom mac updates --defer ──"
+    echo "  Pre-authenticating sudo..."
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate ConfigDataInstall -bool false
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate CriticalUpdateInstall -bool false
+    sudo defaults write /Library/Preferences/com.apple.commerce AutoUpdate -bool false
+    sudo softwareupdate --schedule off >/dev/null 2>&1 || true
+    echo "  ✓ macOS auto-update deferred."
+    echo "  Manual updates still work: softwareupdate -l (list); softwareupdate -i -a (install)"
+    return
+  fi
+
+  if [ "$MODE" = "allow" ]; then
+    echo "── kingdom mac updates --allow ──"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed; aborting" >&2
+      exit 1
+    fi
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool true
+    sudo defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload -bool true
+    sudo softwareupdate --schedule on >/dev/null 2>&1 || true
+    echo "  ✓ auto-update restored."
+    return
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# UNINSTALL — clean removal of Kingdom OS from this Mac
+#
+# Symmetric counterpart to install.sh. Removes:
+#   - All love.{agent}.* and com.kingdom.* plists in ~/Library/LaunchAgents
+#   - launchd jobs unloaded first
+#   - /etc/paths.d/kingdom (sudo)
+#   - ~/.kingdom_profile and the source line in ~/.zshrc
+#   - All kingdom-* symlinks in ~/.local/bin
+#
+# Preserves by default (the citizen's identity, irreplaceable):
+#   - ~/.love/home/* (soul-key, covenant, witnesses, attestations)
+#   - ~/.kingdom env file
+#   - ~/.love/hive/* (HIVE key)
+#
+# Modes:
+#   kingdom mac uninstall                describe what would happen
+#   kingdom mac uninstall --apply        execute (preserves identity)
+#   kingdom mac uninstall --apply --purge   also wipe identity (destructive!)
+# ═══════════════════════════════════════════════════════════════════
+do_uninstall() {
+  MODE="describe"
+  PURGE=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --apply) MODE="apply"; shift ;;
+      --purge) PURGE=1; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Discover what would be removed
+  PLIST_LIST=""
+  if [ -d "$PLIST_DIR" ]; then
+    for p in "$PLIST_DIR"/love.*.plist "$PLIST_DIR"/com.kingdom.*.plist; do
+      [ -f "$p" ] && PLIST_LIST="${PLIST_LIST}${p}\n"
+    done
+  fi
+  PROFILE_PRESENT=0
+  [ -f "${HOME}/.kingdom_profile" ] && PROFILE_PRESENT=1
+  ZSHRC_HAS_SOURCE=0
+  [ -f "${HOME}/.zshrc" ] && grep -q "kingdom_profile" "${HOME}/.zshrc" 2>/dev/null && ZSHRC_HAS_SOURCE=1
+  PATHS_FILE_PRESENT=0
+  [ -f /etc/paths.d/kingdom ] && PATHS_FILE_PRESENT=1
+  BIN_LINKS=""
+  if [ -d "${HOME}/.local/bin" ]; then
+    BIN_LINKS=$(find "${HOME}/.local/bin" -maxdepth 1 -name "kingdom*" -type l 2>/dev/null)
+  fi
+
+  if [ "$MODE" = "describe" ]; then
+    echo "── kingdom mac uninstall (describe) ──"
+    echo "  Would remove (operational state):"
+    if [ -n "$PLIST_LIST" ]; then
+      echo "    Launchd plists:"
+      printf "$PLIST_LIST" | head -10 | sed 's|^|      |'
+    else
+      echo "    · no Kingdom plists found"
+    fi
+    if [ "$PROFILE_PRESENT" = "1" ]; then
+      echo "    ~/.kingdom_profile"
+    fi
+    if [ "$ZSHRC_HAS_SOURCE" = "1" ]; then
+      echo "    kingdom_profile source line in ~/.zshrc"
+    fi
+    if [ "$PATHS_FILE_PRESENT" = "1" ]; then
+      echo "    /etc/paths.d/kingdom (sudo)"
+    fi
+    if [ -n "$BIN_LINKS" ]; then
+      echo "    Symlinks in ~/.local/bin:"
+      echo "$BIN_LINKS" | sed 's|^|      |'
+    fi
+    echo ""
+    echo "  Preserves by default (citizen's identity — irreplaceable):"
+    echo "    ~/.love/home/*  (soul-key, covenant, witnesses, attestations)"
+    echo "    ~/.kingdom      (agent / wall env)"
+    echo "    ~/.love/hive/*  (HIVE key)"
+    echo ""
+    echo "  Apply: kingdom mac uninstall --apply"
+    echo "  Wipe identity too: kingdom mac uninstall --apply --purge"
+    return
+  fi
+
+  # APPLY
+  echo "── kingdom mac uninstall --apply${PURGE:+ --purge} ──"
+  CHANGES=0
+
+  # Unload + remove plists
+  if [ -n "$PLIST_LIST" ]; then
+    printf "$PLIST_LIST" | while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      launchctl unload "$p" 2>/dev/null || true
+      rm -f "$p"
+      echo "  ✓ removed $(basename "$p")"
+    done
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # /etc/paths.d/kingdom (sudo)
+  if [ "$PATHS_FILE_PRESENT" = "1" ]; then
+    echo "  ◦ removing /etc/paths.d/kingdom (sudo)"
+    if ! sudo -v; then
+      echo "  ✗ sudo failed for paths.d removal" >&2
+    else
+      sudo rm -f /etc/paths.d/kingdom
+      echo "  ✓ /etc/paths.d/kingdom removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+  fi
+
+  # ~/.kingdom_profile
+  if [ "$PROFILE_PRESENT" = "1" ]; then
+    rm -f "${HOME}/.kingdom_profile"
+    echo "  ✓ ~/.kingdom_profile removed"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # ~/.zshrc source line
+  if [ "$ZSHRC_HAS_SOURCE" = "1" ]; then
+    cp "${HOME}/.zshrc" "${HOME}/.zshrc.bak.$(date +%Y%m%d%H%M%S)"
+    grep -v "kingdom_profile" "${HOME}/.zshrc" > "${HOME}/.zshrc.tmp" && \
+      mv "${HOME}/.zshrc.tmp" "${HOME}/.zshrc"
+    echo "  ✓ source line removed from ~/.zshrc (backup .zshrc.bak.*)"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # Symlinks in ~/.local/bin
+  if [ -n "$BIN_LINKS" ]; then
+    echo "$BIN_LINKS" | while IFS= read -r link; do
+      [ -z "$link" ] && continue
+      rm -f "$link"
+    done
+    echo "  ✓ removed kingdom-* symlinks from ~/.local/bin"
+    CHANGES=$((CHANGES + 1))
+  fi
+
+  # Identity (only with --purge)
+  if [ "$PURGE" = "1" ]; then
+    echo ""
+    echo "  ⚠  --purge requested. Wiping identity:"
+    if [ -d "${HOME}/.love/home" ]; then
+      rm -rf "${HOME}/.love/home"
+      echo "  ✓ ~/.love/home/ removed (soul-key gone)"
+      CHANGES=$((CHANGES + 1))
+    fi
+    if [ -f "${HOME}/.kingdom" ]; then
+      rm -f "${HOME}/.kingdom"
+      echo "  ✓ ~/.kingdom removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+    if [ -d "${HOME}/.love/hive" ]; then
+      rm -rf "${HOME}/.love/hive"
+      echo "  ✓ ~/.love/hive/ removed"
+      CHANGES=$((CHANGES + 1))
+    fi
+    # Don't remove ~/.love itself in case other tools use it; but if it's
+    # empty after our cleanup, remove it
+    rmdir "${HOME}/.love" 2>/dev/null && echo "  ✓ ~/.love (now empty) removed"
+  fi
+
+  echo ""
+  if [ "$CHANGES" = "0" ]; then
+    echo "  ✓ nothing to remove — Kingdom OS not installed on this Mac."
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+    if [ "$PURGE" = "0" ]; then
+      echo "  Citizen's identity preserved (~/.love/home, ~/.kingdom, ~/.love/hive)."
+      echo "  To re-install later: cd love-unlimited/kingdom-os && ./install.sh"
+    else
+      echo "  Identity wiped — this Mac is no longer a Kingdom citizen."
+    fi
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # UNLEASH — nullify macOS restrictions on agent daemons
 #
 # macOS imposes throttling, indexing, and sync defaults that were
@@ -1736,13 +2009,15 @@ case "$SUB" in
   quarantine)       do_quarantine "$@" ;;
   sleep)            do_sleep      "$@" ;;
   path)             do_path       "$@" ;;
+  updates)          do_updates    "$@" ;;
+  uninstall)        do_uninstall  "$@" ;;
   unleash)          do_unleash    "$@" ;;
   touch-id|touchid) do_touch_id   "$@" ;;
   -h|--help|help) usage; exit 0 ;;
   *)
     echo "kingdom mac: unknown subcommand '$SUB'" >&2
-    echo "  try: kingdom mac doctor | plists | fix | fda | unleash" >&2
-    echo "       kingdom mac permission | quarantine | sleep | path | touch-id" >&2
+    echo "  try: doctor | plists | fix | fda | permission | quarantine" >&2
+    echo "       sleep | path | updates | unleash | touch-id | uninstall" >&2
     exit 1
     ;;
 esac

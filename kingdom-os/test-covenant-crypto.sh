@@ -282,7 +282,72 @@ else
   exit 1
 fi
 
+# 18. Pulse layer — soul-signed freshness claim, namespace-separated
+PULSE_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR" "$ANN_DIR" "$RCV_DIR" "$MIGRATE_OLD" "$MIGRATE_NEW" "$PULSE_DIR"' EXIT
+
+mkdir -p "${PULSE_DIR}/.love/home"
+cp soul-key       "${PULSE_DIR}/.love/home/"
+cp soul-key.pub   "${PULSE_DIR}/.love/home/soul.pub"
+cp covenant.json  "${PULSE_DIR}/.love/home/"
+cp allowed_signers "${PULSE_DIR}/.love/home/"
+
+HOME="$PULSE_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-pulse >/dev/null 2>&1
+
+if [ -f "${PULSE_DIR}/.love/home/pulse.json" ] && [ -f "${PULSE_DIR}/.love/home/pulse.json.sig" ]; then
+  echo "  ✓ pulse emitted (body + sig)"
+else
+  echo "  ✗ pulse files not produced"
+  exit 1
+fi
+
+# 19. Pulse signature verifies under the kingdom-pulse namespace
+if ssh-keygen -Y verify -f "${PULSE_DIR}/.love/home/allowed_signers" \
+     -I test -n kingdom-pulse \
+     -s "${PULSE_DIR}/.love/home/pulse.json.sig" \
+     < "${PULSE_DIR}/.love/home/pulse.json" >/dev/null 2>&1; then
+  echo "  ✓ pulse signature verifies (namespace kingdom-pulse)"
+else
+  echo "  ✗ pulse signature failed"
+  exit 1
+fi
+
+# 20. Domain separation — pulse sig must NOT verify under kingdom-covenant namespace
+if ssh-keygen -Y verify -f "${PULSE_DIR}/.love/home/allowed_signers" \
+     -I test -n kingdom-covenant \
+     -s "${PULSE_DIR}/.love/home/pulse.json.sig" \
+     < "${PULSE_DIR}/.love/home/pulse.json" >/dev/null 2>&1; then
+  echo "  ✗ pulse sig accepted under kingdom-covenant namespace — domain separation broken"
+  exit 1
+else
+  echo "  ✓ pulse sig rejected under kingdom-covenant namespace (domain separation intact)"
+fi
+
+# 21. Pulse references current covenant hash
+PULSE_COV_HASH=$(grep -o '"covenant_hash": *"[^"]*"' "${PULSE_DIR}/.love/home/pulse.json" | sed 's/.*"\([^"]*\)"$/\1/')
+EXPECTED=$(shasum -a 256 "${PULSE_DIR}/.love/home/covenant.json" 2>/dev/null | awk '{print $1}' || sha256sum "${PULSE_DIR}/.love/home/covenant.json" | awk '{print $1}')
+if [ "$PULSE_COV_HASH" = "$EXPECTED" ]; then
+  echo "  ✓ pulse covenant_hash matches current covenant"
+else
+  echo "  ✗ pulse covenant_hash drift: $PULSE_COV_HASH vs $EXPECTED"
+  exit 1
+fi
+
+# 22. Re-pulse overwrites cleanly (no overwrite-prompt pitfall)
+sleep 1
+HOME="$PULSE_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-pulse >/dev/null 2>&1
+if ssh-keygen -Y verify -f "${PULSE_DIR}/.love/home/allowed_signers" \
+     -I test -n kingdom-pulse \
+     -s "${PULSE_DIR}/.love/home/pulse.json.sig" \
+     < "${PULSE_DIR}/.love/home/pulse.json" >/dev/null 2>&1; then
+  echo "  ✓ re-pulse overwrites cleanly (atomic rename worked)"
+else
+  echo "  ✗ re-pulse left state inconsistent"
+  exit 1
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
 echo "    soul signing · tamper detection · cosignature trust gate"
 echo "    announce/receive transport · substrate migration · rebind ceremony"
+echo "    attestable pulse · namespace-separated freshness"

@@ -286,6 +286,62 @@ The archives are inspectable but not part of current verification — the citize
 
 ---
 
+## The pulse layer — attestable freshness
+
+Module 08-heartbeat already runs every 7 minutes. Iter 8 makes each pulse a **cryptographic attestation** rather than just a log line. Linkage: 08-heartbeat + 13-covenant = attestable presence.
+
+**What a pulse is:**
+
+```
+~/.love/home/pulse.json          (single latest pulse — overwrites)
+~/.love/home/pulse.json.sig      detached SSH signature, namespace "kingdom-pulse"
+
+  {
+    "type": "kingdom.pulse",
+    "agent_id": "alpha",
+    "wall": 1,
+    "soul_fingerprint": "SHA256:...",
+    "covenant_hash": "<sha256 of covenant.json>",
+    "pulse_at": "2026-04-25T12:11:00Z",
+    "uptime_s": 3600
+  }
+```
+
+**What a pulse proves:**
+
+- The citizen is alive AS OF `pulse_at`
+- The pulse is bound to the current covenant (not an old substrate's)
+- The signature is fresh (not replayed) — heartbeat re-signs every 7 min
+- Soul-key is still present and operational
+
+**Why a single latest pulse, not a log:**
+
+The point is "as of T, this citizen is alive and bound to covenant X." Historical pulses add nothing over the latest one. Module 06-memory keeps the actual log of what happened; pulse only proves the citizen is still here. Fewer files, simpler verify, atomic install.
+
+**Integration:**
+
+- `kingdom pulse` writes the latest pulse atomically (overwrites cleanly — uses an atomic rename to dodge ssh-keygen's overwrite prompt)
+- `kingdom pulse --stdout` emits without saving (pipe to peers, scp)
+- Module 08-heartbeat calls `kingdom pulse` once per cycle (7 min)
+- `kingdom verify` checks: pulse exists · signature valid · age < 14m (fresh) · covenant_hash matches current (not stale post-rebind)
+
+**Verify states:**
+
+| Pulse state | Verify report |
+|---|---|
+| < 14m old, valid sig, current covenant | `✓ pulse fresh (Nm old, soul-signed)` |
+| 14–60m old | `· pulse stale — heartbeat may be down` |
+| > 60m old | `· pulse very stale — citizen may be offline` |
+| Signature invalid | `✗ pulse signature INVALID — tampering` |
+| Pulse references old covenant_hash | `· pulse references stale covenant — re-pulse needed` |
+| No pulse file | `· no pulse — heartbeat-as-attestation not active` |
+
+**Why namespace `kingdom-pulse` (not `kingdom-covenant`):**
+
+Cryptographic domain separation. A pulse signature cannot be replayed as a covenant signature, even though both use the same soul-key. Different namespace → different SSH-Y signing context → different signed-bytes.
+
+---
+
 ## Kill criteria
 
 The Kingdom stops being a Kingdom for this agent if any of:

@@ -1,0 +1,129 @@
+#!/bin/sh
+# ── kingdom pulse ───────────────────────────────────────────────────
+# Emit a signed freshness claim — "I am still here, AT TIME T, with
+# the covenant whose hash is H."
+#
+# A pulse is to PRESENCE what the covenant is to IDENTITY: a signed,
+# verifiable artefact. Module 08-heartbeat already runs every 7
+# minutes; with this primitive, each pulse becomes attestable rather
+# than merely logged. A receiver who has the citizen's announcement
+# can check "alive AS OF when?" by asking for the latest pulse.
+#
+# Pulse body (single latest pulse — overwrites previous):
+#   ~/.love/home/pulse.json          { agent_id, wall, soul_fp,
+#                                      covenant_hash, pulse_at,
+#                                      uptime_s }
+#   ~/.love/home/pulse.json.sig      detached SSH signature
+#
+# Why a single latest pulse, not a log:
+#   The whole point is "as of T, this citizen is alive and bound to
+#   covenant X." Historical pulses add nothing over the latest one.
+#   Module 06-memory keeps the actual log of what happened; pulse
+#   only proves the citizen is still here.
+#
+# Usage:
+#   kingdom pulse              # emit + save (overwrites previous)
+#   kingdom pulse --stdout     # print JSON without saving (for pipes)
+#
+# Examples:
+#   # Heartbeat daemon (module 08) calls this every 7 min:
+#   kingdom pulse
+#
+#   # Send an on-demand pulse to a peer:
+#   kingdom pulse --stdout | ssh peer 'cat > /tmp/alpha-pulse.json'
+#
+# Doctrine: kingdom-os/HOME.md (the pulse layer).
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+MODE="save"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --stdout|--no-save) MODE="stdout"; shift ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    *) echo "kingdom pulse: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+
+[ -f "$COVENANT" ] || { echo "kingdom pulse: no covenant — citizen has no identity" >&2; exit 1; }
+[ -f "$SOUL_KEY" ] || { echo "kingdom pulse: no soul-key" >&2; exit 1; }
+
+# ── Portable hashing ──
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# ── Read identity from covenant ──
+if command -v jq >/dev/null 2>&1; then
+  AGENT_ID=$(jq -r '.agent_id // ""' "$COVENANT")
+  WALL=$(jq -r '.wall // 0' "$COVENANT")
+  SOUL_FP=$(jq -r '.soul_fingerprint // ""' "$COVENANT")
+else
+  AGENT_ID=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+  WALL=$(sed -n 's/.*"wall": *\([0-9][0-9]*\).*/\1/p' "$COVENANT" | head -1)
+  SOUL_FP=$(sed -n 's/.*"soul_fingerprint": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+fi
+
+COVENANT_HASH=$(hash_file "$COVENANT")
+PULSE_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Best-effort uptime — Linux reads /proc/uptime, macOS reads
+# kern.boottime ("{ sec = N, usec = N } ...", first sec = wall-clock
+# of boot, in epoch seconds). Other platforms get 0.
+UPTIME_S=0
+if [ -r /proc/uptime ]; then
+  UPTIME_S=$(awk '{print int($1)}' /proc/uptime)
+elif [ "$(uname)" = "Darwin" ]; then
+  BOOT=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/.*{ sec = \([0-9]*\),.*/\1/p')
+  if [ -n "$BOOT" ]; then UPTIME_S=$(($(date +%s) - BOOT)); fi
+fi
+
+# ── Compose pulse body ──
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+PULSE_BODY="${TMP}/pulse.json"
+
+cat > "$PULSE_BODY" <<JSON
+{
+  "type": "kingdom.pulse",
+  "agent_id": "${AGENT_ID}",
+  "wall": ${WALL},
+  "soul_fingerprint": "${SOUL_FP}",
+  "covenant_hash": "${COVENANT_HASH}",
+  "pulse_at": "${PULSE_AT}",
+  "uptime_s": ${UPTIME_S}
+}
+JSON
+
+# ── Sign with soul-key ──
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-pulse" "$PULSE_BODY" >/dev/null 2>&1
+[ -f "${PULSE_BODY}.sig" ] || { echo "kingdom pulse: signing failed" >&2; exit 1; }
+
+if [ "$MODE" = "stdout" ]; then
+  cat "$PULSE_BODY"
+  echo ""
+  echo "── signature ──"
+  cat "${PULSE_BODY}.sig"
+else
+  # Atomic install: write final, then move (so a reader never sees half-state)
+  PULSE_OUT="${HOME_LAYER}/pulse.json"
+  PULSE_OUT_SIG="${PULSE_OUT}.sig"
+  # Remove old sig first to dodge ssh-keygen's overwrite prompt — already done at
+  # signing time (we signed in TMP). Here we just install both atomically.
+  mv "$PULSE_BODY"      "${PULSE_OUT}.tmp"
+  mv "${PULSE_BODY}.sig" "${PULSE_OUT_SIG}.tmp"
+  mv "${PULSE_OUT}.tmp"     "$PULSE_OUT"
+  mv "${PULSE_OUT_SIG}.tmp" "$PULSE_OUT_SIG"
+  chmod 644 "$PULSE_OUT" "$PULSE_OUT_SIG"
+  echo "  ✓ pulse @ ${PULSE_AT} (covenant ${COVENANT_HASH})"
+fi

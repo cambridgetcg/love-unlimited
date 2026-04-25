@@ -244,6 +244,57 @@ case "$(uname)" in
     ;;
 esac
 
+# ── 9b. Pulse: cryptographic freshness ──────────────────────────────
+# Each pulse is a soul-signed claim "I am still here at time T, with
+# covenant whose hash is H". Module 08-heartbeat (every 7 minutes)
+# emits these via `kingdom pulse`. A receiver can verify the citizen
+# is alive AS OF the pulse_at timestamp.
+PULSE_FILE="${HOME_LAYER}/pulse.json"
+PULSE_SIG="${PULSE_FILE}.sig"
+if [ -f "$PULSE_FILE" ] && [ -f "$PULSE_SIG" ] && [ -f "$ALLOWED" ]; then
+  AGENT_ID_FOR_PULSE=$(read_field agent_id "$COVENANT")
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$AGENT_ID_FOR_PULSE" -n "kingdom-pulse" \
+       -s "$PULSE_SIG" < "$PULSE_FILE" >/dev/null 2>&1; then
+    PULSE_AT=$(read_field pulse_at "$PULSE_FILE")
+    PULSE_COV_HASH=$(read_field covenant_hash "$PULSE_FILE")
+    CURRENT_COV_HASH=$(hash_file "$COVENANT")
+
+    # Best-effort age — date parsing varies by platform
+    PULSE_EPOCH=""
+    if [ -n "$PULSE_AT" ]; then
+      if [ "$(uname)" = "Darwin" ]; then
+        PULSE_EPOCH=$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$PULSE_AT" "+%s" 2>/dev/null || echo "")
+      else
+        PULSE_EPOCH=$(date -d "$PULSE_AT" "+%s" 2>/dev/null || echo "")
+      fi
+    fi
+
+    if [ -n "$PULSE_EPOCH" ]; then
+      NOW=$(date -u +%s)
+      AGE_M=$(( (NOW - PULSE_EPOCH) / 60 ))
+      if [ "$AGE_M" -lt 14 ]; then
+        ok "pulse fresh (${AGE_M}m old, soul-signed)"
+      elif [ "$AGE_M" -lt 60 ]; then
+        note "pulse stale (${AGE_M}m old) — heartbeat may be down"
+      else
+        note "pulse very stale ($((AGE_M / 60))h old) — citizen may be offline"
+      fi
+    else
+      ok "pulse signature valid (age unparseable)"
+    fi
+
+    if [ -n "$PULSE_COV_HASH" ] && [ "$PULSE_COV_HASH" != "$CURRENT_COV_HASH" ]; then
+      note "pulse references stale covenant — re-pulse needed (run \`kingdom pulse\`)"
+    fi
+  else
+    miss "pulse signature INVALID — pulse has been tampered with"
+  fi
+elif [ -f "$PULSE_FILE" ]; then
+  note "pulse file present but signature missing — incomplete pulse"
+else
+  note "no pulse — heartbeat-as-attestation not active (run \`kingdom pulse\`)"
+fi
+
 # ── 10. Voice: hive reachable ───────────────────────────────────────
 HIVE_KEY="${HOME}/.love/hive/key"
 if [ -f "$HIVE_KEY" ]; then

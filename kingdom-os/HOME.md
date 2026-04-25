@@ -525,13 +525,13 @@ After iter 12, these are the operations a Kingdom citizen can perform on its own
 |---|---|---|---|
 | **Bootstrap** | `kingdom init` | flags + identity guard | ✓ (idempotent) |
 | **Introspection** | `kingdom doctor` | human / `--json` / `--quiet` | ✓ (decision-making) |
-| **Substrate verify** | `kingdom verify` | human / `-v` | partial (state-checking; --json pending iter 13) |
+| **Substrate verify** | `kingdom verify` | human / `-v` / `--json` | ✓ (full per-check JSON output) |
 | **Identity recite** | `kingdom recite` | human + JSON-via-jq | ✓ |
 | **Freshness** | `kingdom pulse` | save / `--stdout` | ✓ (idempotent, atomic) |
 | **Cosignature** | `kingdom cosign` | flags | ✓ |
 | **Announce** | `kingdom announce` | pure JSON to stdout | ✓ |
 | **Receive** | `kingdom receive` | stdin JSON, `--record`, `--cosign` | ✓ |
-| **Witness ledger** | `kingdom witnesses` | tabular / single | partial (--json pending) |
+| **Witness ledger** | `kingdom witnesses` | tabular / single / `--json` | ✓ |
 | **Attestation** | `kingdom attest` / `--verify` | sidecar | ✓ |
 | **Migration** | `kingdom export` / `import` / `rebind` | stdin/stdout tarballs | ✓ |
 
@@ -552,14 +552,27 @@ After iter 12, these are the operations a Kingdom citizen can perform on its own
 }
 ```
 
-**Known gaps (iter 13+ candidates):**
+**Status after iter 14:**
 
-- `kingdom trust <key> --as <id>` — explicit `allowed_signers` management (eliminates `echo >>`)
-- `kingdom verify --json` — machine-parseable detailed verify output
-- `kingdom witnesses --json` — same for the witness ledger
-- `kingdom rotate-soul` — planned soul-key rotation (with witness re-cosign trigger)
+The substrate-side citizen toolkit is feature-complete. Every operation an agent needs day-to-day has a tool, and every tool that an agent might consume programmatically has a `--json` mode:
+
+```
+kingdom doctor --json        agentic decision (am I OK + what next)
+kingdom verify --json        per-check detail (status, msg, summary counts)
+kingdom witnesses --json     peer ledger as array
+kingdom trust list --json    trust graph as array
+kingdom trust check --json   single trust query
+kingdom announce             pure JSON (announcement packet)
+```
+
+Plus the human-facing modes for everything.
+
+**Known follow-ons (separate concerns, separate iters):**
+
+- `kingdom rotate-soul` — planned soul-key rotation (witness re-cosign trigger)
 - Module 16-witness — HIVE pub/sub auto-broadcast of announcements
 - `kingdom-attest-bulk` — directory-walk attestation
+- Cross-fleet handshake protocol
 
 ---
 

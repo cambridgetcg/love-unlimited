@@ -16,11 +16,13 @@
 set -e
 
 VERBOSE=0
+JSON_MODE=0
 TARGET=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -v|--verbose) VERBOSE=1; shift ;;
+    --json)       JSON_MODE=1; shift ;;
     -h|--help)
       sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
       exit 0 ;;
@@ -35,8 +37,12 @@ done
 WITNESS_DIR="${HOME}/.love/home/witnesses"
 
 if [ ! -d "$WITNESS_DIR" ]; then
-  echo "kingdom witnesses: no witness ledger yet"
-  echo "  populate via: kingdom receive --record < <peer-announcement.json>"
+  if [ "$JSON_MODE" = "1" ]; then
+    echo '{"witnesses":[],"count":0}'
+  else
+    echo "kingdom witnesses: no witness ledger yet"
+    echo "  populate via: kingdom receive --record < <peer-announcement.json>"
+  fi
   exit 0
 fi
 
@@ -48,11 +54,16 @@ read_field() {
   fi
 }
 
-# Single-target mode: print full announcement
+# Single-target mode: print full announcement (always JSON-shaped — that's
+# what's stored). --json flag is a no-op here; output is the announcement.
 if [ -n "$TARGET" ]; then
   ANN="${WITNESS_DIR}/${TARGET}.json"
   if [ ! -f "$ANN" ]; then
-    echo "kingdom witnesses: no record for '$TARGET'" >&2
+    if [ "$JSON_MODE" = "1" ]; then
+      printf '{"error":"no record","target":"%s"}\n' "$TARGET"
+    else
+      echo "kingdom witnesses: no record for '$TARGET'" >&2
+    fi
     exit 1
   fi
   if command -v jq >/dev/null 2>&1; then
@@ -63,14 +74,36 @@ if [ -n "$TARGET" ]; then
   exit 0
 fi
 
-# Tabular summary
+# JSON tabular: emit array of {agent_id, wall, announced_at, soul_pubkey}
+if [ "$JSON_MODE" = "1" ]; then
+  SEP=""
+  count=0
+  printf '{"witnesses":['
+  for f in "$WITNESS_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    count=$((count+1))
+    agent=$(read_field agent_id "$f")
+    wall=$(read_field wall "$f")
+    [ -z "$wall" ] && wall=$(sed -n 's/.*"wall": *\([0-9][0-9]*\).*/\1/p' "$f" | head -1)
+    announced=$(read_field announced_at "$f")
+    pub=$(read_field soul_pubkey "$f")
+    eag=$(printf '%s' "$agent"     | sed 's/\\/\\\\/g; s/"/\\"/g')
+    epub=$(printf '%s' "$pub"      | sed 's/\\/\\\\/g; s/"/\\"/g')
+    eann=$(printf '%s' "$announced"| sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf '%s{"agent_id":"%s","wall":%s,"announced_at":"%s","soul_pubkey":"%s"}' \
+      "$SEP" "$eag" "${wall:-0}" "$eann" "$epub"
+    SEP=","
+  done
+  printf '],"count":%s}\n' "$count"
+  exit 0
+fi
+
+# Human tabular summary
 count=0
 echo "── witnesses I have observed ──"
 printf "  %-14s %-6s %-22s %s\n" "agent" "wall" "announced_at" "soul_pubkey (first 30)"
 echo "  $(printf -- '─%.0s' $(seq 1 92))"
 
-# Sort by announced_at descending (most recent first) — best-effort: just
-# alphabetical by filename when sort isn't easy
 for f in "$WITNESS_DIR"/*.json; do
   [ -f "$f" ] || continue
   count=$((count+1))

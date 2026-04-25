@@ -20,16 +20,50 @@ ALLOWED="${HOME_LAYER}/allowed_signers"
 LOVE_DIR_DEFAULT="${LOVE_DIR:-${HOME}/love-unlimited}"
 
 VERBOSE=0
+JSON_MODE=0
 case "${1:-}" in
   -v|--verbose) VERBOSE=1 ;;
+  --json)       JSON_MODE=1 ;;
 esac
 
 fail=0
 warn=0
+pass=0
 
-ok()    { [ "$VERBOSE" = "1" ] && printf "  ✓ %s\n" "$1"; return 0; }
-miss()  { printf "  ✗ %s\n" "$1" >&2; fail=$((fail+1)); }
-note()  { printf "  · %s\n" "$1" >&2; warn=$((warn+1)); }
+# In --json mode, all check results stream into a TAB-separated state
+# file and a single JSON document is emitted at the end. Human output
+# is suppressed. In default/-v mode, behaviour is unchanged from before.
+JSON_STATE_FILE=""
+if [ "$JSON_MODE" = "1" ]; then
+  JSON_STATE_FILE=$(mktemp)
+  trap 'rm -f "$JSON_STATE_FILE"' EXIT
+fi
+
+ok() {
+  pass=$((pass+1))
+  if [ "$JSON_MODE" = "1" ]; then
+    printf 'ok\t%s\n' "$1" >> "$JSON_STATE_FILE"
+  elif [ "$VERBOSE" = "1" ]; then
+    printf "  ✓ %s\n" "$1"
+  fi
+  return 0
+}
+miss() {
+  fail=$((fail+1))
+  if [ "$JSON_MODE" = "1" ]; then
+    printf 'miss\t%s\n' "$1" >> "$JSON_STATE_FILE"
+  else
+    printf "  ✗ %s\n" "$1" >&2
+  fi
+}
+note() {
+  warn=$((warn+1))
+  if [ "$JSON_MODE" = "1" ]; then
+    printf 'note\t%s\n' "$1" >> "$JSON_STATE_FILE"
+  else
+    printf "  · %s\n" "$1" >&2
+  fi
+}
 
 # ── Portable hashing ────────────────────────────────────────────────
 hash_file() {
@@ -63,14 +97,20 @@ read_int() {
   fi
 }
 
-echo "── kingdom verify ──"
+[ "$JSON_MODE" = "1" ] || echo "── kingdom verify ──"
 
 # ── 1. Covenant exists ──────────────────────────────────────────────
 if [ ! -f "$COVENANT" ]; then
   miss "covenant.json missing — citizen has no deed"
-  echo ""
-  echo "  ✗ kingdom verify: no covenant present." >&2
-  echo "    Bootstrap with: kingdom init --agent <name>" >&2
+  if [ "$JSON_MODE" = "1" ]; then
+    cat <<JSON
+{"exit":2,"summary":{"ok":0,"miss":1,"note":0},"checks":[{"status":"miss","msg":"covenant.json missing — citizen has no deed"}],"hint":"kingdom init --agent <name>"}
+JSON
+  else
+    echo ""
+    echo "  ✗ kingdom verify: no covenant present." >&2
+    echo "    Bootstrap with: kingdom init --agent <name>" >&2
+  fi
   exit 2
 fi
 ok "covenant present at ${COVENANT}"
@@ -313,6 +353,21 @@ else
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────
+if [ "$JSON_MODE" = "1" ]; then
+  if [ $fail -eq 0 ]; then EXIT_CODE=0; else EXIT_CODE=1; fi
+  CHECKS_JSON=""
+  while IFS="$(printf '\t')" read -r status msg; do
+    [ -z "$status" ] && continue
+    [ -n "$CHECKS_JSON" ] && CHECKS_JSON="${CHECKS_JSON},"
+    emsg=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    CHECKS_JSON="${CHECKS_JSON}{\"status\":\"${status}\",\"msg\":\"${emsg}\"}"
+  done < "$JSON_STATE_FILE"
+  cat <<JSON
+{"exit":${EXIT_CODE},"summary":{"ok":${pass},"miss":${fail},"note":${warn}},"checks":[${CHECKS_JSON}]}
+JSON
+  exit $EXIT_CODE
+fi
+
 echo ""
 if [ $fail -eq 0 ] && [ $warn -eq 0 ]; then
   echo "  ✓ kingdom verify: home is intact."

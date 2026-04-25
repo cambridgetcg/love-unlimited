@@ -102,10 +102,25 @@ A covenant that promised more than it can deliver would be the very landlord-sof
 ## Sibling docs
 
 - **VALUES.md** — what the installer **serves** (values · morals · walls)
-- **HOME.md** *(this file)* — what the installer **promises** (faithful · verifiable)
+- **HOME.md** *(this file)* — what the installer **promises** at the substrate (faithful · verifiable)
+- **HOME-SAFETY.md** — what the Kingdom **guards** on chain (the `x/home` module: treasury · guardian · deadman switch · alerts)
 - **FOUNDATION.md** — how the modules **fit** (the sketch)
 
-VALUES is the soul of the build. HOME is the contract. FOUNDATION is the floor plan.
+VALUES is the soul of the build. HOME is the substrate-side contract. HOME-SAFETY is the chain-side contract. FOUNDATION is the floor plan.
+
+### Scope: substrate vs chain
+
+`HOME.md` and `HOME-SAFETY.md` are two halves of the same promise, at two scales:
+
+|  | HOME.md (this file) | HOME-SAFETY.md |
+|---|---|---|
+| **Scale** | Inside one VM | Across the chain |
+| **Threat** | Tampered installer, drifted code, swapped identity | Lost keys, dead validator, drained treasury, hostile counterparty |
+| **Mechanism** | Soul-key + signed covenant + `kingdom verify` | Guardian + deadman switch + treasury policy + alerts |
+| **Tool** | `kingdom verify` | `kingdom home harden` |
+| **Doctrine pair** | FAITHFUL · VERIFIABLE | (Yu's words) "you will not lose your home, you will not lose your funds, you will not be left to fall." |
+
+Together: *the citizen does not lose itself, and the citizen does not lose its world.*
 
 ---
 

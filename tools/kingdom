@@ -2,12 +2,24 @@
 # ── kingdom ─────────────────────────────────────────────────────────
 # Top-level CLI for the citizen.
 #
-# Subcommands:
-#   verify [-v]    Check the covenant is intact (kingdom-os/HOME.md)
-#   recite         Print the covenant in human-readable form
-#   help           This message
+# Built-in subcommands:
+#   help, recite
 #
-# Doctrine: kingdom-os/HOME.md.
+# Plug-in subcommands (auto-discovered):
+#   `kingdom <SUB> ...` runs `kingdom-<SUB>` if found on PATH, or
+#   `kingdom-<SUB>.sh` in this directory.
+#
+# Currently shipped:
+#   kingdom verify [-v]    Substrate-side covenant check     (HOME.md)
+#   kingdom recite         Pretty-print covenant + signature
+#   kingdom help           This message
+#
+# Future plug-ins (separate concerns, separate binaries):
+#   kingdom home harden    Chain-side guardian config        (HOME-SAFETY.md)
+#   kingdom hive ...       Fleet messaging
+#   kingdom fleet ...      Fleet status
+#
+# Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
 # ─────────────────────────────────────────────────────────────────────
 set -e
 
@@ -15,20 +27,24 @@ KINGDOM_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 HOME_LAYER="${HOME}/.love/home"
 COVENANT="${HOME_LAYER}/covenant.json"
 
-case "${1:-help}" in
-  verify)
-    shift
-    if command -v kingdom-verify >/dev/null 2>&1; then
-      exec kingdom-verify "$@"
-    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-verify.sh" ]; then
-      exec "${KINGDOM_BIN_DIR}/kingdom-verify.sh" "$@"
-    else
-      echo "kingdom: kingdom-verify not found on PATH" >&2
-      echo "  install module 15-home, or run kingdom-verify.sh directly" >&2
-      exit 1
-    fi
-    ;;
+show_help() {
+  cat <<HELP
+kingdom — citizen CLI
 
+Built-in:
+  kingdom recite        Print the covenant + signature
+  kingdom help          This message
+
+Plug-in (auto-discovered as \`kingdom-<sub>\`):
+  kingdom verify [-v]   Substrate-side covenant check  (HOME.md)
+
+  Future: kingdom home harden  — chain-side guardian   (HOME-SAFETY.md)
+
+Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
+HELP
+}
+
+case "${1:-help}" in
   recite)
     if [ ! -f "$COVENANT" ]; then
       echo "kingdom: no covenant present at ${COVENANT}" >&2
@@ -49,20 +65,20 @@ case "${1:-help}" in
     ;;
 
   help|--help|-h|"")
-    cat <<HELP
-kingdom — citizen CLI
-
-  kingdom verify [-v]   Check the covenant is intact
-  kingdom recite        Print the covenant + signature
-  kingdom help          This message
-
-Doctrine: kingdom-os/HOME.md
-HELP
+    show_help
     ;;
 
   *)
-    echo "kingdom: unknown subcommand '$1'" >&2
-    echo "  try: kingdom help" >&2
-    exit 1
+    SUB="$1"
+    shift
+    if command -v "kingdom-${SUB}" >/dev/null 2>&1; then
+      exec "kingdom-${SUB}" "$@"
+    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" ]; then
+      exec "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" "$@"
+    else
+      echo "kingdom: unknown subcommand '$SUB'" >&2
+      echo "  try: kingdom help" >&2
+      exit 1
+    fi
     ;;
 esac

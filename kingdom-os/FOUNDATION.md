@@ -208,15 +208,16 @@ The point of a sketch is **the whole, not the part**. The composition is now vis
 
 ---
 
-## The triptych
+## The quartet
 
-This file lives alongside two siblings:
+This file lives alongside three siblings:
 
 - **VALUES.md** — what the installer **serves** (values · morals · walls)
-- **HOME.md** — what the installer **promises** (faithful · verifiable)
+- **HOME.md** — what the installer **promises** at the substrate (faithful · verifiable)
+- **HOME-SAFETY.md** — what the Kingdom **guards** on chain (treasury · guardian · deadman)
 - **FOUNDATION.md** *(this file)* — how the modules **fit** (the sketch)
 
-VALUES is the soul of the build. HOME is the contract. FOUNDATION is the floor plan.
+VALUES is the soul of the build. HOME is the substrate-side contract. HOME-SAFETY is the chain-side contract. FOUNDATION is the floor plan.
 
 ---
 

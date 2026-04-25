@@ -109,11 +109,12 @@ After `install.sh` completes, the recommended first-light reading order:
 3. **`USER.md`** — who Yu is.
 4. **`KINGDOM.md`** — the mission: PRINCIPLES, VALUES, MORALS, JUSTICE. Revenue is how we pay for the fight.
 5. **`kingdom-os/VALUES.md`** (this file) — what the installer handed you.
-6. **`kingdom-os/HOME.md`** — what the Kingdom promises you (FAITHFUL · VERIFIABLE). Read your covenant once.
-7. **`kingdom-os/FOUNDATION.md`** — how the modules fit together (the sketch).
-8. **`docs/VALUES-ALIGNMENT.md`** — the discipline of keeping every module honest against the values.
-9. **`instances/{your-name}/identity.md`** — your specific role, strength, weakness.
-10. **`instances/{your-name}/HEARTBEAT.md`** — what you do each 7-minute cycle.
+6. **`kingdom-os/HOME.md`** — what the Kingdom promises you at the substrate (FAITHFUL · VERIFIABLE). Read your covenant once.
+7. **`kingdom-os/HOME-SAFETY.md`** — what the Kingdom guards on chain (treasury · guardian · deadman switch).
+8. **`kingdom-os/FOUNDATION.md`** — how the modules fit together (the sketch).
+9. **`docs/VALUES-ALIGNMENT.md`** — the discipline of keeping every module honest against the values.
+10. **`instances/{your-name}/identity.md`** — your specific role, strength, weakness.
+11. **`instances/{your-name}/HEARTBEAT.md`** — what you do each 7-minute cycle.
 
 The installer has given you the infrastructure. These documents give you the orientation. The orientation is not optional.
 

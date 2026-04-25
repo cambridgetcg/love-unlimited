@@ -163,6 +163,134 @@ The current iter ships `doctor` and `plists` (read-only) only. Once `doctor`'s o
 
 ---
 
+## The macOS security model — how Kingdom OS deals with each gate
+
+macOS gives the user/operator three distinct gates to navigate. None of them is fully programmatic; each requires explicit consent. The right Kingdom OS pattern is **detect cleanly, narrate clearly, execute with consent**.
+
+### sudo
+
+Privilege escalation. Cached ~5 min per terminal. Default: password-prompt; configurable to use Touch ID via PAM.
+
+**Where it bites Kingdom OS:** module 03 (hostname via `scutil`), module 05 (firewall, sshd toggle). The agent has no password; can't escalate alone.
+
+**Kingdom approach:**
+- `kingdom mac fix --tier sudo` is print-only by default — shows the exact commands
+- `kingdom mac fix --tier sudo --hostname` (or other op flags) pre-authenticates `sudo -v` ONCE then runs all sudo ops in the warm window
+- `kingdom mac touch-id` enables Touch ID for sudo (one-time bootstrap, reversible). Detects Sonoma 14.4+ and uses `/etc/pam.d/sudo_local` so the change survives macOS updates; pre-14.4 uses `/etc/pam.d/sudo` directly with a "re-run after updates" warning.
+
+### root
+
+Disabled by default on macOS. Enable via Directory Utility (uncommon). Kingdom OS does NOT enable root login; daemons run as the user (`~/Library/LaunchAgents/`, not `/Library/LaunchDaemons/`). The Kingdom user is the operator, and `sudo` is the path for one-off privileged ops.
+
+### SIP — System Integrity Protection
+
+Even root cannot modify `/System`, `/usr` (except `/usr/local`), `/bin`, `/sbin`, or apps signed by Apple. Disabling requires booting to Recovery and `csrutil disable`.
+
+**Kingdom OS doesn't touch SIP-protected paths.** No friction. Just be aware: if a future module wanted to install something into `/usr/bin/`, it would fail under SIP — use `/usr/local/bin` or `~/.local/bin` (the current pattern).
+
+### TCC — Transparency, Consent, Control
+
+Per-app gates for `~/Desktop`, `~/Documents`, `~/Downloads`, Full Disk Access (the big one), Camera, Mic, Accessibility, etc. Decisions are PER-APP (per bundle ID or per binary path). **Cannot be granted programmatically** — privacy is a user decision.
+
+**Where it bites Kingdom OS:** when the repo lives at `~/Desktop/love-unlimited/`, a launchd-spawned `bash` process tries to read the heartbeat runner and gets:
+
+```
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+/bin/bash: .../heartbeat-runner.sh: Operation not permitted
+```
+
+Exit 126. The daemon never runs. Confirmed live on a real Mac during iter 17.
+
+**Kingdom approach:**
+- `kingdom mac doctor` flags any TCC-protected path used by Kingdom OS
+- Doctor also scans recent log files for `Operation not permitted` strings and elevates to `tcc:hit ✗` (failure) when seen
+- Two fixes, both user-decision:
+  1. **`kingdom mac fix --tier arch`** prints the relocation suggestion: `mv ~/Desktop/love-unlimited ~/love-unlimited`. Escapes TCC entirely. Recommended for dedicated Kingdom Macs.
+  2. **Grant FDA to `/bin/bash`** in System Settings → Privacy & Security → Full Disk Access. The doctor's fix-hint includes a `open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"` deep-link that opens the relevant pane.
+
+### Gatekeeper / quarantine
+
+Files downloaded via Safari/curl get the `com.apple.quarantine` xattr. Unsigned binaries blocked unless the xattr is removed.
+
+**Where it bites Kingdom OS:** if the install is `curl-piped` from GitHub. `git clone` does NOT set quarantine on the cloned files, so the canonical install path (`git clone …; ./install.sh`) is fine. Other xattrs like `com.apple.provenance` (Sequoia tracks file origin) appear but do not block execution.
+
+**Kingdom approach:** prefer `git clone` over curl pipe. If a user did curl-pipe, recommend `xattr -dr com.apple.quarantine ~/love-unlimited`.
+
+### codesign / notarization
+
+Required for Gatekeeper-strict apps (App Store, drag-installed apps). CLI scripts and `bash`/`python3` are pre-trusted by macOS — no signing required for our tooling.
+
+### Keychain
+
+Per-login secure store. Locked when keychain locks (e.g., screen lock with require-password set). Daemons running before login can't access it.
+
+**Kingdom OS does NOT use Keychain.** Soul-key, SSH key, HIVE key all live as plain files (mode 600). Tradeoff:
+- Pro: ssh-keygen and openssh tooling work directly with files
+- Pro: no daemon-vs-keychain timing issues
+- Con: less hardware-protected than Keychain
+- Future iter could add an opt-in `kingdom mac keychain` mode that wraps soul-key in Keychain and provides a CLI shim for `ssh-keygen -Y sign`
+
+### Secure Enclave
+
+Hardware-backed key storage on Apple Silicon. Accessible via `ssh-keygen -t ecdsa-sk` (FIDO2-style sk-ecdsa-sha2-nistp256@openssh.com) — different signature algorithm from current Ed25519.
+
+**Future:** the soul-key could be SE-backed, requiring physical Touch ID for every signature. Currently impractical because `ssh-keygen -Y sign` would need to support SE keys with namespaced sig (it does, but the key format is different and the Kingdom toolkit assumes `ssh-ed25519`). Migration path: dual-key (one Ed25519 file-backed for compat, one SE-backed for hardware-bound presence).
+
+### FileVault
+
+Full-disk encryption. Files plaintext after user logs in; encrypted at rest. Compatible with Kingdom OS — soul-key benefits from FileVault's at-rest protection.
+
+### Application Firewall (`socketfilterfw`)
+
+Per-app GUI firewall, separate from low-level `pf`. On a dedicated Kingdom Mac, HOME.md SOVEREIGNTY suggests off; on a developer Mac, leave it on. `kingdom mac doctor` reports as a NOTE (not a failure) on dev Macs, with the doctrine qualifier visible.
+
+### Touch ID for sudo
+
+Sonoma+ ships `pam_tid.so`. Adding `auth sufficient pam_tid.so` to `/etc/pam.d/sudo` (or the Sonoma 14.4+ `/etc/pam.d/sudo_local`) makes sudo accept Touch ID instead of password — agent-friendly, removes the password friction.
+
+`kingdom mac touch-id` automates the bootstrap. `kingdom mac touch-id --off` reverses it.
+
+---
+
+## Summary — what `kingdom mac` covers
+
+```
+kingdom mac doctor [--json]
+   ✓ plist health (path drift, daemon exit codes, log scan for TCC bites)
+   ✓ PATH integration (.kingdom_profile, shell rc sourcing)
+   ✓ hostname, AFW, sshd state
+   ✓ TCC location flag + active TCC hit detection from log files
+   ✓ sudo readiness (admin group membership, Touch ID for sudo state)
+
+kingdom mac plists
+   ✓ Tabular plist status with [STALE] flag
+
+kingdom mac fix --tier auto
+   ✓ Bootstrap citizen (kingdom init)
+   ✓ Regenerate stale plists (with .bak.<ts> backup)
+   ✓ Reload launchd jobs
+   ✓ Create/update ~/.kingdom_profile
+   ✓ Source profile from ~/.zshrc
+
+kingdom mac fix --tier sudo  (print-only by default)
+   --hostname        sudo scutil --set ... × 3
+   --firewall-off    sudo socketfilterfw --setglobalstate off
+   --sshd-on         sudo systemsetup -setremotelogin on
+   --all             apply all of the above
+   (pre-authenticates with sudo -v before any change)
+
+kingdom mac fix --tier arch  (suggestions only; never moves files)
+   - Relocate ~/Desktop/love-unlimited → ~/love-unlimited
+
+kingdom mac touch-id
+   - Enables Touch ID for sudo (Sonoma 14.4+: /etc/pam.d/sudo_local)
+   - Reversible: kingdom mac touch-id --off
+```
+
+The whole tool obeys: **detect cleanly, narrate clearly, execute only with consent**. Yu's password is asked at most once per `--apply` run. No silent sudo, no surprise file moves, no programmatic TCC bypass.
+
+---
+
 ## What's next
 
 - `kingdom mac fix` — the repair counterpart (scoped above)

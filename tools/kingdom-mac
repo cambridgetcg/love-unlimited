@@ -257,11 +257,47 @@ do_doctor() {
     fi
   fi
 
-  # ── 8. TCC concern: repo on Desktop? ──
+  # ── 8. TCC concern: repo on Desktop? + log scan for actual TCC bites ──
   if [ -n "$LOVE_DIR_GUESS" ]; then
     case "$LOVE_DIR_GUESS" in
-      */Desktop/*) add_issue "note" "tcc" "love-unlimited is on Desktop (TCC-protected) — launchd jobs may need Full Disk Access for daemons that read it" "consider relocating: mv ~/Desktop/love-unlimited ~/love-unlimited (or grant FDA via System Settings)" ;;
+      */Desktop/*|*/Documents/*|*/Downloads/*)
+        add_issue "note" "tcc" \
+          "love-unlimited lives in a TCC-protected location ($(echo "$LOVE_DIR_GUESS" | sed "s|^${HOME}|~|")) — launchd jobs need Full Disk Access" \
+          "open 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles'  (then add /bin/bash); or relocate: mv $LOVE_DIR_GUESS ~/love-unlimited"
+        # Scan recent heartbeat / hive logs for actual TCC bites
+        TCC_HITS=0
+        for log in "${LOVE_DIR_GUESS}/memory/heartbeat-${AGENT}-launchd.log" \
+                   "/tmp/love-${AGENT}-hive-tunnel.log" \
+                   "${LOVE_DIR_GUESS}/memory/heartbeat-launchd.log"; do
+          [ -f "$log" ] || continue
+          if grep -q "Operation not permitted" "$log" 2>/dev/null; then
+            TCC_HITS=$((TCC_HITS+1))
+          fi
+        done
+        if [ "$TCC_HITS" -gt 0 ]; then
+          add_issue "miss" "tcc:hit" \
+            "${TCC_HITS} log file(s) show 'Operation not permitted' — TCC IS biting daemons NOW" \
+            "grant FDA to /bin/bash (and /usr/bin/python3 if used) in System Settings → Privacy → Full Disk Access"
+        fi
+        ;;
     esac
+  fi
+
+  # ── 9. Sudo readiness ──
+  # Can the operator sudo at all? If the user is NOT in admin group,
+  # sudo-tier fixes will never work. Surface this early.
+  if id -Gn "$(whoami)" 2>/dev/null | grep -qw admin; then
+    : # ok
+  else
+    add_issue "note" "sudo" "current user is not in 'admin' group — sudo-tier fixes will fail" "have an admin run: sudo dseditgroup -o edit -a $(whoami) -t user admin"
+  fi
+  # Touch ID for sudo (Sonoma+) — informational
+  if [ -f /etc/pam.d/sudo ]; then
+    if grep -q "pam_tid.so" /etc/pam.d/sudo 2>/dev/null; then
+      : # already enabled
+    else
+      add_issue "note" "touchid" "Touch ID for sudo not enabled — agent ops still need password" "kingdom mac touch-id  (one-time bootstrap; reversible)"
+    fi
   fi
 
   # ── 9. Spotlight / iCloud — informational only ──
@@ -550,39 +586,143 @@ PROFEOF
 }
 
 do_fix_sudo() {
-  echo "  These commands require your password. They are NOT auto-executed."
-  echo "  Review and run manually when you're ready:"
-  echo ""
+  # Each op is opt-in via a flag. Default (no flags) is print-only.
+  # Specifying any --<op> flag enables apply mode for that op.
+  DO_HOSTNAME=0
+  DO_FIREWALL_OFF=0
+  DO_SSHD_ON=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --hostname)     DO_HOSTNAME=1; shift ;;
+      --firewall-off) DO_FIREWALL_OFF=1; shift ;;
+      --sshd-on)      DO_SSHD_ON=1; shift ;;
+      --all)          DO_HOSTNAME=1; DO_FIREWALL_OFF=1; DO_SSHD_ON=1; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  ANY_APPLY=$((DO_HOSTNAME + DO_FIREWALL_OFF + DO_SSHD_ON))
+
+  # Discover what's needed
+  AGENT_UPPER=""
+  [ -n "$AGENT" ] && AGENT_UPPER=$(echo "$AGENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+  LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
+  HOSTNAME_NEEDED=0
   if [ -n "$AGENT" ]; then
-    LH=$(scutil --get LocalHostName 2>/dev/null || echo "")
     case "$LH" in
       kingdom-${AGENT}) ;;
-      *)
-        echo "  # Hostname → kingdom-${AGENT}:"
-        echo "  sudo scutil --set HostName       kingdom-${AGENT}"
-        echo "  sudo scutil --set LocalHostName  kingdom-${AGENT}"
-        echo "  sudo scutil --set ComputerName   \"Kingdom $(echo "$AGENT" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')\""
-        echo ""
-        ;;
+      *) HOSTNAME_NEEDED=1 ;;
     esac
   fi
   AFW=$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | head -1)
-  case "$AFW" in
-    *enabled*)
-      echo "  # Application Firewall (only on a DEDICATED Kingdom machine):"
-      echo "  sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
-      echo ""
-      ;;
-  esac
+  FIREWALL_ON=0
+  case "$AFW" in *enabled*) FIREWALL_ON=1 ;; esac
   RL=$(systemsetup -getremotelogin 2>&1 | tail -1)
-  case "$RL" in
-    *Off*|*off*)
-      echo "  # Remote Login (sshd):"
-      echo "  sudo systemsetup -setremotelogin on"
+  SSHD_OFF=0
+  case "$RL" in *Off*|*off*) SSHD_OFF=1 ;; esac
+
+  if [ "$ANY_APPLY" = "0" ]; then
+    # ── print-only mode (default) ──
+    echo "  Sudo-tier operations require your password. Default mode prints"
+    echo "  the commands; pass --<op> flags to apply with sudo prompt."
+    echo ""
+    echo "  Available operations:"
+    if [ "$HOSTNAME_NEEDED" = "1" ]; then
+      echo "    --hostname        set LocalHostName=kingdom-${AGENT} (current: ${LH:-?})"
+      echo "                      \$ sudo scutil --set LocalHostName  kingdom-${AGENT}"
+      echo "                      \$ sudo scutil --set HostName       kingdom-${AGENT}"
+      echo "                      \$ sudo scutil --set ComputerName   \"Kingdom ${AGENT_UPPER}\""
       echo ""
-      ;;
-  esac
-  echo "  (kingdom mac fix --tier sudo never executes these — by design.)"
+    fi
+    if [ "$FIREWALL_ON" = "1" ]; then
+      echo "    --firewall-off    disable Application Firewall (only on dedicated Kingdom Mac)"
+      echo "                      \$ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+      echo ""
+    fi
+    if [ "$SSHD_OFF" = "1" ]; then
+      echo "    --sshd-on         enable Remote Login (sshd)"
+      echo "                      \$ sudo systemsetup -setremotelogin on"
+      echo ""
+    fi
+    if [ "$HOSTNAME_NEEDED" = "0" ] && [ "$FIREWALL_ON" = "0" ] && [ "$SSHD_OFF" = "0" ]; then
+      echo "    (no sudo-tier ops needed — already in good shape)"
+      echo ""
+    else
+      echo "    --all             apply all of the above"
+      echo ""
+    fi
+    echo "  Apply with sudo prompt:"
+    echo "    kingdom mac fix --tier sudo --hostname     # one op"
+    echo "    kingdom mac fix --tier sudo --all          # everything available"
+    return
+  fi
+
+  # ── APPLY mode ──
+  echo "  Applying sudo-tier ops. Pre-authenticating sudo (one prompt for all)..."
+  if ! sudo -v; then
+    echo "  ✗ sudo authentication failed; aborting" >&2
+    exit 1
+  fi
+  echo "  ✓ sudo authenticated"
+  echo ""
+
+  CHANGES=0
+  FAILED=0
+
+  if [ "$DO_HOSTNAME" = "1" ]; then
+    if [ "$HOSTNAME_NEEDED" = "0" ]; then
+      echo "  · hostname: already kingdom-${AGENT} (no-op)"
+    else
+      echo "  ◦ hostname: setting to kingdom-${AGENT}"
+      if sudo scutil --set LocalHostName "kingdom-${AGENT}" \
+         && sudo scutil --set HostName    "kingdom-${AGENT}" \
+         && sudo scutil --set ComputerName "Kingdom ${AGENT_UPPER}"; then
+        echo "  ✓ hostname set"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ hostname set failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  if [ "$DO_FIREWALL_OFF" = "1" ]; then
+    if [ "$FIREWALL_ON" = "0" ]; then
+      echo "  · firewall: already off (no-op)"
+    else
+      echo "  ◦ firewall: disabling Application Firewall"
+      if sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off >/dev/null 2>&1; then
+        echo "  ✓ firewall disabled"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ firewall toggle failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  if [ "$DO_SSHD_ON" = "1" ]; then
+    if [ "$SSHD_OFF" = "0" ]; then
+      echo "  · sshd: already on (no-op)"
+    else
+      echo "  ◦ sshd: enabling Remote Login"
+      if sudo systemsetup -setremotelogin on >/dev/null 2>&1; then
+        echo "  ✓ sshd enabled"
+        CHANGES=$((CHANGES+1))
+      else
+        echo "  ✗ sshd toggle failed" >&2
+        FAILED=$((FAILED+1))
+      fi
+    fi
+  fi
+
+  echo ""
+  if [ "$FAILED" -gt 0 ]; then
+    echo "  ${CHANGES} change(s) applied, ${FAILED} failed."
+    exit 1
+  else
+    echo "  ✓ ${CHANGES} change(s) applied."
+  fi
 }
 
 do_fix_arch() {
@@ -601,15 +741,79 @@ do_fix_arch() {
   echo "  (kingdom mac fix --tier arch never moves files — by design.)"
 }
 
+# ═══════════════════════════════════════════════════════════════════
+# TOUCH-ID — enable Touch ID for sudo (one-time bootstrap)
+#
+# Adds `auth sufficient pam_tid.so` to /etc/pam.d/sudo so future
+# sudo invocations accept Touch ID instead of password. Reversible:
+# remove the line. Survives macOS updates? Sonoma 14.4+ uses
+# /etc/pam.d/sudo_local for survival; this tool detects and uses
+# the right file.
+# ═══════════════════════════════════════════════════════════════════
+do_touch_id() {
+  REVERSE=0
+  case "${1:-}" in --off|--remove) REVERSE=1 ;; esac
+
+  # Sonoma 14.4+ has /etc/pam.d/sudo_local.template — use sudo_local
+  # so the change survives macOS updates. Pre-14.4: edit sudo directly
+  # (will be overwritten on update; user must re-run after).
+  if [ -f /etc/pam.d/sudo_local.template ]; then
+    PAM_FILE="/etc/pam.d/sudo_local"
+    SURVIVE_UPDATES="yes"
+  else
+    PAM_FILE="/etc/pam.d/sudo"
+    SURVIVE_UPDATES="no — re-run after macOS updates"
+  fi
+
+  if [ "$REVERSE" = "1" ]; then
+    echo "── kingdom mac touch-id --off ──"
+    if [ -f "$PAM_FILE" ] && grep -q "pam_tid.so" "$PAM_FILE" 2>/dev/null; then
+      echo "  Removing pam_tid.so from $PAM_FILE"
+      echo "  (sudo prompt incoming)"
+      sudo sed -i.bak '/pam_tid.so/d' "$PAM_FILE"
+      echo "  ✓ Touch ID for sudo disabled. Backup: ${PAM_FILE}.bak"
+    else
+      echo "  · pam_tid.so not present in $PAM_FILE — nothing to remove"
+    fi
+    return
+  fi
+
+  echo "── kingdom mac touch-id ──"
+  echo "  Enables Touch ID for sudo by adding to $PAM_FILE:"
+  echo "      auth sufficient pam_tid.so"
+  echo "  (survives macOS updates: $SURVIVE_UPDATES)"
+  echo ""
+
+  if [ -f "$PAM_FILE" ] && grep -q "pam_tid.so" "$PAM_FILE" 2>/dev/null; then
+    echo "  ✓ already enabled (pam_tid.so already present in $PAM_FILE)"
+    return
+  fi
+
+  if [ ! -f "$PAM_FILE" ] && [ -f /etc/pam.d/sudo_local.template ]; then
+    echo "  Creating $PAM_FILE from template..."
+    sudo cp /etc/pam.d/sudo_local.template "$PAM_FILE"
+  fi
+
+  echo "  (sudo prompt incoming for the PAM file edit)"
+  if echo "auth       sufficient     pam_tid.so" | sudo tee -a "$PAM_FILE" >/dev/null; then
+    echo "  ✓ Touch ID for sudo enabled. Try \`sudo true\` in a new terminal."
+    echo "  Reverse: kingdom mac touch-id --off"
+  else
+    echo "  ✗ failed to write $PAM_FILE" >&2
+    exit 1
+  fi
+}
+
 # ── Dispatch ─────────────────────────────────────────────────────
 case "$SUB" in
-  doctor) do_doctor "$@" ;;
-  plists) do_plists "$@" ;;
-  fix)    do_fix    "$@" ;;
+  doctor)         do_doctor   "$@" ;;
+  plists)         do_plists   "$@" ;;
+  fix)            do_fix      "$@" ;;
+  touch-id|touchid) do_touch_id "$@" ;;
   -h|--help|help) usage; exit 0 ;;
   *)
     echo "kingdom mac: unknown subcommand '$SUB'" >&2
-    echo "  try: kingdom mac doctor | plists | fix" >&2
+    echo "  try: kingdom mac doctor | plists | fix | touch-id" >&2
     exit 1
     ;;
 esac

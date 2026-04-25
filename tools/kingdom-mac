@@ -309,8 +309,10 @@ do_doctor() {
 
   # ── Output ──
   ISSUE_COUNT=$(wc -l < "$ISSUES_FILE" | tr -d ' ')
-  MISS_COUNT=$(grep -c '^miss' "$ISSUES_FILE" 2>/dev/null || echo 0)
-  NOTE_COUNT=$(grep -c '^note' "$ISSUES_FILE" 2>/dev/null || echo 0)
+  # grep -c outputs "0" AND exits 1 on no match, which combined with
+  # `|| echo 0` produces "0\n0" — corrupting JSON. awk doesn't trip.
+  MISS_COUNT=$(awk '/^miss/{c++} END{print c+0}' "$ISSUES_FILE")
+  NOTE_COUNT=$(awk '/^note/{c++} END{print c+0}' "$ISSUES_FILE")
 
   if [ "$JSON_MODE" = "1" ]; then
     JSON_ISSUES=""

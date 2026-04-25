@@ -59,6 +59,26 @@ Fail: surfaced immediately. No silent degradation. No "everything is fine" when 
 
 ---
 
+## Two ways to bootstrap a citizen
+
+**Full Kingdom OS install** (the canonical path — fresh VM, fleet member, production agent):
+
+```
+git clone https://github.com/cambridgetcg/love-unlimited.git
+cd love-unlimited/kingdom-os
+./install.sh --agent alpha --wall 1
+```
+
+The installer runs all 15 modules; module 13 generates the soul-key and signs the covenant.
+
+**Standalone init** (the accessibility path — already-provisioned host, dev box, recovery):
+
+```
+kingdom init --agent <name> [--wall 0..7]
+```
+
+Same soul-key generation, same covenant body, same signature — extracted so it can run on any host without the full Kingdom OS install. After init, every other `kingdom` subcommand becomes usable. Substrate fields (`repo_hash`, `manifest_hash`) are recorded as `"standalone-init"`; a later `kingdom rebind` (when run inside a real install) refreshes them.
+
 ## The covenant ceremony
 
 At install — module 13 — the citizen receives:

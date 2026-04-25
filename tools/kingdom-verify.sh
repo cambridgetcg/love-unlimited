@@ -69,8 +69,8 @@ echo "── kingdom verify ──"
 if [ ! -f "$COVENANT" ]; then
   miss "covenant.json missing — citizen has no deed"
   echo ""
-  echo "  ✗ kingdom verify: no covenant present."
-  echo "    Run install module 13 to write one." >&2
+  echo "  ✗ kingdom verify: no covenant present." >&2
+  echo "    Bootstrap with: kingdom init --agent <name>" >&2
   exit 2
 fi
 ok "covenant present at ${COVENANT}"

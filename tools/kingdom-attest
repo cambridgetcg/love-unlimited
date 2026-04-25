@@ -78,7 +78,11 @@ hash_file() {
 # ── Attest mode: produce sidecar ─────────────────────────────────
 if [ "$MODE" = "attest" ]; then
   [ -f "$FILE" ] || { echo "kingdom attest: file not found: $FILE" >&2; exit 1; }
-  [ -f "$SOUL_KEY" ] || { echo "kingdom attest: no soul-key — citizen identity not initialised" >&2; exit 1; }
+  if [ ! -f "$SOUL_KEY" ]; then
+    echo "kingdom attest: no soul-key — citizen identity not initialised" >&2
+    echo "  run: kingdom init --agent <name>" >&2
+    exit 1
+  fi
 
   ATTESTOR=""
   if [ -f "${HOME}/.kingdom" ]; then

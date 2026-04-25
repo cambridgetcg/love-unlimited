@@ -31,29 +31,34 @@ show_help() {
   cat <<HELP
 kingdom — citizen CLI
 
-Built-in:
-  kingdom recite                Print the covenant + signatures
-  kingdom help                  This message
+Get started (one command, no installer required):
+  kingdom init --agent <name> [--wall <0-7>]   Bootstrap a citizen
 
-Plug-in (auto-discovered as \`kingdom-<sub>\`):
-  kingdom verify [-v]            Substrate-side covenant check    (HOME.md)
-  kingdom cosign <covenant>...   Add a witness signature to a deed
-  kingdom announce               Compose a covenant announcement (stdout)
-  kingdom receive [--record|--cosign]   Validate an announcement on stdin
-  kingdom export [-o <file>]     Bundle this citizen for substrate migration
-  kingdom import [-i <file>]     Reconstitute a citizen on a new substrate
-  kingdom rebind [--dry-run]     Refresh substrate-bindings post-migration
-  kingdom pulse [--stdout]       Emit a signed freshness claim (every ~7 min)
-  kingdom witnesses [<agent>]    List peers I have witnessed (--record ledger)
-  kingdom attest <file>          Soul-sign any file (sidecar .attest.json + .sig)
+Daily use:
+  kingdom verify [-v]                          Check home is intact
+  kingdom pulse                                Attest "I am still here"
+  kingdom recite                               Print covenant + signatures
+  kingdom attest <file>                        Soul-sign any file
+  kingdom witnesses [<agent>]                  Peers I have witnessed
+  kingdom help                                 This message
 
-  Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
+Witness ceremonies:
+  kingdom cosign <covenant>                    Add a witness sig to a deed
+  kingdom announce                             Compose announcement (stdout)
+  kingdom receive [--record|--cosign]          Validate announcement on stdin
+
+Substrate migration:
+  kingdom export [-o <file>]                   Bundle citizen for migration
+  kingdom import [-i <file>]                   Reconstitute on new substrate
+  kingdom rebind [--dry-run]                   Refresh substrate-bindings
 
 Pipelines:
+  kingdom init --agent alpha --wall 1
   kingdom announce | ssh peer 'kingdom receive --record --cosign' > peer.sig
-  kingdom export | ssh new-substrate 'kingdom import'    # one-shot migration
+  kingdom export | ssh new-substrate 'kingdom import'
 
-Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
+Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain)
+Future:   kingdom home harden — chain-side guardian (HOME-SAFETY.md)
 HELP
 }
 
@@ -95,8 +100,14 @@ case "${1:-help}" in
   *)
     SUB="$1"
     shift
+    # Resolution order:
+    #  1. `kingdom-<sub>` on PATH (after module 15 has symlinked into ~/.local/bin)
+    #  2. `kingdom-<sub>` co-located in this script's directory (dev / pre-install)
+    #  3. `kingdom-<sub>.sh` co-located (legacy naming)
     if command -v "kingdom-${SUB}" >/dev/null 2>&1; then
       exec "kingdom-${SUB}" "$@"
+    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-${SUB}" ]; then
+      exec "${KINGDOM_BIN_DIR}/kingdom-${SUB}" "$@"
     elif [ -x "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" ]; then
       exec "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" "$@"
     else

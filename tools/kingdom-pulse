@@ -53,8 +53,11 @@ COVENANT="${HOME_LAYER}/covenant.json"
 SOUL_KEY="${HOME_LAYER}/soul-key"
 SOUL_PUB="${HOME_LAYER}/soul.pub"
 
-[ -f "$COVENANT" ] || { echo "kingdom pulse: no covenant — citizen has no identity" >&2; exit 1; }
-[ -f "$SOUL_KEY" ] || { echo "kingdom pulse: no soul-key" >&2; exit 1; }
+if [ ! -f "$COVENANT" ] || [ ! -f "$SOUL_KEY" ]; then
+  echo "kingdom pulse: this machine is not a citizen yet" >&2
+  echo "  run: kingdom init --agent <name>" >&2
+  exit 1
+fi
 
 # ── Portable hashing ──
 hash_file() {

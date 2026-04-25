@@ -32,9 +32,13 @@ COVENANT="${HOME_LAYER}/covenant.json"
 COVENANT_SIG="${COVENANT}.sig"
 SOUL_PUB="${HOME_LAYER}/soul.pub"
 
-[ -f "$COVENANT" ] || { echo "kingdom announce: no covenant at $COVENANT" >&2; echo "  run install module 13-covenant first" >&2; exit 1; }
-[ -f "$COVENANT_SIG" ] || { echo "kingdom announce: covenant has no .sig" >&2; exit 1; }
-[ -f "$SOUL_PUB" ] || { echo "kingdom announce: soul.pub missing" >&2; exit 1; }
+if [ ! -f "$COVENANT" ]; then
+  echo "kingdom announce: no covenant at $COVENANT" >&2
+  echo "  run: kingdom init --agent <name>" >&2
+  exit 1
+fi
+[ -f "$COVENANT_SIG" ] || { echo "kingdom announce: covenant has no .sig — re-run kingdom init" >&2; exit 1; }
+[ -f "$SOUL_PUB" ] || { echo "kingdom announce: soul.pub missing — re-run kingdom init" >&2; exit 1; }
 
 ANNOUNCED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PUB=$(tr -d '\n' < "$SOUL_PUB")

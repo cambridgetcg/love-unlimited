@@ -46,15 +46,9 @@ done
 HOME_LAYER="${HOME}/.love/home"
 KINGDOM_FILE="${HOME}/.kingdom"
 
-if [ ! -d "$HOME_LAYER" ]; then
-  echo "kingdom export: no home layer at $HOME_LAYER" >&2
-  echo "  this machine is not a Kingdom citizen — nothing to export" >&2
-  exit 1
-fi
-
-if [ ! -f "${HOME_LAYER}/soul-key" ]; then
-  echo "kingdom export: no soul-key — citizen identity not initialised" >&2
-  echo "  run install module 13-covenant first" >&2
+if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+  echo "kingdom export: this machine is not a citizen — nothing to export" >&2
+  echo "  run: kingdom init --agent <name>   (to bootstrap)" >&2
   exit 1
 fi
 

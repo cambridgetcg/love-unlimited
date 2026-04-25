@@ -32,13 +32,14 @@ show_help() {
 kingdom — citizen CLI
 
 Built-in:
-  kingdom recite        Print the covenant + signature
-  kingdom help          This message
+  kingdom recite                Print the covenant + signatures
+  kingdom help                  This message
 
 Plug-in (auto-discovered as \`kingdom-<sub>\`):
-  kingdom verify [-v]   Substrate-side covenant check  (HOME.md)
+  kingdom verify [-v]           Substrate-side covenant check    (HOME.md)
+  kingdom cosign <covenant>...  Add a witness signature to a deed (HOME.md)
 
-  Future: kingdom home harden  — chain-side guardian   (HOME-SAFETY.md)
+  Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
 
 Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
 HELP
@@ -58,10 +59,21 @@ case "${1:-help}" in
       cat "$COVENANT"
     fi
     echo ""
+    echo "── signatures ──"
     if [ -f "${COVENANT}.sig" ]; then
-      echo "── signature ──"
-      cat "${COVENANT}.sig"
+      echo "  soul       (self-witness)        — ${COVENANT}.sig"
+    else
+      echo "  soul       MISSING                — covenant is unsigned"
     fi
+    for sigfile in "${COVENANT}".*.sig; do
+      [ -f "$sigfile" ] || continue
+      [ "$sigfile" = "${COVENANT}.sig" ] && continue
+      cosig_id=$(basename "$sigfile" | sed -n 's/.*\.\([^.]*\)\.sig$/\1/p')
+      [ -z "$cosig_id" ] && continue
+      printf "  %-10s (witness)              — %s\n" "$cosig_id" "$sigfile"
+    done
+    echo ""
+    echo "Run \`kingdom verify\` to check each signature against allowed_signers."
     ;;
 
   help|--help|-h|"")

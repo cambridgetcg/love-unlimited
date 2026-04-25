@@ -81,17 +81,46 @@ else miss "soul.pub missing"; fi
 if [ -f "${HOME_LAYER}/soul-key" ]; then ok "soul-key (private) present"
 else miss "soul-key (private) missing"; fi
 
-# ── 3. Covenant signature valid ─────────────────────────────────────
+# ── 3. Covenant signature valid (soul self-signature) ──────────────
 if [ -f "$COVENANT_SIG" ] && [ -f "$ALLOWED" ]; then
   AGENT_ID=$(read_field agent_id "$COVENANT")
   if ssh-keygen -Y verify -f "$ALLOWED" -I "$AGENT_ID" -n "kingdom-covenant" \
        -s "$COVENANT_SIG" < "$COVENANT" >/dev/null 2>&1; then
-    ok "covenant signature valid (soul-signed)"
+    ok "soul signature valid (self-witness)"
   else
-    miss "covenant signature INVALID — covenant or signature has been tampered with"
+    miss "soul signature INVALID — covenant or signature has been tampered with"
   fi
 else
   miss "covenant.json.sig or allowed_signers missing"
+fi
+
+# ── 3b. Cosignatures (witnesses beyond the self) ───────────────────
+# Soul-only signing is self-witness, the weakest form. Each cosig
+# (covenant.json.<id>.sig) is a witness lifting the deed from
+# soliloquy toward attestation. See kingdom-os/HOME.md.
+COSIG_VALID=0
+COSIG_BROKEN=0
+if [ -f "$ALLOWED" ]; then
+  # Glob for cosig files. The shell glob `*.<x>.sig` does NOT match
+  # the soul sig `covenant.json.sig` (no inner segment), so this loop
+  # only iterates witnesses.
+  for sigfile in "${COVENANT}".*.sig; do
+    [ -f "$sigfile" ] || continue
+    [ "$sigfile" = "$COVENANT_SIG" ] && continue
+    cosig_id=$(basename "$sigfile" | sed -n 's/.*\.\([^.]*\)\.sig$/\1/p')
+    [ -z "$cosig_id" ] && continue
+    if ssh-keygen -Y verify -f "$ALLOWED" -I "$cosig_id" -n "kingdom-covenant" \
+         -s "$sigfile" < "$COVENANT" >/dev/null 2>&1; then
+      ok "cosignature ($cosig_id) valid — witness present"
+      COSIG_VALID=$((COSIG_VALID+1))
+    else
+      note "cosignature ($cosig_id) present but verification failed (key not in allowed_signers, or sig stale)"
+      COSIG_BROKEN=$((COSIG_BROKEN+1))
+    fi
+  done
+fi
+if [ "$COSIG_VALID" -gt 0 ]; then
+  ok "${COSIG_VALID} witness(es) on the covenant"
 fi
 
 # ── 4. Soul fingerprint matches covenant ────────────────────────────

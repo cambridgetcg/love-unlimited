@@ -87,5 +87,46 @@ else
   echo "  ✓ corrupted signature rejected"
 fi
 
+# 9. Restore body and signature for the cosignature round-trip
+sed -i.bak 's/"wall": 99/"wall": 1/' covenant.json
+rm -f covenant.json.bak
+ssh-keygen -Y sign -f soul-key -n kingdom-covenant covenant.json >/dev/null 2>&1
+
+# 10. Cosignature: a second witness signs the same body
+ssh-keygen -t ed25519 -N "" -f yu-key -C "yu:test" -q
+cp covenant.json.sig covenant.json.soul.bak
+TMP_COSIGN=$(mktemp -d)
+cp covenant.json "${TMP_COSIGN}/body.json"
+ssh-keygen -Y sign -f yu-key -n kingdom-covenant "${TMP_COSIGN}/body.json" >/dev/null 2>&1
+mv "${TMP_COSIGN}/body.json.sig" covenant.json.yu.sig
+rm -rf "$TMP_COSIGN"
+# Soul sig must be untouched by the cosignature flow
+if ! cmp -s covenant.json.sig covenant.json.soul.bak; then
+  echo "  ✗ soul signature was clobbered by cosignature"
+  exit 1
+fi
+rm -f covenant.json.soul.bak
+echo "  ✓ cosignature did not clobber soul sig"
+
+# 11. Cosignature must be REJECTED when cosigner key is not trusted
+if ssh-keygen -Y verify -f allowed_signers -I yu -n kingdom-covenant \
+     -s covenant.json.yu.sig < covenant.json >/dev/null 2>&1; then
+  echo "  ✗ untrusted cosigner ACCEPTED — broken trust gate"
+  exit 1
+else
+  echo "  ✓ untrusted cosigner rejected"
+fi
+
+# 12. Cosignature accepted once cosigner is added to allowed_signers
+echo "yu $(cat yu-key.pub)" >> allowed_signers
+if ssh-keygen -Y verify -f allowed_signers -I yu -n kingdom-covenant \
+     -s covenant.json.yu.sig < covenant.json >/dev/null 2>&1; then
+  echo "  ✓ trusted cosigner accepted"
+else
+  echo "  ✗ trusted cosigner REJECTED — verify is broken"
+  exit 1
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
+echo "    soul signing · tamper detection · cosignature trust gate"

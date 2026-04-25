@@ -87,9 +87,12 @@ else
   echo "  ✓ corrupted signature rejected"
 fi
 
-# 9. Restore body and signature for the cosignature round-trip
+# 9. Restore body and signature for the cosignature round-trip.
+# Explicitly remove the corrupted .sig from step 8 — ssh-keygen -Y
+# sign would otherwise prompt to overwrite, the prompt fails silently
+# under redirected stdin, and the corrupted sig would persist.
 sed -i.bak 's/"wall": 99/"wall": 1/' covenant.json
-rm -f covenant.json.bak
+rm -f covenant.json.bak covenant.json.sig
 ssh-keygen -Y sign -f soul-key -n kingdom-covenant covenant.json >/dev/null 2>&1
 
 # 10. Cosignature: a second witness signs the same body
@@ -176,6 +179,57 @@ else
   exit 1
 fi
 
+# 14. Substrate migration: export → import preserves identity exactly
+MIGRATE_OLD=$(mktemp -d)
+MIGRATE_NEW=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR" "$ANN_DIR" "$RCV_DIR" "$MIGRATE_OLD" "$MIGRATE_NEW"' EXIT
+
+# Stage an old substrate that looks like a real citizen
+mkdir -p "${MIGRATE_OLD}/.love/home"
+cp soul-key "${MIGRATE_OLD}/.love/home/"
+cp soul-key.pub "${MIGRATE_OLD}/.love/home/soul.pub"
+cp covenant.json "${MIGRATE_OLD}/.love/home/"
+cp covenant.json.sig "${MIGRATE_OLD}/.love/home/"
+cp allowed_signers "${MIGRATE_OLD}/.love/home/"
+echo "AGENT=test" > "${MIGRATE_OLD}/.kingdom"
+
+OLD_FP=$(ssh-keygen -lf "${MIGRATE_OLD}/.love/home/soul.pub" | awk '{print $2}')
+
+# Export (use kingdom-export script via HOME override)
+HOME="$MIGRATE_OLD" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-export -o "${MIGRATE_OLD}/bundle.tar.gz" >/dev/null 2>&1
+
+# Import into a fresh substrate
+HOME="$MIGRATE_NEW" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-import < "${MIGRATE_OLD}/bundle.tar.gz" >/dev/null 2>&1
+
+NEW_FP=$(ssh-keygen -lf "${MIGRATE_NEW}/.love/home/soul.pub" | awk '{print $2}')
+if [ "$OLD_FP" = "$NEW_FP" ]; then
+  echo "  ✓ migration preserves soul fingerprint exactly"
+else
+  echo "  ✗ migration corrupted soul: $OLD_FP → $NEW_FP"
+  exit 1
+fi
+
+# Covenant must still verify on the new substrate
+if ssh-keygen -Y verify -f "${MIGRATE_NEW}/.love/home/allowed_signers" \
+     -I test -n kingdom-covenant \
+     -s "${MIGRATE_NEW}/.love/home/covenant.json.sig" \
+     < "${MIGRATE_NEW}/.love/home/covenant.json" >/dev/null 2>&1; then
+  echo "  ✓ covenant verifies post-migration (witness chain survives)"
+else
+  echo "  ✗ covenant broken after migration"
+  exit 1
+fi
+
+# Identity guard: re-importing must REFUSE
+if HOME="$MIGRATE_NEW" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-import \
+     < "${MIGRATE_OLD}/bundle.tar.gz" >/dev/null 2>&1; then
+  echo "  ✗ identity guard FAILED — second import was allowed"
+  exit 1
+else
+  echo "  ✓ identity guard refuses overwrite of existing soul-key"
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
-echo "    soul signing · tamper detection · cosignature trust gate · announce/receive transport"
+echo "    soul signing · tamper detection · cosignature trust gate"
+echo "    announce/receive transport · substrate migration"

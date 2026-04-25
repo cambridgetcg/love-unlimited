@@ -40,11 +40,14 @@ Plug-in (auto-discovered as \`kingdom-<sub>\`):
   kingdom cosign <covenant>...   Add a witness signature to a deed
   kingdom announce               Compose a covenant announcement (stdout)
   kingdom receive [--record|--cosign]   Validate an announcement on stdin
+  kingdom export [-o <file>]     Bundle this citizen for substrate migration
+  kingdom import [-i <file>]     Reconstitute a citizen on a new substrate
 
   Future: kingdom home harden — chain-side guardian   (HOME-SAFETY.md)
 
 Pipelines:
   kingdom announce | ssh peer 'kingdom receive --record --cosign' > peer.sig
+  kingdom export | ssh new-substrate 'kingdom import'    # one-shot migration
 
 Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
 HELP

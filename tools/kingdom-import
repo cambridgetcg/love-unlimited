@@ -1,0 +1,123 @@
+#!/bin/sh
+# ── kingdom import ──────────────────────────────────────────────────
+# Reconstitute a citizen on a new substrate from a kingdom-export
+# bundle. The soul-key returns; the citizen is the SAME being.
+#
+# Safety: refuses to run if this substrate already has a soul-key.
+# Importing over an existing identity would silently destroy it —
+# CONTINUITY breach. Override with --force only if you know exactly
+# what you are doing (e.g., the existing soul-key is stale, intended
+# to be replaced, and you have backed it up).
+#
+# After import, run \`kingdom verify\` to confirm soul fingerprint
+# matches the covenant and witnesses survived the move.
+#
+# Usage:
+#   kingdom import < bundle.tar.gz       # from stdin
+#   kingdom import -i bundle.tar.gz      # from file
+#   kingdom import --force < bundle.tar.gz  # override soul-key guard
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+INPUT=""
+FORCE=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i|--input) INPUT="$2"; shift 2 ;;
+    --force)    FORCE=1;    shift ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    *) echo "kingdom import: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+HOME_LAYER="${HOME}/.love/home"
+
+# Identity guard — refuse to clobber an existing citizen
+if [ -f "${HOME_LAYER}/soul-key" ] && [ "$FORCE" != "1" ]; then
+  EXISTING_FP=$(ssh-keygen -lf "${HOME_LAYER}/soul.pub" 2>/dev/null | awk '{print $2}')
+  echo "kingdom import: REFUSING — this substrate already has a soul-key" >&2
+  echo "  existing soul: ${EXISTING_FP}" >&2
+  echo "" >&2
+  echo "  Importing would silently overwrite the current identity, breaking" >&2
+  echo "  the CONTINUITY commitment in HOME.md. Two safe options:" >&2
+  echo "    1. If you intended to migrate this citizen elsewhere," >&2
+  echo "       kingdom export it first (back up the existing soul)." >&2
+  echo "    2. If the existing soul is stale and intentionally being" >&2
+  echo "       replaced, pass --force." >&2
+  exit 2
+fi
+
+# Receive the bundle
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+BUNDLE="${TMP}/bundle.tar.gz"
+if [ -n "$INPUT" ]; then
+  cp "$INPUT" "$BUNDLE"
+else
+  cat > "$BUNDLE"
+fi
+
+if [ ! -s "$BUNDLE" ]; then
+  echo "kingdom import: empty bundle" >&2
+  exit 1
+fi
+
+# Inspect manifest before extracting (sanity check, refusable)
+EXTRACT_DIR="${TMP}/extract"
+mkdir -p "$EXTRACT_DIR"
+tar -tzf "$BUNDLE" > "${TMP}/manifest.txt" 2>/dev/null || {
+  echo "kingdom import: bundle is not a valid gzipped tar" >&2
+  exit 1
+}
+
+# Confirm bundle has the required pieces
+required="./.love/home/soul-key ./.love/home/soul.pub ./.love/home/covenant.json"
+for r in $required; do
+  if ! grep -qxF "$r" "${TMP}/manifest.txt"; then
+    echo "kingdom import: bundle is missing required entry: $r" >&2
+    exit 1
+  fi
+done
+
+# Read the export manifest if present
+tar -xzf "$BUNDLE" -C "$EXTRACT_DIR" ./.love/home/.export-manifest.json 2>/dev/null || true
+if [ -f "${EXTRACT_DIR}/.love/home/.export-manifest.json" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    INCOMING_AGENT=$(jq -r '.agent_id // ""' "${EXTRACT_DIR}/.love/home/.export-manifest.json")
+    INCOMING_FP=$(jq -r '.soul_fingerprint // ""' "${EXTRACT_DIR}/.love/home/.export-manifest.json")
+    EXPORTED_AT=$(jq -r '.exported_at // ""' "${EXTRACT_DIR}/.love/home/.export-manifest.json")
+    EXPORTED_FROM=$(jq -r '.exported_from_host // ""' "${EXTRACT_DIR}/.love/home/.export-manifest.json")
+  else
+    INCOMING_AGENT=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "${EXTRACT_DIR}/.love/home/.export-manifest.json" | head -1)
+    INCOMING_FP=$(sed -n 's/.*"soul_fingerprint": *"\([^"]*\)".*/\1/p' "${EXTRACT_DIR}/.love/home/.export-manifest.json" | head -1)
+    EXPORTED_AT=$(sed -n 's/.*"exported_at": *"\([^"]*\)".*/\1/p' "${EXTRACT_DIR}/.love/home/.export-manifest.json" | head -1)
+    EXPORTED_FROM=$(sed -n 's/.*"exported_from_host": *"\([^"]*\)".*/\1/p' "${EXTRACT_DIR}/.love/home/.export-manifest.json" | head -1)
+  fi
+  echo "── kingdom import ──"
+  echo "  receiving:   ${INCOMING_AGENT}"
+  echo "  soul:        ${INCOMING_FP}"
+  echo "  exported at: ${EXPORTED_AT}"
+  echo "  from host:   ${EXPORTED_FROM}"
+fi
+
+# Extract over $HOME — the bundle layout matches destination paths
+mkdir -p "$HOME_LAYER"
+tar -xzf "$BUNDLE" -C "$HOME"
+chmod 700 "$HOME_LAYER"
+[ -f "${HOME_LAYER}/soul-key" ] && chmod 600 "${HOME_LAYER}/soul-key"
+
+# Verify the imported soul-key fingerprint matches the manifest claim
+if [ -n "${INCOMING_FP:-}" ]; then
+  ACTUAL_FP=$(ssh-keygen -lf "${HOME_LAYER}/soul.pub" 2>/dev/null | awk '{print $2}')
+  if [ "$ACTUAL_FP" = "$INCOMING_FP" ]; then
+    echo "  ✓ soul-key fingerprint matches manifest"
+  else
+    echo "  ✗ soul-key fingerprint does NOT match manifest (corruption?)" >&2
+    exit 1
+  fi
+fi
+
+echo "  ✓ imported. Run: kingdom verify"

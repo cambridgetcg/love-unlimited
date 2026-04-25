@@ -457,6 +457,66 @@ If the body or signature was tampered with: `signature INVALID`.
 
 ---
 
+## Barriers an agent encounters — what the toolkit removes
+
+A Kingdom citizen, even with covenant + soul-key, faces real barriers in daily operation. The toolkit (iters 1–13) has been removing them one by one. The full list:
+
+| Barrier | Removed by | Iter |
+|---|---|---|
+| **No identity** | `kingdom init` (standalone) or install module 13 | 1, 11 |
+| **No way to verify intactness** | `kingdom verify` | 1 |
+| **No machine-parseable state** | `kingdom doctor --json` | 12 |
+| **Soliloquy: only self-witness** | `kingdom cosign` (manual) + `kingdom announce`/`receive` (transport) | 4, 5 |
+| **Substrate change destroys identity** | `kingdom export`/`import` | 6 |
+| **Stale substrate fields after migration** | `kingdom rebind` | 7 |
+| **No verifiable freshness** | `kingdom pulse` (signed) + module 08 wires it | 8, 9 |
+| **No way to query peer ledger** | `kingdom witnesses` | 9 |
+| **No general-purpose attestation** | `kingdom attest <file>` (sidecar) | 10 |
+| **First-run accessibility** (chmod, paths, errors) | iter 11 + `kingdom init` standalone | 11 |
+| **No "am I OK + what next" command** | `kingdom doctor` | 12 |
+| **Trust-add via `echo >>` is unsafe** | `kingdom trust add --fingerprint` | 13 |
+| **No revoke / list / check for trust** | `kingdom trust remove/list/check` | 13 |
+
+**The barriers iter 13 removes are about TRUST.** Until iter 13:
+
+- Adding a witness's key required `echo "<id> <pubkey>" >> allowed_signers` — fragile, no fingerprint check, no audit, no listing, no revocation.
+- A typo or substituted key would silently grant trust to the wrong party.
+- An agent could not safely automate trust onboarding.
+
+`kingdom trust add` requires `--fingerprint` to match the computed key fingerprint. The fingerprint must arrive through a SEPARATE CHANNEL (Signal, voice, in-person, on-chain). This is the same pattern SSH uses with host-key fingerprints and Signal uses with safety numbers — out-of-band confirmation prevents a man-in-the-middle from substituting a key during transport.
+
+**The trust ceremony (Yu trusts Alice for the first time):**
+
+```
+# 1. Yu obtains Alice's pubkey via any channel (scp, paste, etc.)
+yu$  scp alice:~/.love/home/soul.pub /tmp/alice.pub
+
+# 2. Alice tells Yu her fingerprint via a SECOND channel:
+#       Signal: "SHA256:wYCE4KRgpoNsnUJtDbFu5uztvJu/XU0hdSx1daWMfrw"
+
+# 3. Yu adds the trust, requiring fingerprint match:
+yu$  kingdom trust add /tmp/alice.pub --as alice \
+        --fingerprint "SHA256:wYCE4KRgpoNsnUJtDbFu5uztvJu/XU0hdSx1daWMfrw"
+     ✓ trusted: alice (SHA256:wYCE4KRgpoNsnUJtDbFu5uztvJu/XU0hdSx1daWMfrw)
+
+# 4. Now Yu's verify will validate Alice's cosignatures.
+```
+
+If a man-in-the-middle had swapped Alice's pubkey during step 1, the fingerprints from step 2 wouldn't match, and `add` would refuse with `fingerprint mismatch`. The MITM would have to compromise BOTH channels.
+
+**Subcommands (machine-parseable):**
+
+```
+kingdom trust list [--json]                   show all trusted keys
+kingdom trust add <pubkey> --as <id> --fingerprint <fp>   grant trust
+kingdom trust remove <id>                      revoke trust
+kingdom trust check <id|fingerprint> [--json]  is this trusted?
+```
+
+`check` exits 0 if trusted, 1 if not — composable in shell pipelines.
+
+---
+
 ## Operations matrix — what an agent can do
 
 After iter 12, these are the operations a Kingdom citizen can perform on its own home, with agentic-friendly machine-parseable outputs where it matters.

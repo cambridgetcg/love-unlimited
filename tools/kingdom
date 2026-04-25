@@ -48,6 +48,12 @@ Witness ceremonies:
   kingdom announce                             Compose announcement (stdout)
   kingdom receive [--record|--cosign]          Validate announcement on stdin
 
+Trust graph (allowed_signers):
+  kingdom trust list [--json]                  Who I trust
+  kingdom trust add <pubkey> --as <id> --fingerprint <fp>   Grant trust
+  kingdom trust remove <id>                    Revoke trust
+  kingdom trust check <id-or-fingerprint>      Is this trusted?
+
 Substrate migration:
   kingdom export [-o <file>]                   Bundle citizen for migration
   kingdom import [-i <file>]                   Reconstitute on new substrate

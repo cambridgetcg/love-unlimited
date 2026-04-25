@@ -1,0 +1,284 @@
+#!/bin/sh
+# ── kingdom trust ───────────────────────────────────────────────────
+# Manage the citizen's trust graph (~/.love/home/allowed_signers).
+#
+# allowed_signers is the file ssh-keygen -Y verify consults to decide
+# whose signatures are valid. Adding a key here is granting that key
+# the right to act as a witness on this citizen's covenant. Removing
+# revokes that right. This tool replaces the previous "echo >>" UX
+# with a safe, fingerprint-checked workflow.
+#
+# Storage format (one line per trusted key):
+#   <identity-tag> ssh-ed25519 AAAA...
+#
+# Subcommands:
+#   kingdom trust list                           list all trusted keys
+#   kingdom trust list --json                    machine-parseable
+#   kingdom trust add <pubkey-file> --as <id> --fingerprint <fp>
+#                                                grant trust to a key
+#   kingdom trust remove <id>                    revoke trust
+#   kingdom trust check <id-or-fingerprint>      is this trusted?
+#
+# Bootstrap safety:
+#   `add` REFUSES unless --fingerprint is supplied AND matches the
+#   key's computed fingerprint. This forces out-of-band confirmation
+#   (Signal, voice, separate ssh session, fingerprint published on
+#   chain). An agent cannot be tricked into trusting a substituted
+#   key — the fingerprint must come from a channel the attacker
+#   doesn't control.
+#
+#   --force overrides this, but you almost never want it.
+#
+# Doctrine: kingdom-os/HOME.md (the trust graph; FAITHFUL/VERIFIABLE).
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+HOME_LAYER="${HOME}/.love/home"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+
+usage() {
+  sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+}
+
+# ── Helpers ────────────────────────────────────────────────────────
+fingerprint_of_key() {
+  ssh-keygen -lf "$1" 2>/dev/null | awk '{print $2}'
+}
+fingerprint_of_publine() {
+  TMP_PUB=$(mktemp)
+  printf '%s\n' "$1" > "$TMP_PUB"
+  FP=$(fingerprint_of_key "$TMP_PUB")
+  rm -f "$TMP_PUB"
+  printf '%s\n' "$FP"
+}
+
+# ── Subcommand dispatch ────────────────────────────────────────────
+SUB="${1:-}"
+[ -n "$SUB" ] && shift || { usage; exit 1; }
+
+case "$SUB" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+# Ensure home layer exists for any subcommand that touches it
+[ -d "$HOME_LAYER" ] || {
+  echo "kingdom trust: no home layer at $HOME_LAYER" >&2
+  echo "  bootstrap with: kingdom init --agent <name>" >&2
+  exit 1
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# LIST
+# ═══════════════════════════════════════════════════════════════════
+if [ "$SUB" = "list" ]; then
+  JSON=0
+  case "${1:-}" in --json) JSON=1 ;; esac
+
+  if [ ! -f "$ALLOWED" ]; then
+    if [ "$JSON" = "1" ]; then echo '{"keys":[],"count":0}'
+    else echo "  (no allowed_signers file)"
+    fi
+    exit 0
+  fi
+
+  if [ "$JSON" = "1" ]; then
+    SEP=""
+    printf '{"keys":['
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      case "$line" in '#'*) continue ;; esac
+      id=$(echo "$line" | awk '{print $1}')
+      keytype=$(echo "$line" | awk '{print $2}')
+      keymat=$(echo "$line" | awk '{print $3}')
+      publine="${keytype} ${keymat}"
+      fp=$(fingerprint_of_publine "$publine")
+      printf '%s{"identity":"%s","fingerprint":"%s","type":"%s"}' \
+        "$SEP" "$id" "$fp" "$keytype"
+      SEP=","
+    done < "$ALLOWED"
+    COUNT=$(grep -c -E '^[A-Za-z0-9_-]+ ' "$ALLOWED" 2>/dev/null || echo 0)
+    printf '],"count":%s}\n' "$COUNT"
+  else
+    echo "── trusted keys ──"
+    printf "  %-16s %-50s %s\n" "identity" "fingerprint" "type"
+    echo "  $(printf -- '─%.0s' $(seq 1 80))"
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      case "$line" in '#'*) continue ;; esac
+      id=$(echo "$line" | awk '{print $1}')
+      keytype=$(echo "$line" | awk '{print $2}')
+      keymat=$(echo "$line" | awk '{print $3}')
+      publine="${keytype} ${keymat}"
+      fp=$(fingerprint_of_publine "$publine")
+      printf "  %-16s %-50s %s\n" "$id" "$fp" "$keytype"
+    done < "$ALLOWED"
+    COUNT=$(grep -c -E '^[A-Za-z0-9_-]+ ' "$ALLOWED" 2>/dev/null || echo 0)
+    echo ""
+    echo "  ${COUNT} key(s) trusted."
+  fi
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# ADD
+# ═══════════════════════════════════════════════════════════════════
+if [ "$SUB" = "add" ]; then
+  KEY_FILE=""
+  IDENTITY=""
+  EXPECTED_FP=""
+  FORCE=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --as)          IDENTITY="$2";    shift 2 ;;
+      --fingerprint) EXPECTED_FP="$2"; shift 2 ;;
+      --force)       FORCE=1;          shift ;;
+      *) [ -z "$KEY_FILE" ] && KEY_FILE="$1" || { echo "too many args" >&2; exit 1; }; shift ;;
+    esac
+  done
+
+  if [ -z "$KEY_FILE" ] || [ -z "$IDENTITY" ]; then
+    echo "Usage: kingdom trust add <pubkey-file> --as <identity> --fingerprint <fp>" >&2
+    exit 1
+  fi
+  case "$IDENTITY" in
+    *' '*|*[!A-Za-z0-9_-]*) echo "kingdom trust: identity must be [A-Za-z0-9_-]+" >&2; exit 1 ;;
+  esac
+  [ -f "$KEY_FILE" ] || { echo "kingdom trust: pubkey file not found: $KEY_FILE" >&2; exit 1; }
+
+  ACTUAL_FP=$(fingerprint_of_key "$KEY_FILE")
+  [ -n "$ACTUAL_FP" ] || { echo "kingdom trust: not a valid SSH public key file" >&2; exit 1; }
+
+  # Bootstrap safety: require fingerprint match unless --force
+  if [ "$FORCE" != "1" ]; then
+    if [ -z "$EXPECTED_FP" ]; then
+      echo "kingdom trust: REFUSING — --fingerprint required" >&2
+      echo "  Adding a key without fingerprint verification is unsafe." >&2
+      echo "  Get the fingerprint from the key owner via a separate channel" >&2
+      echo "  (Signal, voice, in-person, on-chain) and pass it as:" >&2
+      echo "" >&2
+      echo "    kingdom trust add $KEY_FILE --as $IDENTITY \\" >&2
+      echo "      --fingerprint '$ACTUAL_FP'" >&2
+      echo "" >&2
+      echo "  (this key's fingerprint above; confirm out-of-band before pasting)" >&2
+      exit 2
+    fi
+    if [ "$EXPECTED_FP" != "$ACTUAL_FP" ]; then
+      echo "kingdom trust: REFUSING — fingerprint mismatch" >&2
+      echo "  expected: $EXPECTED_FP" >&2
+      echo "  actual:   $ACTUAL_FP" >&2
+      echo "  Either the key has been substituted, or the expected fingerprint is wrong." >&2
+      exit 2
+    fi
+  fi
+
+  # Check if identity already trusted
+  if [ -f "$ALLOWED" ] && grep -qE "^${IDENTITY} " "$ALLOWED"; then
+    EXISTING_LINE=$(grep -E "^${IDENTITY} " "$ALLOWED" | head -1)
+    EXISTING_PUB=$(echo "$EXISTING_LINE" | cut -d' ' -f2-)
+    EXISTING_FP=$(fingerprint_of_publine "$EXISTING_PUB")
+    if [ "$EXISTING_FP" = "$ACTUAL_FP" ]; then
+      echo "  ✓ ${IDENTITY} already trusted with this exact key (no change)"
+      exit 0
+    fi
+    echo "kingdom trust: identity '${IDENTITY}' already maps to a different key" >&2
+    echo "  existing: $EXISTING_FP" >&2
+    echo "  new:      $ACTUAL_FP" >&2
+    echo "  Remove first: kingdom trust remove $IDENTITY" >&2
+    exit 2
+  fi
+
+  PUB_LINE=$(cat "$KEY_FILE" | tr -d '\n')
+  printf '%s %s\n' "$IDENTITY" "$PUB_LINE" >> "$ALLOWED"
+  chmod 644 "$ALLOWED"
+
+  echo "  ✓ trusted: $IDENTITY ($ACTUAL_FP)"
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# REMOVE
+# ═══════════════════════════════════════════════════════════════════
+if [ "$SUB" = "remove" ]; then
+  IDENTITY="${1:-}"
+  if [ -z "$IDENTITY" ]; then
+    echo "Usage: kingdom trust remove <identity>" >&2
+    exit 1
+  fi
+  if [ ! -f "$ALLOWED" ]; then
+    echo "kingdom trust: no allowed_signers" >&2
+    exit 1
+  fi
+  if ! grep -qE "^${IDENTITY} " "$ALLOWED"; then
+    echo "kingdom trust: '${IDENTITY}' is not trusted" >&2
+    exit 1
+  fi
+
+  # Get the key being removed for the audit line
+  REMOVED_LINE=$(grep -E "^${IDENTITY} " "$ALLOWED" | head -1)
+  REMOVED_PUB=$(echo "$REMOVED_LINE" | cut -d' ' -f2-)
+  REMOVED_FP=$(fingerprint_of_publine "$REMOVED_PUB")
+
+  # Filter out the line atomically
+  TMP=$(mktemp)
+  grep -vE "^${IDENTITY} " "$ALLOWED" > "$TMP" || true
+  mv "$TMP" "$ALLOWED"
+  chmod 644 "$ALLOWED"
+
+  echo "  ✓ revoked: $IDENTITY ($REMOVED_FP)"
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════════
+# CHECK
+# ═══════════════════════════════════════════════════════════════════
+if [ "$SUB" = "check" ]; then
+  TARGET="${1:-}"
+  JSON=0
+  shift 2>/dev/null || true
+  case "${1:-}" in --json) JSON=1 ;; esac
+
+  if [ -z "$TARGET" ]; then
+    echo "Usage: kingdom trust check <identity-or-fingerprint> [--json]" >&2
+    exit 1
+  fi
+
+  TRUSTED=0
+  MATCHED_ID=""
+  MATCHED_FP=""
+  if [ -f "$ALLOWED" ]; then
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      case "$line" in '#'*) continue ;; esac
+      id=$(echo "$line" | awk '{print $1}')
+      pub=$(echo "$line" | cut -d' ' -f2-)
+      fp=$(fingerprint_of_publine "$pub")
+      if [ "$id" = "$TARGET" ] || [ "$fp" = "$TARGET" ]; then
+        TRUSTED=1
+        MATCHED_ID="$id"
+        MATCHED_FP="$fp"
+        break
+      fi
+    done < "$ALLOWED"
+  fi
+
+  if [ "$JSON" = "1" ]; then
+    if [ "$TRUSTED" = "1" ]; then
+      printf '{"trusted":true,"identity":"%s","fingerprint":"%s"}\n' "$MATCHED_ID" "$MATCHED_FP"
+    else
+      printf '{"trusted":false,"target":"%s"}\n' "$TARGET"
+    fi
+  else
+    if [ "$TRUSTED" = "1" ]; then
+      echo "  ✓ trusted: $MATCHED_ID ($MATCHED_FP)"
+    else
+      echo "  ✗ not trusted: $TARGET"
+    fi
+  fi
+
+  [ "$TRUSTED" = "1" ] && exit 0 || exit 1
+fi
+
+echo "kingdom trust: unknown subcommand '$SUB'" >&2
+echo "  try: kingdom trust list | add | remove | check" >&2
+exit 1

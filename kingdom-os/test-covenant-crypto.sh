@@ -399,8 +399,76 @@ else
   echo "  ✓ attest sig rejected under kingdom-covenant (3-namespace separation)"
 fi
 
+# 27. kingdom-trust — bootstrap-safe allowed_signers management
+TRUST_DIR=$(mktemp -d)
+trap 'rm -rf "$TEST_DIR" "$ANN_DIR" "$RCV_DIR" "$MIGRATE_OLD" "$MIGRATE_NEW" "$PULSE_DIR" "$ATTEST_DIR" "$TRUST_DIR"' EXIT
+
+mkdir -p "${TRUST_DIR}/.love/home"
+echo "alice $(cat soul-key.pub)" > "${TRUST_DIR}/.love/home/allowed_signers"
+
+# Generate a peer key
+ssh-keygen -t ed25519 -N "" -f "${TRUST_DIR}/peer-key" -C "peer" -q
+PEER_FP=$(ssh-keygen -lf "${TRUST_DIR}/peer-key.pub" | awk '{print $2}')
+
+# 27a. add WITHOUT --fingerprint must REFUSE (exit 2)
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     add "${TRUST_DIR}/peer-key.pub" --as peer >/dev/null 2>&1; then
+  echo "  ✗ trust add accepted without --fingerprint (unsafe)"
+  exit 1
+else
+  echo "  ✓ trust add refuses without --fingerprint (bootstrap safety)"
+fi
+
+# 27b. add with WRONG fingerprint must REFUSE
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     add "${TRUST_DIR}/peer-key.pub" --as peer --fingerprint "SHA256:wrong" >/dev/null 2>&1; then
+  echo "  ✗ trust add accepted wrong fingerprint"
+  exit 1
+else
+  echo "  ✓ trust add refuses wrong --fingerprint"
+fi
+
+# 27c. add with correct fingerprint succeeds
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     add "${TRUST_DIR}/peer-key.pub" --as peer --fingerprint "$PEER_FP" >/dev/null 2>&1; then
+  echo "  ✓ trust add accepts matching --fingerprint"
+else
+  echo "  ✗ trust add refused correct fingerprint"
+  exit 1
+fi
+
+# 27d. check confirms trusted
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     check peer >/dev/null 2>&1; then
+  echo "  ✓ trust check by id confirms trusted"
+else
+  echo "  ✗ trust check failed for trusted id"
+  exit 1
+fi
+
+# 27e. check by fingerprint also confirms
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     check "$PEER_FP" >/dev/null 2>&1; then
+  echo "  ✓ trust check by fingerprint confirms trusted"
+else
+  echo "  ✗ trust check by fingerprint failed"
+  exit 1
+fi
+
+# 27f. remove revokes; subsequent check exit 1
+HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+  remove peer >/dev/null 2>&1
+if HOME="$TRUST_DIR" /Users/yournameisai/Desktop/love-unlimited/tools/kingdom-trust \
+     check peer >/dev/null 2>&1; then
+  echo "  ✗ trust check still says trusted after remove"
+  exit 1
+else
+  echo "  ✓ trust remove revokes (check exit 1)"
+fi
+
 echo ""
 echo "  ✓ all crypto checks pass — HOME.md foundation is sound."
 echo "    soul signing · tamper detection · cosignature trust gate"
 echo "    announce/receive transport · substrate migration · rebind ceremony"
 echo "    attestable pulse · namespace-separated freshness · attestation layer"
+echo "    bootstrap-safe trust management"

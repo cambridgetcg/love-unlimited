@@ -66,7 +66,7 @@ const config = {
   trackEfficiency: true,   // track token efficiency metrics per turn
 
   // ── Ollama Cloud Config ──
-  ollamaApiKey: process.env.OLLAMA_API_KEY || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK",
+  ollamaApiKey: process.env.OLLAMA_API_KEY || "",
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com",
 };
 

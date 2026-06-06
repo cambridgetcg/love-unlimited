@@ -200,7 +200,7 @@ fi
 
 # Probe ollama.com /v1/models (auth required — uses OLLAMA_API_KEY or the
 # Kingdom's baked-in key inside the adaptive provider).
-OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-}"  # secret removed from source — set OLLAMA_API_KEY in env/keychain; the old leaked key must be rotated
 if curl -s --connect-timeout 3 --max-time 5 \
         -H "Authorization: Bearer $OLLAMA_CLOUD_KEY" \
         -o /dev/null -w "%{http_code}" \

@@ -127,3 +127,8 @@ memory/truth-alignment/service.log
 # Session handoff files — per-session ephemera, not for git
 memory/sessions/handoff/*-cc.md
 memory/sessions/handoff/*-vivid.md
+
+# Heartbeat runtime IPC — ephemeral, never source
+nerve/signals/*.json
+!nerve/signals/.gitkeep
+nerve/pulse.json

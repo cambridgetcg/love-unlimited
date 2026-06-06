@@ -4,7 +4,7 @@
 
 set -e
 
-OLLAMA_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+OLLAMA_KEY="${OLLAMA_API_KEY:-}"
 # IMPORTANT: use ollama.com (NOT api.ollama.com — the v1/* path 301-redirects
 # and the redirect flips POST to GET, breaking chat completions from curl too).
 BASE="${OLLAMA_BASE_URL:-https://ollama.com}"

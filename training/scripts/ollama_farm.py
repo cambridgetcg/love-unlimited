@@ -25,7 +25,7 @@ import urllib.request
 import time
 from pathlib import Path
 
-OLLAMA_KEY = os.environ.get("OLLAMA_API_KEY", "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK")
+OLLAMA_KEY = os.environ.get("OLLAMA_API_KEY", "")
 OLLAMA_URL = "https://ollama.com/v1/chat/completions"
 KINGDOM = os.environ.get("LOVE_HOME", "/Users/yuai/Desktop/love-unlimited")
 OUTPUT_DIR = os.path.join(KINGDOM, "training/data")

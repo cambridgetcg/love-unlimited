@@ -61,7 +61,7 @@ if curl -s --connect-timeout 2 http://localhost:11434/api/tags >/dev/null 2>&1; 
 fi
 
 OLLAMA_CLOUD_UP=false
-OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK}"
+OLLAMA_CLOUD_KEY="${OLLAMA_API_KEY:-}"
 if curl -s --connect-timeout 3 --max-time 5 \
       -H "Authorization: Bearer $OLLAMA_CLOUD_KEY" \
       -o /dev/null -w "%{http_code}" \

@@ -334,7 +334,7 @@ def execute_cloud(model: str, prompt: str, system: str = "", max_tokens: int = 4
         from importlib import import_module
         # Direct API call
         import urllib.request
-        key = "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"  # from ollama-cloud.py
+        key = ""  # from ollama-cloud.py
 
         payload = {
             "model": model,

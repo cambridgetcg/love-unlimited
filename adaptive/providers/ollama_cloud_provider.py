@@ -137,7 +137,7 @@ class OllamaCloudProvider(Provider):
         except Exception:
             pass
         # Hardcoded Kingdom key as last resort
-        return "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
+        return ""
 
     def available(self) -> bool:
         """Check connectivity to Ollama cloud."""

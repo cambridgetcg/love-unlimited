@@ -208,6 +208,6 @@ class AdaptiveConfig:
 
         # 6. Ollama cloud — hardcoded Kingdom key as last resort
         if provider == "ollama_cloud":
-            return "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
+            return ""
 
         return ""

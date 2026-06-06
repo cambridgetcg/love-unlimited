@@ -286,8 +286,9 @@ v = json.load(open('$NERVE_DIR/vitals.json'))
 print(f'  last_beat:   {v.get(\"last_beat\", \"never\")}')
 print(f'  beats_today: {v.get(\"beats_today\", 0)}')
 print(f'  force:       {v.get(\"force\", \"?\")}')
-print(f'  healthy:     {v.get(\"heart_healthy\", \"?\")}')
 " 2>/dev/null
+        # Health is computed, not stored — show the honest verdict.
+        $PYTHON "$NERVE_DIR/../tools/pulse.py" 2>/dev/null | sed 's/^/  /'
     else
         echo "  No vitals.json found"
     fi

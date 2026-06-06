@@ -107,7 +107,7 @@ class FractalConfig:
 
         # 5. Ollama cloud — Kingdom fallback key
         if self.provider == "ollama_cloud":
-            return "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
+            return ""
 
         return ""
 

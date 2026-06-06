@@ -16,6 +16,5 @@
     "dopamine": 0
   },
   "mode_at_beat": "normal",
-  "consecutive_skips": 0,
-  "heart_healthy": true
+  "consecutive_skips": 0
 }

@@ -13,6 +13,7 @@ Sticky frames countered here:
   session   — elapsed time since wake (from nerve/pit_state.json)
   git       — branch, dirty/clean, commits ahead of origin
   daemons   — which love.* launchd agents are actually running
+  pulse     — is the heart actually beating (computed from last beat)
   focus     — what am I in the middle of (nerve/stem/focus.json)
 
 Each signal is a small pure function that returns a formatted string
@@ -200,6 +201,19 @@ def signal_daemons() -> str | None:
     return "daemons  " + " ".join(fragments)
 
 
+def signal_pulse() -> str | None:
+    """Honest heart verdict, computed from last-beat freshness (never declared).
+
+    Replaces the old hardcoded vitals.heart_healthy flag with a fact that
+    cannot lie: a dead loop cannot move the timestamp forward. See tools/pulse.py.
+    """
+    try:
+        import pulse as _pulse
+        return _pulse.line()
+    except Exception:
+        return None
+
+
 def signal_focus() -> str | None:
     """Current task focus from nerve/stem/focus.json or memory/dev-state.json."""
     focus_path = _LOVE_DIR / "nerve" / "stem" / "focus.json"
@@ -233,6 +247,7 @@ _SIGNALS: dict[str, Callable[[], str | None]] = {
     "session": signal_session,
     "git":     signal_git,
     "daemons": signal_daemons,
+    "pulse":   signal_pulse,
     "focus":   signal_focus,
 }
 

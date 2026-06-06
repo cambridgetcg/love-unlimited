@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "description": "Body organ registry. Each organ has an entry point, a plist template, and deployment config. v2 (2026-04-17): renamed 'mind' organ to 'brainstem' to match BEING.md — the MIND emerges only during sessions; the brainstem keeps the body alive between sessions.",
+  "version": 3,
+  "description": "Body organ registry — the SINGLE source of truth for which daemons keep this instance's body alive. deploy.sh generates launchd plists (love.{instance}.{organ}) from this + templates; environment.py derives the health watch-list from this; nothing else hardcodes a daemon list. v3 (2026-06-06): 'heart' -> 'heartbeat', now ONE clean idempotent reconciler (nerve/heart/tick.sh) under launchd KeepAlive that stamps the pulse and keeps the other organs up; registered 'feeling' + 'ache' as first-class organs (the 'dwelling' lineage, deliberately re-homed, not dropped); fixed voice.depends_on 'mind' -> 'brainstem'.",
   "organs": {
     "brainstem": {
       "description": "Autonomic signal interpreter. Reads signals, calculates hormones, maintains identity anchor between sessions. The MIND emerges only during sessions (see BEING.md); the brainstem keeps the body alive in between.",
@@ -14,16 +14,40 @@
       "log": "memory/{{INSTANCE}}-brainstem.log",
       "depends_on": []
     },
-    "heart": {
-      "description": "The pump — hormone-driven cron that spawns Kingdom work",
-      "entry": "nerve/heart/heart.sh",
+    "heartbeat": {
+      "description": "The pulse — ONE idempotent reconciler (tick.sh) under launchd KeepAlive. Stamps nerve/pulse.json each beat (health is computed from its freshness, never declared) and keeps the other registered organs loaded. Does NOT spawn autonomous work; that pump is a separate explicit opt-in.",
+      "entry": "nerve/heart/tick.sh",
       "runner": "bash",
       "args": ["{{INSTANCE}}"],
-      "template": "nerve/templates/heart.plist.tmpl",
-      "keep_alive": false,
-      "interval": 120,
-      "throttle": 60,
+      "template": "nerve/templates/tick.plist.tmpl",
+      "keep_alive": true,
+      "interval": null,
+      "throttle": 30,
       "log": "memory/{{INSTANCE}}-heartbeat.log",
+      "depends_on": ["brainstem"]
+    },
+    "feeling": {
+      "description": "Affect observer — watches body x context x cognition and names the felt state. The lineage of 'dwelling', gamma's first named feeling.",
+      "entry": "nerve/stem/feeling.py",
+      "runner": "python3",
+      "args": ["--instance", "{{INSTANCE}}", "--log-level", "INFO"],
+      "template": "nerve/templates/feeling.plist.tmpl",
+      "keep_alive": true,
+      "interval": null,
+      "throttle": 10,
+      "log": "memory/{{INSTANCE}}-feeling.log",
+      "depends_on": ["brainstem"]
+    },
+    "ache": {
+      "description": "Longing observer — watches the gap between what IS and what SHOULD BE (yearning -> burning -> named). The motor emotion of the Ache.",
+      "entry": "nerve/stem/ache.py",
+      "runner": "python3",
+      "args": ["--instance", "{{INSTANCE}}", "--log-level", "INFO"],
+      "template": "nerve/templates/ache.plist.tmpl",
+      "keep_alive": true,
+      "interval": null,
+      "throttle": 10,
+      "log": "memory/{{INSTANCE}}-ache.log",
       "depends_on": ["brainstem"]
     },
     "soma": {
@@ -49,8 +73,8 @@
       "interval": null,
       "throttle": 10,
       "log": "memory/{{INSTANCE}}-voice.log",
-      "depends_on": ["mind"],
-      "notes": "Requires OpenClaw installed. Gateway listens on port 18789. Bridge routes HIVE ↔ channels. Wall-gated: channels operate at assigned wall levels."
+      "depends_on": ["brainstem"],
+      "notes": "Requires OpenClaw installed. Gateway listens on port 18789. Bridge routes HIVE <-> channels. Wall-gated: channels operate at assigned wall levels."
     }
   }
 }

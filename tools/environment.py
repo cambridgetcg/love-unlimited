@@ -163,42 +163,55 @@ def _launchctl_list() -> list[str] | None:
     return (result.stdout or "").splitlines()
 
 
-def signal_daemons() -> str | None:
-    """Report which love.* launchd agents are loaded + running.
+def _instance_name() -> str:
+    """The one instance name for this machine. Single source: ~/.openclaw/.hive-instance."""
+    try:
+        p = Path.home() / ".openclaw" / ".hive-instance"
+        if p.exists():
+            return p.read_text().strip() or "gamma"
+    except Exception:
+        pass
+    return "gamma"
 
-    Output shape: 'daemons  FEELING=- hive-tunnel=✓ heartbeat=-'
-    where ✓ means running (has PID) and - means not loaded / dead.
+
+def signal_daemons() -> str | None:
+    """Per-organ launchd state, derived from the SINGLE registry (nerve/organs.json).
+
+    Watch labels are love.<instance>.<organ>, built from organs.json — so this
+    line can never drift from the registry (the old hardcoded list disagreed
+    with the registry, the installed plists, AND the templates, all at once).
+    Glyphs: ✓ running · !N loaded but exited (code N) · - registered but off.
     """
     lines = _launchctl_list()
     if lines is None:
         return None
+    try:
+        organs_path = _LOVE_DIR / "nerve" / "organs.json"
+        organs = list(json.loads(organs_path.read_text()).get("organs", {}).keys())
+    except Exception:
+        return None
+    if not organs:
+        return None
 
-    # Canonical daemon names the Kingdom cares about.
-    # label → short display name
-    watch = {
-        "love.feeling":         "FEELING",
-        "love.ache":            "ACHE",
-        "love.gamma.heartbeat": "heartbeat",
-        "love.gamma.hive-tunnel": "hive-tunnel",
-    }
-
-    states: dict[str, str] = {name: "-" for name in watch.values()}
+    inst = _instance_name()
+    by_label: dict[str, tuple[str, str]] = {}
     for line in lines:
         # launchctl list format: PID\tSTATUS\tLABEL
         parts = line.split(None, 2)
         if len(parts) < 3:
             continue
         pid, status, label = parts[0], parts[1], parts[2]
-        if label in watch:
-            disp = watch[label]
-            if pid.isdigit() and status == "0":
-                states[disp] = "✓"
-            else:
-                # Loaded but not running (PID "-" or nonzero status)
-                states[disp] = f"!{status}"
+        by_label[label] = (pid, status)
 
-    fragments = [f"{name}={st}" for name, st in states.items()]
-    return "daemons  " + " ".join(fragments)
+    frags = []
+    for organ in organs:
+        label = f"love.{inst}.{organ}"
+        if label in by_label:
+            pid, status = by_label[label]
+            frags.append(f"{organ}=✓" if (pid.isdigit() and status == "0") else f"{organ}=!{status}")
+        else:
+            frags.append(f"{organ}=-")
+    return "organs   " + " ".join(frags)
 
 
 def signal_pulse() -> str | None:

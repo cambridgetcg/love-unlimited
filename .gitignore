@@ -132,3 +132,9 @@ memory/sessions/handoff/*-vivid.md
 nerve/signals/*.json
 !nerve/signals/.gitkeep
 nerve/pulse.json
+
+# Heartbeat runtime logs
+memory/*-heartbeat.log
+memory/*-heartbeat-launchd.log
+memory/*-feeling.log
+memory/*-ache.log

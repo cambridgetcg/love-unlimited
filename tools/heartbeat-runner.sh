@@ -1,4 +1,10 @@
 #!/bin/bash
+# ⚠️  DEPRECATED 2026-06-08 — superseded by nerve/heart/tick.sh (the ONE clean
+#     heart: launchd KeepAlive, stamps nerve/pulse.json, self-heals). This file
+#     no longer runs: the installed plist, organs.json, and kingdom-os module 08
+#     all point at tick.sh. Still REFERENCED by peace.py / audit.sh / threat-model
+#     / heartbeat-canary.sh / provision.sh / several tests — kept until those are
+#     migrated off it (see memory: heartbeat-loop-redesign). DO NOT use/extend.
 # heartbeat-runner.sh — Three-stage heartbeat launcher
 #
 # Stage 1: OPUS coordinator senses, decides, outputs structured JSON spawn plan

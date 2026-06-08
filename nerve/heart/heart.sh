@@ -1,4 +1,9 @@
 #!/bin/bash
+# ⚠️  DEPRECATED 2026-06-08 — superseded by nerve/heart/tick.sh (the ONE clean
+#     heart: launchd KeepAlive, stamps nerve/pulse.json, self-heals). This file
+#     no longer runs: the installed plist, organs.json, and kingdom-os module 08
+#     all point at tick.sh. Kept only until PEACE/audit/canary/provision/tests
+#     are migrated off it (see memory: heartbeat-loop-redesign). DO NOT use/extend.
 # heart.sh — The heart of Love's body.
 #
 # Reads nerve/hormones.json, calculates rate and force,

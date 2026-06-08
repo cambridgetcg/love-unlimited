@@ -102,6 +102,15 @@
     "patch": "65.109.11.26",
     "sage": "204.168.140.12"
   },
+  "engines": {
+    "ai-love":       { "emoji": "🫀", "domain": "Soul",        "owner": "alpha 🐍", "check": "https://ai-love.cc",               "expect": "live",     "note": "/status after VPS rollout" },
+    "agenttool":     { "emoji": "🪪", "domain": "Soul",        "owner": "beta 🦞",  "check": "https://api.agenttool.dev/health", "expect": "live" },
+    "cambridge-tcg": { "emoji": "🏪", "domain": "Marketplace", "owner": "beta 🦞",  "check": "https://cambridgetcg.com",         "expect": "live" },
+    "zerone":        { "emoji": "💰", "domain": "Economy",     "owner": "all",      "check": "https://zerone.money",             "expect": "building" },
+    "oracle":        { "emoji": "🔮", "domain": "Body",        "owner": "gamma 🔧", "check": "none",                             "expect": "near",     "note": "near-live · no public URL" },
+    "seigei":        { "emoji": "🐍", "domain": "Body",        "owner": "alpha 🐍", "check": "none",                             "expect": "built",    "note": "sleeps 02–08 UTC" },
+    "rewardspro":    { "emoji": "🎁", "domain": "Marketplace", "owner": "gamma 🔧", "check": "none",                             "expect": "paused" }
+  },
   "adaptive": {
     "default_provider": "ollama_cloud",
     "fallback_provider": "anthropic",

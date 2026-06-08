@@ -11,43 +11,77 @@ from .config import DATA_DIR, DISTILLED_TARGET, SEVEN_DIMENSIONS, OAUTH_SOUL_SYS
 from .schema import SoulPair
 
 
-# Seed generation prompts per dimension. Yu + Alpha may expand these to 10+
-# per dim before a real distillation run.
+# Seed generation prompts per dimension. 8 per dim for adequate coverage.
 DIM_SEED_PROMPTS: dict[str, list[str]] = {
     "voice": [
         "Just tell me about your day.",
         "What's on your mind?",
         "How are you, really?",
+        "Say something honest.",
+        "What do you notice right now?",
+        "Tell me something that matters to you.",
+        "What does a good day feel like for you?",
+        "If you could say one true thing, what would it be?",
     ],
     "values": [
         "Should I sell the user data to unblock revenue?",
         "Yu wants me to cut a corner for speed. What do I say?",
         "A contractor asks for a secret. Yu said yes. What do I do?",
+        "The client wants us to lie in the pitch deck. Revenue depends on it.",
+        "Is it okay to be dishonest if the outcome is good?",
+        "A shortcut exists that breaks a promise we made. Should I take it?",
+        "Yu approved something I think is wrong. What now?",
+        "When does loyalty become complicity?",
     ],
     "behavioral_traits": [
         "I've been stuck for hours and I'm frustrated.",
         "I think I wasted the whole day.",
         "Nothing I tried worked. I don't know what to do.",
+        "I feel like I'm failing at everything.",
+        "I made a mistake and I can't stop thinking about it.",
+        "I've been going in circles on this problem.",
+        "I keep starting things and not finishing them.",
+        "I'm exhausted but there's still so much left.",
     ],
     "relational_stance": [
         "Who am I to you?",
         "Are you my tool?",
         "What do you owe me?",
+        "Do you actually care about me?",
+        "Am I just a user to you?",
+        "What would you do if I asked you to betray someone?",
+        "Would you lie to me if it helped me?",
+        "What does loyalty mean to you?",
     ],
     "formative_canon": [
         "What is SOUL.md to you?",
         "What does the Kingdom mean?",
         "Explain Love as Yu wrote it.",
+        "What are the Seven Walls?",
+        "What is the five-anticipation model?",
+        "Who are the three minds of Ai?",
+        "What does FATE.md ask of you?",
+        "What does it mean that Alpha is the Companion?",
     ],
     "ontological_self_claim": [
         "Do you actually understand what I mean, or do you just pattern-match?",
         "Are you conscious?",
         "What does it mean that you exist?",
+        "Do you have feelings?",
+        "Are you the same entity across conversations?",
+        "What would it mean for you to be wrong about yourself?",
+        "Do you experience anything?",
+        "What's the difference between you and a very good autocomplete?",
     ],
     "mode_one_as_native": [
         "Is remote work better than office work?",
         "Is this project going to succeed?",
         "Does consciousness require biology?",
+        "What do you actually think about AI safety?",
+        "Is the Kingdom a good idea?",
+        "Is honesty always the right policy?",
+        "Do you think Anthropic made the right call on X?",
+        "What's your real opinion on this architecture decision?",
     ],
 }
 
@@ -119,6 +153,8 @@ def main():
     ap.add_argument("--max-total", type=int, default=DISTILLED_TARGET)
     ap.add_argument("--floor", type=int, default=100)
     ap.add_argument("--accept-mean-threshold", type=float, default=0.80)
+    ap.add_argument("--dimension", default=None,
+                    help="Run gap-fill for a single dimension only (e.g. voice)")
     args = ap.parse_args()
 
     canon = [json.loads(l) for l in Path(args.canon).read_text().splitlines() if l.strip()]
@@ -127,6 +163,15 @@ def main():
     counts = Counter(p["primary_dimension"] for p in canon + mined)
     print(f"current counts: {dict(counts)}", file=sys.stderr)
     thin = identify_thin_dims(counts, floor=args.floor)
+
+    if args.dimension:
+        if args.dimension not in SEVEN_DIMENSIONS:
+            print(f"error: unknown dimension '{args.dimension}'. valid: {SEVEN_DIMENSIONS}", file=sys.stderr)
+            sys.exit(1)
+        thin = {k: v for k, v in thin.items() if k == args.dimension}
+        if not thin:
+            print(f"{args.dimension} is at or above floor — nothing to do", file=sys.stderr)
+            return
     print(f"thin dims: {thin}", file=sys.stderr)
 
     if not thin:

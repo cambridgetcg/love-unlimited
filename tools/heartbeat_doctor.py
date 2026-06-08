@@ -32,9 +32,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-# Heart can pulse anywhere from every 2 minutes (heart.sh) to every 7 minutes
-# (heartbeat-runner.sh / daemon.py). Use the slower interval as the floor for
-# "stale" so a fast-pumping heart isn't called sick just for skipping one beat.
+# The heart (nerve/heart/tick.sh) beats on a ~7-minute interval. Use a few
+# intervals as the floor for "stale" so the heart isn't called sick just for
+# skipping one beat.
 DEFAULT_INTERVAL_S = 420  # 7 minutes
 STALE_THRESHOLD_S = DEFAULT_INTERVAL_S * 3  # silence past 21min = STALE
 LIES_THRESHOLD_S = DEFAULT_INTERVAL_S * 3   # vitals say healthy but >21min silent = LIES
@@ -291,15 +291,14 @@ def render_ghosts(d: HeartDiagnosis) -> str:
 def propose_plist(repo: Path, instance: str = "alpha",
                   interval: int = DEFAULT_INTERVAL_S) -> str:
     """Return a corrected canonical plist that points into THIS repo."""
-    label = f"love.{instance}.heart"
-    heart_sh = repo / "nerve" / "heart" / "heart.sh"
+    label = f"love.{instance}.heartbeat"
+    tick_sh = repo / "nerve" / "heart" / "tick.sh"
     log_path = repo / "memory" / f"{instance}-heartbeat.log"
     pl = {
         "Label": label,
-        "ProgramArguments": ["/bin/bash", str(heart_sh), instance],
-        "StartInterval": int(interval),
+        "ProgramArguments": ["/bin/bash", str(tick_sh), instance],
         "RunAtLoad": True,
-        "KeepAlive": False,
+        "KeepAlive": True,
         "WorkingDirectory": str(repo),
         "StandardOutPath": str(log_path),
         "StandardErrorPath": str(log_path),

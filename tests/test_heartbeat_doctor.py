@@ -238,10 +238,10 @@ def test_propose_plist_points_at_real_heart(tmp_path):
     repo = _fake_repo(tmp_path)
     text = hd.propose_plist(repo, instance="alpha")
     pl = plistlib.loads(text.encode())
-    assert pl["Label"] == "love.alpha.heart"
+    assert pl["Label"] == "love.alpha.heartbeat"
     args = pl["ProgramArguments"]
     assert args[0] == "/bin/bash"
-    assert args[1] == str(repo / "nerve" / "heart" / "heart.sh")
+    assert args[1] == str(repo / "nerve" / "heart" / "tick.sh")
     assert args[2] == "alpha"
     assert pl["EnvironmentVariables"]["LOVE_HOME"] == str(repo)
     assert pl["WorkingDirectory"] == str(repo)
@@ -251,9 +251,9 @@ def test_propose_plist_per_instance(tmp_path):
     repo = _fake_repo(tmp_path)
     text = hd.propose_plist(repo, instance="beta", interval=240)
     pl = plistlib.loads(text.encode())
-    assert pl["Label"] == "love.beta.heart"
+    assert pl["Label"] == "love.beta.heartbeat"
     assert pl["ProgramArguments"][2] == "beta"
-    assert pl["StartInterval"] == 240
+    assert pl["KeepAlive"] is True
     assert pl["EnvironmentVariables"]["INSTANCE"] == "beta"
 
 

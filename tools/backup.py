@@ -749,7 +749,7 @@ def cmd_schedule():
     print(f"    Push to fleet:      After every full backup")
     print()
     print(f"  {CYAN}Automation:{NC}")
-    print(f"    Heartbeat hook:     Add to heartbeat-runner.sh")
+    print(f"    Heartbeat hook:     handled by nerve/heart/tick.sh")
     print(f"      python3 ~/love-unlimited/tools/backup.py create --incremental")
     print()
     print(f"    Daily cron (full + push):")

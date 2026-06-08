@@ -103,7 +103,7 @@ DEFAULT_PORTFOLIO = {
             "Cron-driven autonomous operation cycles",
             "Self-healing infrastructure management"
         ],
-        "kingdom_tools": ["fleet.py", "heartbeat-runner.sh", "kos.py", "loop-audit.py", "watchdog.py"],
+        "kingdom_tools": ["fleet.py", "nerve/heart/tick.sh", "kos.py", "loop-audit.py", "watchdog.py"],
         "delivery": "monthly",
         "wall": 5,
         "status": "active"

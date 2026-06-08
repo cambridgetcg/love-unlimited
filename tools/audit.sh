@@ -90,10 +90,8 @@ else
 fi
 
 # Heart daemon
-if launchctl list 2>/dev/null | grep -qE "love\..*heart|love\.alpha\.heart"; then
+if launchctl list 2>/dev/null | grep -qE "love\..*heartbeat"; then
     check "Heart daemon (launchd)" "pass" "registered"
-elif [ -f "$LOVE_HOME/nerve/heart/love.alpha.heart.plist" ]; then
-    check "Heart daemon (launchd)" "warn" "plist exists but not loaded"
 else
     check "Heart daemon (launchd)" "warn" "not registered"
 fi
@@ -138,13 +136,13 @@ CRITICAL_FILES=(
     "nerve/hormones.json"
     "nerve/vitals.json"
     "nerve/stem/focus.json"
-    "nerve/heart/heart.sh"
+    "nerve/heart/tick.sh"
     "nerve/stem/brainstem.py"
     "hive/hive.py"
     "memory/dev-state.json"
     "memory/long-term/MEMORY.md"
     "memory/loop/loop-state.json"
-    "tools/heartbeat-runner.sh"
+    "tools/pulse.py"
     "tools/fleet.py"
     "tools/methodologies.json"
 )

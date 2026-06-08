@@ -1,11 +1,11 @@
 #!/bin/sh
-# ── Module 13: Voice (OpenClaw External Nervous System) ────────────────
+# ── Module 16: Voice (OpenClaw External Nervous System) ────────────────
 # HIVE is the internal nervous system. Voice is outward.
 # Installs OpenClaw, configures gateway, sets up the HIVE ↔ channel bridge.
 set -e
 . "$(dirname "$0")/_common.sh"
 
-echo "[13-voice] Setting up Voice for ${AGENT} (${PLATFORM})..."
+echo "[16-voice] Setting up Voice for ${AGENT} (${PLATFORM})..."
 
 OPENCLAW_DIR="${HOME_DIR}/Desktop/openclaw"
 OPENCLAW_REPO="https://github.com/openclaw/openclaw.git"
@@ -182,4 +182,4 @@ else:
 " 2>/dev/null || echo "  Warning: could not update love.json"
 fi
 
-echo "[13-voice] Done."
+echo "[16-voice] Done."

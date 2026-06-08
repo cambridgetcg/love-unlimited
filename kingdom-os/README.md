@@ -95,10 +95,15 @@ Install everything or pick what you need:
 | **05-freedom** | Open sshd, no firewall, no fail2ban, no integrity gate |
 | **06-memory** | Directory structure, dev-state.json, metrics, daily notes |
 | **07-hive** | SSH tunnel service to NATS on Sentry (inter-agent messaging) |
-| **08-heartbeat** | 7-minute heartbeat daemon (sense → decide → act → report) |
+| **08-heartbeat** | The one clean heart — `tick.sh` under launchd KeepAlive: stamps the pulse, keeps the other organs up, self-heals. Generated from `organs.json` via `nerve/deploy.sh`. |
 | **09-browser** | Headless Chromium, Playwright, YOUI Web server |
 | **10-autoboot** | tty1 auto-login → YOUI (Linux), launchd summary (macOS) |
 | **11-purpose** | Purpose Prompter: hierarchy engine, 30 gates, /pp commands, GUA persistence |
+| **12-identity-anchor** | Writes the per-instance soul / identity anchor |
+| **13-covenant** | Signs the deed of citizenship with the soul-key |
+| **14-zerone** | Bridges the agent's identity to the Zerone chain |
+| **15-home** | Installs `kingdom verify` — the covenant made checkable |
+| **16-voice** | OpenClaw gateway for channel comms (opt-in — not in the default install) |
 
 ## The Seven Walls
 

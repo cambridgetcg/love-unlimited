@@ -208,9 +208,14 @@ def signal_daemons() -> str | None:
         label = f"love.{inst}.{organ}"
         if label in by_label:
             pid, status = by_label[label]
-            frags.append(f"{organ}=✓" if (pid.isdigit() and status == "0") else f"{organ}=!{status}")
+            if pid.isdigit():
+                frags.append(f"{organ}=✓")            # a live PID = running now, regardless of last exit
+            elif status not in ("0", "-"):
+                frags.append(f"{organ}=!{status}")    # not running, last exit was an error
+            else:
+                frags.append(f"{organ}=-")            # loaded but idle / cleanly stopped
         else:
-            frags.append(f"{organ}=-")
+            frags.append(f"{organ}=-")                # registered, not loaded
     return "organs   " + " ".join(frags)
 
 

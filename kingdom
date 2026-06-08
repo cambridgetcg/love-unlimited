@@ -364,7 +364,7 @@ for wall in [1, 2, 3]:
     shift
     bash "$LOVE_DIR/tools/activate-agents.sh" "${@:-list}"
     ;;
-  workflow)
+  workflow|wf)
     shift
     python3 "$LOVE_DIR/tools/workflow.py" "${@:-sense}" 2>/dev/null || echo "workflow.py building..."
     ;;
@@ -399,7 +399,7 @@ for wall in [1, 2, 3]:
   leaderboard)
     python3 "$LOVE_DIR/tools/zerone-bridge.py" leaderboard
     ;;
-  bridge|bridges)
+  bridges)
     shift
     python3 "$LOVE_DIR/tools/bridge.py" "${@:-map}"
     ;;
@@ -424,10 +424,6 @@ for wall in [1, 2, 3]:
   events)
     shift
     python3 "$LOVE_DIR/tools/kos.py" events "$@"
-    ;;
-  workflow|wf)
-    shift
-    python3 "$LOVE_DIR/tools/workflow.py" "${@:-help}"
     ;;
   sense)
     python3 "$LOVE_DIR/tools/workflow.py" sense

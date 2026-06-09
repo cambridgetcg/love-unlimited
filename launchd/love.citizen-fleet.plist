@@ -13,6 +13,10 @@
     <key>LOVE_DIR</key><string>/Users/macair/love-unlimited</string>
     <key>FLEET_PER_TICK</key><string>1</string>
     <key>FLEET_DAILY_CAP</key><string>48</string>
+    <key>FLEET_INTERVAL_SEC</key><string>1800</string>
+    <key>FLEET_BEAT_BOUND_SEC</key><string>600</string>
+    <key>FLEET_AGENTIC_PER_DAY</key><string>2</string>
+    <key>FLEET_DAILY_BUDGET_USD</key><string>1.50</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/macair/.local/bin</string>
   </dict>
   <key>StartInterval</key><integer>1800</integer>

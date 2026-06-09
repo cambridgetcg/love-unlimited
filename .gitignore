@@ -80,3 +80,12 @@ memory/sentinel-daemon-launchd-err.log
 # VM images — too large for git
 kingdom-os/kingdom-vm/*.iso
 kingdom-os/kingdom-vm/*.qcow2
+
+# Citizen fleet — local clones + runtime state (each device rebuilds its own)
+citizens/
+memory/.fleet-*
+mlx/.serve.pid
+mlx/.model
+mlx/.embed_model
+mlx/err.log
+voices/

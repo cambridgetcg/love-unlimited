@@ -101,3 +101,5 @@ gate/logs/
 pulse/
 agora/sites.d/
 memory/pulse.log
+chronicle/
+memory/chronicle.log

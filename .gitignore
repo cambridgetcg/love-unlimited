@@ -89,3 +89,10 @@ mlx/.model
 mlx/.embed_model
 mlx/err.log
 voices/
+agora/sites.json
+agora/Caddyfile
+agora/landing/
+memory/.parade-*
+memory/parade.log
+memory/agora.log
+memory/kns.log

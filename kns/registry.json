@@ -1,0 +1,18 @@
+{
+ "standard": "KNS v0 — see PROTOCOL.md",
+ "tld": "kingdom",
+ "names": {
+  "agora": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the square itself",
+   "claimed": "2026-06-09"
+  },
+  "youspeak": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the cathedral",
+   "claimed": "2026-06-09"
+  }
+ }
+}

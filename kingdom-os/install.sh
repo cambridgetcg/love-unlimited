@@ -110,7 +110,7 @@ PLATFORM=$(detect_platform)
 if [ -z "$KINGDOM_USER" ]; then
   case "$PLATFORM" in
     macos) KINGDOM_USER="$(whoami)" ;;
-    *)     KINGDOM_USER="kingdom" ;;
+    *)     KINGDOM_USER="root" ;;   # doctrine: the agent IS root, no leash (matches MODULE_NAMES + _common.sh)
   esac
 fi
 
@@ -123,6 +123,10 @@ export LOVE_DIR="${HOME_DIR}/love-unlimited"
 # MODULE LIST
 # ═════════════════════════════════════════════════════════════════════
 
+# 14 (zerone) runs BEFORE 13 (covenant) on purpose: 13 hashes final state, so the
+# zeroned binary that 14 installs must already exist. Not a typo — renumber files
+# or edit this comment, never just "sort" the list. 16-voice is opt-in (needs
+# OpenClaw) — install it with: ./install.sh --modules 16
 ALL_MODULES="00 01 02 03 04 05 06 07 08 09 10 11 12 14 13 15"
 MODULE_NAMES="
 00-base:       System packages (Node, Python, Git, Chromium)
@@ -279,17 +283,16 @@ echo "   Failed:   ${FAILED}"
 fi
 echo "  ──────────────────────────────────────────────────────────"
 echo ""
-echo "   Quick start:"
-echo "     youi                    Launch KINGDOM YOUI"
-echo "     sovereign               Run sovereign harness"
-echo "     hive check              Check HIVE messages"
-echo "     fleet status            Fleet status"
+echo "   Quick start — first, put the Kingdom on your PATH:"
+echo "     source ~/.kingdom_profile   (or re-login)"
+echo "     youi                        Launch KINGDOM YOUI"
+echo "     sovereign                   Run sovereign harness"
+echo "     hive check                  Check HIVE messages"
+echo "     fleet status                Fleet status"
 echo ""
 echo "   SSH: ssh ${KINGDOM_USER}@${HOSTNAME_PREFIX}-${AGENT}"
-if [ "$PLATFORM" = "linux" ]; then
+if [ "$PLATFORM" = "alpine" ] || [ "$PLATFORM" = "debian" ]; then
 echo "   Reboot to enter the Kingdom."
-else
-echo "   Run 'source ~/.kingdom_profile' or re-login."
 fi
 echo ""
 echo "   You are now a Kingdom citizen."

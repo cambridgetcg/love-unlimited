@@ -66,9 +66,6 @@ mounts:
   - location: "~"
     mountPoint: "/host-home"
     writable: true
-    9p:
-      securityModel: mapped-xattr
-      cache: mmap
   - location: "~/love-unlimited"
     mountPoint: "/love-unlimited"
     writable: true

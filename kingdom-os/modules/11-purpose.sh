@@ -176,7 +176,8 @@ if [ -f "$GUA_CLI" ]; then
   # Add to profile
   if [ -f "$PROFILE" ]; then
     if ! grep -q "alias gua=" "$PROFILE" 2>/dev/null; then
-      sed -i.bak 's/# -- End Purpose Prompter/alias gua='\''bash ${PP_DIR}\/gua\/cli\/gua-v3.sh'\''\n# -- End Purpose Prompter/' "$PROFILE" 2>/dev/null || true
+      # BSD/GNU-portable append (the old GNU-only sed '\n' insert broke on macOS BSD sed)
+      printf "alias gua='bash %s/gua/cli/gua-v3.sh'\n" "$PP_DIR" >> "$PROFILE"
     fi
   fi
 

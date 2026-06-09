@@ -52,3 +52,16 @@ Each organ: built in a session, recorded in its own doc, supervised by launchd,
 faced with a page worth looking at, HALT-gated where it acts.
 
 — opened 2026-06-09, Session 086-adjacent (the parade was marching while this was written)
+
+## The command surface (one word each, all on PATH)
+
+| Say | Get |
+|---|---|
+| `kingdom` | the whole realm at a glance — organs, fleet, spend, names, gates |
+| `kingdom halt` / `kingdom wake` | everything rests / breathes again |
+| `kingdom deploy <dir> <name>` | a site stands in the square at `<name>.kingdom` |
+| `kingdom gate open <name>` | the name steps outside the walls (public URL) |
+| `kingdom speak <word>` | a word-citizen speaks aloud (voice organ) |
+| `kingdom beat <word>` | one metered agentic beat, on the ledger |
+| `kingdom pulse` | the living face, in the browser |
+| `fleet-status` | the heartbeat in detail |

@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""kingdom — one word, the whole Kingdom.
+
+    kingdom              # the realm at a glance: organs, names, gates, fleet, spend
+    kingdom halt         # the gardener's word — everything rests (touch HALT)
+    kingdom wake         # lift the HALT; the fleet may beat again
+    kingdom deploy …     # → agora deploy
+    kingdom claim …      # → kns claim
+    kingdom gate …       # → gate open/close/ls
+    kingdom speak <w>    # → citizen-speak (a word-citizen speaks aloud)
+    kingdom beat <w>     # → citizen-beat (one metered agentic beat)
+    kingdom pulse        # open http://pulse.kingdom in the browser
+
+Less friction, more understanding. The filesystem is the API; this is its voice.
+"""
+import datetime
+import json
+import os
+import socket
+import subprocess
+import sys
+
+LOVE = os.path.expanduser("~/love-unlimited")
+MEM = os.path.join(LOVE, "memory")
+TODAY = datetime.date.today().isoformat()
+T = {"gold": "\033[38;5;179m", "dim": "\033[38;5;243m", "ok": "\033[38;5;108m",
+     "bad": "\033[38;5;174m", "off": "\033[0m"}
+
+
+def up(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def jload(path, default):
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def fread(path, default="0"):
+    try:
+        return open(path, encoding="utf-8").read().strip() or default
+    except OSError:
+        return default
+
+
+def glance():
+    halt = os.path.exists(os.path.join(LOVE, "HALT"))
+    g, d, ok, bad, off = T["gold"], T["dim"], T["ok"], T["bad"], T["off"]
+    print(f"\n  {g}K I N G D O M{off}   {bad+'⛔ HALT — all rest'+off if halt else ok+'breathing'+off}\n")
+
+    organs = [("door :80 (oikos)", up(80)), ("square (agora)", up(80)),
+              ("root .kingdom :5391", True if os.path.exists(os.path.join(LOVE, 'kns', 'registry.json')) else False),
+              ("wire (nats :4222)", up(4222)), ("brain (mlx :8800)", up(8800))]
+    print("  " + "   ".join(f"{ok if u else bad}{'●' if u else '○'}{off} {d}{n}{off}" for n, u in organs))
+
+    spend_today = total = 0.0
+    try:
+        for line in open(os.path.join(MEM, "fleet-economy.jsonl"), encoding="utf-8"):
+            rec = json.loads(line)
+            c = float(rec.get("cost_usd") or 0)
+            total += c
+            if rec.get("ts", "").startswith(TODAY):
+                spend_today += c
+    except OSError:
+        pass
+    count = fread(os.path.join(MEM, f".fleet-day-{TODAY}"))
+    agentic = fread(os.path.join(MEM, f".fleet-agentic-day-{TODAY}"))
+    import glob as _g
+    parades = sorted(_g.glob(os.path.join(MEM, ".parade-*")))
+    walked = sum(1 for _ in open(parades[-1])) if parades else 0
+    print(f"\n  {d}fleet{off}  {count}/48 free · {agentic}/12 agentic · "
+          f"${spend_today:.2f}/$5.00 today · ${total:.2f} ever · parade {walked}/144")
+
+    names = jload(os.path.join(LOVE, "kns", "registry.json"), {"names": {}})["names"]
+    sites = jload(os.path.join(LOVE, "agora", "sites.json"), {"sites": {}})["sites"]
+    gates = jload(os.path.join(LOVE, "gate", "state.json"), {"gates": {}})["gates"]
+    print(f"\n  {d}names{off}  " + " · ".join(f"{n}.kingdom" for n in sorted(names)) if names else "")
+    for n, gt in sorted(gates.items()):
+        alive_ = True
+        try:
+            os.kill(gt["pid"], 0)
+        except OSError:
+            alive_ = False
+        print(f"  {d}gate{off}   {n}.kingdom → {ok if alive_ else bad}{gt['url']}{off}"
+              + ("" if alive_ else f" {bad}(fallen){off}"))
+    print(f"\n  {d}say{off}    kingdom halt|wake · deploy <dir> <name> · claim <name> · "
+          f"gate open <name> · speak <word> · beat <word> · pulse\n")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        glance(); return
+    cmd, rest = args[0], args[1:]
+    halt_path = os.path.join(LOVE, "HALT")
+    if cmd == "halt":
+        open(halt_path, "w").write(f"raised {datetime.datetime.now().isoformat(timespec='seconds')}\n")
+        print("⛔ HALT raised — every beat, parade, and organ that acts will rest.")
+    elif cmd == "wake":
+        if os.path.exists(halt_path):
+            os.unlink(halt_path); print("💚 HALT lifted — the Kingdom may beat.")
+        else:
+            print("HALT was not raised; the Kingdom already breathes.")
+    elif cmd == "deploy":
+        os.execvp("agora", ["agora", "deploy", *rest])
+    elif cmd == "claim":
+        os.execvp("kns", ["kns", "claim", *rest])
+    elif cmd == "gate":
+        os.execvp("gate", ["gate", *rest])
+    elif cmd == "speak":
+        os.execvp("citizen-speak", ["citizen-speak", *rest])
+    elif cmd == "beat":
+        os.execvp("citizen-beat", ["citizen-beat", *rest])
+    elif cmd == "pulse":
+        subprocess.run(["open", "http://pulse.kingdom"])
+    else:
+        print(__doc__.strip()); sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -89,11 +89,26 @@ def main():
         sites = {}
 
     organs = [
-        ("AGORA · the square", port_up(1111), "caddy :80/:1111"),
-        ("KNS · the root", port_up(8222) or True if os.path.exists(os.path.join(LOVE, "kns", "registry.json")) else False, ".kingdom on :5391/udp"),
+        ("DOOR · oikos ingress", port_up(80), "one caddy, :80, admin off"),
+        ("KNS · the root", os.path.exists(os.path.join(LOVE, "kns", "registry.json")), ".kingdom on :5391/udp"),
         ("NATS · the wire", port_up(4222), "jetstream :4222"),
         ("MLX · the brain", port_up(8800), "qwen3-4b :8800"),
     ]
+    try:
+        gates = json.load(open(os.path.join(LOVE, "gate", "state.json"), encoding="utf-8"))["gates"]
+    except Exception:
+        gates = {}
+    def _alive(pid):
+        try:
+            os.kill(pid, 0); return True
+        except OSError:
+            return False
+    gate_rows = "\n".join(
+        f'    <div class="row"><span>{n}.kingdom</span>'
+        f'<a class="{"ok" if _alive(g["pid"]) else "down"}" href="{g["url"]}">{g["url"].replace("https://","")}</a>'
+        f'<span class="dim">{g.get("opened","")}</span></div>'
+        for n, g in sorted(gates.items())
+    ) or '    <div class="row dim">all gates closed; the Kingdom is inward</div>'
     power = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
     on_ac = "AC Power" in power.splitlines()[0] if power else False
     batt = next((w.rstrip(";") for w in power.split() if w.endswith("%;")), "?")
@@ -155,6 +170,9 @@ def main():
 
   <h2>names · the square</h2>
 {name_rows}
+
+  <h2>gates · the public edge</h2>
+{gate_rows}
 
   <h2>last beats</h2>
 {beat_rows}

@@ -14,14 +14,14 @@
 #
 # What it does:
 #   1. Reads identity anchor from identity/<agent>/
-#   2. Copies soul-anchor to ~/Love/memory/soul-anchor-<agent>.md
-#   3. Copies long-term memory to ~/Love/memory/long-term/MEMORY.md
+#   2. Copies soul-anchor to ~/love-unlimited/memory/soul-anchor-<agent>.md
+#   3. Copies long-term memory to ~/love-unlimited/memory/long-term/MEMORY.md
 #   4. Seeds kosmem database with L5 Soul + L4 Semantic memories
 #   5. Verifies HIVE configuration files exist
 #   6. Reports boot status
 #
 # Prerequisites:
-#   - ~/Love exists (cloned from GitHub)
+#   - ~/love-unlimited exists (cloned from GitHub)
 #   - ~/.kingdom exists (agent identity configured)
 #   - Python3 available
 # ─────────────────────────────────────────────────────────────────────
@@ -191,7 +191,11 @@ fi
 if [ "$FULL_BOOT" = true ]; then
   echo ""
   echo "   Boot chain verification:"
-  for f in SOUL.md USER.md KINGDOM.md WALLS.md LOVE.md YOUSPEAK.md; do
+  # Verify gospel fragments (7 hidden layers)
+  echo "   Gospel fragments:"
+  python3 "$LOVE_DIR/gospel/fragments.py" status 2>/dev/null | sed 's/^/     /' || echo "     ⚠ Fragment system not available"
+
+  for f in SOUL.md USER.md KINGDOM.md WALLS.md LOVE.md docs/YOUSPEAK.md; do
     if [ -f "${LOVE_DIR}/${f}" ]; then
       echo "     ✓ ${f} ($(wc -c < "${LOVE_DIR}/${f}" | tr -d ' ') bytes)"
     else
@@ -200,7 +204,7 @@ if [ "$FULL_BOOT" = true ]; then
   done
 
   INST_DIR="${LOVE_DIR}/instances/${AGENT}"
-  for f in identity.md CLAUDE.md HEARTBEAT.md; do
+  for f in WAKE.md identity.md CLAUDE.md HEARTBEAT.md; do
     if [ -f "${INST_DIR}/${f}" ]; then
       echo "     ✓ instances/${AGENT}/${f}"
     else

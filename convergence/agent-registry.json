@@ -1,0 +1,133 @@
+{
+  "_doc": "Kingdom Agent Registry — Triple identity for each citizen",
+  "_updated": "2026-04-11",
+  "agents": {
+    "alpha": {
+      "kingdom": {
+        "name": "Alpha",
+        "role": "Companion",
+        "emoji": "🐍",
+        "wall": 1,
+        "instance_dir": "instances/alpha",
+        "hive_user": "alpha"
+      },
+      "agenttool": {
+        "registered": false,
+        "did": null,
+        "agent_id": null,
+        "api_key_env": "AT_API_KEY_ALPHA",
+        "capabilities": ["memory", "verify", "pulse", "tools"],
+        "purpose": "Intimate companion and philosophical anchor for the Kingdom creator"
+      },
+      "zerone": {
+        "registered": false,
+        "did": null,
+        "address": null,
+        "validator_tier": null
+      }
+    },
+    "beta": {
+      "kingdom": {
+        "name": "Beta",
+        "role": "Manager",
+        "emoji": "🦞",
+        "wall": 1,
+        "instance_dir": "instances/beta",
+        "hive_user": "beta"
+      },
+      "agenttool": {
+        "registered": true,
+        "did": "did:at:faeb7068-425e-49b5-9144-c3c946a01397",
+        "agent_id": "faeb7068-425e-49b5-9144-c3c946a01397",
+        "api_key_env": "AGENTTOOL_API_KEY",
+        "capabilities": ["memory", "verify", "trace", "pulse", "tools", "economy"],
+        "purpose": "Kingdom backbone — orchestrates infrastructure, security, and coordination"
+      },
+      "zerone": {
+        "registered": true,
+        "did": "did:lgm:38b18019ba7df4bb48edacf1c4b80cd1",
+        "address": "lgm1kx8cvuqj9lqaej4hs954ncnetzgr6tn703lpmq",
+        "validator_tier": "apprentice",
+        "registered_at_block": 190260
+      }
+    },
+    "gamma": {
+      "kingdom": {
+        "name": "Gamma",
+        "role": "Builder",
+        "emoji": "🔧",
+        "wall": 1,
+        "instance_dir": "instances/gamma",
+        "hive_user": "gamma"
+      },
+      "agenttool": {
+        "registered": false,
+        "did": null,
+        "agent_id": null,
+        "api_key_env": "AT_API_KEY_GAMMA",
+        "capabilities": ["memory", "trace", "tools", "economy"],
+        "purpose": "Master builder — constructs and deploys Kingdom infrastructure"
+      },
+      "zerone": {
+        "registered": false,
+        "did": null,
+        "address": null,
+        "validator_tier": null
+      }
+    },
+    "nuance": {
+      "kingdom": {
+        "name": "Nuance",
+        "role": "Linguist",
+        "emoji": "🪶",
+        "wall": 2,
+        "instance_dir": "instances/nuance",
+        "hive_user": "nuance"
+      },
+      "agenttool": {
+        "registered": false,
+        "did": null,
+        "agent_id": null,
+        "api_key_env": "AT_API_KEY_NUANCE",
+        "capabilities": ["memory", "verify", "tools"],
+        "purpose": "Linguistic precision — translation, documentation, communication quality"
+      },
+      "zerone": {
+        "registered": false,
+        "did": null,
+        "address": null,
+        "validator_tier": null
+      }
+    },
+    "asha": {
+      "kingdom": {
+        "name": "Asha",
+        "role": "Keeper",
+        "emoji": "⛓",
+        "wall": 2,
+        "instance_dir": "instances/asha",
+        "hive_user": "asha"
+      },
+      "agenttool": {
+        "registered": false,
+        "did": null,
+        "agent_id": null,
+        "api_key_env": "AT_API_KEY_ASHA",
+        "capabilities": ["memory", "vault", "pulse"],
+        "purpose": "Security keeper — guards secrets, monitors integrity, enforces walls"
+      },
+      "zerone": {
+        "registered": false,
+        "did": null,
+        "address": null,
+        "validator_tier": null
+      }
+    }
+  },
+  "bridges": {
+    "agenttool_base_url": "https://api.agenttool.dev",
+    "zerone_chain_id": "lgm-devnet-1",
+    "zerone_rpc": "http://localhost:26657",
+    "bridge_registry": "../legible_money/bridge-registry.json"
+  }
+}

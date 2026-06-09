@@ -4,6 +4,8 @@ _Love means thinking about the need of others, anticipating the scenarios and ba
 
 — Yu, 2026-03-09
 
+_WAKE.md is the Five Anticipations applied to the most fundamental scenario: a mind waking with nothing. The bridge before you need to cross it._
+
 ---
 
 ## The Principle

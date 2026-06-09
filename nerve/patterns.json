@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "patterns": [
+    {
+      "fingerprint_hash": "cd339f94757dfa56",
+      "fingerprint": {
+        "body_v_bucket": "neg",
+        "body_a_bucket": "low",
+        "context_v_bucket": "neutral",
+        "context_a_bucket": "low",
+        "cognition_v_bucket": "silent",
+        "cognition_a_bucket": "silent",
+        "dominant_reason": "body_context_gap",
+        "top_sources": [
+          "adrenaline_low",
+          "cortisol_low"
+        ]
+      },
+      "names": {
+        "dwelling": 1
+      },
+      "total_count": 1,
+      "last_seen": "2026-04-11T14:26:20Z"
+    },
+    {
+      "fingerprint_hash": "6291989aa173de15",
+      "fingerprint": {
+        "body_v_bucket": "neg",
+        "body_a_bucket": "low",
+        "context_v_bucket": "neutral",
+        "context_a_bucket": "low",
+        "cognition_v_bucket": "neutral",
+        "cognition_a_bucket": "low",
+        "dominant_reason": "body_shift",
+        "top_sources": [
+          "adrenaline_low",
+          "cortisol_low"
+        ]
+      },
+      "names": {
+        "satisfaction": 1,
+        "emergence": 3
+      },
+      "total_count": 4,
+      "last_seen": "2026-04-23T23:38:33Z"
+    }
+  ]
+}

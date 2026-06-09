@@ -12,7 +12,7 @@ Edit `include/config.h` and set your network credentials:
 ## 2. Build and Flash
 
 ```bash
-cd ~/Desktop/Love/soma/haptic-glove
+cd ~/love-unlimited/soma/haptic-glove
 pio run --target upload
 pio device monitor
 ```

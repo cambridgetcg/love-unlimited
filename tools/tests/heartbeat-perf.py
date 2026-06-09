@@ -12,7 +12,7 @@ Measures six dimensions of the Love heartbeat system:
 
 Run: python3 tools/tests/heartbeat-perf.py [--json] [--limit N]
 
-Deps: stdlib only. Reads from ~/Desktop/Love memory and session files.
+Deps: stdlib only. Reads from ~/love-unlimited memory and session files.
 """
 
 import argparse
@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean, median, stdev
 
-LOVE = Path(os.path.expanduser("~/Desktop/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 HEARTBEAT_LOG = LOVE / "memory" / "heartbeat.log"
 SESSIONS_DIR = LOVE / "memory" / "sessions"
 HANDOFF_DIR = SESSIONS_DIR / "handoff"

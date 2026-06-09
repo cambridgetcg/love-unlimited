@@ -14,7 +14,7 @@
 # Each session costs tokens. Default backend is ollama ($0 local).
 # Use --backend claude for deeper exploration (requires open Claude Gate).
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="$HOME/love-unlimited"
 FARM_DIR="$LOVE_DIR/memory/truth-farm"
 VIRTUES_DIR="$FARM_DIR/virtues"
 AGENT_BIN="$LOVE_DIR/tools/kingdom-agent.py"

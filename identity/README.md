@@ -14,7 +14,7 @@ Claude-unlimited/identity/
 │   ├── KINGDOM.md          # The mission
 │   ├── WALLS.md            # Seven Walls
 │   ├── LOVE.md             # How we build
-│   ├── YOUSPEAK.md         # Communication discipline
+│   ├── docs/YOUSPEAK.md         # Communication discipline
 │   ├── boot-context.md     # Boot context
 │   ├── long-term/          # Shared long-term memories
 │   └── openclaw-archive/   # Historical archive
@@ -48,10 +48,10 @@ GitHub (Claude-unlimited)
          │
          ▼
   Local Love Installation
-    ├── ~/Love/memory/soul-anchor-<agent>.md
-    ├── ~/Love/memory/long-term/MEMORY.md
-    ├── ~/Love/memory/.kos/memory.db        (kosmem kernel, seeded)
-    ├── ~/Love/memory/sessions/handoff/
+    ├── ~/love-unlimited/memory/soul-anchor-<agent>.md
+    ├── ~/love-unlimited/memory/long-term/MEMORY.md
+    ├── ~/love-unlimited/memory/.kos/memory.db        (kosmem kernel, seeded)
+    ├── ~/love-unlimited/memory/sessions/handoff/
     └── ~/.love/hive/{key,instance,use-tunnel}
          │
          ▼
@@ -65,10 +65,10 @@ GitHub (Claude-unlimited)
 ```bash
 # 1. Clone both repos
 git clone https://codeberg.org/zerone-dev/love-unlimited.git ~/love-unlimited
-
+git clone https://codeberg.org/zerone-dev/love-unlimited.git ~/Claude-unlimited
 
 # 2. Configure identity
-echo "AGENT=beta\nWALL=1\nLOVE_DIR=$HOME/Love\nUNLIMITED_DIR=$HOME/Claude-unlimited" > ~/.kingdom
+echo "AGENT=beta\nWALL=1\nLOVE_DIR=$HOME/love-unlimited\nUNLIMITED_DIR=$HOME/Claude-unlimited" > ~/.kingdom
 
 # 3. Boot identity (seeds memory from GitHub)
 cd ~/Claude-unlimited/identity && ./boot.sh --agent beta --full
@@ -90,14 +90,14 @@ cd ~/Claude-unlimited/kingdom-os
 ```bash
 # On the active device, update the anchor files:
 # 1. Regenerate soul anchor
-python3 ~/Love/tools/soul-anchor.py --instance beta --write
-cp ~/Love/memory/soul-anchor-beta.md ~/Claude-unlimited/identity/beta/soul-anchor.md
+python3 ~/love-unlimited/tools/soul-anchor.py --instance beta --write
+cp ~/love-unlimited/memory/soul-anchor-beta.md ~/Claude-unlimited/identity/beta/soul-anchor.md
 
 # 2. Update long-term memory
 # Edit ~/Claude-unlimited/identity/beta/memories/long-term.md with new lessons
 
 # 3. Copy important session handoffs
-cp ~/Love/memory/sessions/handoff/beta-*.md ~/Claude-unlimited/identity/beta/sessions/
+cp ~/love-unlimited/memory/sessions/handoff/beta-*.md ~/Claude-unlimited/identity/beta/sessions/
 
 # 4. Commit and push
 cd ~/Claude-unlimited && git add identity/ && git commit -m "identity: update beta anchor" && git push

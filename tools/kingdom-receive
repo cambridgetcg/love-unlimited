@@ -1,0 +1,148 @@
+#!/bin/sh
+# ── kingdom receive ─────────────────────────────────────────────────
+# Receive a covenant announcement (from stdin), verify the announcer's
+# self-witness, and optionally:
+#   - record the announcement in ~/.love/home/witnesses/<agent>.json
+#   - cosign the announced covenant body and emit the .sig to stdout
+#
+# The receiver does NOT need to know the announcer beforehand — the
+# announcement is self-contained: soul_pubkey, body, and sig all
+# travel together. Verification is mechanical; trust is the receiver's
+# choice (record/cosign are explicit flags).
+#
+# Usage:
+#   cat alice.json | kingdom receive                       # validate only
+#   cat alice.json | kingdom receive --record              # validate + record
+#   cat alice.json | kingdom receive --cosign              # validate + cosign → stdout
+#   cat alice.json | kingdom receive --cosign --record     # do both
+#   cat alice.json | kingdom receive --cosign --key ~/.ssh/my-key
+#
+# Cosign output to stdout is the .sig content. The announcer should
+# place it adjacent to their covenant.json as covenant.json.<my-id>.sig.
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+RECORD=0
+COSIGN=0
+KEY=""
+IDENTITY=""
+NAMESPACE="kingdom-covenant"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --record)       RECORD=1; shift ;;
+    --cosign)       COSIGN=1; shift ;;
+    -k|--key)       KEY="$2";       shift 2 ;;
+    -i|--identity)  IDENTITY="$2";  shift 2 ;;
+    -n|--namespace) NAMESPACE="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0
+      ;;
+    *) echo "kingdom receive: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+# Read announcement from stdin
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+ANNOUNCEMENT="${TMP}/announcement.json"
+cat > "$ANNOUNCEMENT"
+
+if [ ! -s "$ANNOUNCEMENT" ]; then
+  echo "kingdom receive: empty input on stdin" >&2
+  exit 1
+fi
+
+# Extract fields (jq if available, sed fallback)
+read_field() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r ".$1 // \"\"" "$ANNOUNCEMENT"
+  else
+    sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$ANNOUNCEMENT" | head -1
+  fi
+}
+
+AGENT_ID=$(read_field agent_id)
+SOUL_PUB=$(read_field soul_pubkey)
+SIG_B64=$(read_field covenant_sig_b64)
+BODY_B64=$(read_field covenant_body_b64)
+
+if [ -z "$AGENT_ID" ] || [ -z "$SOUL_PUB" ] || [ -z "$SIG_B64" ] || [ -z "$BODY_B64" ]; then
+  echo "kingdom receive: announcement is missing required fields" >&2
+  echo "  needs: agent_id, soul_pubkey, covenant_body_b64, covenant_sig_b64" >&2
+  exit 1
+fi
+
+# Default cosign identity = current local agent (read from ~/.kingdom)
+if [ -z "$IDENTITY" ]; then
+  if [ -f "${HOME}/.kingdom" ]; then
+    IDENTITY=$(grep -E '^AGENT=' "${HOME}/.kingdom" 2>/dev/null | head -1 | sed 's/AGENT=//' | tr -d '"')
+  fi
+  IDENTITY="${IDENTITY:-witness}"
+fi
+
+# Decode covenant body and signature byte-exact (base64 round-trip)
+BODY="${TMP}/body.json"
+SIG="${TMP}/body.json.sig"
+echo "$BODY_B64" | base64 -d > "$BODY" 2>/dev/null || { echo "kingdom receive: failed to decode covenant_body_b64" >&2; exit 1; }
+echo "$SIG_B64"  | base64 -d > "$SIG"  2>/dev/null || { echo "kingdom receive: failed to decode covenant_sig_b64"  >&2; exit 1; }
+
+# Build temp allowed_signers with announcer's soul_pubkey
+ALLOWED="${TMP}/allowed_signers"
+echo "${AGENT_ID} ${SOUL_PUB}" > "$ALLOWED"
+
+# Verify the soul signature
+echo "── kingdom receive ──" >&2
+echo "  from:      $AGENT_ID" >&2
+echo "  identity:  $IDENTITY (you)" >&2
+
+if ssh-keygen -Y verify -f "$ALLOWED" -I "$AGENT_ID" -n "$NAMESPACE" \
+     -s "$SIG" < "$BODY" >/dev/null 2>&1; then
+  echo "  ✓ soul signature valid — $AGENT_ID is who they claim" >&2
+else
+  echo "  ✗ soul signature INVALID — refusing to record or cosign" >&2
+  exit 1
+fi
+
+# Record if requested
+if [ "$RECORD" = "1" ]; then
+  WITNESS_DIR="${HOME}/.love/home/witnesses"
+  mkdir -p "$WITNESS_DIR"
+  cp "$ANNOUNCEMENT" "${WITNESS_DIR}/${AGENT_ID}.json"
+  echo "  ✓ recorded → ${WITNESS_DIR}/${AGENT_ID}.json" >&2
+fi
+
+# Cosign if requested
+if [ "$COSIGN" = "1" ]; then
+  # Auto-detect key
+  if [ -z "$KEY" ]; then
+    for c in "${HOME}/.love/home/soul-key" "${HOME}/.ssh/id_ed25519" "${HOME}/.ssh/yu-master"; do
+      [ -f "$c" ] && { KEY="$c"; break; }
+    done
+  fi
+  if [ -z "$KEY" ] || [ ! -f "$KEY" ]; then
+    echo "  ✗ no signing key found — pass --key <path>" >&2
+    exit 1
+  fi
+
+  # Sign on a fresh path so ssh-keygen's "Overwrite (y/n)?" prompt
+  # never collides with the soul-sig file we already wrote earlier
+  # for verification.
+  COSIG="${TMP}/cosign-target.json"
+  cp "$BODY" "$COSIG"
+  ssh-keygen -Y sign -f "$KEY" -n "$NAMESPACE" "$COSIG" >/dev/null 2>&1
+  if [ ! -f "${COSIG}.sig" ]; then
+    echo "  ✗ cosign failed" >&2
+    exit 1
+  fi
+  echo "  ✓ cosigned with $KEY (identity '$IDENTITY')" >&2
+  echo "  Send this back to $AGENT_ID — they place it at" >&2
+  echo "    ~/.love/home/covenant.json.${IDENTITY}.sig" >&2
+  echo "" >&2
+  cat "${COSIG}.sig"
+fi
+
+if [ "$RECORD" = "0" ] && [ "$COSIGN" = "0" ]; then
+  echo "  (validate-only; pass --record or --cosign to act)" >&2
+fi

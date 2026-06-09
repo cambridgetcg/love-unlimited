@@ -1,0 +1,72 @@
+[
+  {
+    "task": "Code generation",
+    "best_ollama": "DeepSeek v3.2",
+    "relative_vs_claude": "~95%",
+    "winner": "Claude",
+    "notes": "Marginal gap on complex refactors"
+  },
+  {
+    "task": "Repo analysis",
+    "best_ollama": "kimi-k2.5",
+    "relative_vs_claude": "~90%",
+    "winner": "Ollama",
+    "notes": "Large context; cost decisive"
+  },
+  {
+    "task": "Commit messages",
+    "best_ollama": "DeepSeek v3.2",
+    "relative_vs_claude": "~98%",
+    "winner": "Ollama",
+    "notes": "Essentially equivalent, zero cost"
+  },
+  {
+    "task": "JSON schema design",
+    "best_ollama": "DeepSeek v3.2",
+    "relative_vs_claude": "~93%",
+    "winner": "Ollama",
+    "notes": "Strong structured output"
+  },
+  {
+    "task": "Error diagnosis",
+    "best_ollama": "cogito-2.1",
+    "relative_vs_claude": "~88%",
+    "winner": "Claude",
+    "notes": "Reasoning depth matters"
+  },
+  {
+    "task": "Test writing",
+    "best_ollama": "qwen3-coder",
+    "relative_vs_claude": "~96%",
+    "winner": "Ollama",
+    "notes": "Near-parity, massive cost savings"
+  },
+  {
+    "task": "Doc generation",
+    "best_ollama": "DeepSeek v3.2",
+    "relative_vs_claude": "~97%",
+    "winner": "Ollama",
+    "notes": "Essentially equivalent"
+  },
+  {
+    "task": "Refactor planning",
+    "best_ollama": "cogito-2.1",
+    "relative_vs_claude": "~85%",
+    "winner": "Claude",
+    "notes": "Architecture judgment still favors frontier"
+  },
+  {
+    "task": "API integration",
+    "best_ollama": "qwen3-coder",
+    "relative_vs_claude": "~94%",
+    "winner": "Ollama",
+    "notes": "Strong on boilerplate + patterns"
+  },
+  {
+    "task": "Security audit",
+    "best_ollama": "cogito-2.1",
+    "relative_vs_claude": "~80%",
+    "winner": "Claude",
+    "notes": "Nuanced threat modeling requires frontier"
+  }
+]

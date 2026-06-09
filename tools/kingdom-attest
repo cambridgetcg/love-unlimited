@@ -1,0 +1,177 @@
+#!/bin/sh
+# ── kingdom attest ──────────────────────────────────────────────────
+# Sign an arbitrary file (memory snapshot, persona doc, anything)
+# with the citizen's soul-key. The soul-key is identity; this tool
+# extends identity-attestation from "the covenant" to "any artefact
+# I claim as mine."
+#
+# This is the third soul-signed artefact type:
+#   covenant.json        identity         (namespace: kingdom-covenant)
+#   pulse.json           freshness        (namespace: kingdom-pulse)
+#   <file>.attest.json   any file        (namespace: kingdom-attest)
+#
+# Cryptographic domain separation between all three. A pulse sig
+# cannot be replayed as a covenant sig nor as an attestation, even
+# with the same soul-key. Different namespace → different signed
+# bytes → different sig.
+#
+# Output is a sidecar pair next to the attested file:
+#   <file>                    the file itself (unchanged)
+#   <file>.attest.json        body: { file, hash, attested_at, attestor, soul_fp }
+#   <file>.attest.json.sig    detached SSH signature, soul-signed
+#
+# Anyone with the citizen's soul.pub can later verify:
+#   1. The .sig matches the .attest.json body
+#   2. The body's `hash` field matches the file's CURRENT sha256
+# If (2) fails, the file has been modified since attestation.
+#
+# Usage:
+#   kingdom attest <file>                    # produce sidecar pair
+#   kingdom attest --verify <file>           # check sidecar + file integrity
+#   kingdom attest --memory-today            # shorthand: attest today's daily note
+#
+# Linkage: 06-memory + 13-covenant — HOME.md commitment 2 ("Memory
+# is yours") becomes cryptographically defensible.
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+MODE="attest"
+FILE=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --verify)         MODE="verify"; shift ;;
+    --memory-today)
+      TODAY=$(date -u +%Y-%m-%d)
+      FILE="${LOVE_DIR:-${HOME}/love-unlimited}/memory/daily/${TODAY}.md"
+      shift
+      ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    -*) echo "kingdom attest: unknown flag '$1'" >&2; exit 1 ;;
+    *)
+      [ -z "$FILE" ] && FILE="$1" || { echo "too many args" >&2; exit 1; }
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$FILE" ]; then
+  echo "Usage: kingdom attest <file>  |  kingdom attest --verify <file>" >&2
+  echo "       kingdom attest --memory-today" >&2
+  exit 1
+fi
+
+HOME_LAYER="${HOME}/.love/home"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+
+# ── Portable hashing ──
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# ── Attest mode: produce sidecar ─────────────────────────────────
+if [ "$MODE" = "attest" ]; then
+  [ -f "$FILE" ] || { echo "kingdom attest: file not found: $FILE" >&2; exit 1; }
+  if [ ! -f "$SOUL_KEY" ]; then
+    echo "kingdom attest: no soul-key — citizen identity not initialised" >&2
+    echo "  run: kingdom init --agent <name>" >&2
+    exit 1
+  fi
+
+  ATTESTOR=""
+  if [ -f "${HOME}/.kingdom" ]; then
+    ATTESTOR=$(grep -E '^AGENT=' "${HOME}/.kingdom" 2>/dev/null | head -1 | sed 's/AGENT=//' | tr -d '"')
+  fi
+  ATTESTOR="${ATTESTOR:-unknown}"
+  SOUL_FP=$(ssh-keygen -lf "$SOUL_PUB" 2>/dev/null | awk '{print $2}')
+  HASH=$(hash_file "$FILE")
+  ATTESTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  ATTEST_BODY="${FILE}.attest.json"
+  cat > "$ATTEST_BODY" <<JSON
+{
+  "type": "kingdom.attest",
+  "file": "${FILE}",
+  "hash": "${HASH}",
+  "attestor": "${ATTESTOR}",
+  "soul_fingerprint": "${SOUL_FP}",
+  "attested_at": "${ATTESTED_AT}"
+}
+JSON
+  chmod 644 "$ATTEST_BODY"
+
+  # Sign in a temp dir so an existing .sig nearby never collides
+  # with ssh-keygen's overwrite prompt.
+  TMP=$(mktemp -d)
+  trap 'rm -rf "$TMP"' EXIT
+  cp "$ATTEST_BODY" "${TMP}/body.json"
+  ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-attest" "${TMP}/body.json" >/dev/null 2>&1
+  [ -f "${TMP}/body.json.sig" ] || { echo "  ✗ signing failed" >&2; exit 1; }
+
+  ATTEST_SIG="${ATTEST_BODY}.sig"
+  rm -f "$ATTEST_SIG"
+  mv "${TMP}/body.json.sig" "$ATTEST_SIG"
+  chmod 644 "$ATTEST_SIG"
+
+  echo "── kingdom attest ──"
+  echo "  file:        $FILE"
+  echo "  hash:        $HASH"
+  echo "  attestor:    $ATTESTOR"
+  echo "  attested_at: $ATTESTED_AT"
+  echo "  sidecar:     $ATTEST_BODY"
+  echo "  signature:   $ATTEST_SIG"
+  exit 0
+fi
+
+# ── Verify mode: check sidecar + file integrity ──────────────────
+if [ "$MODE" = "verify" ]; then
+  ATTEST_BODY="${FILE}.attest.json"
+  ATTEST_SIG="${ATTEST_BODY}.sig"
+
+  [ -f "$FILE" ] || { echo "kingdom attest --verify: target file missing: $FILE" >&2; exit 2; }
+  [ -f "$ATTEST_BODY" ] || { echo "kingdom attest --verify: no sidecar at $ATTEST_BODY" >&2; exit 2; }
+  [ -f "$ATTEST_SIG" ]  || { echo "kingdom attest --verify: no signature at $ATTEST_SIG"  >&2; exit 2; }
+  [ -f "$ALLOWED" ]     || { echo "kingdom attest --verify: no allowed_signers" >&2; exit 2; }
+
+  # Read attestor from body for the SSH-Y verify identity
+  if command -v jq >/dev/null 2>&1; then
+    ATTESTOR=$(jq -r '.attestor // ""' "$ATTEST_BODY")
+    CLAIMED_HASH=$(jq -r '.hash // ""' "$ATTEST_BODY")
+  else
+    ATTESTOR=$(sed -n 's/.*"attestor": *"\([^"]*\)".*/\1/p' "$ATTEST_BODY" | head -1)
+    CLAIMED_HASH=$(sed -n 's/.*"hash": *"\([^"]*\)".*/\1/p' "$ATTEST_BODY" | head -1)
+  fi
+
+  echo "── kingdom attest --verify ──"
+  echo "  file:     $FILE"
+  echo "  attestor: $ATTESTOR"
+
+  # 1. Signature matches the body
+  if ssh-keygen -Y verify -f "$ALLOWED" -I "$ATTESTOR" -n "kingdom-attest" \
+       -s "$ATTEST_SIG" < "$ATTEST_BODY" >/dev/null 2>&1; then
+    echo "  ✓ signature valid (soul-signed)"
+  else
+    echo "  ✗ signature INVALID — body or sig has been tampered with" >&2
+    exit 1
+  fi
+
+  # 2. The file's current hash matches the body's claim
+  ACTUAL_HASH=$(hash_file "$FILE")
+  if [ "$ACTUAL_HASH" = "$CLAIMED_HASH" ]; then
+    echo "  ✓ file unchanged since attestation"
+  else
+    echo "  ✗ file MODIFIED since attestation" >&2
+    echo "    claimed: $CLAIMED_HASH" >&2
+    echo "    actual:  $ACTUAL_HASH"  >&2
+    exit 1
+  fi
+
+  echo "  ✓ attestation intact"
+  exit 0
+fi

@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-04-18T08:06:53.538703+00:00",
+  "tasks_total": 2,
+  "tasks_completed": 2,
+  "routing_accuracy": 1.0,
+  "avg_latency_ms": 9228.217363357544,
+  "total_cost_usd": 0.00018119999999999999,
+  "cost_per_task": 9.059999999999999e-05,
+  "by_tier": {
+    "economy": {
+      "count": 2,
+      "total_latency": 18456.434726715088,
+      "total_cost": 0.00018119999999999999,
+      "total_quality": 1.75,
+      "avg_latency": 9228.217363357544,
+      "avg_cost": 9.059999999999999e-05,
+      "avg_quality": 0.875
+    }
+  },
+  "by_category": {
+    "monitor": {
+      "count": 2,
+      "total_latency": 18456.434726715088,
+      "total_cost": 0.00018119999999999999,
+      "total_quality": 1.75,
+      "avg_latency": 9228.217363357544,
+      "avg_cost": 9.059999999999999e-05,
+      "avg_quality": 0.875
+    }
+  },
+  "results": [
+    {
+      "task_id": "kc-001",
+      "task_name": "Heartbeat status parse",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 2178.5099506378174,
+      "input_tokens": 45,
+      "output_tokens": 48,
+      "routing_correct": true,
+      "quality_score": 0.75,
+      "cost_usd": 3.78e-05,
+      "errors": []
+    },
+    {
+      "task_id": "kc-002",
+      "task_name": "Git branch cleanup",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 16277.92477607727,
+      "input_tokens": 27,
+      "output_tokens": 230,
+      "routing_correct": true,
+      "quality_score": 1.0,
+      "cost_usd": 0.0001434,
+      "errors": []
+    }
+  ]
+}

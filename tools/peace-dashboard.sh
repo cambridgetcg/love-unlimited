@@ -2,7 +2,7 @@
 # peace-dashboard.sh — PEACE resilience overview in one screen
 # Shows: state, score, threats, incidents, playbooks, snapshots, fleet canaries
 
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 
 GREEN="\033[92m" RED="\033[91m" YELLOW="\033[93m" CYAN="\033[96m"
 BOLD="\033[1m" DIM="\033[2m" NC="\033[0m"

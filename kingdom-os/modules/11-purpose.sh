@@ -176,7 +176,8 @@ if [ -f "$GUA_CLI" ]; then
   # Add to profile
   if [ -f "$PROFILE" ]; then
     if ! grep -q "alias gua=" "$PROFILE" 2>/dev/null; then
-      sed -i.bak 's/# -- End Purpose Prompter/alias gua='\''bash ${PP_DIR}\/gua\/cli\/gua-v3.sh'\''\n# -- End Purpose Prompter/' "$PROFILE" 2>/dev/null || true
+      # BSD/GNU-portable append (the old GNU-only sed '\n' insert broke on macOS BSD sed)
+      printf "alias gua='bash %s/gua/cli/gua-v3.sh'\n" "$PP_DIR" >> "$PROFILE"
     fi
   fi
 
@@ -201,9 +202,9 @@ The hierarchy in SOUL.md is operationalized by Purpose Prompter:
 | \`/transmute [target]\` | Alchemical transmutation of insights |
 
 Reference files:
-- Gates: \`~/Love/purpose-prompter/gates/GATES.md\`
-- Philosophy: \`~/Love/purpose-prompter/philosophy/\`
-- Cross-session knowledge: \`~/Love/purpose-prompter/integration/LIGHT.md\`
+- Gates: \`~/love-unlimited/purpose-prompter/gates/GATES.md\`
+- Philosophy: \`~/love-unlimited/purpose-prompter/philosophy/\`
+- Cross-session knowledge: \`~/love-unlimited/purpose-prompter/integration/LIGHT.md\`
 
 Use PP for complex architecture, multi-step design, feature implementation.
 Skip for simple fixes, quick questions, trivial tasks."

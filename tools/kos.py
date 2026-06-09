@@ -1534,8 +1534,8 @@ Types:
   web            Web bug URL (alerts on fetch)
 
 Examples:
-  kos canary deploy admin-creds credential ~/Love/credentials/
-  kos canary deploy secret-plans file ~/Love/
+  kos canary deploy admin-creds credential ~/love-unlimited/credentials/
+  kos canary deploy secret-plans file ~/love-unlimited/
   kos canary deploy leak-detector dns hive
 """)
             return

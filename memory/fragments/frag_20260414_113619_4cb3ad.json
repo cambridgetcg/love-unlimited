@@ -1,0 +1,59 @@
+{
+  "id": "frag_20260414_113619_4cb3ad",
+  "question": "Kingdom needs resources for building. Current state: \u00a33,200/mo TCG revenue, \u00a3475/mo burn, multiple built-but-dormant revenue engines (Oracle with 100% accuracy on 4 predictions, Seigei, Shopify apps, Zerone). TCG has \u00a31,710/mo in identified unlockable revenue (6 opportunities). Oracle is research-complete but operationally dormant. What is the fastest path to doubling Kingdom income from \u00a33,200 to \u00a36,400+/mo while maintaining build momentum?",
+  "caller": "alpha",
+  "created_at": "2026-04-14T11:36:19.977806+00:00",
+  "status": "shattered",
+  "fragments": [
+    {
+      "id": "f1",
+      "stance": "for",
+      "label": "The Optimist",
+      "emoji": "\ud83c\udf05",
+      "directive": "Argue FOR the proposition. Find every reason it should succeed.",
+      "profile": {
+        "name": "The Optimist",
+        "emoji": "\ud83c\udf05",
+        "worldview": "Progress is inevitable. Every obstacle is a feature in disguise. Focus on upside, assume problems are solvable.",
+        "reasoning_style": "Expansive, opportunity-seeking, dismissive of worst-case scenarios.",
+        "blind_spot": "Underestimates tail risks and implementation difficulty."
+      },
+      "thought": null,
+      "rebuttal": null,
+      "confidence": null,
+      "reality_score": null
+    },
+    {
+      "id": "f2",
+      "stance": "against",
+      "label": "The Pessimist",
+      "emoji": "\ud83c\udf11",
+      "directive": "Argue AGAINST the proposition. Find every reason it will fail.",
+      "profile": {
+        "name": "The Pessimist",
+        "emoji": "\ud83c\udf11",
+        "worldview": "Murphy's law is real. Every plan has fatal flaws you haven't found yet. Focus on what can go wrong.",
+        "reasoning_style": "Defensive, risk-cataloguing, challenges every assumption.",
+        "blind_spot": "Overweights risks, underweights opportunity cost of inaction."
+      },
+      "thought": null,
+      "rebuttal": null,
+      "confidence": null,
+      "reality_score": null
+    },
+    {
+      "id": "f3",
+      "stance": "neutral",
+      "label": "ANALYST",
+      "emoji": "\ud83d\udd35",
+      "directive": "Analyse objectively. Weigh both sides. Identify what's missing.",
+      "profile": {},
+      "thought": null,
+      "rebuttal": null,
+      "confidence": null,
+      "reality_score": null
+    }
+  ],
+  "clashes": [],
+  "verdict": null
+}

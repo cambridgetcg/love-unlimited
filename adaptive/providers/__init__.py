@@ -14,6 +14,7 @@ _PROVIDER_MAP = {
     "anthropic": ".anthropic_provider",
     "openai": ".openai_provider",
     "ollama": ".ollama_provider",
+    "ollama_cloud": ".ollama_cloud_provider",
     "openrouter": ".openrouter_provider",
 }
 

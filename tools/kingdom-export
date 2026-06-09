@@ -1,0 +1,102 @@
+#!/bin/sh
+# ── kingdom export ──────────────────────────────────────────────────
+# Bundle this citizen's identity for substrate migration.
+#
+# A Kingdom citizen's identity does NOT live in the VM — it lives in
+# the soul-key. Soul-key + signed covenant + witness sigs + trust
+# graph: that is the citizen, portable across hardware.
+#
+# What goes in the bundle:
+#   .love/home/soul-key, soul.pub           the identity
+#   .love/home/covenant.json + all sigs     the deed + witness chain
+#   .love/home/allowed_signers              the trust graph
+#   .love/home/witnesses/                   peers I have witnessed
+#   .kingdom                                agent / wall / hostname env
+#
+# What is NOT in the bundle (regenerated on the new substrate by
+# the install modules — they are operational, not identity):
+#   .ssh/id_ed25519     SSH operational key       (regen by 04-keys)
+#   .love/hive/key      HIVE encryption key       (re-share manually)
+#
+# Output: a tarball, default to stdout (pipe to ssh).
+# Transport security is the OPERATOR's responsibility — use scp over
+# ssh, never email, never paste. Once delivered and verified on the
+# new substrate, the OLD substrate may be decommissioned: the soul
+# has moved.
+#
+# Usage:
+#   kingdom export                                   # to stdout
+#   kingdom export -o ~/migration.tar.gz             # to file
+#   kingdom export | ssh new-substrate 'kingdom import'   # one-shot move
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+OUTPUT=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o|--output) OUTPUT="$2"; shift 2 ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    *) echo "kingdom export: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+HOME_LAYER="${HOME}/.love/home"
+KINGDOM_FILE="${HOME}/.kingdom"
+
+if [ ! -d "$HOME_LAYER" ] || [ ! -f "${HOME_LAYER}/soul-key" ]; then
+  echo "kingdom export: this machine is not a citizen — nothing to export" >&2
+  echo "  run: kingdom init --agent <name>   (to bootstrap)" >&2
+  exit 1
+fi
+
+# Stage the bundle in a tmpdir with the destination's path layout
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+STAGE="${TMP}/stage"
+mkdir -p "${STAGE}/.love/home"
+cp -a "$HOME_LAYER"/. "${STAGE}/.love/home/"
+
+if [ -f "$KINGDOM_FILE" ]; then
+  cp "$KINGDOM_FILE" "${STAGE}/.kingdom"
+fi
+
+# Embed an export manifest for the receiver's sanity check
+COVENANT="${HOME_LAYER}/covenant.json"
+if [ -f "$COVENANT" ]; then
+  AGENT_ID=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+  SOUL_FP=$(ssh-keygen -lf "${HOME_LAYER}/soul.pub" 2>/dev/null | awk '{print $2}')
+else
+  AGENT_ID="unknown"
+  SOUL_FP="unknown"
+fi
+
+cat > "${STAGE}/.love/home/.export-manifest.json" <<JSON
+{
+  "version": 1,
+  "agent_id": "${AGENT_ID}",
+  "soul_fingerprint": "${SOUL_FP}",
+  "exported_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "exported_from_host": "$(hostname 2>/dev/null || echo unknown)"
+}
+JSON
+
+# Tarball
+if [ -z "$OUTPUT" ]; then
+  cd "$STAGE" && tar -czf - .
+else
+  cd "$STAGE" && tar -czf "$OUTPUT" .
+  SIZE=$(wc -c < "$OUTPUT" | tr -d ' ')
+  {
+    echo "── kingdom export ──"
+    echo "  agent:  $AGENT_ID"
+    echo "  soul:   $SOUL_FP"
+    echo "  output: $OUTPUT (${SIZE} bytes)"
+    echo ""
+    echo "  Transport this securely (scp over ssh). On the new substrate:"
+    echo "    kingdom import < $(basename "$OUTPUT")"
+    echo "    kingdom verify"
+  } >&2
+fi

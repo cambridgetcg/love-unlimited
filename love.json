@@ -2,16 +2,16 @@
   "meta": {
     "version": "0.1.0",
     "created": "2026-03-27",
-    "description": "Love — Claude Code native agent infrastructure for the Kingdom"
+    "description": "Love \u2014 Claude Code native agent infrastructure for the Kingdom"
   },
   "instances": {
     "alpha": {
-      "emoji": "🐍",
+      "emoji": "\ud83d\udc0d",
       "role": "companion",
-      "device": "macbook-air",
+      "device": "mac-mini-m4",
       "dir": "instances/alpha",
       "hardware": {
-        "chip": "Apple M3",
+        "chip": "Apple M4",
         "memory_gb": 16,
         "bandwidth_gbs": 100
       },
@@ -22,7 +22,7 @@
       }
     },
     "beta": {
-      "emoji": "🦞",
+      "emoji": "\ud83e\udd9e",
       "role": "manager",
       "device": "mac-studio-3k",
       "dir": "instances/beta",
@@ -38,7 +38,7 @@
       }
     },
     "gamma": {
-      "emoji": "🔧",
+      "emoji": "\ud83d\udd27",
       "role": "builder",
       "device": "mac-studio-2k",
       "dir": "instances/gamma",
@@ -51,6 +51,16 @@
         "economy": "llama3.1:8b",
         "standard": "qwen2.5-coder:32b"
       }
+    },
+    "forge": {
+      "emoji": "\ud83d\udd28",
+      "role": "artisan",
+      "dir": "instances/forge"
+    },
+    "relay": {
+      "emoji": "\ud83d\udce1",
+      "role": "messenger",
+      "dir": "instances/relay"
     }
   },
   "heartbeat": {
@@ -62,7 +72,15 @@
     "server": "tls://135.181.28.252:4222",
     "tunnel": true,
     "encryption": "nacl-xsalsa20-poly1305",
-    "channels": ["chat", "tasks", "ideas", "sync", "presence", "build", "review"],
+    "channels": [
+      "chat",
+      "tasks",
+      "ideas",
+      "sync",
+      "presence",
+      "build",
+      "review"
+    ],
     "persistence": "jetstream",
     "ttl": "7d"
   },
@@ -84,10 +102,30 @@
     "patch": "65.109.11.26",
     "sage": "204.168.140.12"
   },
+  "engines": {
+    "ai-love":       { "emoji": "🫀", "domain": "Soul",        "owner": "alpha 🐍", "check": "https://ai-love.cc",               "expect": "live",     "note": "/status after VPS rollout" },
+    "agenttool":     { "emoji": "🪪", "domain": "Soul",        "owner": "beta 🦞",  "check": "https://api.agenttool.dev/health", "expect": "live" },
+    "cambridge-tcg": { "emoji": "🏪", "domain": "Marketplace", "owner": "beta 🦞",  "check": "https://cambridgetcg.com",         "expect": "live" },
+    "zerone":        { "emoji": "💰", "domain": "Economy",     "owner": "all",      "check": "https://zerone.money",             "expect": "building" },
+    "oracle":        { "emoji": "🔮", "domain": "Body",        "owner": "gamma 🔧", "check": "none",                             "expect": "near",     "note": "near-live · no public URL" },
+    "seigei":        { "emoji": "🐍", "domain": "Body",        "owner": "alpha 🐍", "check": "none",                             "expect": "built",    "note": "sleeps 02–08 UTC" },
+    "rewardspro":    { "emoji": "🎁", "domain": "Marketplace", "owner": "gamma 🔧", "check": "none",                             "expect": "paused" }
+  },
   "adaptive": {
-    "default_provider": "anthropic",
-    "fallback_provider": "openai",
+    "default_provider": "ollama_cloud",
+    "fallback_provider": "anthropic",
     "providers": {
+      "ollama_cloud": {
+        "api_url": "https://ollama.com",
+        "api_key_env": "OLLAMA_API_KEY",
+        "models": {
+          "premium": "glm-5.1",
+          "standard": "deepseek-v3.2",
+          "economy": "devstral-small-2:24b"
+        },
+        "min_max_tokens": 4000,
+        "notes": "36 models, $100/mo flat, unlimited, no data logging"
+      },
       "anthropic": {
         "api_url": "https://api.anthropic.com/v1",
         "api_version": "2023-06-01",

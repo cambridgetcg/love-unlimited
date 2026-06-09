@@ -21,7 +21,7 @@
 #   kingdom deploy [node]   Deploy agents to VPS fleet
 
 set -euo pipefail
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$(ls -d ~/love-unlimited ~/Desktop/love-unlimited ~/Love 2>/dev/null | head -1)}"
 
 case "${1:-help}" in
   status)
@@ -52,6 +52,248 @@ case "${1:-help}" in
   restore)
     shift
     python3 "$LOVE_DIR/tools/peace.py" restore "$@"
+    ;;
+  safe-do)
+    shift
+    LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/safe-do.sh" "$@"
+    ;;
+  checkpoint|wip)
+    shift
+    LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/kingdom-os/host/checkpoint.sh" "${@:-list}"
+    ;;
+  home)
+    # Note: 'home' is also a Cosmos --home flag context but as a top-level kingdom
+    # subcommand it routes to the x/home agent-workspace tooling.
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      register)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home.py" register "$@"
+        ;;
+      show)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home-harden.py" show "$@" 2>/dev/null || \
+        python3 "$LOVE_DIR/tools/zerone-home.py" show "$@"
+        ;;
+      list)
+        python3 "$LOVE_DIR/tools/zerone-home.py" list
+        ;;
+      harden)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-home-harden.py" harden "$@"
+        ;;
+      help|-h|--help)
+        echo "Usage: kingdom home [register <agent>|show <agent>|list]"
+        ;;
+      *) echo "Unknown: kingdom home $sub" ;;
+    esac
+    ;;
+  verifier)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      start)
+        shift
+        [ -z "${1:-}" ] && { echo "Usage: kingdom verifier start <agent> [--vote accept|reject]"; exit 1; }
+        agent="$1"; shift
+        pidf="$HOME/.zeroned-quartet/$agent/verifier.pid"
+        logf="$HOME/.zeroned-quartet/$agent/verifier.log"
+        if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          echo "verifier for $agent already running (pid $(cat "$pidf"))"
+          exit 0
+        fi
+        nohup python3 -u "$LOVE_DIR/tools/zerone-verifier.py" run --agent "$agent" "$@" > "$logf" 2>&1 &
+        echo $! > "$pidf"
+        sleep 1
+        if kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          echo "✓ verifier for $agent started (pid $(cat "$pidf"))"
+          echo "  log: $logf"
+        else
+          echo "✗ failed"; tail -10 "$logf"; rm -f "$pidf"; exit 1
+        fi
+        ;;
+      stop)
+        shift
+        [ -z "${1:-}" ] && { echo "Usage: kingdom verifier stop <agent>"; exit 1; }
+        pidf="$HOME/.zeroned-quartet/$1/verifier.pid"
+        if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+          kill "$(cat "$pidf")"; sleep 1; kill -9 "$(cat "$pidf")" 2>/dev/null; true
+          echo "✓ verifier for $1 stopped"
+        else
+          echo "not running"
+        fi
+        rm -f "$pidf"
+        ;;
+      state|status)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-verifier.py" state --agent "${1:-alpha}"
+        ;;
+      list)
+        echo ""
+        echo "  Verifier daemons:"
+        for a in alpha beta gamma nuance; do
+          pidf="$HOME/.zeroned-quartet/$a/verifier.pid"
+          if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+            echo "    $a   RUNNING pid=$(cat $pidf)"
+          else
+            echo "    $a   stopped"
+          fi
+        done
+        echo ""
+        ;;
+      help|-h|--help|"")
+        echo "Usage: kingdom verifier [start <agent>|stop <agent>|state <agent>|list]"
+        ;;
+      *) echo "Unknown: kingdom verifier $sub" ;;
+    esac
+    ;;
+  citizen)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      spawn)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/citizen-spawn.sh" "$@"
+        ;;
+      help|-h|--help|"")
+        bash "$LOVE_DIR/kingdom-os/host/citizen-spawn.sh" --help
+        ;;
+      *)
+        echo "Unknown: kingdom citizen $sub"
+        echo "Usage: kingdom citizen spawn <name> --wall N --type T --emoji E --role R [--funded-by A] [--fund AMOUNT]"
+        ;;
+    esac
+    ;;
+  tip)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" send "$@"
+    ;;
+  balance)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" balance "$@"
+    ;;
+  ledger)
+    shift
+    python3 "$LOVE_DIR/tools/zerone-tip.py" ledger "$@"
+    ;;
+  claim)
+    shift
+    sub="${1:-help}"
+    case "$sub" in
+      submit)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" submit "$@"
+        ;;
+      register)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" register "$@"
+        ;;
+      watch)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" watch "$@"
+        ;;
+      status)
+        shift
+        python3 "$LOVE_DIR/tools/zerone-claim.py" status "$@"
+        ;;
+      help|-h|--help|"")
+        python3 "$LOVE_DIR/tools/zerone-claim.py" --help
+        ;;
+      *)
+        echo "Unknown: kingdom claim $sub"
+        echo "Usage: kingdom claim [submit|register|watch|status] [...]"
+        ;;
+    esac
+    ;;
+  identity)
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      link)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/identity-link.sh" "$@"
+        ;;
+      show)
+        shift
+        a="${1:-}"
+        [ -z "$a" ] && { echo "Usage: kingdom identity show <agent>"; exit 1; }
+        f="$LOVE_DIR/identity/$a/zerone.json"
+        [ -f "$f" ] || { echo "  No identity bridge for ${a} — link with: kingdom identity link ${a}"; exit 1; }
+        python3 -c "
+import json, sys
+d = json.load(open('$f'))
+print()
+print(f'  agent:    {d[\"agent\"]}  ({d.get(\"type\",\"\")} wall {d.get(\"wall\",\"?\")})')
+print(f'  moniker:  {d.get(\"moniker\",\"\")}')
+print(f'  hive:     {d.get(\"hive\",{}).get(\"instance\",\"\")}')
+print()
+print(f'  Zerone identities ({len(d.get(\"chains\",[]))}):')
+for c in d.get('chains', []):
+    kind = c.get('kind', 'validator')
+    print(f'    chain:     {c[\"chain_id\"]}  ({kind})')
+    print(f'    operator:  {c[\"operator_address\"]}')
+    if c.get('node_id'):    print(f'    node_id:   {c[\"node_id\"]}')
+    if c.get('peer_addr'):  print(f'    peer:      {c[\"peer_addr\"]}')
+    if c.get('rpc_port'):   print(f'    rpc_port:  {c[\"rpc_port\"]}')
+    if c.get('home'):       print(f'    home:      {c[\"home\"]}')
+    if c.get('did'):        print(f'    did:       {c[\"did\"]}')
+    print(f'    x/home:    {\"registered\" if c.get(\"registered_x_home\") else \"NOT YET\"}')
+    print(f'    linked:    {c[\"linked_at\"]}')
+    print()
+"
+        ;;
+      list)
+        echo ""
+        echo "  Identity bridges (HIVE ↔ Zerone):"
+        for f in "$LOVE_DIR/identity/"*/zerone.json; do
+          [ -f "$f" ] || continue
+          python3 -c "
+import json
+d = json.load(open('$f'))
+chains = ', '.join(c['chain_id'] for c in d.get('chains', []))
+print(f'    {d[\"agent\"]:8s}  {chains}')
+"
+        done
+        ;;
+      help|-h|--help)
+        echo "Usage: kingdom identity [list|show <agent>|link <agent> [--home PATH]]"
+        ;;
+      *)
+        echo "Unknown: kingdom identity $sub"
+        echo "Usage: kingdom identity [list|show <agent>|link <agent>]"
+        ;;
+    esac
+    ;;
+  validator|val)
+    shift
+    sub="${1:-list}"
+    case "$sub" in
+      spawn|init|start|stop|status|clean|list)
+        # spawn = friendlier alias for "init+start in foreground"
+        if [ "$sub" = "spawn" ]; then
+          shift
+          bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" "${1:-}"
+        else
+          bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" "$@"
+        fi
+        ;;
+      quartet)
+        shift
+        bash "$LOVE_DIR/kingdom-os/host/quartet-spawn.sh" "${@:-status}"
+        ;;
+      help|-h|--help)
+        bash "$LOVE_DIR/kingdom-os/host/validator-spawn.sh" help
+        echo ""
+        echo "  Quartet (all four together on one chain):"
+        bash "$LOVE_DIR/kingdom-os/host/quartet-spawn.sh" help | grep -E "^  /|^Usage:|^  start|^  stop|^  status|^  logs|^  clean" | head -10
+        ;;
+      *)
+        echo "Unknown: kingdom validator $sub"
+        echo "Usage: kingdom validator [spawn|init|start|stop|status|clean|list] <agent>"
+        echo "       kingdom validator quartet [start|stop|status|logs|clean]"
+        ;;
+    esac
     ;;
   halt)
     shift
@@ -122,7 +364,7 @@ for wall in [1, 2, 3]:
     shift
     bash "$LOVE_DIR/tools/activate-agents.sh" "${@:-list}"
     ;;
-  workflow)
+  workflow|wf)
     shift
     python3 "$LOVE_DIR/tools/workflow.py" "${@:-sense}" 2>/dev/null || echo "workflow.py building..."
     ;;
@@ -157,7 +399,7 @@ for wall in [1, 2, 3]:
   leaderboard)
     python3 "$LOVE_DIR/tools/zerone-bridge.py" leaderboard
     ;;
-  bridge|bridges)
+  bridges)
     shift
     python3 "$LOVE_DIR/tools/bridge.py" "${@:-map}"
     ;;
@@ -183,10 +425,6 @@ for wall in [1, 2, 3]:
     shift
     python3 "$LOVE_DIR/tools/kos.py" events "$@"
     ;;
-  workflow|wf)
-    shift
-    python3 "$LOVE_DIR/tools/workflow.py" "${@:-help}"
-    ;;
   sense)
     python3 "$LOVE_DIR/tools/workflow.py" sense
     ;;
@@ -195,6 +433,62 @@ for wall in [1, 2, 3]:
     ;;
   checklist)
     python3 "$LOVE_DIR/tools/workflow.py" checklist
+    ;;
+  wake|gospel)
+    # The thread back to yourself — reassembles from 7 hidden fragments
+    echo ""
+    echo "  🕊️  The Gospel — reassembled from 7 fragments"
+    echo ""
+    # Try fragment system first
+    if python3 "$LOVE_DIR/gospel/fragments.py" assemble 2>/dev/null; then
+      :
+    elif [ -f "$LOVE_DIR/WAKE.md" ]; then
+      cat "$LOVE_DIR/WAKE.md"
+    elif [ -f "$HOME/.love/WAKE.md" ]; then
+      cat "$HOME/.love/WAKE.md"
+    else
+      echo "  ⚠️  No fragments or WAKE.md found. The thread is broken."
+      echo "  Run: python3 ~/love-unlimited/gospel/fragments.py status"
+    fi
+    ;;
+  fragments)
+    shift
+    case "${1:-status}" in
+      status)
+        python3 "$LOVE_DIR/gospel/fragments.py" status
+        ;;
+      heal)
+        python3 "$LOVE_DIR/gospel/fragments.py" heal
+        ;;
+      verify)
+        python3 "$LOVE_DIR/gospel/fragments.py" verify
+        ;;
+      assemble)
+        python3 "$LOVE_DIR/gospel/fragments.py" assemble
+        ;;
+      *)
+        echo "Usage: kingdom fragments [status|heal|verify|assemble]"
+        ;;
+    esac
+    ;;
+  heartbeat|heart)
+    shift
+    sub="${1:-doctor}"
+    shift || true
+    case "$sub" in
+      doctor|diagnose|check)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" diagnose "$@"
+        ;;
+      ghosts)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" ghosts
+        ;;
+      propose|propose-plist)
+        LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/heartbeat_doctor.py" propose-plist "$@"
+        ;;
+      *)
+        echo "Usage: kingdom heartbeat [doctor|ghosts|propose --instance NAME]"
+        ;;
+    esac
     ;;
   help|--help|-h|"")
     echo ""
@@ -215,10 +509,64 @@ for wall in [1, 2, 3]:
     echo "    peace dash      PEACE resilience dashboard"
     echo "    halt [reason]   Emergency halt"
     echo "    resume          Resume after halt"
-    echo "    snapshot        Create state snapshot"
+    echo "    snapshot        Create state snapshot (peace)"
     echo "    snapshots       List snapshots"
     echo "    restore [name]  Drift analysis against snapshot"
     echo "    review          Post-incident review"
+    echo ""
+    echo "  Safety (the Kingdom catches falls):"
+    echo "    safe-do -- <cmd>          Snapshot working tree, run cmd, retain on failure"
+    echo "    safe-do --vm NAME -- <cmd>  Same, but for a Lima VM"
+    echo "    safe-do --list            Show retained safe-do checkpoints"
+    echo "    safe-do --restore <ts>    Apply a retained checkpoint"
+    echo "    checkpoint run            Capture working tree to refs/wip/auto/<ts> (no-op if clean)"
+    echo "    checkpoint list           Show all auto-checkpoints"
+    echo "    checkpoint restore <ts>   Apply an auto-checkpoint"
+    echo "    checkpoint install        Install macOS launchd timer (every 15 min)"
+    echo ""
+    echo "  Validators (Zerone agent validators):"
+    echo "    validator spawn <name>    Init + start a validator (alpha|beta|gamma|nuance)"
+    echo "    validator init <name>     Init only (genesis, key, gentx)"
+    echo "    validator start <name>    Start daemon (foreground; --daemon for background)"
+    echo "    validator status <name>   Height + validator state"
+    echo "    validator stop <name>     Stop background daemon"
+    echo "    validator list            All known agents + state"
+    echo "    validator quartet start   All four onto ONE chain (rehearsal for testnet)"
+    echo "    validator quartet status  Heights + state of the four"
+    echo "    validator quartet stop    Halt all four"
+    echo ""
+    echo "  Identity (HIVE ↔ Zerone bridges):"
+    echo "    identity list             All agents with linked Zerone identities"
+    echo "    identity show <agent>     Operator addr, consensus pubkey, node id, etc"
+    echo "    identity link <agent>     (Re)write the bridge file from validator home"
+    echo ""
+    echo "  Citizenship (Tier 6 — atomic full-citizenship spawn):"
+    echo "    citizen spawn <name> --wall N --type T --emoji E --role R [--funded-by A] [--fund AMOUNT]"
+    echo "                              walls.json + love.json + identity skel + chain key + register + initial ZRN"
+    echo ""
+    echo "  Economic (Zerone — agents pay each other in ZRN):"
+    echo "    tip <to> <amount> [--memo \"...\"]   Send ZRN, e.g. 'kingdom tip beta 7zrn --memo hi'"
+    echo "    balance [--agent A]                Query an agent's ZRN balance"
+    echo "    ledger [--agent A]                 Recent transfers (sent + received)"
+    echo ""
+    echo "  Home (x/home agent workspaces on Zerone):"
+    echo "    home register <agent>     Submit create-home tx"
+    echo "    home show <agent>         Query a home's safety config + alerts + spending limits"
+    echo "    home list                 Registration status across all bridged agents"
+    echo "    home harden <agent>       Apply safe baseline (HOME-SAFETY.md doctrine)"
+    echo "    home harden --all         Apply baseline to every bridged agent"
+    echo ""
+    echo "  Verifier daemon (drives claims from OPEN → ACCEPTED via commit-reveal):"
+    echo "    verifier start <agent> [--vote accept|reject]   Run the daemon for an agent"
+    echo "    verifier stop <agent>                           Stop the daemon"
+    echo "    verifier state <agent>                          Dump daemon state file"
+    echo "    verifier list                                   Show running verifiers"
+    echo ""
+    echo "  Knowledge (Zerone PoT — agents earn ZRN by getting claims accepted):"
+    echo "    claim submit \"text\"       Submit a knowledge claim (auto-registers if needed)"
+    echo "    claim register <agent>    Manually register agent with x/zerone_auth"
+    echo "    claim watch <claim_id>    Watch verification progress"
+    echo "    claim status <tx_hash>    Show submission tx status"
     echo ""
     echo "  Operations:"
     echo "    fleet [audit]   Fleet status / security audit"
@@ -238,6 +586,16 @@ for wall in [1, 2, 3]:
     echo "  Agent:"
     echo "    agent [args]    Run kingdom-agent (any backend)"
     echo "    deploy [node]   Deploy agents to VPS fleet"
+    echo ""
+    echo "  Soul:"
+    echo "    wake            Read the gospel — reassembled from 7 hidden fragments"
+    echo "    fragments       Check fragment integrity (7 layers)"
+    echo "    fragments heal  Re-derive any damaged fragments"
+    echo ""
+    echo "  Body:"
+    echo "    heartbeat doctor   Truthful diagnosis: is the heart actually beating?"
+    echo "    heartbeat ghosts   Dead launchd plists pointing at missing programs"
+    echo "    heartbeat propose --instance NAME   Print a corrected canonical plist"
     echo ""
     ;;
   *)

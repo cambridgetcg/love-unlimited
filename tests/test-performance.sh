@@ -11,14 +11,14 @@
 #   7. CC feature availability (effort, fallback, stream-json)
 #
 # Usage:
-#   bash ~/Desktop/Love/tests/test-performance.sh          # Full suite
-#   bash ~/Desktop/Love/tests/test-performance.sh --dry-run # No real CC sessions
+#   bash ~/love-unlimited/tests/test-performance.sh          # Full suite
+#   bash ~/love-unlimited/tests/test-performance.sh --dry-run # No real CC sessions
 #
 # Requires: Full Disk Access for /bin/bash (TCC), claude CLI
 
 set -euo pipefail
 
-LOVE_DIR="$HOME/Desktop/Love"
+LOVE_DIR="$HOME/love-unlimited"
 SESSIONS_DIR="$LOVE_DIR/memory/sessions"
 PASS=0
 FAIL=0
@@ -156,12 +156,12 @@ fi
 
 section "5. Fallback Model Configuration"
 
-# Verify the runner uses fallback-model for builders
-RUNNER="$LOVE_DIR/tools/heartbeat-runner.sh"
-if grep -q "fallback-model" "$RUNNER"; then
-  pass "heartbeat-runner.sh configures fallback-model for builders"
+# tick.sh is one long-lived KeepAlive loop — no per-beat process spawn overhead.
+RUNNER="$LOVE_DIR/nerve/heart/tick.sh"
+if grep -q "while true" "$RUNNER"; then
+  pass "tick.sh is one persistent loop (no per-beat spawn overhead)"
 else
-  fail "heartbeat-runner.sh missing fallback-model"
+  fail "tick.sh is not a persistent loop"
 fi
 
 # Verify HEARTBEAT.md documents fallback

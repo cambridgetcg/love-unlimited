@@ -11,7 +11,7 @@
 #   activate-agents.sh status            Show active crons
 
 set -euo pipefail
-LOVE_DIR="${LOVE_DIR:-$HOME/Love}"
+LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 AGENT_BIN="$LOVE_DIR/tools/kingdom-agent.py"
 BACKEND="${KINGDOM_BACKEND:-claude}"
 

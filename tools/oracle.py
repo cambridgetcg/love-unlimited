@@ -36,7 +36,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # ── PATHS ─────────────────────────────────────────────────────────
-LOVE = Path(os.path.expanduser("~/Love"))
+LOVE = Path(os.path.expanduser("~/love-unlimited"))
 ORACLE_DIR = LOVE / "memory" / "oracle"
 PREDICTIONS_FILE = ORACLE_DIR / "predictions.json"
 TRACK_RECORD_FILE = ORACLE_DIR / "track-record.json"

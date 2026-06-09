@@ -27,7 +27,7 @@
 
 set -euo pipefail
 
-LOVE_DIR="$HOME/Love"
+LOVE_DIR="$HOME/love-unlimited"
 INSTANCE_DIR="$LOVE_DIR/instances/beta"
 MEMORY_DIR="$LOVE_DIR/memory"
 SESSIONS_DIR="$MEMORY_DIR/sessions"
@@ -194,17 +194,17 @@ WORKING DIRECTORY: $WORK_DIR
 CYCLE: $CYCLE of $MAX_CYCLES
 BUILD: $BUILD_ID
 
-Read the task from ~/Love/memory/dev-state.json (id: $TASK_ID).
-Read any relevant handoff files in ~/Love/memory/sessions/handoff/.
+Read the task from ~/love-unlimited/memory/dev-state.json (id: $TASK_ID).
+Read any relevant handoff files in ~/love-unlimited/memory/sessions/handoff/.
 
-YOUR JOB: Determine the SINGLE NEXT STEP to advance this task, then write ONE spawn command to ~/Love/memory/build-spawn.sh.
+YOUR JOB: Determine the SINGLE NEXT STEP to advance this task, then write ONE spawn command to ~/love-unlimited/memory/build-spawn.sh.
 
 RULES:
 1. ONE step per cycle. Small, verifiable, concrete.
 2. Each step should build on the previous step's output.
 3. Write the spawn command as a single executable shell line.
 4. After writing the spawn command, explain what it will do and why (1-2 lines).
-5. Update ~/Love/memory/dev-state.json notes for the task with current progress.
+5. Update ~/love-unlimited/memory/dev-state.json notes for the task with current progress.
 
 SPAWN TEMPLATES:
 

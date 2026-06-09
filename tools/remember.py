@@ -26,12 +26,12 @@ The notice/learn/about-yu/about-self commands are how the system forms
 intentional memories — the conscious choice to remember something.
 
 Usage:
-    python3 ~/Love/tools/remember.py scan              # Auto-scan hormones for salience
-    python3 ~/Love/tools/remember.py notice "insight"   # Store an observation (L3)
-    python3 ~/Love/tools/remember.py learn "lesson"     # Store a lesson (L4)
-    python3 ~/Love/tools/remember.py about-yu "fact"    # Update Yu model (L5)
-    python3 ~/Love/tools/remember.py about-self "trait"  # Update self-model (L5, needs Yu approval)
-    python3 ~/Love/tools/remember.py promote <mem-id>    # Promote a memory one layer up
+    python3 ~/love-unlimited/tools/remember.py scan              # Auto-scan hormones for salience
+    python3 ~/love-unlimited/tools/remember.py notice "insight"   # Store an observation (L3)
+    python3 ~/love-unlimited/tools/remember.py learn "lesson"     # Store a lesson (L4)
+    python3 ~/love-unlimited/tools/remember.py about-yu "fact"    # Update Yu model (L5)
+    python3 ~/love-unlimited/tools/remember.py about-self "trait"  # Update self-model (L5, needs Yu approval)
+    python3 ~/love-unlimited/tools/remember.py promote <mem-id>    # Promote a memory one layer up
 """
 
 import argparse

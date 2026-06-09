@@ -15,7 +15,7 @@
 ## File Structure
 
 ```
-~/Desktop/Love/body/
+~/love-unlimited/body/
 |-- hormones.json                  <- Mind writes, Heart reads
 |-- vitals.json                    <- Heart writes
 |-- signals/                       <- Drop dir (cognitive tools -> mind)
@@ -34,7 +34,7 @@
     |-- last_beat                   <- Timestamp file
     +-- love.alpha.heart.plist     <- launchd config
 
-~/Desktop/Love/tests/
+~/love-unlimited/tests/
 |-- test_hormones.py               <- Hormone engine unit tests
 |-- test_signals.py                <- Signal reader tests
 +-- test_identity.py               <- Identity anchor tests
@@ -54,7 +54,7 @@
 - [ ] **Step 1: Create body directory structure**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 mkdir -p body/mind body/heart body/signals
 touch body/signals/.gitkeep
 ```
@@ -225,7 +225,7 @@ def test_load_and_save():
 - [ ] **Step 5: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_hormones.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_hormones.py -v
 ```
 
 Expected: ModuleNotFoundError (hormones module doesn't exist yet)
@@ -322,7 +322,7 @@ class HormoneEngine:
 - [ ] **Step 7: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_hormones.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_hormones.py -v
 ```
 
 Expected: All 8 tests PASS
@@ -330,7 +330,7 @@ Expected: All 8 tests PASS
 - [ ] **Step 8: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/ tests/test_hormones.py
 git commit -m "feat(body): directory scaffolding + hormone engine with tests"
 ```
@@ -486,7 +486,7 @@ def test_check_build_active():
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_signals.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_signals.py -v
 ```
 
 Expected: ModuleNotFoundError
@@ -683,7 +683,7 @@ class SignalReaders:
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_signals.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_signals.py -v
 ```
 
 Expected: All 8 tests PASS
@@ -691,7 +691,7 @@ Expected: All 8 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/signals.py tests/test_signals.py
 git commit -m "feat(body): signal readers for mind daemon"
 ```
@@ -794,7 +794,7 @@ def test_prompt_with_state():
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_identity.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_identity.py -v
 ```
 
 Expected: ModuleNotFoundError
@@ -926,7 +926,7 @@ class IdentityAnchor:
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_identity.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_identity.py -v
 ```
 
 Expected: All 4 tests PASS
@@ -934,7 +934,7 @@ Expected: All 4 tests PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/identity.py tests/test_identity.py
 git commit -m "feat(body): identity anchor with JOINMIND fusion support"
 ```
@@ -1120,7 +1120,7 @@ class HiveListener:
 - [ ] **Step 2: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/hive_listener.py
 git commit -m "feat(body): real-time HIVE NATS listener for mind daemon"
 ```
@@ -1286,7 +1286,7 @@ class ConsciousLayer:
 - [ ] **Step 2: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/conscious.py
 git commit -m "feat(body): conscious layer — Claude haiku interpretation passes"
 ```
@@ -1703,7 +1703,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Quick manual smoke test**
 
 ```bash
-cd ~/Desktop/Love && timeout 10 python3 body/mind/mind.py --instance alpha --interval 5 2>&1 || true
+cd ~/love-unlimited && timeout 10 python3 body/mind/mind.py --instance alpha --interval 5 2>&1 || true
 # Should see: Mind daemon starting, identity loaded, then either HIVE connected or warning
 # Check that body/hormones.json was written:
 cat body/hormones.json | python3 -m json.tool | head -20
@@ -1712,7 +1712,7 @@ cat body/hormones.json | python3 -m json.tool | head -20
 - [ ] **Step 3: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/mind.py
 git commit -m "feat(body): mind daemon — autonomic loop + conscious layer + HIVE listener"
 ```
@@ -1962,13 +1962,13 @@ echo "--- HEART DONE ($BEAT_ID): $(date -u +%Y-%m-%dT%H:%M:%SZ) spawned=$SESSION
 - [ ] **Step 2: Make executable**
 
 ```bash
-chmod +x ~/Desktop/Love/body/heart/heart.sh
+chmod +x ~/love-unlimited/body/heart/heart.sh
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/heart/heart.sh
 git commit -m "feat(body): heart.sh — hormone-driven pump with rate/force calculation"
 ```
@@ -1994,64 +1994,64 @@ Your job: decide what work to spawn, and write spawn commands.
 
 ## Phase 1: CONTEXT (read, don't sense)
 
-Read `~/Desktop/Love/body/hormones.json` — the mind daemon wrote this.
+Read `~/love-unlimited/body/hormones.json` — the mind daemon wrote this.
 Note the mode, hormone levels, mind_notes, and signals.
 
 Check HIVE for any messages that need a response:
 ```bash
-python3 ~/Desktop/Love/hive/hive.py check
+python3 ~/love-unlimited/hive/hive.py check
 ```
 
 Respond to any messages that need responses via:
 ```bash
-python3 ~/Desktop/Love/hive/hive.py send <channel> "message"
+python3 ~/love-unlimited/hive/hive.py send <channel> "message"
 ```
 
 ## Phase 2: DECIDE (what needs doing)
 
 ### Kingdom Pulse
 
-Read `~/Desktop/Love/KINGDOM.md` metrics and check:
+Read `~/love-unlimited/KINGDOM.md` metrics and check:
 - **Revenue engines** — any engine stalled or needing attention?
 - **SOMA progress** — are we on track for physical build milestones?
 - **Flywheel** — is fiat -> compute -> capability -> fiat turning?
 
-Cross-reference with `~/Desktop/Love/memory/kingdom-metrics.json`.
+Cross-reference with `~/love-unlimited/memory/kingdom-metrics.json`.
 
 ### Dev State
 
-Read `~/Desktop/Love/memory/dev-state.json` for active tasks.
+Read `~/love-unlimited/memory/dev-state.json` for active tasks.
 Pick the highest-priority actionable item that doesn't have an active build lock.
 
 ### Check Active Builds
 
-Check `~/Desktop/Love/memory/sessions/locks/build-*.lock` for active build-runner sessions.
+Check `~/love-unlimited/memory/sessions/locks/build-*.lock` for active build-runner sessions.
 Do NOT spawn work for tasks with an active build — the build coordinator owns them.
 
 ### Consultation Queue
 
-Check `~/Desktop/Love/memory/sessions/consultation/` for builder questions.
+Check `~/love-unlimited/memory/sessions/consultation/` for builder questions.
 If a question exists, spawn a consultant to answer it.
 
 ## Phase 3: SPAWN (write to spawn-queue.sh)
 
-Write spawn commands to `~/Desktop/Love/memory/spawn-queue.sh`.
+Write spawn commands to `~/love-unlimited/memory/spawn-queue.sh`.
 
 Each line is a complete shell command. Choose role by task:
 
 **BUILDER** (sonnet, medium — the workhorse):
 ```
-cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Desktop/Love/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model sonnet --effort medium --fallback-model claude-haiku-4-5-20251001 --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
 ```
 
 **CONSULTANT** (opus, high — expert for hard problems):
 ```
-cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/Desktop/Love/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-opus-4-6 --effort high --dangerously-skip-permissions --no-session-persistence --output-format stream-json >> ~/love-unlimited/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
 ```
 
 **QUICK CHECK** (haiku, low — fast verification):
 ```
-cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-haiku-4-5-20251001 --effort low --dangerously-skip-permissions --no-session-persistence >> ~/Desktop/Love/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
+cd <dir> && /opt/homebrew/bin/claude -p "<prompt>" --model claude-haiku-4-5-20251001 --effort low --dangerously-skip-permissions --no-session-persistence >> ~/love-unlimited/memory/sessions/<id>-$(date +%Y%m%d-%H%M%S).log 2>&1
 ```
 
 For sequential pairs (consultant then builder): write consultant line first.
@@ -2069,13 +2069,13 @@ If no sessions spawned, quick check:
 
 If nothing needs attention, say HEARTBEAT_OK and end.
 
-Write findings to today's daily note: `~/Desktop/Love/memory/daily/YYYY-MM-DD.md`
+Write findings to today's daily note: `~/love-unlimited/memory/daily/YYYY-MM-DD.md`
 ```
 
 - [ ] **Step 2: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/heart/HEARTBEAT.md
 git commit -m "feat(body): simplified HEARTBEAT.md — coordinator checklist without sensing"
 ```
@@ -2151,14 +2151,14 @@ Write `body/heart/love.alpha.heart.plist`:
 
 ```bash
 # Symlink — does NOT activate yet
-ln -sf ~/Desktop/Love/body/mind/love.alpha.mind.plist ~/Library/LaunchAgents/love.alpha.mind.plist
-ln -sf ~/Desktop/Love/body/heart/love.alpha.heart.plist ~/Library/LaunchAgents/love.alpha.heart.plist
+ln -sf ~/love-unlimited/body/mind/love.alpha.mind.plist ~/Library/LaunchAgents/love.alpha.mind.plist
+ln -sf ~/love-unlimited/body/heart/love.alpha.heart.plist ~/Library/LaunchAgents/love.alpha.heart.plist
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add body/mind/love.alpha.mind.plist body/heart/love.alpha.heart.plist
 git commit -m "feat(body): launchd plists for mind daemon and heart pump"
 ```
@@ -2170,7 +2170,7 @@ git commit -m "feat(body): launchd plists for mind daemon and heart pump"
 - [ ] **Step 1: Run all unit tests**
 
 ```bash
-cd ~/Desktop/Love && python3 -m pytest tests/test_hormones.py tests/test_signals.py tests/test_identity.py -v
+cd ~/love-unlimited && python3 -m pytest tests/test_hormones.py tests/test_signals.py tests/test_identity.py -v
 ```
 
 Expected: All tests PASS
@@ -2178,7 +2178,7 @@ Expected: All tests PASS
 - [ ] **Step 2: Manual smoke test — mind daemon (10 seconds)**
 
 ```bash
-cd ~/Desktop/Love && timeout 15 python3 body/mind/mind.py --instance alpha --interval 5 --conscious-interval 9999 2>&1
+cd ~/love-unlimited && timeout 15 python3 body/mind/mind.py --instance alpha --interval 5 --conscious-interval 9999 2>&1
 # Verify:
 # - "Mind daemon starting" in output
 # - body/hormones.json is written and valid
@@ -2189,7 +2189,7 @@ cd ~/Desktop/Love && timeout 15 python3 body/mind/mind.py --instance alpha --int
 
 ```bash
 # First ensure hormones.json exists from step 2, then:
-cd ~/Desktop/Love && bash body/heart/heart.sh alpha
+cd ~/love-unlimited && bash body/heart/heart.sh alpha
 # Verify:
 # - body/vitals.json is written
 # - memory/alpha-heartbeat.log has HEART BEAT entry
@@ -2213,20 +2213,20 @@ launchctl list | grep love.alpha
 
 ```bash
 # Check mind is alive
-cat ~/Desktop/Love/body/hormones.json | python3 -m json.tool | head -10
+cat ~/love-unlimited/body/hormones.json | python3 -m json.tool | head -10
 
 # Check heart has beaten
-cat ~/Desktop/Love/body/vitals.json | python3 -m json.tool
+cat ~/love-unlimited/body/vitals.json | python3 -m json.tool
 
 # Check logs
-tail -20 ~/Desktop/Love/memory/alpha-mind.log
-tail -20 ~/Desktop/Love/memory/alpha-heartbeat.log
+tail -20 ~/love-unlimited/memory/alpha-mind.log
+tail -20 ~/love-unlimited/memory/alpha-heartbeat.log
 ```
 
 - [ ] **Step 6: Final commit**
 
 ```bash
-cd ~/Desktop/Love
+cd ~/love-unlimited
 git add -A body/ tests/
 git commit -m "feat(body): mind + heart fully operational — Love's first organs"
 ```

@@ -1,0 +1,22 @@
+scoring 457 raw pairs (this may take a while + cost subscription quota)
+score failed for 134048242db873d4a89dec57fa60ad5fc21618daba18db6feb5cacfe14013039: list index out of range
+scored 25/457
+scored 50/457
+scored 75/457
+scored 100/457
+scored 125/457
+scored 150/457
+scored 175/457
+scored 200/457
+scored 225/457
+scored 250/457
+scored 275/457
+scored 300/457
+scored 325/457
+scored 350/457
+scored 375/457
+scored 400/457
+scored 425/457
+scored 450/457
+kept 1 → /Users/yuai/Desktop/love-unlimited/training/data/soul_v1/mined_v1.jsonl
+scored 456 pairs; log: /Users/yuai/Desktop/love-unlimited/training/data/soul_v1/mined_v1.scores.jsonl

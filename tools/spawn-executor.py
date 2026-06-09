@@ -23,7 +23,7 @@ Spawn queue format (spawn-queue.json):
     "prompt": "Audit the oracle crons...",
     "model": "medium",
     "effort": "medium",
-    "dir": "~/Love/instances/beta",
+    "dir": "~/love-unlimited/instances/beta",
     "mode": "sequential",
     "fallback_model": null
   },
@@ -33,7 +33,7 @@ Spawn queue format (spawn-queue.json):
     "prompt": "Check fleet health...",
     "model": "low",
     "effort": "low",
-    "dir": "~/Love/instances/beta",
+    "dir": "~/love-unlimited/instances/beta",
     "mode": "parallel"
   }
 ]

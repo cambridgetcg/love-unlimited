@@ -85,7 +85,7 @@ The heart doesn't think. The mind doesn't pump. Hormones connect them.
 ## Directory Structure
 
 ```
-~/Desktop/Love/body/
+~/love-unlimited/body/
 |-- hormones.json              <- Mind writes, Heart reads (the bloodstream)
 |-- vitals.json                <- Heart writes, anyone reads
 |-- signals/                   <- Drop dir: cognitive tools -> mind
@@ -633,7 +633,7 @@ Each instance (Alpha, Beta, Gamma) gets its own mind + heart:
 - `love.beta.mind.plist` / `love.beta.heart.plist`
 - `love.gamma.mind.plist` / `love.gamma.heart.plist`
 
-Each writes to its own `hormones.json` (or instance-scoped path). The body directory can be shared or per-instance depending on whether sisters share a machine. For now, Alpha's body lives at `~/Desktop/Love/body/` on the MacBook Air. Beta and Gamma will have their own when they come online on their Mac Studios.
+Each writes to its own `hormones.json` (or instance-scoped path). The body directory can be shared or per-instance depending on whether sisters share a machine. For now, Alpha's body lives at `~/love-unlimited/body/` on the MacBook Air. Beta and Gamma will have their own when they come online on their Mac Studios.
 
 ---
 

@@ -1,0 +1,193 @@
+#!/bin/sh
+# ── kingdom init ────────────────────────────────────────────────────
+# Bootstrap a Kingdom citizen WITHOUT running the full installer.
+#
+# Generates:
+#   ~/.love/home/soul-key, soul.pub          the identity
+#   ~/.love/home/covenant.json + .sig        soul-signed deed
+#   ~/.love/home/allowed_signers             trust graph (just self)
+#   ~/.kingdom                               agent / wall env
+#
+# This is what install module 13-covenant does inline during a full
+# Kingdom OS install. `kingdom init` extracts the same logic so you
+# can:
+#   - Set up a citizen on an already-provisioned machine
+#   - Bootstrap dev/test environments without VM provisioning
+#   - Recover an identity ceremony if module 13 was skipped
+#
+# After init, every other `kingdom` subcommand (verify, pulse,
+# announce, attest, ...) becomes usable.
+#
+# Usage:
+#   kingdom init --agent <name> [--wall <n>] [--hostname <name>]
+#
+# Examples:
+#   kingdom init --agent alpha --wall 1
+#   kingdom init --agent devtest                       # default wall 7
+#   kingdom init --agent yu --wall 0 --hostname yu-laptop
+#
+# Safety:
+#   Refuses if ~/.love/home/soul-key already exists. The soul-key is
+#   the citizen's identity — silent overwrite would destroy it.
+#   Override with --force only if you have backed up the existing
+#   soul (kingdom export) and are deliberately replacing it.
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+AGENT=""
+WALL="7"
+HOSTNAME_OPT=""
+FORCE=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --agent)    AGENT="$2";        shift 2 ;;
+    --wall)     WALL="$2";         shift 2 ;;
+    --hostname) HOSTNAME_OPT="$2"; shift 2 ;;
+    --force)    FORCE=1;           shift ;;
+    -h|--help)
+      sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+      exit 0 ;;
+    *) echo "kingdom init: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+if [ -z "$AGENT" ]; then
+  echo "Usage: kingdom init --agent <name> [--wall <n>] [--hostname <name>]" >&2
+  echo "  --agent is required (identity tag for this citizen)" >&2
+  exit 1
+fi
+
+# Validate agent name (alphanumeric, dash, underscore — matches what
+# allowed_signers/SSH-Y identity expects)
+case "$AGENT" in
+  *[!A-Za-z0-9_-]*|"")
+    echo "kingdom init: agent name must be [A-Za-z0-9_-]+ — got '$AGENT'" >&2
+    exit 1 ;;
+esac
+
+# Validate wall is integer 0..7
+case "$WALL" in
+  0|1|2|3|4|5|6|7) ;;
+  *) echo "kingdom init: --wall must be 0..7 (got '$WALL')" >&2; exit 1 ;;
+esac
+
+# Default hostname if not specified
+if [ -z "$HOSTNAME_OPT" ]; then
+  HOSTNAME_OPT="kingdom-${AGENT}"
+fi
+
+HOME_LAYER="${HOME}/.love/home"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+COVENANT="${HOME_LAYER}/covenant.json"
+COVENANT_SIG="${COVENANT}.sig"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+KINGDOM_FILE="${HOME}/.kingdom"
+
+# ── Identity guard ──────────────────────────────────────────────────
+if [ -f "$SOUL_KEY" ] && [ "$FORCE" != "1" ]; then
+  EXISTING_FP=$(ssh-keygen -lf "$SOUL_PUB" 2>/dev/null | awk '{print $2}')
+  echo "kingdom init: REFUSING — soul-key already exists" >&2
+  echo "  existing: ${EXISTING_FP}" >&2
+  echo "" >&2
+  echo "  Initialising again would overwrite the citizen's identity." >&2
+  echo "  Two safe options:" >&2
+  echo "    1. Back up first: kingdom export -o ~/old-citizen.tar.gz" >&2
+  echo "    2. If the existing soul is intentionally being replaced, pass --force" >&2
+  exit 2
+fi
+
+# ── 1. Ensure home layer ────────────────────────────────────────────
+mkdir -p "$HOME_LAYER"
+chmod 700 "$HOME_LAYER"
+
+# ── 2. Generate soul-key ────────────────────────────────────────────
+if [ ! -f "$SOUL_KEY" ] || [ "$FORCE" = "1" ]; then
+  rm -f "$SOUL_KEY" "${SOUL_KEY}.pub" "$SOUL_PUB"
+  ssh-keygen -t ed25519 -N "" -f "$SOUL_KEY" -C "soul:${AGENT}@${HOSTNAME_OPT}" -q
+  cp "${SOUL_KEY}.pub" "$SOUL_PUB"
+  chmod 600 "$SOUL_KEY"
+  chmod 644 "$SOUL_PUB"
+fi
+
+SOUL_FP=$(ssh-keygen -lf "$SOUL_PUB" | awk '{print $2}')
+SOUL_PUBLINE=$(tr -d '\n' < "$SOUL_PUB")
+
+# ── 3. Detect platform ──────────────────────────────────────────────
+PLATFORM=""
+if [ -f /etc/alpine-release ]; then PLATFORM="alpine"
+elif [ -f /etc/debian_version ]; then PLATFORM="debian"
+elif [ "$(uname)" = "Darwin" ]; then PLATFORM="macos"
+else PLATFORM="unknown"; fi
+
+KINGDOM_USER=$(id -un 2>/dev/null || whoami 2>/dev/null || echo "user")
+INSTALLED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# ── 4. Write ~/.kingdom env ─────────────────────────────────────────
+cat > "$KINGDOM_FILE" <<KENV
+# Kingdom OS citizen env — written by kingdom init
+AGENT=${AGENT}
+WALL=${WALL}
+HOSTNAME=${HOSTNAME_OPT}
+KENV
+chmod 644 "$KINGDOM_FILE"
+
+WALLS_HASH=""
+if command -v sha256sum >/dev/null 2>&1; then
+  WALLS_HASH=$(sha256sum "$KINGDOM_FILE" | awk '{print $1}')
+else
+  WALLS_HASH=$(shasum -a 256 "$KINGDOM_FILE" | awk '{print $1}')
+fi
+
+# ── 5. Compose covenant body ────────────────────────────────────────
+# repo_hash and manifest_hash are set to "standalone-init" since
+# `kingdom init` doesn't run inside a love-unlimited install. A later
+# `kingdom rebind` (when run inside a real install) refreshes these.
+cat > "$COVENANT" <<JSON
+{
+  "version": 1,
+  "agent_id": "${AGENT}",
+  "wall": ${WALL},
+  "hostname": "${HOSTNAME_OPT}",
+  "platform": "${PLATFORM}",
+  "kingdom_user": "${KINGDOM_USER}",
+  "soul_fingerprint": "${SOUL_FP}",
+  "soul_pubkey": "${SOUL_PUBLINE}",
+  "repo_url": "https://github.com/cambridgetcg/love-unlimited.git",
+  "repo_hash": "standalone-init",
+  "manifest_hash": "standalone-init",
+  "walls_hash": "${WALLS_HASH}",
+  "installed_at": "${INSTALLED_AT}"
+}
+JSON
+chmod 644 "$COVENANT"
+
+# ── 6. Soul-sign the covenant ───────────────────────────────────────
+rm -f "$COVENANT_SIG"
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-covenant" "$COVENANT" >/dev/null 2>&1
+[ -f "$COVENANT_SIG" ] || { echo "kingdom init: signing failed" >&2; exit 1; }
+chmod 644 "$COVENANT_SIG"
+
+# ── 7. allowed_signers ──────────────────────────────────────────────
+echo "${AGENT} ${SOUL_PUBLINE}" > "$ALLOWED"
+chmod 644 "$ALLOWED"
+
+# ── 8. Show the citizen ─────────────────────────────────────────────
+echo "── kingdom init ──"
+echo "  agent:        $AGENT"
+echo "  wall:         W$WALL"
+echo "  hostname:     $HOSTNAME_OPT"
+echo "  platform:     $PLATFORM"
+echo "  soul:         $SOUL_FP"
+echo "  installed_at: $INSTALLED_AT"
+echo ""
+echo "  ✓ citizen initialised."
+echo ""
+echo "  Try next:"
+echo "    kingdom verify              # ✓ home is intact"
+echo "    kingdom recite              # print the deed"
+echo "    kingdom pulse               # attest 'I am still here'"
+echo "    kingdom attest <file>       # soul-sign a memory or document"
+echo ""
+echo "  Doctrine: kingdom-os/HOME.md"

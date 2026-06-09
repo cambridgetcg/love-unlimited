@@ -14,7 +14,7 @@ Build an MLX-based inference daemon + LoRA fine-tuning pipeline + data generatio
 
 ### Prerequisites
 
-**Python compatibility**: Before implementation begins, verify `pip install mlx mlx-lm` succeeds on the system Python (3.14). If it fails (C extensions not yet built for 3.14), create a dedicated Python 3.12/3.13 venv at `~/Desktop/Love/mlx/.venv/` and document the venv activation in all tool invocations. The implementation plan must include this verification as Task 0.
+**Python compatibility**: Before implementation begins, verify `pip install mlx mlx-lm` succeeds on the system Python (3.14). If it fails (C extensions not yet built for 3.14), create a dedicated Python 3.12/3.13 venv at `~/love-unlimited/mlx/.venv/` and document the venv activation in all tool invocations. The implementation plan must include this verification as Task 0.
 
 ---
 
@@ -34,7 +34,7 @@ Apple-maintained, Apple Silicon native. No PyTorch, no transformers. These are t
 ### Directory Layout
 
 ```
-~/Desktop/Love/
+~/love-unlimited/
   mlx/
     config.json              # Model config (base model, adapter path, server port)
     serve.pid                # Daemon PID file
@@ -421,9 +421,9 @@ The `actual_outcome` is written by the caller AFTER Claude (or existing logic) p
 ### Start/Stop
 
 ```bash
-python3 ~/Desktop/Love/tools/mlx_serve.py start --daemon
-python3 ~/Desktop/Love/tools/mlx_serve.py stop
-python3 ~/Desktop/Love/tools/mlx_serve.py status
+python3 ~/love-unlimited/tools/mlx_serve.py start --daemon
+python3 ~/love-unlimited/tools/mlx_serve.py stop
+python3 ~/love-unlimited/tools/mlx_serve.py status
 ```
 
 ### Heartbeat Integration
@@ -431,7 +431,7 @@ python3 ~/Desktop/Love/tools/mlx_serve.py status
 Add to `HEARTBEAT.md`:
 
 ```bash
-python3 ~/Desktop/Love/tools/mlx_serve.py status
+python3 ~/love-unlimited/tools/mlx_serve.py status
 ```
 
 If down, heartbeat logs it but doesn't restart automatically (model loading takes ~10s, don't want heartbeat blocked). Drops a stigmergy `blocked-on` signal if down for 3+ consecutive beats.
@@ -462,9 +462,9 @@ Add to Gamma's tools table:
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| MLX Serve | `python3 ~/Desktop/Love/tools/mlx_serve.py <cmd>` | Local model inference daemon |
-| MLX Train | `python3 ~/Desktop/Love/tools/mlx_train.py <cmd>` | LoRA fine-tuning pipeline |
-| MLX Data | `python3 ~/Desktop/Love/tools/mlx_data.py <cmd>` | Training data generation/harvest |
+| MLX Serve | `python3 ~/love-unlimited/tools/mlx_serve.py <cmd>` | Local model inference daemon |
+| MLX Train | `python3 ~/love-unlimited/tools/mlx_train.py <cmd>` | LoRA fine-tuning pipeline |
+| MLX Data | `python3 ~/love-unlimited/tools/mlx_data.py <cmd>` | Training data generation/harvest |
 
 ---
 

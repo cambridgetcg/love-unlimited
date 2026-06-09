@@ -1,0 +1,108 @@
+{
+  "timestamp": "2026-04-18T08:01:24.524777+00:00",
+  "tasks_total": 5,
+  "tasks_completed": 5,
+  "routing_accuracy": 1.0,
+  "avg_latency_ms": 4558.626556396484,
+  "total_cost_usd": 0.0009172,
+  "cost_per_task": 0.00018344,
+  "by_tier": {
+    "economy": {
+      "count": 5,
+      "total_latency": 22793.132781982422,
+      "total_cost": 0.0009172,
+      "total_quality": 4.416666666666666,
+      "avg_latency": 4558.626556396484,
+      "avg_cost": 0.00018344,
+      "avg_quality": 0.8833333333333332
+    }
+  },
+  "by_category": {
+    "monitor": {
+      "count": 5,
+      "total_latency": 22793.132781982422,
+      "total_cost": 0.0009172,
+      "total_quality": 4.416666666666666,
+      "avg_latency": 4558.626556396484,
+      "avg_cost": 0.00018344,
+      "avg_quality": 0.8833333333333332
+    }
+  },
+  "results": [
+    {
+      "task_id": "kc-001",
+      "task_name": "Heartbeat status parse",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 1804.89182472229,
+      "input_tokens": 45,
+      "output_tokens": 48,
+      "routing_correct": true,
+      "quality_score": 0.75,
+      "cost_usd": 3.78e-05,
+      "errors": []
+    },
+    {
+      "task_id": "kc-002",
+      "task_name": "Git branch cleanup",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 4386.754751205444,
+      "input_tokens": 27,
+      "output_tokens": 213,
+      "routing_correct": true,
+      "quality_score": 1.0,
+      "cost_usd": 0.00013319999999999999,
+      "errors": []
+    },
+    {
+      "task_id": "kc-003",
+      "task_name": "JSON minify",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 1744.7082996368408,
+      "input_tokens": 36,
+      "output_tokens": 49,
+      "routing_correct": true,
+      "quality_score": 0.6666666666666666,
+      "cost_usd": 3.6599999999999995e-05,
+      "errors": []
+    },
+    {
+      "task_id": "kc-004",
+      "task_name": "Timestamp conversion",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 5024.935007095337,
+      "input_tokens": 43,
+      "output_tokens": 343,
+      "routing_correct": true,
+      "quality_score": 1.0,
+      "cost_usd": 0.00021439999999999998,
+      "errors": []
+    },
+    {
+      "task_id": "kc-005",
+      "task_name": "Regex extract",
+      "category": "monitor",
+      "expected_tier": "economy",
+      "model_used": "devstral-small-2:24b",
+      "provider": "ollama_cloud",
+      "latency_ms": 9831.84289932251,
+      "input_tokens": 64,
+      "output_tokens": 804,
+      "routing_correct": true,
+      "quality_score": 1.0,
+      "cost_usd": 0.0004952,
+      "errors": []
+    }
+  ]
+}

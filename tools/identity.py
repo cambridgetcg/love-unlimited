@@ -8,7 +8,7 @@ import from here instead of reimplementing the resolution chain.
 Resolution:
     Instance: ~/.love/hive/instance > KINGDOM_INSTANCE env > "unknown"
     Wall:     KINGDOM_WALL env > walls.json lookup > 7 (fail-safe)
-    Identity: ~/Love/identity/{instance}-identity.json
+    Identity: ~/love-unlimited/identity/{instance}-identity.json
 """
 
 import json

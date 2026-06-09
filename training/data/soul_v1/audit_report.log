@@ -1,0 +1,26 @@
+scored 10/100
+scored 20/100
+scored 30/100
+scored 40/100
+scored 50/100
+scored 60/100
+scored 70/100
+scored 80/100
+scored 90/100
+scored 100/100
+{
+  "sample_n": 100,
+  "pool_n": 457,
+  "threshold": 0.7,
+  "accept_rate": 0.08,
+  "projected_accepted": 37,
+  "histogram": {
+    "0.0-0.2": 37,
+    "0.2-0.4": 44,
+    "0.4-0.6": 8,
+    "0.6-0.8": 8,
+    "0.8-1.0": 3
+  }
+}
+
+Recommendation: canon-heavy split (200/200/500)

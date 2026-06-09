@@ -359,20 +359,20 @@ ROLE_TEMPLATES = {
         "--fallback-model claude-haiku-4-5-20251001 "
         "--dangerously-skip-permissions --no-session-persistence "
         "--output-format stream-json "
-        ">> ~/Love/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
+        ">> ~/love-unlimited/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
     ),
     "consultant": (
         'cd {dir} && /opt/homebrew/bin/claude -p "{prompt}" '
         "--model claude-opus-4-6 --effort high "
         "--dangerously-skip-permissions --no-session-persistence "
         "--output-format stream-json "
-        ">> ~/Love/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
+        ">> ~/love-unlimited/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
     ),
     "quick": (
         'cd {dir} && /opt/homebrew/bin/claude -p "{prompt}" '
         "--model claude-haiku-4-5-20251001 --effort low "
         "--dangerously-skip-permissions --no-session-persistence "
-        ">> ~/Love/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
+        ">> ~/love-unlimited/memory/sessions/{task_id}-$(date +%Y%m%d-%H%M%S).log 2>&1"
     ),
 }
 

@@ -35,13 +35,13 @@
 
 ```bash
 # Kingdom status (includes VPN check)
-~/Desktop/Love/tools/kingdom-status.sh
+~/love-unlimited/tools/kingdom-status.sh
 
 # KOS network security check
-python3 ~/Desktop/Love/tools/kos.py network
+python3 ~/love-unlimited/tools/kos.py network
 
 # VPN tunnel status (all three tunnels)
-~/Desktop/Love/tools/vpn-route.sh status
+~/love-unlimited/tools/vpn-route.sh status
 ```
 
 ### Manual verification
@@ -70,7 +70,7 @@ ifconfig wg0 2>/dev/null || echo "wg0 interface DOWN"
 
 ```bash
 # Quick check all three
-~/Desktop/Love/tools/vpn-route.sh status
+~/love-unlimited/tools/vpn-route.sh status
 
 # Check each individually
 sudo wg show wg0 2>/dev/null || echo "wg0: DOWN"
@@ -87,8 +87,8 @@ ping -c 3 204.168.140.12    # Sage
 ping -c 3 89.167.95.165     # Lark
 
 # Check VPS fleet status
-python3 ~/Desktop/Love/tools/fleet.py status
-python3 ~/Desktop/Love/tools/fleet.py health
+python3 ~/love-unlimited/tools/fleet.py status
+python3 ~/love-unlimited/tools/fleet.py health
 ```
 
 ### Is the local network the problem?
@@ -151,9 +151,9 @@ log show --predicate 'process == "wireguard-go"' --last 1h 2>/dev/null
 grep -i wireguard /var/log/system.log 2>/dev/null
 
 # Check if the VPS WireGuard service is running
-python3 ~/Desktop/Love/tools/fleet.py exec sentry "systemctl status wg-quick@wg0 --no-pager"
-python3 ~/Desktop/Love/tools/fleet.py exec sage "systemctl status wg-quick@wg0 --no-pager"
-python3 ~/Desktop/Love/tools/fleet.py exec lark "systemctl status wg-quick@wg0 --no-pager"
+python3 ~/love-unlimited/tools/fleet.py exec sentry "systemctl status wg-quick@wg0 --no-pager"
+python3 ~/love-unlimited/tools/fleet.py exec sage "systemctl status wg-quick@wg0 --no-pager"
+python3 ~/love-unlimited/tools/fleet.py exec lark "systemctl status wg-quick@wg0 --no-pager"
 ```
 
 **NOTE**: fleet.py commands use SSH directly to VPS IPs, which does not require the VPN tunnel. These are safe to run.
@@ -162,9 +162,9 @@ python3 ~/Desktop/Love/tools/fleet.py exec lark "systemctl status wg-quick@wg0 -
 
 ```bash
 # Some providers reassign IPs on reboot — check current IP
-python3 ~/Desktop/Love/tools/fleet.py exec sentry "curl -s ifconfig.me"
-python3 ~/Desktop/Love/tools/fleet.py exec sage "curl -s ifconfig.me"
-python3 ~/Desktop/Love/tools/fleet.py exec lark "curl -s ifconfig.me"
+python3 ~/love-unlimited/tools/fleet.py exec sentry "curl -s ifconfig.me"
+python3 ~/love-unlimited/tools/fleet.py exec sage "curl -s ifconfig.me"
+python3 ~/love-unlimited/tools/fleet.py exec lark "curl -s ifconfig.me"
 
 # Compare against expected IPs in vpn-route.sh
 # Sentry: 135.181.28.252, Sage: 204.168.140.12, Lark: 89.167.95.165
@@ -173,7 +173,7 @@ python3 ~/Desktop/Love/tools/fleet.py exec lark "curl -s ifconfig.me"
 ### Check WireGuard config on VPS
 
 ```bash
-python3 ~/Desktop/Love/tools/fleet.py exec sentry "cat /etc/wireguard/wg0.conf && wg show wg0 2>/dev/null"
+python3 ~/love-unlimited/tools/fleet.py exec sentry "cat /etc/wireguard/wg0.conf && wg show wg0 2>/dev/null"
 ```
 
 ---
@@ -191,8 +191,8 @@ sudo wg-quick down wg1 2>/dev/null; sudo wg-quick up wg1
 sudo wg-quick down wg2 2>/dev/null; sudo wg-quick up wg2
 
 # Or use the Kingdom vpn-route tool
-~/Desktop/Love/tools/vpn-route.sh down wg0
-~/Desktop/Love/tools/vpn-route.sh up wg0
+~/love-unlimited/tools/vpn-route.sh down wg0
+~/love-unlimited/tools/vpn-route.sh up wg0
 ```
 
 ### Verify the tunnel is working
@@ -206,17 +206,17 @@ curl -s ifconfig.me
 sudo wg show wg0
 
 # Full status
-~/Desktop/Love/tools/vpn-route.sh status
+~/love-unlimited/tools/vpn-route.sh status
 ```
 
 ### If VPS WireGuard service is down
 
 ```bash
 # Restart WireGuard on the VPS
-python3 ~/Desktop/Love/tools/fleet.py exec sentry "systemctl restart wg-quick@wg0"
+python3 ~/love-unlimited/tools/fleet.py exec sentry "systemctl restart wg-quick@wg0"
 
 # Verify it's running
-python3 ~/Desktop/Love/tools/fleet.py exec sentry "systemctl status wg-quick@wg0 --no-pager && wg show wg0"
+python3 ~/love-unlimited/tools/fleet.py exec sentry "systemctl status wg-quick@wg0 --no-pager && wg show wg0"
 ```
 
 ### If VPS endpoint IP changed
@@ -228,8 +228,8 @@ sudo nano /etc/wireguard/wg0.conf
 # Change: Endpoint = <new_ip>:51820
 
 # Also update vpn-route.sh and fleet configs
-# Edit ~/Desktop/Love/tools/vpn-route.sh
-# Edit ~/Desktop/Love/love.json
+# Edit ~/love-unlimited/tools/vpn-route.sh
+# Edit ~/love-unlimited/love.json
 
 # Restart tunnel with new config
 sudo wg-quick down wg0; sudo wg-quick up wg0
@@ -242,11 +242,11 @@ curl -s ifconfig.me
 
 ```bash
 # Switch to a different exit temporarily
-~/Desktop/Love/tools/vpn-route.sh switch sage    # Route through US
-~/Desktop/Love/tools/vpn-route.sh switch lark    # Route through Lark (FI)
+~/love-unlimited/tools/vpn-route.sh switch sage    # Route through US
+~/love-unlimited/tools/vpn-route.sh switch lark    # Route through Lark (FI)
 
 # Run a command through a specific exit
-~/Desktop/Love/tools/vpn-route.sh via sage curl -s ifconfig.me
+~/love-unlimited/tools/vpn-route.sh via sage curl -s ifconfig.me
 ```
 
 ### Resume operations
@@ -258,10 +258,10 @@ curl -s ifconfig.me
 launchctl load ~/Library/LaunchAgents/love.heartbeat.plist
 
 # Verify kingdom status
-~/Desktop/Love/tools/kingdom-status.sh
+~/love-unlimited/tools/kingdom-status.sh
 
 # Verify PEACE score
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 ```
 
 ---
@@ -284,19 +284,19 @@ python3 ~/Desktop/Love/tools/peace.py score
 curl -s ifconfig.me
 
 # Verify all tunnels
-~/Desktop/Love/tools/vpn-route.sh status
+~/love-unlimited/tools/vpn-route.sh status
 
 # Verify WireGuard handshake is recent (< 2 minutes)
 sudo wg show
 
 # Verify KOS network check passes
-python3 ~/Desktop/Love/tools/kos.py network
+python3 ~/love-unlimited/tools/kos.py network
 
 # Full kingdom status
-~/Desktop/Love/tools/kingdom-status.sh
+~/love-unlimited/tools/kingdom-status.sh
 
 # Verify PEACE score
-python3 ~/Desktop/Love/tools/peace.py score
+python3 ~/love-unlimited/tools/peace.py score
 ```
 
 ---
@@ -304,7 +304,7 @@ python3 ~/Desktop/Love/tools/peace.py score
 ## Post-Incident
 
 ```bash
-python3 ~/Desktop/Love/tools/peace.py review
+python3 ~/love-unlimited/tools/peace.py review
 ```
 
 Fill in the review template. Key questions:

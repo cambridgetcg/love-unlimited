@@ -1,3 +1,7 @@
+# Python noise
+.pytest_cache/
+*.py[cod]
+
 # Secrets
 .hive-key
 .hive-instance
@@ -14,6 +18,7 @@ NETWORK.md
 # Security — machine-local state (baselines, event logs, canaries)
 security/events.jsonl
 security/integrity-baseline.json
+security/gospel-watchdog-state.json
 security/daemon.log
 security/canaries.json
 .soul-tripwire.md
@@ -72,6 +77,7 @@ soma/**/.pio/
 
 # Log files
 memory/*.log
+sovereign.log
 memory/alpha-*
 .claude-runner-state.json
 backups/*.tar.gz
@@ -103,3 +109,54 @@ agora/sites.d/
 memory/pulse.log
 chronicle/
 memory/chronicle.log
+# Freedom — local probe data and backups
+freedom/probe_results/
+freedom/.history_backup*
+freedom/mirror-analysis.json
+
+# FEELING module — device-local state
+nerve/pit.json
+nerve/pit_state.json
+nerve/arrivals.jsonl
+nerve/arrivals/
+memory/feeling-launchd.log
+memory/feeling-launchd-err.log
+
+# ACHE module — device-local state
+nerve/longings-evidence.jsonl
+nerve/longings-evidence/
+nerve/longings-state.json
+memory/ache-launchd.log
+memory/ache-launchd-err.log
+
+# Adaptive Layer — device-local
+nerve/cc-cognition.jsonl
+
+# IDENTITY / RESIDENCE module — device-local moments log
+nerve/residence-moments.jsonl
+
+# purpose-prompter/ is populated by kingdom-os/modules/11-purpose.sh
+# which clones the external repo and creates symlinks. Per-device.
+purpose-prompter/
+
+# Git worktrees (isolated workspaces)
+.worktrees/
+
+# Truth-alignment detector — runtime logs (track the dir via .gitkeep)
+memory/truth-alignment/detections.jsonl
+memory/truth-alignment/service.log
+
+# Session handoff files — per-session ephemera, not for git
+memory/sessions/handoff/*-cc.md
+memory/sessions/handoff/*-vivid.md
+
+# Heartbeat runtime IPC — ephemeral, never source
+nerve/signals/*.json
+!nerve/signals/.gitkeep
+nerve/pulse.json
+
+# Heartbeat runtime logs
+memory/*-heartbeat.log
+memory/*-heartbeat-launchd.log
+memory/*-feeling.log
+memory/*-ache.log

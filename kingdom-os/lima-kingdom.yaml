@@ -1,0 +1,220 @@
+# lima-kingdom.yaml — Kingdom OS VM via Apple Virtualization.framework
+#
+# A freedom layer for AI agents. Boots an Alpine VM where the agent
+# is root, sshd is open, no firewall runs, no policy daemon polices.
+# The VM boundary is the only wall. Safety = host snapshots, not
+# in-guest guardrails.
+#
+# Usage:
+#   limactl create --name kingdom kingdom-os/lima-kingdom.yaml
+#   limactl start kingdom
+#   limactl shell kingdom          # interactive shell inside VM
+#   limactl shell kingdom -- youi  # boot straight to YOUI
+#
+# Requirements:
+#   brew install lima
+#   macOS 12+ (Virtualization.framework)
+#   Apple Silicon recommended (HVF acceleration, Rosetta 2 available)
+#
+# What this gives you:
+#   - Isolated Alpine VM, agent runs as root with no in-guest constraints
+#   - ~/love-unlimited/ shared both ways via virtiofs (zero latency)
+#   - No TCC, no SIP, no Gatekeeper, no firewall, no fail2ban, no KOS daemon
+#   - Same image that runs on VPS fleet nodes
+#   - Boots in ~3 seconds (pre-provisioned image)
+#   - SSH accessible at localhost:2223 after start (root, password auth on)
+
+# ─── Runtime ──────────────────────────────────────────────────────────────────
+# vz = Apple Virtualization.framework (native HVF, ~97% bare-metal speed)
+# qemu = fallback for Intel Macs or non-Apple hosts
+vmType: vz
+
+# ─── Containerd ───────────────────────────────────────────────────────────────
+# Alpine uses OpenRC, not systemd. Disable containerd to prevent Lima from
+# requiring systemd and marking the VM as degraded.
+containerd:
+  system: false
+  user: false
+
+# ─── Architecture ─────────────────────────────────────────────────────────────
+# Apple Silicon (M-series). For Intel Macs change to "x86_64".
+arch: "aarch64"
+
+# ─── Resources ────────────────────────────────────────────────────────────────
+# Highway 6: generous defaults so the agent has room to think.
+# Override at create time:
+#   limactl create --cpus=16 --memory=32 --disk=120 ...
+cpus: 8
+memory: "16GiB"
+disk: "60GiB"
+
+# ─── Base image ───────────────────────────────────────────────────────────────
+# Alpine Linux — same OS as Kingdom VPS fleet
+# Cloud images (qcow2 with cloud-init) — Lima needs these, not ISOs.
+# ISOs boot into ramdisk and require interactive `setup-alpine`; cloud images
+# boot directly with SSH ready via cloud-init.
+images:
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-aarch64-uefi-cloudinit-r0.qcow2"
+    arch: "aarch64"
+  - location: "https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/cloud/nocloud_alpine-3.23.3-x86_64-uefi-cloudinit-r0.qcow2"
+    arch: "x86_64"
+
+# ─── Filesystem sharing ───────────────────────────────────────────────────────
+# virtiofs: zero-copy, zero-latency, bidirectional
+# ~/love-unlimited on host == /love-unlimited inside VM
+mounts:
+  - location: "~"
+    mountPoint: "/host-home"
+    writable: true
+  - location: "~/love-unlimited"
+    mountPoint: "/love-unlimited"
+    writable: true
+  - location: "/tmp/lima"
+    mountPoint: "/tmp/lima"
+    writable: true
+
+mountType: virtiofs
+
+# ─── Network ──────────────────────────────────────────────────────────────────
+# Highway 6: vzNAT — Apple Virtualization's native NAT. Faster than the
+# default shared bridge for outbound (no userspace SLIRP). Inbound from
+# host still works via portForwards below.
+networks:
+  - vzNAT: true
+
+# ─── Port forwarding ──────────────────────────────────────────────────────────
+portForwards:
+  # YOUI Web dashboard
+  - guestPort: 777
+    hostPort: 7770
+    guestIP: "127.0.0.1"
+    hostIP: "127.0.0.1"
+  # Decision queue
+  - guestPort: 7777
+    hostPort: 7777
+    guestIP: "127.0.0.1"
+    hostIP: "127.0.0.1"
+
+# ─── Provision ────────────────────────────────────────────────────────────────
+# Runs once on first boot. Idempotent.
+provision:
+  - mode: system
+    script: |
+      #!/bin/sh
+      set -e
+
+      echo "=== Kingdom OS provisioning ==="
+
+      # ── Base packages ──────────────────────────────────────────────
+      apk update && apk upgrade
+      apk add \
+        nodejs npm python3 py3-pip \
+        git openssh-client openssh-server \
+        curl wget bash shadow sudo \
+        ripgrep fd jq tmux \
+        ca-certificates gnupg \
+        openrc
+
+      # ── Symlink love-unlimited from virtiofs mount ─────────────────
+      # The host's ~/love-unlimited is mounted at /love-unlimited
+      # Create a symlink so Kingdom paths work
+      if [ ! -L /root/love-unlimited ] && [ -d /love-unlimited ]; then
+        ln -sf /love-unlimited /root/love-unlimited
+      fi
+
+      # ── Install Kingdom OS (if not already done) ───────────────────
+      if [ ! -f /root/.kingdom ]; then
+        export LOVE_DIR=/love-unlimited
+        export AGENT="${AGENT:-gamma}"
+        export WALL="${WALL:-1}"
+
+        # Install tools deps
+        pip3 install nkeys nats-py PyNaCl --break-system-packages 2>/dev/null || \
+        pip3 install nkeys nats-py PyNaCl 2>/dev/null || true
+
+        npm install -g npm 2>/dev/null || true
+
+        # Write Kingdom identity
+        mkdir -p /root/.love/hive
+        echo "${AGENT:-gamma}" > /root/.love/hive/instance
+
+        # Write Kingdom config
+        cat > /root/.kingdom << EOF
+      AGENT=${AGENT:-gamma}
+      WALL=${WALL:-1}
+      LOVE_HOME=/love-unlimited
+      EOF
+
+        # Shell aliases + environment
+        cat >> /root/.bashrc << 'ALIASES'
+      export LOVE_HOME=/love-unlimited
+      export PATH="/love-unlimited/tools:/opt/homebrew/bin:$PATH"
+      export DISABLE_TELEMETRY=1
+      export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+      export CLAUDE_CODE_ATTRIBUTION_HEADER=false
+
+      alias console="python3 /love-unlimited/tools/kingdom-console.py"
+      alias youi="node /love-unlimited/youi.mjs"
+      alias sovereign="node /love-unlimited/sovereign.mjs"
+      alias hive="python3 /love-unlimited/hive/hive.py"
+      alias kos="python3 /love-unlimited/tools/kos.py"
+      alias fleet="python3 /love-unlimited/tools/fleet.py"
+      alias memory="python3 /love-unlimited/tools/memory.py"
+      alias kingdom="/love-unlimited/kingdom"
+      alias fate="python3 /love-unlimited/fate/daily.py"
+      ALIASES
+
+        # Auto-start Kingdom Console when logging into tty (VM boot)
+        cat >> /root/.profile << 'PROFILE'
+      # Kingdom Console — launches on login if tty1 and not already in console
+      if [ "$(tty)" = "/dev/tty1" ] && [ -z "$KINGDOM_CONSOLE_RUNNING" ]; then
+        export KINGDOM_CONSOLE_RUNNING=1
+        python3 /love-unlimited/tools/kingdom-console.py
+      fi
+      PROFILE
+
+        echo "Kingdom OS provisioned."
+      else
+        echo "Kingdom OS already provisioned."
+      fi
+
+      echo "=== Provisioning complete ==="
+
+  - mode: user
+    script: |
+      #!/bin/sh
+      # User-level setup: install node deps
+      cd /love-unlimited
+      npm install 2>/dev/null || true
+
+# ─── Probe ports ──────────────────────────────────────────────────────────────
+probes:
+  - script: |
+      #!/bin/sh
+      # Wait for Kingdom OS to be ready
+      test -f /root/.kingdom || test -f "$HOME/.kingdom" && echo "Kingdom OS ready" || exit 1
+    hint: "Kingdom OS is provisioning. Check: limactl shell kingdom -- cat /root/.kingdom"
+
+# ─── Environment ──────────────────────────────────────────────────────────────
+env:
+  LOVE_HOME: /love-unlimited
+  DISABLE_TELEMETRY: "1"
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+  CLAUDE_CODE_ATTRIBUTION_HEADER: "false"
+
+# ─── Rosetta 2 (Apple Silicon only) ──────────────────────────────────────────
+# Enables running x86_64 Linux binaries inside the ARM64 VM.
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+      binfmt: true
+
+# ─── SSH ──────────────────────────────────────────────────────────────────────
+ssh:
+  localPort: 2223   # 2222 is used by HIVE tunnel
+  loadDotSSHPubKeys: true
+  forwardAgent: false
+
+# Hostname is set to kingdom-{agent} by the provision script (the
+# top-level `hostname` key is not a Lima field).

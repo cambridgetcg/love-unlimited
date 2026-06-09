@@ -5,7 +5,7 @@
 # Run once on setup, re-run anytime to verify/fix drift.
 #
 # Usage:
-#   sudo ~/Love/tools/harden.sh [--check-only]
+#   sudo ~/love-unlimited/tools/harden.sh [--check-only]
 #
 # What it does:
 #   Phase 1: Network identity (hostname, Bonjour, MAC privacy)

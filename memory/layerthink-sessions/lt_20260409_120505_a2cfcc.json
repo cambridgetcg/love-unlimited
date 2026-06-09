@@ -1,0 +1,30 @@
+{
+  "session_id": "lt_20260409_120505_a2cfcc",
+  "topic": "How to harness Ollama Max subscription (36 models, $100/mo flat) and GLM 5.1 for maximum Kingdom development impact \u2014 replacing Claude dependency, powering heartbeat/automation, multi-model strategy, fleet agents, and sovereignty",
+  "domain": "business",
+  "depth_mode": "deep",
+  "status": "active",
+  "created_at": "2026-04-09T12:05:05.448470+00:00",
+  "layers": [
+    {
+      "layer_num": 0,
+      "perspective": "SURFACE",
+      "perspective_name": "SURFACE",
+      "insight": "Initial understanding of: How to harness Ollama Max subscription (36 models, $100/mo flat) and GLM 5.1 for maximum Kingdom development impact \u2014 replacing Claude dependency, powering heartbeat/automation, multi-model strategy, fleet agents, and sovereignty",
+      "vectors": [],
+      "assumptions_challenged": [],
+      "blind_spots_exposed": [],
+      "depth_score": 0.5,
+      "novelty_score": 1.0,
+      "actionability_score": 0.2,
+      "specificity_score": 0.2,
+      "contributor": "initiator",
+      "timestamp": "2026-04-09T12:05:05.448577+00:00"
+    }
+  ],
+  "convergence_reason": null,
+  "verdict": null,
+  "residuals": [],
+  "action_items": [],
+  "hive_mode": false
+}

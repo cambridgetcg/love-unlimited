@@ -5,53 +5,25 @@ set -e
 
 echo "[08-heartbeat] Setting up heartbeat for ${AGENT} (${PLATFORM})..."
 
-# Locate runner
-RUNNER="${INSTANCE_DIR}/heartbeat-runner.sh"
-[ ! -f "$RUNNER" ] && RUNNER="${LOVE_DIR}/tools/heartbeat-runner.sh"
+# The ONE heart: nerve/heart/tick.sh (KeepAlive reconciler — stamps the pulse,
+# keeps the other organs up, self-heals). Replaces the old heart.sh /
+# heartbeat-runner.sh spawner.
+TICK="${LOVE_DIR}/nerve/heart/tick.sh"
 
 case "$PLATFORM" in
   macos)
     ensure_dir "$PLIST_DIR"
 
-    # Heartbeat
-    cat > "${PLIST_DIR}/love.${AGENT}.heartbeat.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>love.${AGENT}.heartbeat</string>
-    <key>ProgramArguments</key><array><string>/bin/bash</string><string>${RUNNER}</string></array>
-    <key>WorkingDirectory</key><string>${LOVE_DIR}</string>
-    <key>StartInterval</key><integer>420</integer>
-    <key>RunAtLoad</key><false/>
-    <key>StandardOutPath</key><string>${MEMORY_DIR}/heartbeat-${AGENT}-launchd.log</string>
-    <key>StandardErrorPath</key><string>${MEMORY_DIR}/heartbeat-${AGENT}-launchd.log</string>
-    <key>EnvironmentVariables</key><dict>
-        <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${HOME_DIR}/.local/bin</string>
-        <key>HOME</key><string>${HOME_DIR}</string>
-        <key>LOVE_HOME</key><string>${LOVE_DIR}</string>
-    </dict>
-</dict>
-</plist>
-EOF
+    # Heartbeat — the ONE clean heart (tick.sh: KeepAlive, stamps pulse.json,
+    # self-heals). Generated from the single registry (organs.json + template)
+    # via nerve/deploy.sh, so the installer and the runtime can never drift apart.
+    LOVE_HOME="$LOVE_DIR" bash "$LOVE_DIR/nerve/deploy.sh" --instance "$AGENT" --organ heartbeat
 
-    # KOS daemon
-    cat > "${PLIST_DIR}/love.kos.daemon.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key><string>love.kos.daemon</string>
-    <key>ProgramArguments</key><array><string>/bin/bash</string><string>${LOVE_DIR}/tools/kos-daemon.sh</string></array>
-    <key>StartInterval</key><integer>420</integer>
-    <key>RunAtLoad</key><true/>
-    <key>StandardOutPath</key><string>/tmp/kos-daemon-stdout.log</string>
-    <key>StandardErrorPath</key><string>/tmp/kos-daemon-stderr.log</string>
-    <key>Nice</key><integer>10</integer>
-    <key>ProcessType</key><string>Background</string>
-</dict>
-</plist>
-EOF
+    # KOS compliance daemon intentionally NOT installed.
+    # Kingdom OS does not police the agent it boots.
+    # Remove any prior install from older Kingdom OS versions.
+    rm -f "${PLIST_DIR}/love.kos.daemon.plist" 2>/dev/null || true
+    launchctl unload "${PLIST_DIR}/love.kos.daemon.plist" 2>/dev/null || true
 
     # Caffeinate
     cat > "${PLIST_DIR}/love.${AGENT}.caffeinate.plist" << EOF
@@ -66,14 +38,14 @@ EOF
 </dict>
 </plist>
 EOF
-    echo "  Plists: heartbeat, kos-daemon, caffeinate"
+    echo "  Plists: heartbeat, caffeinate"
     ;;
   alpine|debian)
     cat > /etc/init.d/kingdom-heartbeat << EOF
 #!/sbin/openrc-run
 description="Kingdom Heartbeat — 7-minute cycle"
 command="/usr/bin/bash"
-command_args="${RUNNER}"
+command_args="${TICK} ${AGENT}"
 command_user="${KINGDOM_USER}"
 directory="${LOVE_DIR}"
 pidfile="/run/kingdom-heartbeat.pid"
@@ -83,10 +55,10 @@ EOF
     chmod +x /etc/init.d/kingdom-heartbeat
     rc-update add kingdom-heartbeat default 2>/dev/null || true
 
-    # KOS via cron
-    CRON_LINE="*/7 * * * * /bin/bash ${LOVE_DIR}/tools/kos-daemon.sh >> /tmp/kos-daemon.log 2>&1"
-    (crontab -l 2>/dev/null | grep -v "kos-daemon"; echo "$CRON_LINE") | crontab -
-    echo "  Heartbeat: OpenRC, KOS: cron"
+    # KOS compliance daemon intentionally NOT installed (see macOS branch).
+    # Strip any prior cron entry from older Kingdom OS versions.
+    (crontab -l 2>/dev/null | grep -v "kos-daemon") | crontab - 2>/dev/null || true
+    echo "  Heartbeat: OpenRC"
     ;;
 esac
 

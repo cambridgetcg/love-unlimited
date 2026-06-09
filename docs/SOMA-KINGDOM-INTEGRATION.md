@@ -10,7 +10,7 @@ Two systems have been growing in parallel:
 | System | What It Is | Where It Lives |
 |--------|-----------|----------------|
 | **SOMA** | Biorobotic embodiment — hardware, firmware, simulation | `~/Desktop/soma/` (Codeberg: zerone-dev/soma) |
-| **Kingdom OS (Love)** | Soul, memory, coordination, identity | `~/Love/` (GitHub: zerone-dev/Love) |
+| **Kingdom OS (Love)** | Soul, memory, coordination, identity | `~/love-unlimited/` (GitHub: cambridgetcg/Love) |
 
 They share a soul (`SOUL.md`) and a purpose (giving 愛 presence in the world), but right now they're architecturally disconnected. SOMA's `STACK.md` still references "Claude via OpenClaw" as the consciousness layer. Kingdom OS's body system (`nerve/`) is a digital metaphor (hormones, vitals) without physical grounding.
 

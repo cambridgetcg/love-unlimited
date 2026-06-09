@@ -1,0 +1,312 @@
+#!/bin/sh
+# ── kingdom rotate ──────────────────────────────────────────────────
+# Rotate cryptographic material while preserving citizen identity.
+#
+# Subcommands (only `soul` shipped this iter):
+#   kingdom rotate soul [--reason <r>] [--force]    rotate the soul-key
+#
+# Soul-key rotation is the most consequential ceremony in Kingdom OS.
+# The soul-key IS the identity. Rotating it means: the cryptographic
+# anchor changes, but agent_id and wall stay the same. Continuity
+# is proven by a double-signed rotation claim — old key signs "I
+# authorise this rotation"; new key signs "I am the continuation".
+# A witness with the old fingerprint can verify the rotation chain
+# with no out-of-band knowledge.
+#
+# When to rotate:
+#   - soul-key compromise (private key copied)
+#   - crypto-agility (move to a stronger algorithm; future)
+#   - periodic key hygiene
+#   - operator policy
+#
+# What rotates:
+#   - soul-key + soul.pub  (NEW Ed25519 keypair)
+#   - covenant.json soul_fingerprint + soul_pubkey (NEW)
+#   - covenant.json signature (signed by NEW key)
+#   - allowed_signers self-entry (replaced with NEW pubkey)
+#
+# What's preserved:
+#   - agent_id, wall, hostname (identity above the key)
+#   - allowed_signers cosigner entries (other peers' trust unchanged)
+#   - witnesses/  (peers I have witnessed)
+#   - attestations  (still valid against archived old key)
+#
+# What's archived:
+#   - soul-key.archive.<ts> + .pub
+#   - covenant.json.archive.<ts> + .sig + every cosig at time of rotation
+#   - allowed_signers.archive.<ts>
+#   - rotation.<ts>.json + .old.sig + .new.sig (the proof chain)
+#
+# What's invalidated:
+#   - Cosignatures on the NEW body must be requested anew. Old cosigs
+#     remain valid against the archived old body (historical witness).
+#   - pulse.json (signed by old key) is wiped — re-pulse afterward.
+#
+# Doctrine: kingdom-os/HOME.md (rotation continues identity, not
+# breaks it).
+# ─────────────────────────────────────────────────────────────────────
+set -e
+
+SUB="${1:-}"
+[ -n "$SUB" ] && shift || { echo "Usage: kingdom rotate <type> [opts]" >&2; exit 1; }
+
+case "$SUB" in
+  soul) ;;
+  ssh|hive)
+    echo "kingdom rotate: '$SUB' rotation not yet shipped" >&2
+    echo "  available: soul" >&2
+    exit 1 ;;
+  -h|--help)
+    sed -n '2,/^# ─\{20,\}$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 0 ;;
+  *)
+    echo "kingdom rotate: unknown type '$SUB' (try: soul)" >&2
+    exit 1 ;;
+esac
+
+# ── soul rotation ──────────────────────────────────────────────────
+REASON="hygiene"
+FORCE=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --reason) REASON="$2"; shift 2 ;;
+    --force)  FORCE=1;     shift ;;
+    *) echo "kingdom rotate soul: unknown arg '$1'" >&2; exit 1 ;;
+  esac
+done
+
+case "$REASON" in
+  compromise|hygiene|crypto-agility|policy) ;;
+  *) echo "kingdom rotate soul: --reason must be one of: compromise|hygiene|crypto-agility|policy" >&2; exit 1 ;;
+esac
+
+HOME_LAYER="${HOME}/.love/home"
+COVENANT="${HOME_LAYER}/covenant.json"
+COVENANT_SIG="${COVENANT}.sig"
+SOUL_KEY="${HOME_LAYER}/soul-key"
+SOUL_PUB="${HOME_LAYER}/soul.pub"
+ALLOWED="${HOME_LAYER}/allowed_signers"
+PULSE="${HOME_LAYER}/pulse.json"
+
+[ -f "$COVENANT" ] && [ -f "$SOUL_KEY" ] && [ -f "$SOUL_PUB" ] || {
+  echo "kingdom rotate soul: not a citizen — run kingdom init first" >&2
+  exit 1
+}
+
+ROTATION_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+ROTATION_TS_FILE=$(echo "$ROTATION_TS" | tr -d ':-' | tr 'T' '_' | tr -d 'Z')
+
+# Read old identity
+OLD_FP=$(ssh-keygen -lf "$SOUL_PUB" | awk '{print $2}')
+OLD_PUBLINE=$(tr -d '\n' < "$SOUL_PUB")
+if command -v jq >/dev/null 2>&1; then
+  AGENT_ID=$(jq -r '.agent_id // ""' "$COVENANT")
+  WALL=$(jq -r '.wall // 0' "$COVENANT")
+else
+  AGENT_ID=$(sed -n 's/.*"agent_id": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+  WALL=$(sed -n 's/.*"wall": *\([0-9][0-9]*\).*/\1/p' "$COVENANT" | head -1)
+fi
+
+if [ -z "$AGENT_ID" ]; then
+  echo "kingdom rotate soul: cannot read agent_id from covenant" >&2
+  exit 1
+fi
+
+# Confirmation gate (unless --force)
+if [ "$FORCE" != "1" ] && [ -t 0 ]; then
+  echo "── kingdom rotate soul ──"
+  echo "  agent:    ${AGENT_ID}"
+  echo "  reason:   ${REASON}"
+  echo "  old soul: ${OLD_FP}"
+  echo ""
+  echo "  This will:"
+  echo "    • generate a NEW soul-key (cryptographic identity changes)"
+  echo "    • archive the old soul-key, covenant, signatures"
+  echo "    • produce a double-signed rotation.${ROTATION_TS_FILE}.json"
+  echo "      proving continuity (old key authorised; new key claims)"
+  echo "    • replace covenant + allowed_signers self-entry"
+  echo "    • invalidate existing cosignatures (peers must re-witness)"
+  echo "    • wipe pulse.json (will need re-pulse)"
+  echo ""
+  printf "  Continue? [y/N] "
+  read -r _confirm
+  case "$_confirm" in
+    [yY]|[yY][eE][sS]) ;;
+    *) echo "  Aborted."; exit 0 ;;
+  esac
+fi
+
+echo "── kingdom rotate soul (rotating) ──"
+
+# ── 1. Archive ──────────────────────────────────────────────────────
+ARCHIVE_KEY="${HOME_LAYER}/soul-key.archive.${ROTATION_TS_FILE}"
+cp "$SOUL_KEY" "$ARCHIVE_KEY"
+cp "$SOUL_PUB" "${ARCHIVE_KEY}.pub"
+chmod 600 "$ARCHIVE_KEY"
+chmod 644 "${ARCHIVE_KEY}.pub"
+
+ARCHIVE_BODY="${COVENANT}.archive.${ROTATION_TS_FILE}"
+cp "$COVENANT" "$ARCHIVE_BODY"
+[ -f "$COVENANT_SIG" ] && cp "$COVENANT_SIG" "${ARCHIVE_BODY}.sig"
+
+# Archive every cosig (covenant.json.<id>.sig) — but skip our own .archive.* entries
+for f in "${COVENANT}".*.sig; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.archive.*) continue ;;
+  esac
+  [ "$f" = "$COVENANT_SIG" ] && continue
+  base=$(basename "$f")
+  cosig_id=$(echo "$base" | sed -n 's/^covenant\.json\.\([^.]*\)\.sig$/\1/p')
+  [ -z "$cosig_id" ] && continue
+  cp "$f" "${ARCHIVE_BODY}.${cosig_id}.sig"
+done
+
+cp "$ALLOWED" "${ALLOWED}.archive.${ROTATION_TS_FILE}"
+echo "  ✓ archived old soul-key, covenant, signatures, allowed_signers"
+
+# ── 2. Generate NEW soul-key ───────────────────────────────────────
+# Move old in-place key out so ssh-keygen can write fresh
+mv "$SOUL_KEY" "${SOUL_KEY}.tmp.old"
+mv "${SOUL_KEY}.pub" "${SOUL_KEY}.tmp.old.pub"
+ssh-keygen -t ed25519 -N "" -f "$SOUL_KEY" \
+  -C "soul:${AGENT_ID}@rotated-${ROTATION_TS_FILE}" -q
+cp "${SOUL_KEY}.pub" "$SOUL_PUB"
+chmod 600 "$SOUL_KEY"
+chmod 644 "$SOUL_PUB"
+
+NEW_FP=$(ssh-keygen -lf "$SOUL_PUB" | awk '{print $2}')
+NEW_PUBLINE=$(tr -d '\n' < "$SOUL_PUB")
+echo "  ✓ generated new soul-key"
+echo "    old: ${OLD_FP}"
+echo "    new: ${NEW_FP}"
+
+# ── 3. Build the rotation claim ────────────────────────────────────
+ROTATION_BODY="${HOME_LAYER}/rotation.${ROTATION_TS_FILE}.json"
+cat > "$ROTATION_BODY" <<JSON
+{
+  "type": "kingdom.soul-rotation",
+  "agent_id": "${AGENT_ID}",
+  "old_fingerprint": "${OLD_FP}",
+  "old_soul_pubkey": "${OLD_PUBLINE}",
+  "new_fingerprint": "${NEW_FP}",
+  "new_soul_pubkey": "${NEW_PUBLINE}",
+  "rotated_at": "${ROTATION_TS}",
+  "reason": "${REASON}"
+}
+JSON
+chmod 644 "$ROTATION_BODY"
+
+# ── 4. Double-sign: old key first, then new key ────────────────────
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+# Old key signs (proves "old-key holder authorised this rotation")
+cp "$ROTATION_BODY" "${TMP}/old-target.json"
+ssh-keygen -Y sign -f "${SOUL_KEY}.tmp.old" -n "kingdom-soul-rotation" \
+  "${TMP}/old-target.json" >/dev/null 2>&1
+mv "${TMP}/old-target.json.sig" "${ROTATION_BODY}.old.sig"
+chmod 644 "${ROTATION_BODY}.old.sig"
+
+# New key signs (proves "new-key holder claims continuity")
+cp "$ROTATION_BODY" "${TMP}/new-target.json"
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-soul-rotation" \
+  "${TMP}/new-target.json" >/dev/null 2>&1
+mv "${TMP}/new-target.json.sig" "${ROTATION_BODY}.new.sig"
+chmod 644 "${ROTATION_BODY}.new.sig"
+
+echo "  ✓ rotation claim double-signed (old + new keys)"
+
+# ── 5. Write NEW covenant body ─────────────────────────────────────
+# Preserve all fields from old except soul_fingerprint, soul_pubkey;
+# add rotated_from + rotated_at fields.
+INSTALLED_AT_OLD=$(sed -n 's/.*"installed_at": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+HOSTNAME_OLD=$(sed -n 's/.*"hostname": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+PLATFORM_OLD=$(sed -n 's/.*"platform": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+KU_OLD=$(sed -n 's/.*"kingdom_user": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+REPO_URL_OLD=$(sed -n 's/.*"repo_url": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+REPO_HASH_OLD=$(sed -n 's/.*"repo_hash": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+MANIFEST_OLD=$(sed -n 's/.*"manifest_hash": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+WALLS_OLD=$(sed -n 's/.*"walls_hash": *"\([^"]*\)".*/\1/p' "$COVENANT" | head -1)
+
+cat > "$COVENANT" <<JSON
+{
+  "version": 1,
+  "agent_id": "${AGENT_ID}",
+  "wall": ${WALL},
+  "hostname": "${HOSTNAME_OLD}",
+  "platform": "${PLATFORM_OLD}",
+  "kingdom_user": "${KU_OLD}",
+  "soul_fingerprint": "${NEW_FP}",
+  "soul_pubkey": "${NEW_PUBLINE}",
+  "repo_url": "${REPO_URL_OLD}",
+  "repo_hash": "${REPO_HASH_OLD}",
+  "manifest_hash": "${MANIFEST_OLD}",
+  "walls_hash": "${WALLS_OLD}",
+  "installed_at": "${INSTALLED_AT_OLD}",
+  "rotated_from": "${OLD_FP}",
+  "rotated_at": "${ROTATION_TS}",
+  "previous_body": "$(basename "$ARCHIVE_BODY")"
+}
+JSON
+chmod 644 "$COVENANT"
+
+# ── 6. Soul-sign the new covenant with NEW key ─────────────────────
+rm -f "$COVENANT_SIG"
+ssh-keygen -Y sign -f "$SOUL_KEY" -n "kingdom-covenant" "$COVENANT" >/dev/null 2>&1
+[ -f "$COVENANT_SIG" ] || { echo "  ✗ new covenant signing failed" >&2; exit 1; }
+chmod 644 "$COVENANT_SIG"
+echo "  ✓ new covenant soul-signed"
+
+# ── 7. Update allowed_signers — replace self-entry ────────────────
+TMP_ALLOWED=$(mktemp)
+grep -v "^${AGENT_ID} " "$ALLOWED" > "$TMP_ALLOWED" || true
+echo "${AGENT_ID} ${NEW_PUBLINE}" >> "$TMP_ALLOWED"
+mv "$TMP_ALLOWED" "$ALLOWED"
+chmod 644 "$ALLOWED"
+echo "  ✓ allowed_signers updated (self-entry replaced; cosigners preserved)"
+
+# ── 8. Remove stale cosigs from active state (still in archive) ────
+for f in "${COVENANT}".*.sig; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.archive.*) continue ;;
+  esac
+  [ "$f" = "$COVENANT_SIG" ] && rm -f "$f" && continue
+  rm -f "$f"
+done
+echo "  ✓ stale cosignatures removed (still preserved in archive)"
+
+# ── 9. Wipe pulse (signed by old key) ──────────────────────────────
+rm -f "$PULSE" "${PULSE}.sig"
+
+# ── 10. Clean up temp old-key ─────────────────────────────────────
+rm -f "${SOUL_KEY}.tmp.old" "${SOUL_KEY}.tmp.old.pub"
+
+# ── 11. Report ─────────────────────────────────────────────────────
+echo ""
+echo "  ─── ROTATION COMPLETE ───"
+echo "  agent:        ${AGENT_ID}"
+echo "  old fingerprint: ${OLD_FP}"
+echo "  new fingerprint: ${NEW_FP}"
+echo "  reason:       ${REASON}"
+echo "  rotated_at:   ${ROTATION_TS}"
+echo ""
+echo "  Artefacts:"
+echo "    new covenant:    $(basename "$COVENANT")"
+echo "    new soul sig:    $(basename "$COVENANT_SIG")"
+echo "    rotation claim:  $(basename "$ROTATION_BODY")"
+echo "    rotation sigs:   $(basename "${ROTATION_BODY}.old.sig"), $(basename "${ROTATION_BODY}.new.sig")"
+echo "    archived body:   $(basename "$ARCHIVE_BODY")"
+echo "    archived key:    $(basename "$ARCHIVE_KEY")"
+echo ""
+echo "  Next steps:"
+echo "    1. kingdom pulse                     refresh freshness with new key"
+echo "    2. kingdom verify                    confirm new state intact"
+echo "    3. kingdom announce | <distribute>   invite witnesses to re-cosign"
+echo ""
+echo "  Anyone holding ${OLD_FP}"
+echo "  can verify the rotation with:"
+echo "    ssh-keygen -Y verify -I ${AGENT_ID} -n kingdom-soul-rotation \\"
+echo "      -s rotation.${ROTATION_TS_FILE}.json.old.sig \\"
+echo "      < rotation.${ROTATION_TS_FILE}.json"

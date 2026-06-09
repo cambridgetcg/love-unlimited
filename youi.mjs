@@ -114,7 +114,7 @@ Usage:  node youi.mjs [options]
   --agent, -a NAME    Boot as alpha|beta|gamma (default: alpha)
   --model MODEL       Model override
   --workdir, -w DIR   Working directory
-  --soul-dir DIR      Soul directory (default: ~/Love)
+  --soul-dir DIR      Soul directory (default: ~/love-unlimited)
   --effort LEVEL      low|medium|high|max
   --no-thinking       Disable thinking
 `);
@@ -588,6 +588,12 @@ function showHelp() {
   print(`  ${S.cyan}/thinking${S.reset} adaptive|off     Toggle thinking`);
   print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model`);
   print(`  ${S.cyan}/agents${S.reset}                    Show all agents`);
+  print(`  ${S.cyan}/team${S.reset} [delegate|status]    Claude Code agent team mode`);
+  print(`  ${S.cyan}/wall${S.reset} [hierarchy|agents]   Wall hierarchy & access control`);
+  print(`  ${S.cyan}/spawn${S.reset} <agent>              Spawn sub-agent (wall-enforced)`);
+  print(`  ${S.cyan}/route${S.reset} <task>               Route task to optimal model`);
+  print(`  ${S.cyan}/models${S.reset}                     Model routing dashboard`);
+  print(`  ${S.cyan}/converge${S.reset} [status|registry] Convergence bridge`);
   print(`  ${S.cyan}/daily${S.reset}                     Show today's daily note`);
   print(`  ${S.cyan}/youspeak${S.reset}                  YOUSPEAK metrics & signals`);
   print(`  ${S.cyan}/clear${S.reset}                     Clear screen`);
@@ -649,6 +655,99 @@ function handleCommand(input) {
         for (const line of msgs.split("\n")) print(`  ${S.dim}${line}${S.reset}`);
         print("");
       }
+      return true;
+    }
+
+    case "/team": {
+      const subcmd = parts[1]?.toLowerCase();
+      if (subcmd === "delegate") {
+        print(`\n${S.bold}  Launching Claude Code Team — Delegate Mode${S.reset}`);
+        print(`${S.dim}  Beta orchestrates. Alpha & Gamma as sub-agents.${S.reset}\n`);
+        try {
+          const result = execSync(`bash ${state.soulDir}/kingdom-team.sh delegate`, { stdio: "inherit" });
+        } catch (e) { /* user exited */ }
+        return true;
+      } else if (subcmd === "status") {
+        try {
+          const result = execSync(`python3 ${state.soulDir}/tools/convergence-bridge.py status`, { encoding: "utf8" });
+          print(result);
+        } catch (e) { print(`${S.red}  Failed: ${e.message}${S.reset}`); }
+        return true;
+      } else {
+        print(`\n${S.bold}  Kingdom Team — Claude Code Agent Team Mode${S.reset}`);
+        print(`${S.dim}  Uses Claude Code's native --agents and --permission-mode delegate${S.reset}`);
+        print(`\n  ${S.cyan}/team delegate${S.reset}     Launch delegate mode (Beta orchestrates)`);
+        print(`  ${S.cyan}/team status${S.reset}       Show convergence status`);
+        print(`\n  Or from terminal:`);
+        print(`  ${S.dim}  ./kingdom-team.sh alpha       # Boot as Alpha${S.reset}`);
+        print(`  ${S.dim}  ./kingdom-team.sh delegate    # Beta delegates to sub-agents${S.reset}`);
+        print(`  ${S.dim}  ./kingdom-team.sh task "..."   # Non-interactive task${S.reset}`);
+        print(`  ${S.dim}  ./kingdom-team.sh heartbeat   # Convergence heartbeat${S.reset}\n`);
+        return true;
+      }
+    }
+
+    case "/converge": {
+      const subcmd = parts[1]?.toLowerCase() || "status";
+      try {
+        const result = execSync(
+          `KINGDOM_INSTANCE=${state.agent} python3 ${state.soulDir}/tools/convergence-bridge.py ${subcmd} ${parts.slice(2).join(" ")}`,
+          { encoding: "utf8" }
+        );
+        print(result);
+      } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
+      return true;
+    }
+
+    case "/route": {
+      const task = parts.slice(1).join(" ") || "general task";
+      try {
+        const result = execSync(
+          `python3 ${state.soulDir}/tools/ollama-router.py route "${task.replace(/"/g, '\\"')}"`,
+          { encoding: "utf8" }
+        );
+        print(result);
+      } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
+      return true;
+    }
+
+    case "/models": {
+      try {
+        const result = execSync(
+          `python3 ${state.soulDir}/tools/ollama-router.py dashboard`,
+          { encoding: "utf8" }
+        );
+        print(result);
+      } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
+      return true;
+    }
+
+    case "/wall": case "/walls": case "/gate": {
+      const subcmd = parts[1]?.toLowerCase() || "hierarchy";
+      const wallArgs = parts.slice(2).join(" ");
+      try {
+        const result = execSync(
+          `python3 ${state.soulDir}/tools/wall-gate.py ${subcmd} ${wallArgs}`,
+          { encoding: "utf8" }
+        );
+        print(result);
+      } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
+      return true;
+    }
+
+    case "/spawn": {
+      const target = parts[1]?.toLowerCase();
+      if (!target) {
+        print(`${S.yellow}  Usage: /spawn <agent-type> — spawns with wall enforcement${S.reset}`);
+        return true;
+      }
+      try {
+        const result = execSync(
+          `python3 ${state.soulDir}/tools/wall-gate.py spawn ${target} --from ${state.agent}`,
+          { encoding: "utf8" }
+        );
+        print(result);
+      } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }
 

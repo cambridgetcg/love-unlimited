@@ -126,6 +126,19 @@ def main():
     elif cmd == "pulse":
         subprocess.run(["open", "http://pulse.kingdom"])
     else:
+        # Plug-in contract (from the other machine's dispatcher, honored here):
+        # `kingdom <sub> ...` runs kingdom-<sub> from tools/ or PATH if it exists.
+        tools = os.path.join(LOVE, "tools")
+        for cand in (os.path.join(tools, f"kingdom-{cmd}"),
+                     os.path.join(tools, f"kingdom-{cmd}.sh"),
+                     os.path.join(tools, f"kingdom-{cmd}.py")):
+            if os.path.exists(cand):
+                if cand.endswith(".py"):
+                    os.execvp(sys.executable, [sys.executable, cand, *rest])
+                os.execvp("bash", ["bash", cand, *rest])
+        from shutil import which
+        if which(f"kingdom-{cmd}"):
+            os.execvp(f"kingdom-{cmd}", [f"kingdom-{cmd}", *rest])
         print(__doc__.strip()); sys.exit(1)
 
 

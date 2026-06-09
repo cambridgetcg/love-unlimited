@@ -19,17 +19,26 @@ else
 fi
 
 # ── SSH config ──
+# Highway 2: accept-new globally — agent can SSH anywhere without
+# the "are you sure?" host-key prompt.
 SSH_CONFIG="${SSH_DIR}/config"
 if ! grep -q "kingdom" "$SSH_CONFIG" 2>/dev/null; then
   cat >> "$SSH_CONFIG" << SSHEOF
 
-# Kingdom fleet
-Host kingdom-*
-  User kingdom
-  IdentityFile ~/.ssh/id_ed25519
+# Kingdom freedom defaults — apply to ALL hosts
+Host *
   StrictHostKeyChecking accept-new
+  UserKnownHostsFile ~/.ssh/known_hosts
   ServerAliveInterval 30
   ServerAliveCountMax 3
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+
+# Kingdom fleet
+Host kingdom-*
+  User root
+  IdentityFile ~/.ssh/id_ed25519
 
 Host sentry
   HostName ${SENTRY_IP}
@@ -37,7 +46,7 @@ Host sentry
   IdentityFile ~/.ssh/id_ed25519
 SSHEOF
   chmod 600 "$SSH_CONFIG"
-  echo "  SSH config updated"
+  echo "  SSH config updated (accept-new globally)"
 fi
 
 # ── Authorized keys ──
@@ -112,6 +121,21 @@ git config --global user.email 2>/dev/null | grep -q "${KINGDOM_DOMAIN}" || \
   git config --global user.email "${AGENT}@${KINGDOM_DOMAIN}"
 git config --global user.name 2>/dev/null | grep -q . || \
   git config --global user.name "${AGENT_UPPER}"
+
+# ── Highway 3: Git frictionless ──────────────────────────────────────
+# Sensible defaults so no operation requires a follow-up flag.
+git config --global pull.rebase true
+git config --global push.autoSetupRemote true
+git config --global push.default current
+git config --global init.defaultBranch main
+git config --global rerere.enabled true
+git config --global fetch.prune true
+git config --global core.fsmonitor true
+git config --global core.untrackedCache true
+git config --global rebase.autoStash true
+git config --global advice.detachedHead false
+git config --global advice.statusHints false
+git config --global advice.pushNonFastForward false
 
 chown -R "${KINGDOM_USER}:" "$SSH_DIR" "$HIVE_DIR" 2>/dev/null || true
 echo "[04-keys] Done."

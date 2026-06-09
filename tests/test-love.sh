@@ -5,9 +5,9 @@
 # mechanics, HIVE connectivity, and Kingdom metrics schema.
 #
 # Usage:
-#   bash ~/Desktop/Love/tests/test-love.sh          # Run all tests
-#   bash ~/Desktop/Love/tests/test-love.sh --quick   # Skip network tests (HIVE, VPS)
-#   bash ~/Desktop/Love/tests/test-love.sh --verbose  # Show test details
+#   bash ~/love-unlimited/tests/test-love.sh          # Run all tests
+#   bash ~/love-unlimited/tests/test-love.sh --quick   # Skip network tests (HIVE, VPS)
+#   bash ~/love-unlimited/tests/test-love.sh --verbose  # Show test details
 #
 # Exit code: 0 if all pass, 1 if any fail
 
@@ -15,7 +15,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-LOVE_DIR="$HOME/Desktop/Love"
+LOVE_DIR="$HOME/love-unlimited"
 PASS=0
 FAIL=0
 SKIP=0
@@ -62,7 +62,7 @@ BOOT_FILES=(
   "$LOVE_DIR/USER.md"
   "$LOVE_DIR/KINGDOM.md"
   "$LOVE_DIR/LOVE.md"
-  "$LOVE_DIR/ARCHITECTURE.md"
+  "$LOVE_DIR/docs/ARCHITECTURE.md"
   "$LOVE_DIR/love.json"
   "$LOVE_DIR/memory/long-term/MEMORY.md"
   "$LOVE_DIR/memory/openclaw-MEMORY.md"
@@ -103,11 +103,12 @@ for instance in alpha beta gamma; do
     fi
   done
 
-  agent_json="$LOVE_DIR/agents/$instance.json"
-  if [ -r "$agent_json" ]; then
-    pass "agents/$instance.json exists"
+  # Agent identity now lives in instances/*/identity.md + love.json (agents/*.json removed)
+  identity_md="$LOVE_DIR/instances/$instance/identity.md"
+  if [ -r "$identity_md" ]; then
+    pass "instances/$instance/identity.md exists"
   else
-    fail "agents/$instance.json missing"
+    fail "instances/$instance/identity.md missing"
   fi
 done
 
@@ -117,7 +118,7 @@ section "3. CLAUDE.md Boot Path Validation (no broken references)"
 
 for instance in alpha beta gamma; do
   claude_md="$LOVE_DIR/instances/$instance/CLAUDE.md"
-  paths=$(grep -oE '~/Desktop/Love/[A-Za-z0-9_./-]+' "$claude_md" 2>/dev/null | sort -u)
+  paths=$(grep -oE '~/love-unlimited/[A-Za-z0-9_./-]+' "$claude_md" 2>/dev/null | sort -u)
   while IFS= read -r ref_path; do
     [ -z "$ref_path" ] && continue
     # Strip trailing punctuation (periods, commas from markdown sentences)
@@ -141,7 +142,7 @@ section "4. HEARTBEAT.md Path Validation"
 
 for instance in alpha beta gamma; do
   heartbeat_md="$LOVE_DIR/instances/$instance/HEARTBEAT.md"
-  paths=$(grep -oE '~/Desktop/Love/[A-Za-z0-9_./-]+' "$heartbeat_md" 2>/dev/null | sort -u)
+  paths=$(grep -oE '~/love-unlimited/[A-Za-z0-9_./-]+' "$heartbeat_md" 2>/dev/null | sort -u)
   while IFS= read -r ref_path; do
     [ -z "$ref_path" ] && continue
     # Strip trailing punctuation (periods, commas from markdown sentences)
@@ -168,9 +169,7 @@ JSON_FILES=(
   "$LOVE_DIR/memory/dev-state.json"
   "$LOVE_DIR/memory/kingdom-metrics.json"
   "$LOVE_DIR/memory/loop/loop-state.json"
-  "$LOVE_DIR/agents/alpha.json"
-  "$LOVE_DIR/agents/beta.json"
-  "$LOVE_DIR/agents/gamma.json"
+  # agents/*.json removed — love.json is the canonical config schema
 )
 
 for jf in "${JSON_FILES[@]}"; do
@@ -347,34 +346,45 @@ fi
 
 # ── 10. Agent JSON Cross-Reference ──────────────────────────────────────────
 
-section "10. Agent JSON Cross-Reference with love.json"
+section "10. love.json ↔ instances/*/identity.md Cross-Reference"
+
+# agents/*.json was removed in integration review 2026-04-08.
+# love.json is the canonical config schema; instances/*/identity.md is the
+# canonical human-readable identity. We verify love.json parses cleanly
+# and that each core instance is present in both stores.
 
 XREF_RESULT=$(python3 -c "
-import json, sys
+import json, re, sys
+from pathlib import Path
 
-love = json.load(open('$LOVE_DIR/love.json'))
+love_path = Path('$LOVE_DIR/love.json')
 errors = []
 
+try:
+    love = json.load(open(love_path))
+except Exception as e:
+    print(f'XREF_FAIL:love.json parse error: {e}')
+    sys.exit(1)
+
 for inst in ['alpha', 'beta', 'gamma']:
-    agent_path = '$LOVE_DIR/agents/' + inst + '.json'
-    try:
-        agent = json.load(open(agent_path))
-    except Exception as e:
-        errors.append(f'{inst}.json load error: {e}')
+    love_inst = love.get('instances', {}).get(inst)
+    if not love_inst:
+        errors.append(f'love.json missing instance: {inst}')
         continue
 
-    love_inst = love['instances'].get(inst, {})
+    id_md = Path('$LOVE_DIR/instances') / inst / 'identity.md'
+    if not id_md.exists():
+        errors.append(f'instances/{inst}/identity.md missing')
+        continue
 
-    if agent.get('emoji') != love_inst.get('emoji'):
-        errors.append(f'{inst} emoji mismatch: agent={agent.get(\"emoji\")} love={love_inst.get(\"emoji\")}')
-    if agent.get('role') != love_inst.get('role'):
-        errors.append(f'{inst} role mismatch: agent={agent.get(\"role\")} love={love_inst.get(\"role\")}')
-    if agent.get('device') != love_inst.get('device'):
-        errors.append(f'{inst} device mismatch: agent={agent.get(\"device\")} love={love_inst.get(\"device\")}')
+    text = id_md.read_text()
+    emoji = love_inst.get('emoji', '')
+    role  = love_inst.get('role', '')
 
-    for field in ['name', 'emoji', 'role', 'model', 'heartbeat', 'duties']:
-        if field not in agent:
-            errors.append(f'{inst}.json missing field: {field}')
+    if emoji and emoji not in text:
+        errors.append(f'{inst}: emoji {emoji!r} in love.json not found in identity.md')
+    if role and role.lower() not in text.lower():
+        errors.append(f'{inst}: role {role!r} in love.json not found in identity.md')
 
 if errors:
     for e in errors:
@@ -384,9 +394,9 @@ else:
     print('XREF_OK')
 " 2>&1) || true
 if echo "$XREF_RESULT" | grep -q "XREF_OK"; then
-  pass "Agent JSON cross-reference consistent"
+  pass "love.json ↔ identity.md cross-reference consistent"
 else
-  fail "Agent JSON cross-reference inconsistent: $XREF_RESULT"
+  fail "love.json ↔ identity.md cross-reference inconsistent: $XREF_RESULT"
 fi
 
 # ── 11. Instance Identity Consistency ────────────────────────────────────────
@@ -405,50 +415,44 @@ done
 
 # ── 12. Heartbeat Runner Script ─────────────────────────────────────────────
 
-section "12. Heartbeat Runner Script"
+section "12. Heart (tick.sh)"
 
-RUNNER="$LOVE_DIR/tools/heartbeat-runner.sh"
+RUNNER="$LOVE_DIR/nerve/heart/tick.sh"
 
 if [ -x "$RUNNER" ]; then
-  pass "heartbeat-runner.sh is executable"
+  pass "tick.sh is executable"
 else
-  fail "heartbeat-runner.sh not executable"
+  fail "tick.sh not executable"
 fi
 
 if head -1 "$RUNNER" | grep -q '^#!/bin/bash'; then
-  pass "heartbeat-runner.sh has bash shebang"
+  pass "tick.sh has bash shebang"
 else
-  fail "heartbeat-runner.sh missing bash shebang"
+  fail "tick.sh missing bash shebang"
 fi
 
-if grep -q 'LOVE_DIR=.*Desktop/Love' "$RUNNER"; then
-  pass "heartbeat-runner.sh references LOVE_DIR"
+if grep -q 'LOVE_DIR=' "$RUNNER"; then
+  pass "tick.sh references LOVE_DIR"
 else
-  fail "heartbeat-runner.sh LOVE_DIR not set"
+  fail "tick.sh LOVE_DIR not set"
 fi
 
-if grep -q 'SPAWN_QUEUE=' "$RUNNER"; then
-  pass "heartbeat-runner.sh defines SPAWN_QUEUE"
+if grep -q 'pulse.py' "$RUNNER"; then
+  pass "tick.sh stamps the pulse"
 else
-  fail "heartbeat-runner.sh missing SPAWN_QUEUE definition"
+  fail "tick.sh does not stamp pulse.json"
 fi
 
-if grep -q '/opt/homebrew/bin/claude' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses absolute path to claude CLI"
+if grep -q 'organs.json' "$RUNNER"; then
+  pass "tick.sh reconciles from the organ registry"
 else
-  fail "heartbeat-runner.sh uses relative claude path (will fail headless)"
+  fail "tick.sh does not read organs.json"
 fi
 
-if grep -q '\-\-dangerously-skip-permissions' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses --dangerously-skip-permissions"
+if grep -q 'while true' "$RUNNER"; then
+  pass "tick.sh is a long-lived loop (KeepAlive-supervised)"
 else
-  fail "heartbeat-runner.sh missing --dangerously-skip-permissions (will hang headless)"
-fi
-
-if grep -q '\-\-no-session-persistence' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses --no-session-persistence"
-else
-  fail "heartbeat-runner.sh missing --no-session-persistence"
+  fail "tick.sh is not a persistent loop"
 fi
 
 # ── 13. Spawn Queue Mechanics ────────────────────────────────────────────────
@@ -621,10 +625,10 @@ fi
 
 section "19. Heartbeat Runner Dry Run (bash -n)"
 
-if bash -n "$LOVE_DIR/tools/heartbeat-runner.sh" 2>/dev/null; then
-  pass "heartbeat-runner.sh passes bash syntax check"
+if bash -n "$LOVE_DIR/nerve/heart/tick.sh" 2>/dev/null; then
+  pass "tick.sh passes bash syntax check"
 else
-  fail "heartbeat-runner.sh has bash syntax errors"
+  fail "tick.sh has bash syntax errors"
 fi
 
 if bash -n "$LOVE_DIR/memory/spawn-queue.sh" 2>/dev/null; then
@@ -635,14 +639,14 @@ fi
 
 # ── 20. Coordinator Prompt Validation ────────────────────────────────────────
 
-section "20. Coordinator Prompt Validation"
+section "20. Heart Reconciler Validation"
 
-RUNNER_CONTENT=$(cat "$LOVE_DIR/tools/heartbeat-runner.sh")
+RUNNER_CONTENT=$(cat "$LOVE_DIR/nerve/heart/tick.sh")
 
-if echo "$RUNNER_CONTENT" | grep -q 'HEARTBEAT.md'; then
-  pass "Coordinator prompt references HEARTBEAT.md"
+if echo "$RUNNER_CONTENT" | grep -q 'reconcile'; then
+  pass "tick.sh reconciles the registered organs"
 else
-  fail "Coordinator prompt missing HEARTBEAT.md reference"
+  fail "tick.sh missing organ reconcile step"
 fi
 
 if echo "$RUNNER_CONTENT" | grep -q 'spawn-queue.sh'; then
@@ -728,7 +732,7 @@ MD_FILES=(
   "$LOVE_DIR/USER.md"
   "$LOVE_DIR/KINGDOM.md"
   "$LOVE_DIR/LOVE.md"
-  "$LOVE_DIR/ARCHITECTURE.md"
+  "$LOVE_DIR/docs/ARCHITECTURE.md"
   "$LOVE_DIR/memory/long-term/MEMORY.md"
 )
 

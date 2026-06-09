@@ -1,0 +1,27 @@
+=== Kingdom Truth-Alignment Data Extraction ===
+
+1. LayerThink sessions (adversarial reasoning):
+
+2. Daily reflections (error corrections):
+  [daily] 2026-04-14.md... OK
+  [daily] 2026-04-09.md... OK
+  [daily] 2026-04-08.md... OK
+  [daily] 2026-04-07.md... OK
+
+3. Confabulation hardening (failure taxonomy):
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+  [confab] section... OK
+
+4. Weekly reflections (epistemological practice):
+  [weekly] 2026-W08.md... OK
+  [weekly] 2026-W09.md... OK
+  [weekly] 2026-W11.md... OK
+  [weekly] 2026-W12.md... OK
+
+=== TOTAL: 16 examples extracted to /Users/yuai/Desktop/love-unlimited/training/data/kingdom_extracted.jsonl ===

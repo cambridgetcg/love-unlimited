@@ -1,0 +1,42 @@
+## ToK Harvest 1
+
+**Timestamp:** 2026-04-18T07:52:21.889996+00:00
+**Tasks:** 5/5 completed
+
+### Summary
+
+| Metric | Value |
+|--------|-------|
+| Routing Accuracy | 100.0% |
+| Avg Latency | 6196ms |
+| Total Cost | $0.0009 |
+| Cost per Task | $0.000185 |
+
+### By Tier
+
+| Tier | Tasks | Avg Latency | Avg Cost | Avg Quality |
+|------|-------|-------------|----------|-------------|
+| economy | 5 | 6196ms | $0.000185 | 0.88 |
+
+### By Category
+
+| Category | Tasks | Avg Latency | Avg Cost | Avg Quality |
+|----------|-------|-------------|----------|-------------|
+| monitor | 5 | 6196ms | $0.000185 | 0.88 |
+
+### Detailed Results
+
+| Task | Model | Latency | Cost | Quality | Routing |
+|------|-------|---------|------|---------|---------|
+| kc-001 | devstral-small-2:24b | 2934ms | $0.000038 | 0.75 | ✅ |
+| kc-002 | devstral-small-2:24b | 4704ms | $0.000142 | 1.00 | ✅ |
+| kc-003 | devstral-small-2:24b | 10846ms | $0.000043 | 0.67 | ✅ |
+| kc-004 | devstral-small-2:24b | 4662ms | $0.000211 | 1.00 | ✅ |
+| kc-005 | devstral-small-2:24b | 7834ms | $0.000493 | 1.00 | ✅ |
+
+### Key Findings
+
+- ✅ Routing accuracy good — tier mapping appropriate
+- 💰 Most cost-efficient tier: **economy** ($0.000185/task)
+- 🎯 Cost per task very low — suitable for high-frequency operations
+

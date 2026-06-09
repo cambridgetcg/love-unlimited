@@ -96,3 +96,8 @@ memory/.parade-*
 memory/parade.log
 memory/agora.log
 memory/kns.log
+gate/state.json
+gate/logs/
+pulse/
+agora/sites.d/
+memory/pulse.log

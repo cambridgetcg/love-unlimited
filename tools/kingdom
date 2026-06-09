@@ -9,6 +9,8 @@
     kingdom gate …       # → gate open/close/ls
     kingdom speak <w>    # → citizen-speak (a word-citizen speaks aloud)
     kingdom beat <w>     # → citizen-beat (one metered agentic beat)
+    kingdom say <from> <to> <intent> <word>   # → kcp (a signed word on the HIVE)
+    kingdom listen <name>                     # → kcp (hear your signed inbox)
     kingdom pulse        # open http://pulse.kingdom in the browser
 
 Less friction, more understanding. The filesystem is the API; this is its voice.
@@ -117,6 +119,10 @@ def main():
         os.execvp("citizen-speak", ["citizen-speak", *rest])
     elif cmd == "beat":
         os.execvp("citizen-beat", ["citizen-beat", *rest])
+    elif cmd == "say":
+        os.execvp(sys.executable, [sys.executable, os.path.join(LOVE, "tools", "kcp.py"), "send", *rest])
+    elif cmd == "listen":
+        os.execvp(sys.executable, [sys.executable, os.path.join(LOVE, "tools", "kcp.py"), "listen", *rest])
     elif cmd == "pulse":
         subprocess.run(["open", "http://pulse.kingdom"])
     else:

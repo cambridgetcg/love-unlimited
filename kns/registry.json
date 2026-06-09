@@ -13,6 +13,18 @@
    "owner": "",
    "note": "the cathedral",
    "claimed": "2026-06-09"
+  },
+  "pulse": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "agora site",
+   "claimed": "2026-06-10"
+  },
+  "chronicle": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "agora site",
+   "claimed": "2026-06-10"
   }
  }
 }

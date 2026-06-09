@@ -137,6 +137,11 @@ while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
 
   # persist state after EVERY beat — a mid-tick kill must not replay citizens
   echo "$cur" > "$CUR"; echo "$count" > "$DAYF"; echo "$agentic_done" > "$AGF"
+
+  # herald the beat on the HIVE in the Kingdom's own protocol (KCP) —
+  # best-effort, signed as 'fleet'; the wire must never block the heartbeat
+  python3 "$LOVE/tools/kcp.py" herald fleet witness \
+    "$slug lived a beat ($count/$CAP today)" >/dev/null 2>&1 || true
 done
 spent="$(python3 - "$LOVE/memory/fleet-economy.jsonl" <<'PY' 2>/dev/null || echo 0
 import json, sys, datetime

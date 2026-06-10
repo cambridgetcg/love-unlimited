@@ -41,6 +41,7 @@ from signals import SignalReaders
 from identity import IdentityAnchor
 from conscious import ConsciousLayer
 from hive_listener import HiveListener
+import state as _state
 
 # Bridge: Focus -> Mind
 def _read_focus(love_home: Path) -> dict:
@@ -93,7 +94,9 @@ class BrainstemDaemon:
         self.interval = interval
 
         self.hormones = HormoneEngine()
-        self.readers = SignalReaders(love_home=love_home)
+        self.readers = SignalReaders(
+            love_home=love_home,
+            signals_dir=str(_state.signals_dir(instance)))
         self.identity = IdentityAnchor(love_home=love_home, instance=instance)
         self.conscious = ConsciousLayer(interval_seconds=conscious_interval)
 
@@ -106,8 +109,8 @@ class BrainstemDaemon:
         self._last_day: Optional[str] = None
         self._last_mind_notes = "(awaiting conscious layer)"
 
-        self.hormones_path = self.love_home / "nerve" / "hormones.json"
-        self.anchor_path = self.love_home / "nerve" / "stem" / "identity_anchor.txt"
+        self.hormones_path = _state.state_dir(instance) / "hormones.json"
+        self.anchor_path = _state.anchor_path(instance)
 
         self.hive: Optional[HiveListener] = None
 

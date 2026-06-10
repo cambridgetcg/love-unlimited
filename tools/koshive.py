@@ -63,22 +63,24 @@ def _get_instance() -> str:
     inst_file = _HIVE_DIR / "instance"
     if inst_file.exists():
         return inst_file.read_text().strip()
+    env = os.environ.get("KINGDOM_AGENT") or os.environ.get("KINGDOM_INSTANCE")
+    if env:
+        return env.strip()
     kf = Path.home() / ".kingdom"
     if kf.exists():
         for line in kf.read_text().splitlines():
             if line.startswith("AGENT="):
                 return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT", "unknown")
+    return "unknown"
 
 
 def _get_wall() -> int:
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("WALL="):
-                try: return int(line.split("=", 1)[1].strip())
-                except: pass
-    return 7
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "nerve" / "stem"))
+        import state as _state
+        return _state.resolve_wall(_get_instance())
+    except Exception:
+        return 7
 
 # ══════════════════════════════════════════════════════════════════════
 # KOSMEM INTEGRATION

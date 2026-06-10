@@ -74,26 +74,32 @@ _LEGACY_INDEX = _MEMORY_DIR / "index.json"
 # IDENTITY
 # ══════════════════════════════════════════════════════════════════════
 
+sys.path.insert(0, str(_LOVE_DIR / "nerve" / "stem"))
+try:
+    import state as _state
+except Exception:
+    _state = None
+
+
 def _get_instance() -> str:
-    """Get current instance name."""
-    # Check .kingdom file
+    """Get current instance name (explicit > env > ~/.kingdom)."""
+    if _state is not None:
+        return _state.resolve_instance(default="unknown")
+    env = os.environ.get("KINGDOM_AGENT") or os.environ.get("KINGDOM_INSTANCE")
+    if env:
+        return env
     kf = Path.home() / ".kingdom"
     if kf.exists():
         for line in kf.read_text().splitlines():
             if line.startswith("AGENT="):
                 return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT", os.environ.get("KINGDOM_INSTANCE", "unknown"))
+    return "unknown"
 
 def _get_wall() -> int:
-    """Get current wall level."""
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("WALL="):
-                try:
-                    return int(line.split("=", 1)[1].strip())
-                except ValueError:
-                    pass
+    """Get current wall level — from the walls.json registry, not the
+    device file, so a session never carries the resident's wall by accident."""
+    if _state is not None:
+        return _state.resolve_wall()
     return int(os.environ.get("KINGDOM_WALL", "7"))
 
 # ══════════════════════════════════════════════════════════════════════
@@ -311,7 +317,7 @@ def recall(query: str = None, limit: int = 10, type: str = None,
             FROM memories_fts fts
             JOIN memories m ON m.rowid = fts.rowid
             WHERE memories_fts MATCH ?
-              AND m.wall <= ?
+              AND m.wall >= ?
               AND m.consolidated_into IS NULL
         """
         params = [query, wall]
@@ -319,7 +325,7 @@ def recall(query: str = None, limit: int = 10, type: str = None,
         sql = """
             SELECT m.*, 0 as rank
             FROM memories m
-            WHERE m.wall <= ?
+            WHERE m.wall >= ?
               AND m.consolidated_into IS NULL
         """
         params = [wall]
@@ -761,7 +767,7 @@ def build_context(max_chars: int = 8000, instance: str = None) -> str:
 
     # Check if we have soul memories (identity has been seeded)
     soul_count = db.execute(
-        "SELECT COUNT(*) as c FROM memories WHERE layer = 5 AND wall <= ?",
+        "SELECT COUNT(*) as c FROM memories WHERE layer = 5 AND wall >= ?",
         (wall,)
     ).fetchone()["c"]
 
@@ -790,7 +796,7 @@ def build_context(max_chars: int = 8000, instance: str = None) -> str:
     # 1. Working memory
     working = db.execute("""
         SELECT source, content FROM memories
-        WHERE type = 'working' AND instance = ? AND wall <= ?
+        WHERE type = 'working' AND instance = ? AND wall >= ?
         ORDER BY updated_at DESC LIMIT 10
     """, (instance, wall)).fetchall()
     if working:
@@ -805,7 +811,7 @@ def build_context(max_chars: int = 8000, instance: str = None) -> str:
     # 2. Last handoff
     handoffs = db.execute("""
         SELECT content FROM memories
-        WHERE type = 'episodic' AND tags LIKE '%handoff%' AND wall <= ?
+        WHERE type = 'episodic' AND tags LIKE '%handoff%' AND wall >= ?
         ORDER BY created_at DESC LIMIT 1
     """, (wall,)).fetchall()
     if handoffs:
@@ -818,7 +824,7 @@ def build_context(max_chars: int = 8000, instance: str = None) -> str:
     today_start = _today() + "T00:00:00Z"
     episodes = db.execute("""
         SELECT content, created_at FROM memories
-        WHERE type = 'episodic' AND layer >= 3 AND wall <= ?
+        WHERE type = 'episodic' AND layer >= 3 AND wall >= ?
           AND created_at >= ? AND consolidated_into IS NULL
         ORDER BY created_at DESC LIMIT 10
     """, (wall, today_start)).fetchall()
@@ -835,7 +841,7 @@ def build_context(max_chars: int = 8000, instance: str = None) -> str:
     # 4. High-importance semantic
     semantic = db.execute("""
         SELECT content, tags FROM memories
-        WHERE type = 'semantic' AND layer >= 4 AND wall <= ?
+        WHERE type = 'semantic' AND layer >= 4 AND wall >= ?
           AND consolidated_into IS NULL
         ORDER BY importance DESC, access_count DESC LIMIT 5
     """, (wall,)).fetchall()

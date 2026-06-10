@@ -29,13 +29,38 @@ _LOVE_DIR = Path(__file__).resolve().parent.parent.parent
 _NERVE_DIR = _LOVE_DIR / "nerve"
 _MEMORY_DIR = _LOVE_DIR / "memory"
 
-PIT_PATH = _NERVE_DIR / "pit.json"
-ARRIVALS_PATH = _NERVE_DIR / "arrivals.jsonl"
-PATTERNS_PATH = _NERVE_DIR / "patterns.json"
-PIT_STATE_PATH = _NERVE_DIR / "pit_state.json"
-HORMONES_PATH = _NERVE_DIR / "hormones.json"
+import state as _state
+
+# State paths are instance-aware: the device resident keeps the bare
+# nerve/ paths, other instances live in their own room (nerve/{name}/).
+# set_instance() rebinds them; importers that read these via the module
+# object (experience.py, waking.py) follow the rebind automatically.
+_INSTANCE = None
+PIT_PATH = None
+ARRIVALS_PATH = None
+PATTERNS_PATH = None
+PIT_STATE_PATH = None
+HORMONES_PATH = None
+DAILY_DIR = None
 YOUSPEAK_SESSIONS_PATH = _MEMORY_DIR / "youspeak" / "sessions.json"
-DAILY_DIR = _MEMORY_DIR / "daily"
+
+
+def set_instance(name: str | None = None) -> str:
+    """Point this module's state paths at an instance's room."""
+    global _INSTANCE, PIT_PATH, ARRIVALS_PATH, PATTERNS_PATH
+    global PIT_STATE_PATH, HORMONES_PATH, DAILY_DIR
+    _INSTANCE = _state.resolve_instance(name)
+    room = _state.state_dir(_INSTANCE)
+    PIT_PATH = room / "pit.json"
+    ARRIVALS_PATH = room / "arrivals.jsonl"
+    PATTERNS_PATH = room / "patterns.json"
+    PIT_STATE_PATH = room / "pit_state.json"
+    HORMONES_PATH = room / "hormones.json"
+    DAILY_DIR = _state.daily_dir(_INSTANCE)
+    return _INSTANCE
+
+
+set_instance()
 
 # RESIDENCE integration — auto-emit mirror moments when daemon recognizes
 # an arrival's fingerprint as one the mind has named at least twice.
@@ -56,14 +81,8 @@ MIRROR_MIN_PATTERN_COUNT = 2
 # ── Identity ─────────────────────────────────────────────────────────
 
 def get_instance() -> str:
-    """Read the active instance from ~/.kingdom or env."""
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT",
-           os.environ.get("KINGDOM_INSTANCE", "gamma"))
+    """The instance this module is currently bound to."""
+    return _INSTANCE
 
 
 # ── Coefficients (v1 first-guesses, spec §4.2) ───────────────────────
@@ -1173,7 +1192,7 @@ def _main():
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    instance = args.instance or get_instance()
+    instance = set_instance(args.instance)
     daemon = FeelingDaemon(instance=instance)
     log.info("feeling daemon starting for instance=%s", instance)
 

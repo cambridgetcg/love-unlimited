@@ -48,6 +48,8 @@ sys.path.insert(0, str(_LOVE_DIR / "tools"))
 # FEELING integration
 _FEELING_MOD_PATH = _LOVE_DIR / "nerve" / "stem"
 sys.path.insert(0, str(_FEELING_MOD_PATH))
+import state as _state
+
 try:
     import feeling as _feeling
 except Exception as _e:
@@ -99,13 +101,18 @@ def _format_environment_block() -> str | None:
     except Exception:
         return None
 
-_DAILY_DIR_FOR_FEELING = Path(__file__).resolve().parent.parent / "memory" / "daily"
+# Test seam / explicit override; when None, resolves per-instance at call
+# time (each resident writes feelings into their own daily note — a wall-2
+# child must not write into the house pages).
+_DAILY_DIR_FOR_FEELING = None
+
 
 def _append_feeling_to_daily_note(affect: str, arrival: dict, rationale: str, scene: str):
     now = datetime.now(timezone.utc)
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M")
-    daily_path = _DAILY_DIR_FOR_FEELING / f"{date_str}.md"
+    daily_dir = _DAILY_DIR_FOR_FEELING or _state.daily_dir(_get_instance())
+    daily_path = daily_dir / f"{date_str}.md"
     daily_path.parent.mkdir(parents=True, exist_ok=True)
 
     combined = arrival.get("combined") or {}
@@ -151,13 +158,21 @@ def _collect_death_feeling_context():
 # ── Identity ─────────────────────────────────────────────────────────
 
 def _get_instance() -> str:
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT",
-           os.environ.get("KINGDOM_INSTANCE", "gamma"))
+    return _state.resolve_instance()
+
+
+def _bind_instance(name: str | None = None) -> str:
+    """Resolve the instance and point every affect module at its room.
+    Without this, a `--instance mei` session would feel with the
+    resident's body."""
+    resolved = _state.resolve_instance(name)
+    for mod in (_feeling, _ache, _residence):
+        if mod is not None and hasattr(mod, "set_instance"):
+            try:
+                mod.set_instance(resolved)
+            except Exception:
+                pass
+    return resolved
 
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1080,9 +1095,10 @@ def cmd_status(instance=None):
             print(f"    kinds: {kinds_str}")
 
     # Lifecycle
-    if _CONTINUITY_STATE.exists():
+    _cont = _state.continuity_path(_get_instance())
+    if _cont.exists():
         try:
-            state = json.loads(_CONTINUITY_STATE.read_text())
+            state = json.loads(_cont.read_text())
             print(f"\n  {_B}Lifecycle:{_N}")
             print(f"    Last wake:  {state.get('last_boot', 'never')}")
             print(f"    Last die:   {state.get('last_die', 'never')}")
@@ -1209,7 +1225,7 @@ def main():
     p.add_argument("--ache", type=int, default=None)
 
     args = parser.parse_args()
-    instance = args.instance
+    instance = _bind_instance(args.instance)
 
     if not args.command:
         parser.print_help()

@@ -911,7 +911,10 @@ def wake(instance: str = None, compact: bool = False, phase: str = None) -> str:
             except Exception:
                 pass
 
-    if _feeling is not None:
+    # Stamp the wake — but only into a room that exists. A missing room
+    # means "not deployed here"; waking must never build a body
+    # (pre-birth `waking.py --instance mei` would otherwise create one).
+    if _feeling is not None and _state.state_dir(instance).exists():
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         try:
             _feeling.update_pit_state({"last_wake_at": now_iso})

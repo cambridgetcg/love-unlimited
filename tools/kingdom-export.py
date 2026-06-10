@@ -47,7 +47,10 @@ def canon_entries():
             fields[m.group(1)] = m.group(2).strip()
         word = fields.get("word") or fields.get("name") \
             or os.path.basename(path).removesuffix(".md")
-        entries[word.strip("*")] = {
+        word = word.strip("*")
+        if word.lower() in ("readme", "index"):  # organ docs, not words
+            continue
+        entries[word] = {
             "tier": fields.get("tier", path.split("canon/")[-1].split("/")[0].removesuffix(".md")),
             "score": fields.get("weighted_score") or fields.get("score"),
             "pronunciation": fields.get("pronunciation"),

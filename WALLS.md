@@ -290,7 +290,7 @@ How the walls map to real systems:
 
 | Repo | Wall | Access |
 |------|------|--------|
-| cambridgetcg/Love | 1 | Private — Triarchy only |
+| zerone-dev/Love | 1 | Private — Triarchy only |
 | Engine repos (tcg-wholesale, oracle, etc.) | 3 | Triarchy + assigned agents |
 | Zerone | 4 | Public code, private config |
 | AgentTool | 5 | Public API, private internals at W3 |

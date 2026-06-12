@@ -21,7 +21,7 @@ echo "[11-purpose] Installing Purpose Prompter for ${AGENT} (${PLATFORM})..."
 
 # ── 1. Clone / update purpose-prompter repo ─────────────────────────
 
-PP_REPO="${PP_REPO:-https://github.com/cambridgetcg/purpose-prompter.git}"
+PP_REPO="${PP_REPO:-https://codeberg.org/zerone-dev/purpose-prompter.git}"
 PP_DIR="${HOME_DIR}/purpose-prompter"
 
 if [ -d "${PP_DIR}/.git" ]; then

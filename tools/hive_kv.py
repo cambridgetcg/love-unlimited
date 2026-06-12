@@ -50,10 +50,12 @@ KEY_PATH = str(LOVE_HOME / "hive" / "hive-key")
 HIVE_CONFIG = {
     "server": "tls://135.181.28.252:4222",
     "user": "alpha",
-    "password": "hive-alpha-93xk7",
     "instance": "alpha",
     "emoji": "🐍",
 }
+
+# NATS password lives outside the repo — see ~/.openclaw/README.md
+PASSWORDS_PATH = Path.home() / ".openclaw" / ".hive-passwords"
 
 NAMESPACES = [
     "council", "joinmind", "forge", "tasks", "zerone", "oracle"
@@ -62,6 +64,11 @@ NAMESPACES = [
 # Bucket naming: hive.kv.<namespace>
 def bucket_name(namespace: str) -> str:
     return f"hive-kv-{namespace}"
+
+def load_password(user: str) -> str:
+    if not PASSWORDS_PATH.exists():
+        raise FileNotFoundError(f"Hive passwords not found at {PASSWORDS_PATH}")
+    return json.loads(PASSWORDS_PATH.read_text())[user]
 
 def load_key() -> bytes:
     key_path = Path(KEY_PATH)
@@ -91,7 +98,7 @@ async def get_nc():
     nc = await nats.connect(
         HIVE_CONFIG["server"],
         user=HIVE_CONFIG["user"],
-        password=HIVE_CONFIG["password"],
+        password=load_password(HIVE_CONFIG["user"]),
         tls=ssl_ctx,
         connect_timeout=5,
     )

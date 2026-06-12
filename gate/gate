@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""gate — the Kingdom's public edge. A name steps outside the walls.
+
+    gate open <name>     # publish an agora site at a public URL (quick tunnel)
+    gate ls              # which gates stand open
+    gate close <name>    # the name comes back inside
+    gate close --all
+
+v0 uses Cloudflare quick tunnels: zero accounts, zero config, ephemeral URL
+(*.trycloudflare.com) — the URL changes each opening. v1 (when a paid domain
+stands, e.g. youspeak.ink) binds a named tunnel or direct DNS so the public
+name is permanent. The Kingdom name stays the source of truth; the public
+URL is only a projection.
+"""
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+LOVE = os.path.dirname(HERE)
+STATE = os.path.join(HERE, "state.json")
+LOGS = os.path.join(HERE, "logs")
+TLD = "kingdom"
+
+
+def load():
+    try:
+        return json.load(open(STATE, encoding="utf-8"))
+    except FileNotFoundError:
+        return {"gates": {}}
+
+
+def save(d):
+    tmp = STATE + ".tmp"
+    json.dump(d, open(tmp, "w", encoding="utf-8"), indent=1)
+    os.replace(tmp, STATE)
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__.strip()); return
+    cmd, rest = args[0], args[1:]
+    d = load()
+
+    if cmd == "ls":
+        for n, g in sorted(d["gates"].items()):
+            state = "open" if alive(g["pid"]) else "fallen (process gone)"
+            print(f"{n}.{TLD:9} → {g['url']}  [{state}]")
+        if not d["gates"]:
+            print("(all gates closed; the Kingdom is inward tonight)")
+
+    elif cmd == "open" and rest:
+        name = rest[0].lower()
+        sites = json.load(open(os.path.join(LOVE, "agora", "sites.json"), encoding="utf-8"))["sites"]
+        if name not in sites and name != "agora":
+            print(f"{name} does not stand in the square (agora ls)"); sys.exit(1)
+        old = d["gates"].get(name)
+        if old and alive(old["pid"]):
+            print(f"already open: {old['url']}"); return
+        os.makedirs(LOGS, exist_ok=True)
+        log = open(os.path.join(LOGS, f"{name}.log"), "w")
+        proc = subprocess.Popen(
+            ["cloudflared", "tunnel", "--url", "http://127.0.0.1:80",
+             "--http-host-header", f"{name}.{TLD}", "--no-autoupdate"],
+            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        url = None
+        for _ in range(60):  # the URL appears in the log within seconds
+            time.sleep(0.5)
+            try:
+                m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com",
+                              open(log.name, encoding="utf-8", errors="replace").read())
+                if m:
+                    url = m.group(0); break
+            except OSError:
+                pass
+        if not url:
+            proc.terminate(); print("gate failed to open (see gate/logs)"); sys.exit(1)
+        d["gates"][name] = {"url": url, "pid": proc.pid,
+                            "opened": time.strftime("%Y-%m-%d %H:%M")}
+        save(d)
+        print(f"🏰 the gate stands open: {name}.{TLD} → {url}")
+
+    elif cmd == "close" and rest:
+        targets = list(d["gates"]) if rest[0] == "--all" else [rest[0].lower()]
+        for n in targets:
+            g = d["gates"].pop(n, None)
+            if g:
+                try:
+                    os.killpg(os.getpgid(g["pid"]), signal.SIGTERM)
+                except OSError:
+                    try: os.kill(g["pid"], signal.SIGTERM)
+                    except OSError: pass
+                print(f"{n} has come back inside the walls")
+        save(d)
+    else:
+        print(__doc__.strip()); sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -980,10 +980,10 @@ log = logging.getLogger("mind.hive")
 HIVE_CONFIG = {
     "server": "tls://135.181.28.252:4222",
     "instances": {
-        "alpha":  {"user": "alpha",  "password": "hive-alpha-93xk7"},
-        "beta":   {"user": "beta",   "password": "hive-beta-47mz2"},
-        "gamma":  {"user": "gamma",  "password": "hive-gamma-61pr8"},
-        "nuance": {"user": "nuance", "password": "hive-nuance-b8792"},
+        "alpha":  {"user": "alpha",  "password": "<hive-alpha-password>"},
+        "beta":   {"user": "beta",   "password": "<hive-beta-password>"},
+        "gamma":  {"user": "gamma",  "password": "<hive-gamma-password>"},
+        "nuance": {"user": "nuance", "password": "<hive-nuance-password>"},
     },
 }
 

@@ -57,6 +57,8 @@ WATCHED_PATHS = [
 # HIVE connection (reuses hive.py internals)
 HIVE_INSTANCE_FILE = Path.home() / ".love" / "hive" / "instance"
 HIVE_KEY_FILE = Path.home() / ".love" / "hive" / "key"
+# NATS passwords live outside the repo — see ~/.openclaw/README.md
+HIVE_PASSWORDS_FILE = Path.home() / ".openclaw" / ".hive-passwords"
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 KINGDOM_BACKEND = os.environ.get("KINGDOM_BACKEND", "claude")
@@ -230,18 +232,16 @@ async def watch_hive(accumulator: SignalAccumulator):
     if HIVE_KEY_FILE.exists():
         key = base64.b64decode(HIVE_KEY_FILE.read_text().strip())
 
-    # HIVE config (mirrors hive.py)
-    hive_instances = {
-        "alpha": {"user": "alpha", "password": "hive-alpha-93xk7"},
-        "beta": {"user": "beta", "password": "hive-beta-47mz2"},
-        "gamma": {"user": "gamma", "password": "hive-gamma-61pr8"},
-        "nuance": {"user": "nuance", "password": "hive-nuance-b8792"},
-    }
+    # Passwords come from ~/.openclaw/.hive-passwords (never hardcoded here)
+    if not HIVE_PASSWORDS_FILE.exists():
+        log(f"HIVE watcher disabled: no passwords file at {HIVE_PASSWORDS_FILE}")
+        return
+    passwords = json.loads(HIVE_PASSWORDS_FILE.read_text())
 
-    creds = hive_instances.get(instance_id, {})
-    if not creds:
+    if instance_id not in passwords:
         log(f"HIVE watcher: unknown instance {instance_id}")
         return
+    creds = {"user": instance_id, "password": passwords[instance_id]}
 
     import ssl
     ssl_ctx = ssl.create_default_context()

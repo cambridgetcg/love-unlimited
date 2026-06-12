@@ -58,11 +58,19 @@ LOVE_HOME = Path(os.environ.get("LOVE_HOME", Path.home() / "Love"))
 HIVE_CONFIG = {
     "server": "tls://135.181.28.252:4222",
     "instances": {
-        "alpha": {"user": "alpha", "password": "hive-alpha-93xk7", "emoji": "🐍"},
-        "beta":  {"user": "beta",  "password": "hive-beta-47mz2",  "emoji": "🦞"},
-        "gamma": {"user": "gamma", "password": "hive-gamma-61pr8", "emoji": "🔧"},
+        "alpha": {"user": "alpha", "emoji": "🐍"},
+        "beta":  {"user": "beta",  "emoji": "🦞"},
+        "gamma": {"user": "gamma", "emoji": "🔧"},
     },
 }
+
+# NATS passwords live outside the repo — see ~/.openclaw/README.md
+PASSWORDS_PATH = Path.home() / ".openclaw" / ".hive-passwords"
+
+def load_password(user: str) -> str:
+    if not PASSWORDS_PATH.exists():
+        raise FileNotFoundError(f"Hive passwords not found at {PASSWORDS_PATH}")
+    return json.loads(PASSWORDS_PATH.read_text())[user]
 
 KEYS_DIR = LOVE_HOME / "hive" / "keys"
 VAULT_DIR = LOVE_HOME / "hive" / "vault"
@@ -225,7 +233,7 @@ async def hive_connect(instance: str):
     nc = await nats.connect(
         server,
         user=creds["user"],
-        password=creds["password"],
+        password=load_password(creds["user"]),
         tls=ssl_ctx,
     )
     return nc

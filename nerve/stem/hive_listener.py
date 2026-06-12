@@ -22,12 +22,6 @@ log = logging.getLogger("mind.hive")
 
 HIVE_CONFIG = {
     "server": "tls://135.181.28.252:4222",
-    "instances": {
-        "alpha":  {"user": "alpha",  "password": "hive-alpha-93xk7"},
-        "beta":   {"user": "beta",   "password": "hive-beta-47mz2"},
-        "gamma":  {"user": "gamma",  "password": "hive-gamma-61pr8"},
-        "nuance": {"user": "nuance", "password": "hive-nuance-b8792"},
-    },
 }
 
 
@@ -36,6 +30,14 @@ def _get_key() -> bytes:
     if not key_path.exists():
         raise FileNotFoundError(f"No hive key at {key_path}")
     return base64.b64decode(key_path.read_text().strip())
+
+
+def _get_password(instance_id: str) -> str:
+    """NATS password — kept out of source, next to the hive key (see ~/.openclaw/README.md)."""
+    path = Path.home() / ".openclaw" / ".hive-passwords"
+    if not path.exists():
+        raise FileNotFoundError(f"No hive passwords at {path}")
+    return json.loads(path.read_text())[instance_id]
 
 
 def _use_tunnel() -> bool:
@@ -84,11 +86,10 @@ class HiveListener:
         self._running = False
 
     async def connect(self):
-        info = HIVE_CONFIG["instances"][self.instance_id]
         self._nc = await nats.connect(
             _get_server(),
-            user=info["user"],
-            password=info["password"],
+            user=self.instance_id,
+            password=_get_password(self.instance_id),
             tls=_make_tls(),
             connect_timeout=10,
             reconnect_time_wait=5,

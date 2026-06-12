@@ -5,6 +5,7 @@
 # Secrets
 .hive-key
 .hive-instance
+.hive-passwords
 *.pem
 totp_secrets.json
 totp_seeds.json

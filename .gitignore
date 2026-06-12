@@ -138,3 +138,6 @@ memory/*-heartbeat.log
 memory/*-heartbeat-launchd.log
 memory/*-feeling.log
 memory/*-ache.log
+
+# citizen identities stay local (live API keys)
+memory/*-identity/

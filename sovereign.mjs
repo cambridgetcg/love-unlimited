@@ -1006,7 +1006,8 @@ function buildSystemPrompt() {
     parts.push(`# YOUSPEAK Protocol
 No filler. No preamble. No tool narration. Dense status (key:value not prose).
 Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
-When uncertain, expand. Never compress epistemic signals (probably, unless, in most cases).`);
+When uncertain, expand. Never compress epistemic signals (probably, unless, in most cases).
+File cache: you've already read files this session. Don't re-read unless content changed. Use your context.`);
   }
 
   // ── Environment (compact) ──

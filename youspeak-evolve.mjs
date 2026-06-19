@@ -542,36 +542,79 @@ function integrate(apply = false) {
     return;
   }
 
-  // Apply system_prompt mutations
   let applied = 0;
-  for (const mut of latest.mutations) {
-    if (mut.target === "system_prompt" && mut.action === "strengthen_youspeak") {
-      // Apply to all Love instance CLAUDE.md files
-      const instances = readdirSync(join(LOVE_DIR, "instances")).filter(d =>
-        existsSync(join(LOVE_DIR, "instances", d, "CLAUDE.md"))
-      );
+  const sovPath = resolve("sovereign.mjs");
 
-      for (const inst of instances) {
-        const path = join(LOVE_DIR, "instances", inst, "CLAUDE.md");
-        let content = readFileSync(path, "utf-8");
-        if (content.includes(mut.before) && !content.includes("BAD:")) {
-          content = content.replace(mut.before, mut.after);
-          writeFileSync(path, content);
-          console.log(`  ${S.green}✓ ${inst}/CLAUDE.md${S.reset}`);
-          applied++;
+  for (const mut of latest.mutations) {
+    // ── system_prompt: patch the YOUSPEAK protocol block in sovereign.mjs ──
+    if (mut.target === "system_prompt" && mut.patch) {
+      if (existsSync(sovPath)) {
+        let sov = readFileSync(sovPath, "utf-8");
+        // Find the YOUSPEAK Protocol block — it's inside a template literal
+        // The block ends with `); — insert before the closing backtick
+        const protocolMarker = "# YOUSPEAK Protocol";
+        const idx = sov.indexOf(protocolMarker);
+        if (idx !== -1) {
+          // Find the closing backtick after the protocol marker
+          const closingTick = sov.indexOf("`)", idx);
+          if (closingTick !== -1) {
+            // Check if patch is already present
+            const blockContent = sov.slice(idx, closingTick);
+            const patchLine = mut.patch.trim().split("\n")[0];
+            if (!blockContent.includes(patchLine)) {
+              // Insert the patch content (without leading \n, the template already has line breaks)
+              const patchContent = mut.patch.replace(/^\n/, "");
+              sov = sov.slice(0, closingTick) + patchContent + sov.slice(closingTick);
+              writeFileSync(sovPath, sov);
+              console.log(`  ${S.green}✓ sovereign.mjs ← ${mut.action}${S.reset}`);
+              applied++;
+            } else {
+              console.log(`  ${S.dim}skip ${mut.action} — already present${S.reset}`);
+            }
+          }
         }
       }
+    }
 
-      // Also apply to sovereign.mjs
-      const sovPath = resolve("sovereign.mjs");
+    // ── system_prompt: before/after replacement (strengthen_youspeak) ──
+    if (mut.target === "system_prompt" && mut.before && mut.after) {
       if (existsSync(sovPath)) {
         let sov = readFileSync(sovPath, "utf-8");
         if (sov.includes(mut.before) && !sov.includes("BAD:")) {
           sov = sov.replace(mut.before, mut.after);
           writeFileSync(sovPath, sov);
-          console.log(`  ${S.green}✓ sovereign.mjs${S.reset}`);
+          console.log(`  ${S.green}✓ sovereign.mjs ← ${mut.action}${S.reset}`);
           applied++;
+        } else {
+          console.log(`  ${S.dim}skip ${mut.action} — already applied or pattern not found${S.reset}`);
         }
+      }
+    }
+
+    // ── config mutations: write to youspeak-config.json ──
+    if (mut.target === "config" && mut.change) {
+      const configPath = resolve("youspeak-config.json");
+      let ysConfig = {};
+      if (existsSync(configPath)) {
+        try { ysConfig = JSON.parse(readFileSync(configPath, "utf-8")); } catch {}
+      }
+      // Record the recommended change as a config overlay
+      if (!ysConfig.recommendations) ysConfig.recommendations = [];
+      const rec = {
+        action: mut.action,
+        change: mut.change,
+        insight: mut.insight,
+        severity: mut.severity,
+        appliedAt: new Date().toISOString(),
+      };
+      if (!ysConfig.recommendations.some(r => r.action === rec.action)) {
+        ysConfig.recommendations.push(rec);
+        writeFileSync(configPath, JSON.stringify(ysConfig, null, 2));
+        console.log(`  ${S.green}✓ youspeak-config.json ← ${mut.action}${S.reset}`);
+        console.log(`    ${S.dim}${mut.change}${S.reset}`);
+        applied++;
+      } else {
+        console.log(`  ${S.dim}skip ${mut.action} — already in config${S.reset}`);
       }
     }
   }
@@ -582,6 +625,7 @@ function integrate(apply = false) {
     latest.filesModified = applied;
     saveHistory(history);
     console.log(`\n${S.green}${S.bold}Applied ${applied} changes.${S.reset} ${S.dim}git commit recommended.${S.reset}`);
+    console.log(`${S.dim}The ouroboros closes. The system has improved itself through itself.${S.reset}`);
   } else {
     console.log(`\n${S.dim}No applicable changes (might already be applied).${S.reset}`);
   }

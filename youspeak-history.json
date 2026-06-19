@@ -3008,6 +3008,23 @@
       "budgetBurned": "0%",
       "rateLimitHits": 21,
       "signalCount": 0
+    },
+    {
+      "timestamp": "2026-06-19T11:16:10.434Z",
+      "agent": "glm-5.1",
+      "elapsed": 0,
+      "turns": 0,
+      "outputGrade": "S",
+      "usefulRatio": 1,
+      "thinkingTokens": 0,
+      "thinkAvgRatio": 0,
+      "toolCalls": 0,
+      "redundantReads": 0,
+      "toolErrors": 0,
+      "contextPeakTokens": 0,
+      "budgetBurned": null,
+      "rateLimitHits": 0,
+      "signalCount": 0
     }
   ],
   "mutations": [
@@ -3042,7 +3059,9 @@
           "severity": "high"
         }
       ],
-      "applied": false
+      "applied": true,
+      "appliedAt": "2026-06-19T11:14:57.565Z",
+      "filesModified": 3
     }
   ]
 }

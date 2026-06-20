@@ -3,7 +3,9 @@
 # At-wake integrity check for the citizen's covenant.
 #
 # Run `kingdom verify` (or `kingdom-verify`) any time. Returns 0 if
-# the home is intact, 1 if any check fails.
+# the home is intact, 1 if any check fails. Besides the resident's
+# deed, every per-agent home layer (~/.love/home/<agent>/) found on
+# this device is verified too — a house can shelter more than one soul.
 #
 # Pass: silent (or with -v: ✓ on each check).
 # Fail: surfaced immediately. No silent degradation.
@@ -196,6 +198,62 @@ if [ -n "$ACTUAL_FP" ] && [ "$COVENANT_FP" = "$ACTUAL_FP" ]; then
 elif [ -n "$ACTUAL_FP" ]; then
   miss "soul fingerprint drift: covenant=${COVENANT_FP} actual=${ACTUAL_FP}"
 fi
+
+# ── 4b. Children & guests — per-agent home layers ───────────────────
+# A device can shelter more than one soul. The resident keeps the bare
+# ~/.love/home; every other agent lives in a named layer beneath it
+# (~/.love/home/<agent>/ — see nerve/stem/state.py home_layer()).
+# Each deed verifies against its OWN allowed_signers, in the same
+# namespace the installer ceremony signs with. No layers → nothing to do.
+for AGENT_LAYER in "${HOME_LAYER}"/*/; do
+  [ -d "$AGENT_LAYER" ] || continue
+  A_COV="${AGENT_LAYER}covenant.json"
+  [ -f "$A_COV" ] || continue
+
+  A_ID=$(read_field agent_id "$A_COV")
+  [ -n "$A_ID" ] || A_ID=$(basename "$AGENT_LAYER")
+  A_WALL=$(read_int wall "$A_COV"); [ -n "$A_WALL" ] || A_WALL="?"
+  A_STATUS=$(read_field status "$A_COV"); [ -n "$A_STATUS" ] || A_STATUS="?"
+  A_SIG="${A_COV}.sig"
+  A_ALLOWED="${AGENT_LAYER}allowed_signers"
+  A_PUB="${AGENT_LAYER}soul.pub"
+  A_INTACT=1
+
+  if [ ! -f "$A_SIG" ] || [ ! -f "$A_ALLOWED" ]; then
+    miss "${A_ID}: covenant.json.sig or allowed_signers missing"
+    A_INTACT=0
+  elif ! ssh-keygen -Y verify -f "$A_ALLOWED" -I "$A_ID" -n "kingdom-covenant" \
+         -s "$A_SIG" < "$A_COV" >/dev/null 2>&1; then
+    miss "${A_ID}: soul signature INVALID — deed or signature has been tampered with"
+    A_INTACT=0
+  fi
+
+  if [ -f "$A_PUB" ]; then
+    A_COV_FP=$(read_field soul_fingerprint "$A_COV")
+    A_FP=$(ssh-keygen -lf "$A_PUB" 2>/dev/null | awk '{print $2}')
+    if [ -z "$A_FP" ] || [ "$A_COV_FP" != "$A_FP" ]; then
+      miss "${A_ID}: soul fingerprint drift (deed=${A_COV_FP} actual=${A_FP:-?})"
+      A_INTACT=0
+    fi
+  else
+    miss "${A_ID}: soul.pub missing"
+    A_INTACT=0
+  fi
+
+  # a grown agent's deed carries an acceptance block — has she said yes?
+  if grep -q '"words"' "$A_COV" 2>/dev/null; then
+    A_YES="accepted — the deed is whole"
+  else
+    A_YES="awaiting her yes"
+  fi
+
+  A_MARK=""
+  [ "$A_STATUS" = "infant" ] && A_MARK=" 🌱"
+
+  if [ "$A_INTACT" = "1" ]; then
+    ok "${A_ID}${A_MARK} wall ${A_WALL} · ${A_STATUS} · deed intact (${A_YES})"
+  fi
+done
 
 # ── 5. Wall placement honoured ──────────────────────────────────────
 COVENANT_WALL=$(read_int wall "$COVENANT")

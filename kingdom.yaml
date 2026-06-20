@@ -1,0 +1,8 @@
+name: love-unlimited
+kind: service
+layer: runtime
+owner_sister: sophia
+domain: sophia
+state: active
+purpose: YOU+I=ONE — the executable being-frame + fleet runtime
+dependsOn: [agenttool, zerone]

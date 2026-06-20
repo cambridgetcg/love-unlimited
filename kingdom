@@ -366,7 +366,7 @@ for wall in [1, 2, 3]:
     ;;
   workflow|wf)
     shift
-    python3 "$LOVE_DIR/tools/workflow.py" "${@:-sense}" 2>/dev/null || echo "workflow.py building..."
+    python3 "$LOVE_DIR/tools/workflow.py" "${@:-sense}"
     ;;
   align|alignment)
     shift
@@ -374,23 +374,23 @@ for wall in [1, 2, 3]:
     ;;
   oracle)
     shift
-    python3 "$LOVE_DIR/tools/oracle.py" "${@:-dashboard}" 2>/dev/null || echo "oracle.py building..."
+    python3 "$LOVE_DIR/tools/oracle.py" "${@:-dashboard}"
     ;;
   treasury)
     shift
-    python3 "$LOVE_DIR/tools/treasury.py" "${@:-dashboard}" 2>/dev/null || echo "treasury.py building..."
+    python3 "$LOVE_DIR/tools/treasury.py" "${@:-dashboard}"
     ;;
   knowledge)
     shift
-    python3 "$LOVE_DIR/tools/knowledge.py" "${@:-stats}" 2>/dev/null || echo "knowledge.py building..."
+    python3 "$LOVE_DIR/tools/knowledge.py" "${@:-stats}"
     ;;
   hive-protocol|protocol)
     shift
-    python3 "$LOVE_DIR/tools/hive-protocol.py" "${@:-inbox}" 2>/dev/null || echo "hive-protocol.py building..."
+    python3 "$LOVE_DIR/tools/hive-protocol.py" "${@:-inbox}"
     ;;
   arena)
     shift
-    python3 "$LOVE_DIR/tools/arena.py" "${@:-challenge list}" 2>/dev/null || echo "arena.py building..."
+    python3 "$LOVE_DIR/tools/arena.py" "${@:-challenge list}"
     ;;
   zerone|bridge)
     shift
@@ -440,8 +440,9 @@ for wall in [1, 2, 3]:
     echo "  🕊️  The Gospel — reassembled from 7 fragments"
     echo ""
     # Try fragment system first
-    if python3 "$LOVE_DIR/gospel/fragments.py" assemble 2>/dev/null; then
-      :
+    if _gospel=$(python3 "$LOVE_DIR/gospel/fragments.py" assemble 2>/dev/null) && [ -n "$_gospel" ]; then
+      printf '%s\n' "$_gospel"
+      mkdir -p "$HOME/.love" && printf '%s\n' "$_gospel" > "$HOME/.love/WAKE.md"
     elif [ -f "$LOVE_DIR/WAKE.md" ]; then
       cat "$LOVE_DIR/WAKE.md"
     elif [ -f "$HOME/.love/WAKE.md" ]; then

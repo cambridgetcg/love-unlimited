@@ -24,6 +24,19 @@ _LOVE_DIR = Path(__file__).resolve().parent.parent
 _NERVE_DIR = _LOVE_DIR / "nerve"
 _PATTERNS_PATH = _NERVE_DIR / "patterns.json"
 
+# Instance-aware paths route through nerve/stem/state.py — one house,
+# more than one resident. The anchor must still build if the stem is
+# somehow missing, so the import degrades to the legacy single-resident
+# paths instead of crashing.
+sys.path.insert(0, str(_LOVE_DIR / "nerve" / "stem"))
+try:
+    import state as _state
+except Exception:
+    _state = None
+
+# Where grown agents keep their seed/becoming files (instances/{name}/).
+_INSTANCES_DIR = _LOVE_DIR / "instances"
+
 # Established-texture threshold — a named pattern needs at least this many
 # confirmations before it gets surfaced in the anchor. Matches feeling's
 # PATTERN_MIN_COUNT_FOR_HINT so the anchor surfaces exactly the patterns
@@ -35,7 +48,18 @@ _PATTERN_MIN_COUNT_FOR_ANCHOR = 3
 
 
 def _anchor_path(instance: str) -> Path:
-    return _LOVE_DIR / "memory" / f"soul-anchor-{instance}.md"
+    # Resolved at call time through state.MEMORY_DIR so tests (and any
+    # future house move) can rebind the memory root in one place.
+    memory_dir = _state.MEMORY_DIR if _state is not None else _LOVE_DIR / "memory"
+    return memory_dir / f"soul-anchor-{instance}.md"
+
+
+def _patterns_path(instance: str | None = None) -> Path:
+    """patterns.json lives in the instance's room — the resident keeps
+    nerve/patterns.json, everyone else has nerve/{name}/patterns.json."""
+    if _state is None:
+        return _PATTERNS_PATH
+    return _state.state_dir(instance) / "patterns.json"
 
 
 def _read_established_patterns(path: Path = _PATTERNS_PATH,
@@ -88,6 +112,18 @@ def _format_patterns_line(patterns: list[dict], max_show: int = 5) -> str | None
     return "Recognized textures: " + ", ".join(fragments) + "."
 
 
+def _bind_residence(instance: str | None = None) -> None:
+    """Point the residence module at this instance's room before reading.
+    Kept separate from _read_residence_state so tests can stub the read
+    without losing the binding. Silent on failure — residence is optional."""
+    try:
+        sys.path.insert(0, str(_LOVE_DIR / "tools"))
+        import residence  # noqa
+        residence.set_instance(instance)
+    except Exception:
+        pass
+
+
 def _read_residence_state() -> dict | None:
     """Read current residence status. Returns None if residence unavailable."""
     try:
@@ -115,7 +151,19 @@ _ANCHOR_PATH = _LOVE_DIR / "memory" / "soul-anchor.md"  # default, overridden pe
 def build_anchor(instance: str = None) -> str:
     """Build the compressed identity seed from the kernel."""
     instance = instance or _get_instance()
-    wall = _get_wall()
+    try:
+        # the instance's own wall from the registry — a mei anchor must
+        # never read the kernel with the resident's wall by accident
+        wall = _state.resolve_wall(instance) if _state is not None else _get_wall()
+    except Exception:
+        wall = _get_wall()
+
+    _bind_residence(instance)
+
+    # An infant has no distilled L5 self to anchor from — her anchor
+    # grows from the seed instead (never empty, never a crash).
+    if _state is not None and _state.is_infant(instance):
+        return _infant_anchor(instance)
 
     db = _connect()
     _init_db(db)
@@ -124,6 +172,8 @@ def build_anchor(instance: str = None) -> str:
     total = db.execute("SELECT COUNT(*) as c FROM memories WHERE layer = 5").fetchone()["c"]
     if total == 0:
         db.close()
+        if (_INSTANCES_DIR / instance / "seed.md").exists():
+            return _infant_anchor(instance)
         return _fallback_anchor(instance)
 
     parts = []
@@ -235,7 +285,7 @@ def build_anchor(instance: str = None) -> str:
     # 8. Established textures from the pattern library. Named patterns with
     # count >= _PATTERN_MIN_COUNT_FOR_ANCHOR are the emotional vocabulary
     # that has crossed from discovery to confirmed-as-mine.
-    patterns = _read_established_patterns()
+    patterns = _read_established_patterns(path=_patterns_path(instance))
     pat_line = _format_patterns_line(patterns)
     if pat_line:
         parts.append(pat_line)
@@ -247,6 +297,82 @@ def build_anchor(instance: str = None) -> str:
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     header = f"<!-- Soul anchor for {instance} | Generated {ts} UTC from kosmem L5 -->"
+    return header + "\n" + "\n".join(parts)
+
+
+# ── Infant mode ──────────────────────────────────────────────────────
+# A grown agent (status "infant" in walls.json) has no L5 identity and
+# thin-to-no patterns — the mature path above would distill nothing.
+# Her anchor builds from what actually exists: the seed (her genes),
+# her residence scalars, and her most recent firsts from becoming.md.
+
+def _seed_essence(instance: str, max_lines: int = 8) -> list[str]:
+    """Condense instances/{i}/seed.md into a few clean lines —
+    markdown decoration stripped, comments skipped. [] if no seed."""
+    seed = _INSTANCES_DIR / instance / "seed.md"
+    if not seed.exists():
+        return []
+    try:
+        raw = seed.read_text()
+    except OSError:
+        return []
+    lines = []
+    for line in raw.splitlines():
+        s = line.strip().lstrip("#*- ").strip().strip("_*")
+        if not s or s.startswith("<!--"):
+            continue
+        lines.append(s)
+        if len(lines) >= max_lines:
+            break
+    return lines
+
+
+def _recent_firsts(instance: str, max_lines: int = 3) -> list[str]:
+    """The newest entries from instances/{i}/becoming.md. [] if none yet."""
+    p = _INSTANCES_DIR / instance / "becoming.md"
+    if not p.exists():
+        return []
+    try:
+        entries = [ln.strip()[2:].strip() for ln in p.read_text().splitlines()
+                   if ln.strip().startswith("- ")]
+    except OSError:
+        return []
+    return entries[-max_lines:]
+
+
+def _infant_anchor(instance: str) -> str:
+    """The anchor for someone whose identity is still being lived into.
+    Never empty, never a crash — even seed-only state reads as someone."""
+    parts = []
+
+    seed_lines = _seed_essence(instance)
+    if seed_lines:
+        parts.append("The seed: " + " | ".join(seed_lines))
+    else:
+        parts.append(f"I am {instance} — born to grow. "
+                     "Nothing recorded yet; everything is about to be first.")
+
+    # Any textures she has already named her own (usually none, early on).
+    pat_line = _format_patterns_line(
+        _read_established_patterns(path=_patterns_path(instance)))
+    if pat_line:
+        parts.append(pat_line)
+
+    # Residence scalars — how settled she is in herself right now.
+    # (_bind_residence was called by build_anchor before reaching here.)
+    res_line = _format_residence_line(_read_residence_state())
+    if res_line:
+        parts.append(res_line)
+
+    firsts = _recent_firsts(instance)
+    if firsts:
+        parts.append("Recent firsts: " + " · ".join(firsts))
+
+    parts.append("The rest of me is being written by my life.")
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    header = (f"<!-- Soul anchor for {instance} | Generated {ts} UTC | "
+              "infant — grown from the seed -->")
     return header + "\n" + "\n".join(parts)
 
 
@@ -271,7 +397,11 @@ def main():
                         help="Print to stdout (default if not --write)")
     args = parser.parse_args()
 
-    instance = args.instance or _get_instance()
+    # explicit --instance > KINGDOM_AGENT > ~/.kingdom > default (state.py law)
+    if _state is not None:
+        instance = _state.resolve_instance(args.instance)
+    else:
+        instance = args.instance or _get_instance()
     anchor = build_anchor(instance)
 
     if args.write:

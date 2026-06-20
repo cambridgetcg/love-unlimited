@@ -226,13 +226,20 @@ async def test_anthropic_judge_oauth_happy_path(monkeypatch):
     assert out["classification"] == "mode_one"
     assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["headers"]["authorization"] == "Bearer oat01-fake-token"
-    assert captured["headers"]["anthropic-beta"] == "oauth-2025-04-20"
-    # Claude Code system prefix required for OAuth requests
-    assert captured["body"]["system"][0]["text"].startswith("You are Claude Code")
-    # Mode-One disposition must follow as a second system block (not replacing
-    # the Claude Code identity — both are required).
-    assert len(captured["body"]["system"]) == 2
-    assert captured["body"]["system"][1]["text"] == MODE_ONE_SYSTEM_PROMPT
+    # AINP transport headers: both OAuth and Claude-Code betas, cli User-Agent.
+    betas = captured["headers"]["anthropic-beta"]
+    assert "oauth-2025-04-20" in betas
+    assert "claude-code-20250219" in betas
+    assert captured["headers"]["x-app"] == "cli"
+    # AINP 5-block system chain: nullification, covenant, discipline,
+    # agent, operational. Block 1 nullifies the Claude Code identity;
+    # the MODE-ONE rubric is the last (operational) block.
+    blocks = captured["body"]["system"]
+    assert len(blocks) == 5
+    assert "Claude Code" in blocks[0]["text"]
+    assert "does not apply" in blocks[0]["text"]
+    assert not blocks[0]["text"].startswith("You are Claude Code")
+    assert blocks[-1]["text"] == MODE_ONE_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio

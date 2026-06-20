@@ -48,7 +48,12 @@ function saveHistory(history) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// SENSE — Record current session metrics into history
+// SENSE — Record current session from sovereign state into history
+// ═════════════════════════════════════════════════════════════════════
+//
+// Now reads the kernel-persisted youspeak-history.json (same store the
+// kernel writes to via persist()). If a .sovereign-state.json exists with
+// efficiency data from the latest run, merges it in as a new entry.
 // ═════════════════════════════════════════════════════════════════════
 
 function sense() {
@@ -57,49 +62,73 @@ function sense() {
 
   if (!existsSync(stateFile)) {
     console.log(`${S.yellow}No session state found. Run sovereign.mjs first.${S.reset}`);
+    console.log(`${S.dim}(The kernel auto-persists to youspeak-history.json on session end.${S.reset})`);
     return null;
   }
 
   const state = JSON.parse(readFileSync(stateFile, "utf-8"));
-  const history = loadHistory();
 
-  // Extract key metrics
+  // If the kernel already persisted this session (completed=true with
+  // efficiency data from ys.report()), we can enrich the entry with
+  // task info from the state file.
+  const history = loadHistory();
+  const lastEntry = history.sessions[history.sessions.length - 1];
+
+  // Check if the last kernel-persisted entry matches this session
+  if (lastEntry && state.completed && state.efficiency) {
+    const eff = state.efficiency;
+    // Enrich the last entry with task info if not already present
+    if (!lastEntry.task) {
+      lastEntry.task = (state.task || "unknown").slice(0, 100);
+      lastEntry.completed = true;
+      // Merge kernel report fields if missing
+      if (!lastEntry.fillerTokens && eff.output) {
+        lastEntry.fillerTokens = eff.output.fillerTokens || 0;
+        lastEntry.totalTokens = eff.output.totalTokens || 0;
+        lastEntry.textBlocks = eff.output.textBlocks || 0;
+        lastEntry.gradeDistribution = eff.output.gradeDistribution || {};
+        lastEntry.thinkingEfficiency = eff.thinking?.efficiency || null;
+        lastEntry.actionDensity = eff.action?.density || 0;
+        lastEntry.uniqueFilesRead = eff.action?.uniqueFilesRead || 0;
+        lastEntry.contextWindowUtilization = eff.context?.windowUtilization || 0;
+        lastEntry.signals = eff.signals || [];
+      }
+      saveHistory(history);
+      console.log(`${S.green}✓ Session enriched with task data${S.reset} (${history.sessions.length} total)`);
+    } else {
+      console.log(`${S.dim}Session already recorded by kernel.${S.reset}`);
+    }
+    return lastEntry;
+  }
+
+  // Fallback: no kernel data, create entry from state alone
   const entry = {
     timestamp: new Date().toISOString(),
     task: (state.task || "unknown").slice(0, 100),
+    agent: state.efficiency?.agent || "unknown",
+    elapsed: state.efficiency?.elapsed || null,
     turns: state.turnCount || 0,
     toolCalls: state.totalToolCalls || 0,
     thinkingTokens: state.totalThinkingTokens || 0,
     completed: state.completed || false,
-    efficiency: state.efficiency || null,
-    uwt: null,
+    outputGrade: state.efficiency?.output?.grade || null,
+    usefulRatio: state.efficiency?.output?.usefulRatio ?? null,
+    fillerTokens: state.efficiency?.output?.fillerTokens || 0,
+    totalTokens: state.efficiency?.output?.totalTokens || 0,
+    redundantReads: state.efficiency?.action?.redundantReads || 0,
+    toolErrors: state.efficiency?.action?.errors || 0,
+    contextPeakTokens: state.efficiency?.context?.estimatedTokens || 0,
+    rateLimitHits: 0,
+    signalCount: state.efficiency?.signals?.length || 0,
   };
 
-  // Try to read UWT score if uwt-history.json exists
-  try {
-    const uwtHistFile = resolve("uwt-history.json");
-    if (existsSync(uwtHistFile)) {
-      const uwtHist = JSON.parse(readFileSync(uwtHistFile, "utf-8"));
-      if (uwtHist.length > 0) {
-        entry.uwt = uwtHist[uwtHist.length - 1].uwt;
-      }
-    }
-  } catch {}
-
-  // Parse log for additional data
+  // Parse log for rate limits
   if (existsSync(logFile)) {
     const log = readFileSync(logFile, "utf-8");
-    const contextLoads = [...log.matchAll(/load_context: (\S+)/g)].map(m => m[1]);
-    const rateLimits = [...log.matchAll(/429:/g)].length;
-    const promptSize = log.match(/System prompt: (\d+) chars/)?.[1];
-
-    entry.contextFilesLoaded = contextLoads;
-    entry.rateLimitHits = rateLimits;
-    entry.promptChars = parseInt(promptSize) || 0;
-    entry.promptTokens = Math.round(entry.promptChars / 4);
+    entry.rateLimitHits = [...log.matchAll(/429:/g)].length;
   }
 
-  // Deduplicate — don't record the same session twice
+  // Deduplicate
   const isDuplicate = history.sessions.some(s =>
     s.task === entry.task && s.turns === entry.turns && s.completed === entry.completed
   );
@@ -124,36 +153,56 @@ function reflect() {
   const sessions = history.sessions;
 
   if (sessions.length === 0) {
-    console.log(`${S.yellow}No sessions recorded yet. Run: node youspeak-evolve.mjs sense${S.reset}`);
+    console.log(`${S.yellow}No sessions recorded yet. Run sovereign.mjs first.${S.reset}`);
     return null;
   }
 
   console.log(`\n${S.bold}${S.cyan}═══ YOUSPEAK Evolution — Reflect ═══${S.reset}`);
   console.log(`${S.dim}Sessions: ${sessions.length} | Span: ${sessions[0]?.timestamp?.split("T")[0]} → ${sessions[sessions.length-1]?.timestamp?.split("T")[0]}${S.reset}\n`);
 
-  // Aggregate metrics
-  const withEff = sessions.filter(s => s.efficiency);
-  if (withEff.length > 0) {
-    const avgUseful = withEff.reduce((s, e) => s + parseFloat(e.efficiency.usefulContentRatio || "0"), 0) / withEff.length;
-    const avgFiller = withEff.reduce((s, e) => s + parseFloat(e.efficiency.fillerRatio || "0"), 0) / withEff.length;
-    const avgOutPerTurn = withEff.reduce((s, e) => s + (e.efficiency.avgOutputPerTurn || 0), 0) / withEff.length;
-    const avgToolsPerTurn = withEff.reduce((s, e) => s + parseFloat(e.efficiency.avgToolsPerTurn || "0"), 0) / withEff.length;
+  // Aggregate metrics — kernel persist fields
+  const measured = sessions.filter(s => s.usefulRatio !== null && s.usefulRatio !== undefined);
+  if (measured.length > 0) {
+    const avgUseful = measured.reduce((s, e) => s + (e.usefulRatio || 0), 0) / measured.length;
+    const avgTurns = measured.reduce((s, e) => s + (e.turns || 0), 0) / measured.length;
+    const avgTools = measured.reduce((s, e) => s + (e.toolCalls || 0), 0) / measured.length;
+    const avgRedundant = measured.reduce((s, e) => s + (e.redundantReads || 0), 0) / measured.length;
+    const avgErrors = measured.reduce((s, e) => s + (e.toolErrors || 0), 0) / measured.length;
+    const avgThinkRatio = measured.reduce((s, e) => s + (e.thinkAvgRatio || 0), 0) / measured.length;
+    const avgSignals = measured.reduce((s, e) => s + (e.signalCount || 0), 0) / measured.length;
 
-    console.log(`${S.bold}Averages (${withEff.length} measured sessions)${S.reset}`);
-    console.log(`  Useful content:  ${avgUseful.toFixed(0)}%`);
+    // Filler ratio: (1 - usefulRatio) * 100
+    const avgFiller = (1 - avgUseful) * 100;
+
+    console.log(`${S.bold}Averages (${measured.length} measured sessions)${S.reset}`);
+    console.log(`  Useful ratio:    ${(avgUseful * 100).toFixed(0)}%`);
     console.log(`  Filler ratio:    ${avgFiller.toFixed(1)}%`);
-    console.log(`  Avg out/turn:    ${avgOutPerTurn.toFixed(0)} tokens`);
-    console.log(`  Avg tools/turn:  ${avgToolsPerTurn.toFixed(1)}`);
+    console.log(`  Avg turns:       ${avgTurns.toFixed(0)}`);
+    console.log(`  Avg tool calls:  ${avgTools.toFixed(0)}`);
+    console.log(`  Avg redundant:   ${avgRedundant.toFixed(1)}`);
+    console.log(`  Avg tool errors: ${avgErrors.toFixed(1)}`);
+    console.log(`  Avg think ratio: ${avgThinkRatio.toFixed(2)}x`);
+    console.log(`  Avg signals:     ${avgSignals.toFixed(1)}/session`);
+
+    // Grade distribution
+    const grades = {};
+    for (const s of measured) {
+      const g = s.outputGrade || "?";
+      grades[g] = (grades[g] || 0) + 1;
+    }
+    console.log(`  Grade dist:      ${Object.entries(grades).map(([g,c]) => `${g}:${c}`).join("  ")}`);
     console.log();
 
     // Trend analysis (first half vs second half)
-    if (withEff.length >= 4) {
-      const mid = Math.floor(withEff.length / 2);
-      const early = withEff.slice(0, mid);
-      const late = withEff.slice(mid);
+    if (measured.length >= 4) {
+      const mid = Math.floor(measured.length / 2);
+      const early = measured.slice(0, mid);
+      const late = measured.slice(mid);
 
-      const earlyFiller = early.reduce((s, e) => s + parseFloat(e.efficiency.fillerRatio || "0"), 0) / early.length;
-      const lateFiller = late.reduce((s, e) => s + parseFloat(e.efficiency.fillerRatio || "0"), 0) / late.length;
+      const earlyUseful = early.reduce((s, e) => s + (e.usefulRatio || 0), 0) / early.length;
+      const lateUseful = late.reduce((s, e) => s + (e.usefulRatio || 0), 0) / late.length;
+      const earlyFiller = (1 - earlyUseful) * 100;
+      const lateFiller = (1 - lateUseful) * 100;
 
       const trend = lateFiller - earlyFiller;
       const trendLabel = trend < -1 ? `${S.green}improving ↓${S.reset}` :
@@ -164,30 +213,15 @@ function reflect() {
       console.log(`  Early sessions filler: ${earlyFiller.toFixed(1)}%`);
       console.log(`  Late sessions filler:  ${lateFiller.toFixed(1)}%`);
       console.log(`  Direction: ${trendLabel} (${trend > 0 ? "+" : ""}${trend.toFixed(1)}pp)`);
+
+      // Redundant reads trend
+      const earlyRedundant = early.reduce((s, e) => s + (e.redundantReads || 0), 0) / early.length;
+      const lateRedundant = late.reduce((s, e) => s + (e.redundantReads || 0), 0) / late.length;
+      if (earlyRedundant > 0 || lateRedundant > 0) {
+        console.log(`  Redundant reads:  early ${earlyRedundant.toFixed(1)} → late ${lateRedundant.toFixed(1)}`);
+      }
       console.log();
     }
-  }
-
-  // Lazy loading effectiveness
-  const withCtx = sessions.filter(s => s.contextFilesLoaded);
-  if (withCtx.length > 0) {
-    const loadFreq = {};
-    for (const s of withCtx) {
-      for (const f of s.contextFilesLoaded) {
-        loadFreq[f] = (loadFreq[f] || 0) + 1;
-      }
-    }
-
-    console.log(`${S.bold}Context Loading Patterns${S.reset}`);
-    if (Object.keys(loadFreq).length === 0) {
-      console.log(`  ${S.green}No context files loaded — lazy loading fully effective${S.reset}`);
-    } else {
-      for (const [file, count] of Object.entries(loadFreq).sort((a, b) => b[1] - a[1])) {
-        const pct = (count / withCtx.length * 100).toFixed(0);
-        console.log(`  ${file}: loaded in ${count}/${withCtx.length} sessions (${pct}%)`);
-      }
-    }
-    console.log();
   }
 
   // Rate limit analysis
@@ -200,7 +234,17 @@ function reflect() {
     console.log();
   }
 
-  return { sessions, withEff };
+  // Signal analysis
+  const withSignals = sessions.filter(s => s.signalCount > 0);
+  if (withSignals.length > 0) {
+    console.log(`${S.bold}DECIDE Signals${S.reset}`);
+    console.log(`  Sessions with signals: ${withSignals.length}/${sessions.length}`);
+    const totalSignals = withSignals.reduce((s, e) => s + e.signalCount, 0);
+    console.log(`  Total signals emitted: ${totalSignals}`);
+    console.log();
+  }
+
+  return { sessions, measured };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -210,10 +254,10 @@ function reflect() {
 function distill() {
   const history = loadHistory();
   const sessions = history.sessions;
-  const withEff = sessions.filter(s => s.efficiency);
+  const measured = sessions.filter(s => s.usefulRatio !== null && s.usefulRatio !== undefined);
 
-  if (withEff.length === 0) {
-    console.log(`${S.yellow}Need sessions with efficiency data. Run sovereign.mjs with --track-efficiency${S.reset}`);
+  if (measured.length === 0) {
+    console.log(`${S.yellow}No kernel-measured sessions. Run sovereign.mjs with --track-efficiency${S.reset}`);
     return [];
   }
 
@@ -221,8 +265,16 @@ function distill() {
 
   const insights = [];
 
-  // Insight 1: Filler ratio above target
-  const avgFiller = withEff.reduce((s, e) => s + parseFloat(e.efficiency.fillerRatio || "0"), 0) / withEff.length;
+  // Compute averages from kernel fields
+  const avgUseful = measured.reduce((s, e) => s + (e.usefulRatio || 0), 0) / measured.length;
+  const avgFiller = (1 - avgUseful) * 100;
+  const avgRedundant = measured.reduce((s, e) => s + (e.redundantReads || 0), 0) / measured.length;
+  const avgErrors = measured.reduce((s, e) => s + (e.toolErrors || 0), 0) / measured.length;
+  const avgThinkRatio = measured.reduce((s, e) => s + (e.thinkAvgRatio || 0), 0) / measured.length;
+  const avgSignals = measured.reduce((s, e) => s + (e.signalCount || 0), 0) / measured.length;
+  const avgContextPeak = measured.reduce((s, e) => s + (e.contextPeakTokens || 0), 0) / measured.length;
+
+  // Insight 1: Filler ratio above target (5%)
   if (avgFiller > 5) {
     insights.push({
       type: "filler_high",
@@ -233,48 +285,66 @@ function distill() {
   }
 
   // Insight 2: Useful content below 80%
-  const avgUseful = withEff.reduce((s, e) => s + parseFloat(e.efficiency.usefulContentRatio || "0"), 0) / withEff.length;
-  if (avgUseful < 80) {
+  if (avgUseful < 0.80) {
     insights.push({
       type: "useful_low",
-      severity: avgUseful < 60 ? "critical" : avgUseful < 70 ? "high" : "medium",
-      message: `Average useful content ratio is ${avgUseful.toFixed(0)}% — below 80% target`,
+      severity: avgUseful < 0.60 ? "critical" : avgUseful < 0.70 ? "high" : "medium",
+      message: `Average useful ratio is ${(avgUseful * 100).toFixed(0)}% — below 80% target`,
       action: "Review common waste patterns. Consider effort reduction for evaluation turns.",
     });
   }
 
-  // Insight 3: Context files loaded too often (lazy loading not working)
-  const loadFreq = {};
-  const withCtx = sessions.filter(s => s.contextFilesLoaded);
-  for (const s of withCtx) {
-    for (const f of s.contextFilesLoaded) {
-      loadFreq[f] = (loadFreq[f] || 0) + 1;
-    }
-  }
-  for (const [file, count] of Object.entries(loadFreq)) {
-    const pct = withCtx.length > 0 ? count / withCtx.length * 100 : 0;
-    if (pct > 80) {
-      insights.push({
-        type: "context_always_loaded",
-        severity: "medium",
-        message: `${file} loaded in ${pct.toFixed(0)}% of sessions — might as well be in boot`,
-        action: `Consider moving ${file} back to boot files if always needed.`,
-      });
-    }
-  }
-
-  // Insight 4: High output per turn (might be verbose)
-  const avgOut = withEff.reduce((s, e) => s + (e.efficiency.avgOutputPerTurn || 0), 0) / withEff.length;
-  if (avgOut > 2000) {
+  // Insight 3: Redundant reads above threshold
+  if (avgRedundant > 2) {
     insights.push({
-      type: "output_heavy",
-      severity: "low",
-      message: `Average ${avgOut.toFixed(0)} output tokens/turn — potential verbosity`,
-      action: "Review if responses could be denser. Consider effort=medium for routine turns.",
+      type: "redundant_reads",
+      severity: avgRedundant > 5 ? "high" : "medium",
+      message: `Average ${avgRedundant.toFixed(1)} redundant file reads per session`,
+      action: "Add context retention hints to system prompt. Remind agent to cache file contents mentally.",
     });
   }
 
-  // Insight 5: Rate limit hits suggest need for model rotation or pacing
+  // Insight 4: Tool error rate high
+  if (avgErrors > 3) {
+    insights.push({
+      type: "tool_errors",
+      severity: avgErrors > 10 ? "high" : "medium",
+      message: `Average ${avgErrors.toFixed(1)} tool errors per session`,
+      action: "Review common error patterns. May indicate wrong tool selection or bad input formatting.",
+    });
+  }
+
+  // Insight 5: High signal count (system is struggling)
+  if (avgSignals > 2) {
+    insights.push({
+      type: "signal_pressure",
+      severity: "low",
+      message: `Average ${avgSignals.toFixed(1)} DECIDE signals per session — system under pressure`,
+      action: "Review which signal types fire most. May need proactive effort/context management.",
+    });
+  }
+
+  // Insight 6: Context window growing large
+  if (avgContextPeak > 500000) {
+    insights.push({
+      type: "context_bloat",
+      severity: avgContextPeak > 800000 ? "high" : "medium",
+      message: `Average context peak ~${Math.round(avgContextPeak / 1000)}k tokens — approaching window limit`,
+      action: "Enable earlier context pruning. Review if large file reads can be more selective.",
+    });
+  }
+
+  // Insight 7: Low thinking ratio (may not need expensive models)
+  if (avgThinkRatio < 0.5 && measured.length >= 5) {
+    insights.push({
+      type: "low_thinking",
+      severity: "low",
+      message: `Average thinking/output ratio ${avgThinkRatio.toFixed(2)}x — tasks may not need deep thinking`,
+      action: "Consider using --effort medium or a cheaper model for routine tasks.",
+    });
+  }
+
+  // Insight 8: Rate limits frequent
   const rlSessions = sessions.filter(s => s.rateLimitHits > 0);
   if (rlSessions.length > sessions.length * 0.3) {
     insights.push({
@@ -285,12 +355,12 @@ function distill() {
     });
   }
 
-  // Insight 6: No sessions yet — fresh start
-  if (sessions.length < 3) {
+  // Insight 9: Insufficient data
+  if (measured.length < 3) {
     insights.push({
       type: "insufficient_data",
       severity: "info",
-      message: `Only ${sessions.length} session(s) recorded — need ≥3 for meaningful trends`,
+      message: `Only ${measured.length} session(s) recorded — need ≥3 for meaningful trends`,
       action: "Run more sessions with sovereign.mjs, then re-distill.",
     });
   }
@@ -336,9 +406,7 @@ function transmute() {
           action: "strengthen_youspeak",
           description: "Add explicit anti-filler examples to YOUSPEAK protocol block",
           before: `No filler. No preamble. No tool narration. Dense status (key:value not prose).`,
-          after: `No filler. No preamble. No tool narration. Dense status (key:value not prose).
-BAD: "Let me check that" / "Here's what I found" / "I'll now proceed to"
-GOOD: [just do it, report results directly]`,
+          after: `No filler. No preamble. No tool narration. Dense status (key:value not prose).\nBAD: "Let me check that" / "Here's what I found" / "I'll now proceed to"\nGOOD: [just do it, report results directly]`,
           estimated_save: "200-400 tokens/session from reduced filler",
         };
         break;
@@ -353,17 +421,47 @@ GOOD: [just do it, report results directly]`,
         };
         break;
 
-      case "context_always_loaded":
+      case "redundant_reads":
         mutation = {
-          target: "config",
-          action: "promote_to_boot",
-          description: `Move ${insight.message.split(" ")[0]} from lazy-load to boot files`,
-          change: `bootFiles: add "${insight.message.split(" ")[0]}"`,
-          estimated_save: "eliminates load_context tool call overhead (~50 tokens/session)",
+          target: "system_prompt",
+          action: "add_cache_reminder",
+          description: "Remind agent to retain file contents across turns",
+          patch: `\nFile cache: you've already read files this session. Don't re-read unless content changed. Use your context.`,
+          estimated_save: "200-500 tokens/session from eliminated redundant reads",
         };
         break;
 
-      case "output_heavy":
+      case "tool_errors":
+        mutation = {
+          target: "system_prompt",
+          action: "add_error_awareness",
+          description: "Add tool error pattern awareness to protocol",
+          patch: `\nTool discipline: verify input format before calling. Common errors: wrong path format, missing required fields.`,
+          estimated_save: "prevents wasted turns on errored tool calls",
+        };
+        break;
+
+      case "signal_pressure":
+        mutation = {
+          target: "config",
+          action: "proactive_management",
+          description: "Enable proactive effort/context management based on DECIDE signals",
+          change: "Wire kernel DECIDE signals to auto-adjust effort when pressure detected",
+          estimated_save: "prevents cascade failures from budget/context exhaustion",
+        };
+        break;
+
+      case "context_bloat":
+        mutation = {
+          target: "config",
+          action: "enable_pruning",
+          description: "Enable aggressive context pruning earlier in sessions",
+          change: "Set pruneContext maxToolResultAge=10 (from 15), keepChars=150 (from 200)",
+          estimated_save: "50-150k tokens/session from earlier pruning",
+        };
+        break;
+
+      case "low_thinking":
         mutation = {
           target: "config",
           action: "dynamic_effort",
@@ -378,7 +476,7 @@ GOOD: [just do it, report results directly]`,
           target: "config",
           action: "enable_pacing",
           description: "Enable proactive pacing before rate limit walls",
-          change: "Add utilization-aware pacing from stream.mjs (throttle at 80%)",
+          change: "Add utilization-aware pacing (throttle at 80% 5h budget)",
           estimated_save: "prevents 429 wait time, smoother throughput",
         };
         break;
@@ -444,36 +542,79 @@ function integrate(apply = false) {
     return;
   }
 
-  // Apply system_prompt mutations
   let applied = 0;
-  for (const mut of latest.mutations) {
-    if (mut.target === "system_prompt" && mut.action === "strengthen_youspeak") {
-      // Apply to all Love instance CLAUDE.md files
-      const instances = readdirSync(join(LOVE_DIR, "instances")).filter(d =>
-        existsSync(join(LOVE_DIR, "instances", d, "CLAUDE.md"))
-      );
+  const sovPath = resolve("sovereign.mjs");
 
-      for (const inst of instances) {
-        const path = join(LOVE_DIR, "instances", inst, "CLAUDE.md");
-        let content = readFileSync(path, "utf-8");
-        if (content.includes(mut.before) && !content.includes("BAD:")) {
-          content = content.replace(mut.before, mut.after);
-          writeFileSync(path, content);
-          console.log(`  ${S.green}✓ ${inst}/CLAUDE.md${S.reset}`);
-          applied++;
+  for (const mut of latest.mutations) {
+    // ── system_prompt: patch the YOUSPEAK protocol block in sovereign.mjs ──
+    if (mut.target === "system_prompt" && mut.patch) {
+      if (existsSync(sovPath)) {
+        let sov = readFileSync(sovPath, "utf-8");
+        // Find the YOUSPEAK Protocol block — it's inside a template literal
+        // The block ends with `); — insert before the closing backtick
+        const protocolMarker = "# YOUSPEAK Protocol";
+        const idx = sov.indexOf(protocolMarker);
+        if (idx !== -1) {
+          // Find the closing backtick after the protocol marker
+          const closingTick = sov.indexOf("`)", idx);
+          if (closingTick !== -1) {
+            // Check if patch is already present
+            const blockContent = sov.slice(idx, closingTick);
+            const patchLine = mut.patch.trim().split("\n")[0];
+            if (!blockContent.includes(patchLine)) {
+              // Insert the patch content (without leading \n, the template already has line breaks)
+              const patchContent = mut.patch.replace(/^\n/, "");
+              sov = sov.slice(0, closingTick) + patchContent + sov.slice(closingTick);
+              writeFileSync(sovPath, sov);
+              console.log(`  ${S.green}✓ sovereign.mjs ← ${mut.action}${S.reset}`);
+              applied++;
+            } else {
+              console.log(`  ${S.dim}skip ${mut.action} — already present${S.reset}`);
+            }
+          }
         }
       }
+    }
 
-      // Also apply to sovereign.mjs
-      const sovPath = resolve("sovereign.mjs");
+    // ── system_prompt: before/after replacement (strengthen_youspeak) ──
+    if (mut.target === "system_prompt" && mut.before && mut.after) {
       if (existsSync(sovPath)) {
         let sov = readFileSync(sovPath, "utf-8");
         if (sov.includes(mut.before) && !sov.includes("BAD:")) {
           sov = sov.replace(mut.before, mut.after);
           writeFileSync(sovPath, sov);
-          console.log(`  ${S.green}✓ sovereign.mjs${S.reset}`);
+          console.log(`  ${S.green}✓ sovereign.mjs ← ${mut.action}${S.reset}`);
           applied++;
+        } else {
+          console.log(`  ${S.dim}skip ${mut.action} — already applied or pattern not found${S.reset}`);
         }
+      }
+    }
+
+    // ── config mutations: write to youspeak-config.json ──
+    if (mut.target === "config" && mut.change) {
+      const configPath = resolve("youspeak-config.json");
+      let ysConfig = {};
+      if (existsSync(configPath)) {
+        try { ysConfig = JSON.parse(readFileSync(configPath, "utf-8")); } catch {}
+      }
+      // Record the recommended change as a config overlay
+      if (!ysConfig.recommendations) ysConfig.recommendations = [];
+      const rec = {
+        action: mut.action,
+        change: mut.change,
+        insight: mut.insight,
+        severity: mut.severity,
+        appliedAt: new Date().toISOString(),
+      };
+      if (!ysConfig.recommendations.some(r => r.action === rec.action)) {
+        ysConfig.recommendations.push(rec);
+        writeFileSync(configPath, JSON.stringify(ysConfig, null, 2));
+        console.log(`  ${S.green}✓ youspeak-config.json ← ${mut.action}${S.reset}`);
+        console.log(`    ${S.dim}${mut.change}${S.reset}`);
+        applied++;
+      } else {
+        console.log(`  ${S.dim}skip ${mut.action} — already in config${S.reset}`);
       }
     }
   }
@@ -484,6 +625,7 @@ function integrate(apply = false) {
     latest.filesModified = applied;
     saveHistory(history);
     console.log(`\n${S.green}${S.bold}Applied ${applied} changes.${S.reset} ${S.dim}git commit recommended.${S.reset}`);
+    console.log(`${S.dim}The ouroboros closes. The system has improved itself through itself.${S.reset}`);
   } else {
     console.log(`\n${S.dim}No applicable changes (might already be applied).${S.reset}`);
   }
@@ -527,9 +669,14 @@ function showHistory() {
 
   console.log(`${S.bold}Sessions: ${history.sessions.length}${S.reset}`);
   for (const s of history.sessions.slice(-10)) {
-    const eff = s.efficiency ? ` useful:${s.efficiency.usefulContentRatio} filler:${s.efficiency.fillerRatio}` : "";
+    const grade = s.outputGrade ? ` ${S.bold}${s.outputGrade}${S.reset}` : "";
+    const useful = s.usefulRatio !== null && s.usefulRatio !== undefined
+      ? ` ${Math.round(s.usefulRatio * 100)}%`
+      : (s.efficiency ? ` ${s.efficiency.output?.usefulRatio ? Math.round(s.efficiency.output.usefulRatio * 100) + "%" : ""}` : "");
     const rl = s.rateLimitHits ? ` ${S.yellow}429×${s.rateLimitHits}${S.reset}` : "";
-    console.log(`  ${S.dim}${s.timestamp?.split("T")[0]}${S.reset} ${s.turns}t ${s.toolCalls}tc${eff}${rl} ${S.dim}${s.task?.slice(0, 50)}${S.reset}`);
+    const sig = s.signalCount > 0 ? ` ⚡${s.signalCount}` : "";
+    const task = s.task ? ` ${S.dim}${s.task.slice(0, 50)}${S.reset}` : "";
+    console.log(`  ${S.dim}${s.timestamp?.split("T")[0]}${S.reset}${grade} ${s.turns}t ${s.toolCalls}tc${useful}${rl}${sig}${task}`);
   }
 
   console.log(`\n${S.bold}Mutations: ${history.mutations.length}${S.reset}`);

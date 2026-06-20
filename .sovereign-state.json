@@ -1,0 +1,55 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read the file youspeak-kernel.mjs and tell me what the gradeRatio function returns for a ratio of 0.92. Just the answer."
+    }
+  ],
+  "totalCost": 0,
+  "turnCount": 1,
+  "totalToolCalls": 0,
+  "totalThinkingTokens": 0,
+  "task": "Read the file youspeak-kernel.mjs and tell me what the gradeRatio function returns for a ratio of 0.92. Just the answer.",
+  "completed": true,
+  "efficiency": {
+    "agent": "glm-5.1",
+    "elapsed": 0,
+    "turns": 0,
+    "output": {
+      "usefulRatio": 1,
+      "grade": "S",
+      "totalTokens": 0,
+      "fillerTokens": 0,
+      "textBlocks": 0,
+      "gradeDistribution": {}
+    },
+    "thinking": {
+      "totalTokens": 0,
+      "avgRatio": 0,
+      "efficiency": null,
+      "turns": 0
+    },
+    "action": {
+      "totalCalls": 0,
+      "byName": {},
+      "redundantReads": 0,
+      "errors": 0,
+      "density": 0,
+      "uniqueFilesRead": 0
+    },
+    "context": {
+      "estimatedTokens": 0,
+      "windowUtilization": 0,
+      "messagesCount": 0,
+      "systemPromptTokens": 0,
+      "pruneEvents": 0
+    },
+    "system": {
+      "budgetBurned": null,
+      "budgetNow": null,
+      "rateLimitHits": 0,
+      "tokensPerTurn": 0
+    },
+    "signals": []
+  }
+}

@@ -91,10 +91,10 @@ None of this is on-chain. None of it requires the team to maintain it forever. A
 
 ## Open questions for Zerone implementation
 
-Will be answered once Zerone publishes its token standard:
+Partially answered — the ZRN-20 standard (x/tokens) is now live with CreateToken, MintToken, BurnToken, TransferToken, ApproveToken, TransferFrom, PauseToken, UnpauseToken, DelegatePower, WrapToken, and EmissionPeriod:
 
-- Can a contract custody its own reserve and `_transferFromReserve()` at runtime, or does the standard require all balance moves to go through user-signed txns?
-- Is there a hook on `transfer()` for post-transfer logic (like Solana's token-2022 transfer hooks), or do we wrap the standard transfer in a custom function?
-- What gas/fee surface does a sneeze add? Acceptable target: <2x the cost of a normal transfer.
+- **Can a contract custody its own reserve and mint at runtime?** Yes — MintToken mints to a recipient if the caller is the token creator or governance authority. The contagion module can be the token creator and call MintToken on sneeze.
+- **Is there a hook on transfer for post-transfer logic?** Not currently — TransferToken is a plain balance move with no callback. A dedicated contagion module (x/contagion) that wraps or is called after TransferToken is the clean path.
+- **What gas/fee surface does a sneeze add?** Two MintToken calls + one infection-flag set + one event. Target: <2x normal transfer cost. TBD with benchmarks.
 
 These determine the exact contract shape. The mechanic is the same.

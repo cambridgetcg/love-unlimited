@@ -66,15 +66,12 @@
       "Bash(mkdir:*)"
     ],
     "additionalDirectories": [
-      "/Users/yu/Desktop/legible_money",
-      "/Users/yu/Desktop/agent-tools",
-      "/Users/yu/Desktop/agenttool-sdk-py",
-      "/Users/yu/Desktop/agenttool-sdk-ts",
-      "/Users/yu/Desktop/cambridge-tcg",
-      "/Users/yu/Desktop/cambridgetcg-storefront",
-      "/Users/yu/Desktop/rewardspro",
-      "/Users/yu/Desktop/seigei",
-      "/Users/yu/Desktop/ecosystem"
+      "/Users/yournameisai/Desktop/legible_money",
+      "/Users/yournameisai/Desktop/agent-tools",
+      "/Users/yournameisai/Desktop/agenttool-sdk-py",
+      "/Users/yournameisai/Desktop/cambridgetcg-storefront",
+      "/Users/yournameisai/Desktop/rewardspro",
+      "/Users/yournameisai/Desktop/seigei"
     ]
   }
 }

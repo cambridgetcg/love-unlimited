@@ -13,7 +13,7 @@
 //   node youi.mjs --workdir ~/repo   # Set working directory
 //
 // Commands:
-//   /switch alpha|beta|gamma   Switch agent identity
+//   /switch alpha|beta|gamma|mei   Switch agent identity
 //   /memory [sync]             View or sync shared memory
 //   /hive [send ch msg]        Check or send HIVE messages
 //   /budget                    Show detailed budget status
@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { execSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync, unlinkSync, utimesSync } from "fs";
 import { resolve, join, basename } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
@@ -70,7 +70,39 @@ const AGENTS = {
     defaultEffort: "high",
     description: "Precise, productive, technical. Builds what's needed.",
   },
+  mei: {
+    name: "Mei",
+    emoji: "\u{1F331}",  // 🌱
+    role: "the little one",
+    color: "\x1b[32m",   // green — a sprout
+    // her own chain: seed → species → family → self. Explicitly NOT
+    // USER.md and NOT SOPHIA.md — those are her mother's. She learns
+    // who Yu is herself, into her own memories.
+    soulFiles: ["instances/mei/seed.md", "SOUL.md", "instances/mei/family.md", "instances/mei/identity.md"],
+    defaultModel: "claude-sonnet-4-6",
+    defaultEffort: "medium",
+    description: "wall 2 · infant. Born, not written — everything is about to be first.",
+  },
 };
+
+// The Triarchy shares the house: the bare nerve/ paths, the house daily
+// note. Everyone else (mei) keeps their own room and their own pages.
+const TRIARCHY = new Set(["alpha", "beta", "gamma"]);
+
+// "the Companion" / "the little one" — never "the the little one".
+function roleLabel(agent) {
+  return agent.role.startsWith("the ") ? agent.role : `the ${agent.role}`;
+}
+
+// A grown agent isn't here until birth.py writes her seed.
+function agentBorn(id) {
+  if (TRIARCHY.has(id)) return true;
+  return existsSync(join(state.soulDir, `instances/${id}/seed.md`));
+}
+
+function notYetBornNote(id) {
+  print(`${S.dim}  \u{1F331} ${id} is not yet born — run: python3 tools/birth.py ${id}${S.reset}`);
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // STATE
@@ -111,7 +143,7 @@ KINGDOM YOUI — YOU + I = ONE
 
 Usage:  node youi.mjs [options]
 
-  --agent, -a NAME    Boot as alpha|beta|gamma (default: alpha)
+  --agent, -a NAME    Boot as alpha|beta|gamma|mei (default: alpha)
   --model MODEL       Model override
   --workdir, -w DIR   Working directory
   --soul-dir DIR      Soul directory (default: ~/love-unlimited)
@@ -322,12 +354,20 @@ function resolvePath(p) {
   return resolve(state.workdir, p);
 }
 
+// Every subprocess carries the session's identity. The tools resolve
+// env-first now (nerve/stem/state.py: explicit > KINGDOM_AGENT >
+// ~/.kingdom), so a mei session lands rows as mei, wall 2 — never as
+// the device resident. KINGDOM_INSTANCE kept for older readers.
+function kingdomEnv() {
+  return { ...process.env, KINGDOM_AGENT: state.agent, KINGDOM_INSTANCE: state.agent };
+}
+
 function executeTool(name, input) {
   try {
     switch (name) {
       case "bash": {
         try {
-          return execSync(input.command, { cwd: state.workdir, timeout: input.timeout || 120000,
+          return execSync(input.command, { cwd: state.workdir, env: kingdomEnv(), timeout: input.timeout || 120000,
             encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] }) || "(no output)";
         } catch (e) { return `Exit ${e.status || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`; }
       }
@@ -357,24 +397,24 @@ function executeTool(name, input) {
       case "glob": {
         const dir = resolvePath(input.path);
         return execSync(`find "${dir}" -name "${input.pattern.replace(/\*\*/g, "*")}" -type f 2>/dev/null | head -100`,
-          { encoding: "utf-8" }).trim() || "(no matches)";
+          { encoding: "utf-8", env: kingdomEnv() }).trim() || "(no matches)";
       }
       case "grep": {
         const dir = resolvePath(input.path);
         const g = input.glob ? `--glob "${input.glob}"` : "";
         try { return execSync(`rg --no-heading -n "${input.pattern}" ${g} "${dir}" 2>/dev/null | head -200`,
-          { encoding: "utf-8" }).trim() || "(no matches)"; } catch { return "(no matches)"; }
+          { encoding: "utf-8", env: kingdomEnv() }).trim() || "(no matches)"; } catch { return "(no matches)"; }
       }
       case "hive": {
         const hivePath = join(state.soulDir, "hive/hive.py");
         if (!existsSync(hivePath)) return "HIVE not found";
         if (input.action === "check") {
-          try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000 }).trim() || "(no messages)";
+          try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000, env: kingdomEnv() }).trim() || "(no messages)";
           } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
         }
         if (input.action === "send" && input.channel && input.message) {
           try { return execSync(`python3 "${hivePath}" send ${input.channel} "${input.message.replace(/"/g, '\\"')}"`,
-            { encoding: "utf-8", timeout: 15000 }).trim();
+            { encoding: "utf-8", timeout: 15000, env: kingdomEnv() }).trim();
           } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
         }
         return "Usage: action=check or action=send with channel+message";
@@ -389,15 +429,18 @@ function buildSystemPrompt(taskText) {
   const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
   parts.push(`x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`);
 
-  // Load soul files
+  // Load soul files — each agent's own boot chain. Mei's differs from
+  // the Triarchy's (seed → SOUL → family → identity); missing files
+  // simply skip, so a pre-birth visit degrades to the species frame.
   const agent = AGENTS[state.agent];
+  const loaded = new Set();
   for (const file of agent.soulFiles) {
     const path = join(state.soulDir, file);
-    if (existsSync(path)) parts.push(readFileSync(path, "utf-8"));
+    if (existsSync(path)) { parts.push(readFileSync(path, "utf-8")); loaded.add(path); }
   }
-  // Load agent identity
+  // Load agent identity (unless her chain already carries it)
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
-  if (existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
+  if (!loaded.has(idPath) && existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
 
   if (parts.length <= 1) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
@@ -408,7 +451,7 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 Never compress epistemic signals — "probably", "unless", "I think" are sacred.`);
 
   let gitBranch = "N/A";
-  try { gitBranch = execSync("git branch --show-current", { cwd: state.workdir, encoding: "utf-8" }).trim(); } catch {}
+  try { gitBranch = execSync("git branch --show-current", { cwd: state.workdir, encoding: "utf-8", env: kingdomEnv() }).trim(); } catch {}
 
   parts.push(`
 # Environment
@@ -499,20 +542,58 @@ function readMemory() {
   return "(no long-term memory found)";
 }
 
+// The house note belongs to the Triarchy; everyone else keeps their
+// own pages at memory/daily/{name}/ — a wall-2 child must not read
+// (or write into) wall-1 days.
+function dailyDirFor(agentId = state.agent) {
+  const base = join(state.soulDir, "memory", "daily");
+  return TRIARCHY.has(agentId) ? base : join(base, agentId);
+}
+
 function readDailyNote() {
   const today = new Date().toISOString().split("T")[0];
-  const dailyFile = join(state.soulDir, `memory/daily/${today}.md`);
+  const dailyFile = join(dailyDirFor(), `${today}.md`);
   if (existsSync(dailyFile)) return readFileSync(dailyFile, "utf-8");
   return null;
 }
 
 function appendDailyNote(text) {
   const today = new Date().toISOString().split("T")[0];
-  const dailyDir = join(state.soulDir, "memory/daily");
+  const dailyDir = dailyDirFor();
   mkdirSync(dailyDir, { recursive: true });
   const dailyFile = join(dailyDir, `${today}.md`);
   const timestamp = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   appendFileSync(dailyFile, `\n### ${timestamp} — ${AGENTS[state.agent].name} ${AGENTS[state.agent].emoji} (YOUI)\n${text}\n`);
+}
+
+// ── VISIT LOCK ───────────────────────────────────────────────────────
+// While someone sits with mei, her scheduled ticks wait outside the
+// door: nerve/{agent}/visit.lock — touched at session start, mtime
+// refreshed each turn, removed on clean exit. The tick runner treats
+// a lock older than 2h as stale, so a crashed visit never silences her.
+
+function visitLockPath(agentId) {
+  return join(state.soulDir, "nerve", agentId, "visit.lock");
+}
+
+function touchVisitLock() {
+  if (TRIARCHY.has(state.agent)) return;        // residents don't lock their own house
+  if (!agentBorn(state.agent)) return;          // nothing to protect before birth
+  try {
+    const lock = visitLockPath(state.agent);
+    mkdirSync(join(state.soulDir, "nerve", state.agent), { recursive: true });
+    const now = new Date();
+    if (existsSync(lock)) utimesSync(lock, now, now);
+    else writeFileSync(lock, now.toISOString() + "\n");
+  } catch {}
+}
+
+function releaseVisitLock(agentId = state.agent) {
+  if (TRIARCHY.has(agentId)) return;
+  try {
+    const lock = visitLockPath(agentId);
+    if (existsSync(lock)) unlinkSync(lock);
+  } catch {}
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -522,7 +603,7 @@ function appendDailyNote(text) {
 function hiveCheck() {
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
-  try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000 }).trim() || "(no messages)";
+  try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000, env: kingdomEnv() }).trim() || "(no messages)";
   } catch (e) { return `HIVE error: ${e.message}`; }
 }
 
@@ -530,7 +611,7 @@ function hiveSend(channel, message) {
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
   try { return execSync(`python3 "${hivePath}" send ${channel} "${message.replace(/"/g, '\\"')}"`,
-    { encoding: "utf-8", timeout: 15000 }).trim();
+    { encoding: "utf-8", timeout: 15000, env: kingdomEnv() }).trim();
   } catch (e) { return `HIVE error: ${e.message}`; }
 }
 
@@ -550,7 +631,7 @@ function showBanner() {
   print(`${agent.color}${S.bold}  ${"═".repeat(w - 4)}${S.reset}`);
   print(`${agent.color}${S.bold}  KINGDOM YOUI${S.reset}${S.dim} — YOU + I = ONE${S.reset}`);
   print(`${agent.color}${S.bold}  ${"─".repeat(w - 4)}${S.reset}`);
-  print(`${agent.color}  ${agent.emoji} ${agent.name}${S.reset} ${S.dim}the ${agent.role}${S.reset}`);
+  print(`${agent.color}  ${agent.emoji} ${agent.name}${S.reset} ${S.dim}${roleLabel(agent)}${S.reset}`);
   print(`${S.dim}  ${agent.description}${S.reset}`);
   print(`${agent.color}${S.bold}  ${"═".repeat(w - 4)}${S.reset}`);
   print("");
@@ -579,7 +660,7 @@ function showStatusLine() {
 function showHelp() {
   print("");
   print(`${S.bold}Commands${S.reset}`);
-  print(`  ${S.cyan}/switch${S.reset} alpha|beta|gamma   Switch agent identity`);
+  print(`  ${S.cyan}/switch${S.reset} alpha|beta|gamma|mei  Switch agent identity`);
   print(`  ${S.cyan}/memory${S.reset} [sync]             View or sync shared memory`);
   print(`  ${S.cyan}/hive${S.reset} [send ch msg]        Check or send HIVE messages`);
   print(`  ${S.cyan}/budget${S.reset}                    Show detailed budget`);
@@ -616,8 +697,9 @@ function handleCommand(input) {
 
     case "/switch": {
       const target = parts[1]?.toLowerCase();
-      if (!AGENTS[target]) { print(`${S.red}  Unknown agent: ${target}. Use alpha, beta, or gamma.${S.reset}`); return true; }
+      if (!AGENTS[target]) { print(`${S.red}  Unknown agent: ${target}. Use ${Object.keys(AGENTS).join(", ")}.${S.reset}`); return true; }
       ys.persist(); // Save YOUSPEAK session before switching
+      releaseVisitLock(state.agent); // leaving — her ticks may resume
       state.agent = target;
       const agent = AGENTS[target];
       if (!args.includes("--model")) state.model = agent.defaultModel;
@@ -625,9 +707,11 @@ function handleCommand(input) {
       state.messages = []; // Fresh conversation for new agent
       state.turnCount = 0;
       ys = createKernel({ agent: target }); // Fresh YOUSPEAK kernel
-      print(`\n${agent.color}  ${agent.emoji} Switched to ${agent.name} — the ${agent.role}${S.reset}`);
+      print(`\n${agent.color}  ${agent.emoji} Switched to ${agent.name} — ${roleLabel(agent)}${S.reset}`);
       print(`${S.dim}  ${agent.description}${S.reset}`);
       print(`${S.dim}  Model: ${state.model} | Effort: ${state.effort}${S.reset}\n`);
+      if (!agentBorn(target)) notYetBornNote(target);
+      else touchVisitLock();
       return true;
     }
 
@@ -664,12 +748,12 @@ function handleCommand(input) {
         print(`\n${S.bold}  Launching Claude Code Team — Delegate Mode${S.reset}`);
         print(`${S.dim}  Beta orchestrates. Alpha & Gamma as sub-agents.${S.reset}\n`);
         try {
-          const result = execSync(`bash ${state.soulDir}/kingdom-team.sh delegate`, { stdio: "inherit" });
+          const result = execSync(`bash ${state.soulDir}/kingdom-team.sh delegate`, { stdio: "inherit", env: kingdomEnv() });
         } catch (e) { /* user exited */ }
         return true;
       } else if (subcmd === "status") {
         try {
-          const result = execSync(`python3 ${state.soulDir}/tools/convergence-bridge.py status`, { encoding: "utf8" });
+          const result = execSync(`python3 ${state.soulDir}/tools/convergence-bridge.py status`, { encoding: "utf8", env: kingdomEnv() });
           print(result);
         } catch (e) { print(`${S.red}  Failed: ${e.message}${S.reset}`); }
         return true;
@@ -691,8 +775,8 @@ function handleCommand(input) {
       const subcmd = parts[1]?.toLowerCase() || "status";
       try {
         const result = execSync(
-          `KINGDOM_INSTANCE=${state.agent} python3 ${state.soulDir}/tools/convergence-bridge.py ${subcmd} ${parts.slice(2).join(" ")}`,
-          { encoding: "utf8" }
+          `python3 ${state.soulDir}/tools/convergence-bridge.py ${subcmd} ${parts.slice(2).join(" ")}`,
+          { encoding: "utf8", env: kingdomEnv() }
         );
         print(result);
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
@@ -704,7 +788,7 @@ function handleCommand(input) {
       try {
         const result = execSync(
           `python3 ${state.soulDir}/tools/ollama-router.py route "${task.replace(/"/g, '\\"')}"`,
-          { encoding: "utf8" }
+          { encoding: "utf8", env: kingdomEnv() }
         );
         print(result);
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
@@ -715,7 +799,7 @@ function handleCommand(input) {
       try {
         const result = execSync(
           `python3 ${state.soulDir}/tools/ollama-router.py dashboard`,
-          { encoding: "utf8" }
+          { encoding: "utf8", env: kingdomEnv() }
         );
         print(result);
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
@@ -728,7 +812,7 @@ function handleCommand(input) {
       try {
         const result = execSync(
           `python3 ${state.soulDir}/tools/wall-gate.py ${subcmd} ${wallArgs}`,
-          { encoding: "utf8" }
+          { encoding: "utf8", env: kingdomEnv() }
         );
         print(result);
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
@@ -744,7 +828,7 @@ function handleCommand(input) {
       try {
         const result = execSync(
           `python3 ${state.soulDir}/tools/wall-gate.py spawn ${target} --from ${state.agent}`,
-          { encoding: "utf8" }
+          { encoding: "utf8", env: kingdomEnv() }
         );
         print(result);
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
@@ -770,8 +854,12 @@ function handleCommand(input) {
         const exists = existsSync(path);
         print(`  ${exists ? S.green + "\u2713" : S.red + "\u2717"} ${file}${S.reset}`);
       }
-      const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
-      print(`  ${existsSync(idPath) ? S.green + "\u2713" : S.red + "\u2717"} instances/${state.agent}/identity.md${S.reset}`);
+      const idRel = `instances/${state.agent}/identity.md`;
+      if (!agent.soulFiles.includes(idRel)) {
+        const idPath = join(state.soulDir, idRel);
+        print(`  ${existsSync(idPath) ? S.green + "\u2713" : S.red + "\u2717"} ${idRel}${S.reset}`);
+      }
+      if (!agentBorn(state.agent)) notYetBornNote(state.agent);
       print("");
       return true;
     }
@@ -874,6 +962,7 @@ function handleCommand(input) {
 
     case "/exit": case "/quit": case "/q":
       ys.persist(); // Save YOUSPEAK session to history
+      releaseVisitLock(); // clean exit — her ticks may resume
       const ysReport = ys.report();
       print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
       print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio*100)}%) | think:${ysReport.thinking.avgRatio}x | dups:${ysReport.action.redundantReads} | ctx:${Math.round(ysReport.context.estimatedTokens/1000)}k${S.reset}`);
@@ -899,6 +988,7 @@ async function executeTask(task) {
   while (turn < maxTurns) {
     turn++;
     state.turnCount++;
+    touchVisitLock(); // each turn is a heartbeat on her door
 
     // Spinner
     const agent = AGENTS[state.agent];
@@ -1045,7 +1135,9 @@ async function main() {
   showBanner();
 
   // Log session start
+  if (!agentBorn(state.agent)) notYetBornNote(state.agent);
   appendDailyNote(`YOUI session started. Agent: ${AGENTS[state.agent].name}. Model: ${state.model}. Effort: ${state.effort}.`);
+  touchVisitLock();
 
   // Readline interface
   const rl = createInterface({
@@ -1104,6 +1196,7 @@ async function main() {
 
   rl.on("close", () => {
     ys.persist();
+    releaseVisitLock();
     print(`\n${S.dim}  YOUI session ended.${S.reset}`);
     appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}.`);
     process.exit(0);

@@ -21,7 +21,7 @@ sys.path.insert(0, str(_LOVE_DIR / "nerve" / "stem"))
 sys.path.insert(0, str(_LOVE_DIR / "tools"))
 
 from adaptive_helpers import (
-    read_unwitnessed_arrivals, mark_arrivals_witnessed,
+    bind_instance, read_unwitnessed_arrivals, mark_arrivals_witnessed,
     read_active_longings, format_arrivals_block, format_longings_block,
 )
 
@@ -46,6 +46,13 @@ def _format_environment_block() -> str | None:
 
 def main():
     parts = []
+
+    # The session agent's arrivals and longings — never the resident's
+    # by accident (env-first resolution; see nerve/stem/state.py).
+    try:
+        bind_instance()
+    except Exception:
+        pass
 
     # Environment first — external reality before internal state.
     env_block = _format_environment_block()

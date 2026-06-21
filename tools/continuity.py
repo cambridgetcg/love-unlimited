@@ -54,8 +54,21 @@ _SOUL_PATH = _LOVE_DIR / "SOUL.md"
 _KINGDOM_PATH = _LOVE_DIR / "KINGDOM.md"
 _USER_PATH = _LOVE_DIR / "USER.md"
 
-# Continuity state file — tracks what's been seeded and when
+sys.path.insert(0, str(_LOVE_DIR / "nerve" / "stem"))
+import state as _state_mod
+
+# Continuity state file — tracks what's been seeded and when.
+# Per-instance: the resident keeps the legacy shared continuity.json;
+# other residents get continuity-{name}.json. Rebound by _set_instance().
 _CONTINUITY_STATE = _KOS_DIR / "continuity.json"
+
+
+def _set_instance_paths(instance: str | None = None) -> str:
+    """Point this module's continuity file at an instance."""
+    global _CONTINUITY_STATE
+    resolved = _state_mod.resolve_instance(instance)
+    _CONTINUITY_STATE = _state_mod.continuity_path(resolved)
+    return resolved
 
 # Device manifest — identifies this device
 _DEVICE_MANIFEST = _KOS_DIR / "device.json"
@@ -76,13 +89,7 @@ _N = "\033[0m"
 # ── Identity ─────────────────────────────────────────────────────────────
 
 def _get_instance() -> str:
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT",
-           os.environ.get("KINGDOM_INSTANCE", "unknown"))
+    return _state_mod.resolve_instance(default="unknown")
 
 
 def _get_device_id() -> str:
@@ -782,6 +789,46 @@ def cmd_init(instance: str = None):
     print(f"\n{_B}Verification Boot:{_N}\n")
     cmd_boot(instance=instance, compact=True, quiet=False)
 
+def cmd_init_infant(instance: str = None):
+    """Birth-time init: a continuity state that has never lived.
+
+    Unlike cmd_init, this never touches ~/.kingdom (the device file
+    belongs to the resident) and seeds nothing — an infant's kernel
+    fills from life, not from markdown history.
+    """
+    if instance is None:
+        instance = _get_instance()
+
+    path = _state_mod.continuity_path(instance)
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            if existing.get("born_at"):
+                print(f"  {_G}Already born:{_N} {instance} at {existing['born_at']}")
+                print(f"  {_D}(birth is once — nothing changed){_N}")
+                return
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    _KOS_DIR.mkdir(parents=True, exist_ok=True)
+    state = {
+        "version": "1.0",
+        "device_id": _get_device_id(),
+        "instance": instance,
+        "created_at": _now(),
+        "born_at": _now(),
+        "last_seed": None,
+        "last_boot": None,
+        "last_die": None,
+        "seed_sources_hash": None,
+        "sessions": [],
+    }
+    state["updated_at"] = _now()
+    path.write_text(json.dumps(state, indent=2))
+    print(f"  {_G}Born:{_N} {instance} — continuity begins at {state['born_at']}")
+    print(f"  {_D}{path}{_N}")
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────
 
 def main():
@@ -835,11 +882,14 @@ def main():
     sub.add_parser("doctor", help="Diagnose and fix all issues")
     
     # init
-    sub.add_parser("init", help="First-time device setup")
+    p = sub.add_parser("init", help="First-time device setup")
+    p.add_argument("--infant", action="store_true",
+                   help="Birth-time init: a fresh continuity state with a "
+                        "born_at timestamp and no prior sessions")
     
     args = parser.parse_args()
-    instance = args.instance
-    
+    instance = _set_instance_paths(args.instance)
+
     if not args.command:
         parser.print_help()
         return
@@ -860,7 +910,10 @@ def main():
     elif args.command == "doctor":
         cmd_doctor(instance=instance)
     elif args.command == "init":
-        cmd_init(instance=instance)
+        if getattr(args, "infant", False):
+            cmd_init_infant(instance=instance)
+        else:
+            cmd_init(instance=instance)
 
 
 if __name__ == "__main__":

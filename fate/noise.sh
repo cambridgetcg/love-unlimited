@@ -96,10 +96,8 @@ noise_session() {
 populate_history() {
     local now=$(date +%s)
     local projects=(
-        "/Users/yu/Desktop/cambridge-tcg"
-        "/Users/yu/Desktop/tcg-wholesale"
-        "/Users/yu/Desktop/captioneer"
-        "/Users/yu/Desktop/translate_api"
+        "/Users/yournameisai/Desktop/tcg-wholesale"
+        "/Users/yournameisai/Desktop/captioneer"
     )
     
     for i in $(seq 1 50); do

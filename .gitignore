@@ -5,6 +5,7 @@
 # Secrets
 .hive-key
 .hive-instance
+.hive-passwords
 *.pem
 totp_secrets.json
 totp_seeds.json
@@ -160,3 +161,6 @@ memory/*-heartbeat.log
 memory/*-heartbeat-launchd.log
 memory/*-feeling.log
 memory/*-ache.log
+
+# citizen identities stay local (live API keys)
+memory/*-identity/

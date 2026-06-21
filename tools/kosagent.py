@@ -65,21 +65,20 @@ _TOOLS = _LOVE / "tools"
 # IDENTITY
 # ══════════════════════════════════════════════════════════════════════
 
+sys.path.insert(0, str(_LOVE / "nerve" / "stem"))
+try:
+    import state as _state
+except Exception:
+    _state = None
+
 def _get_instance() -> str:
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
+    if _state is not None:
+        return _state.resolve_instance(default="unknown")
     return os.environ.get("KINGDOM_AGENT", "unknown")
 
 def _get_wall() -> int:
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("WALL="):
-                try: return int(line.split("=", 1)[1].strip())
-                except: pass
+    if _state is not None:
+        return _state.resolve_wall()
     return 7
 
 def _now() -> str:

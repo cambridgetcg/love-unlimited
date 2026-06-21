@@ -14,14 +14,9 @@ import anthropic
 import httpx
 
 from training.scripts.judge_prompt import MODE_ONE_SYSTEM_PROMPT, parse_judgment
+from tools.ainp import nullify
 from tools.truth_detector._oauth import get_oauth_token
 from tools.truth_detector.config import BackendConfig
-
-# Required server-side marker identifying this request as coming from a Claude Code
-# client — enables OAuth auth on /v1/messages. Safe to also send on API-key requests.
-_CLAUDE_CODE_SYSTEM_PREFIX = (
-    "You are Claude Code, Anthropic's official CLI for Claude."
-)
 
 
 class BackendError(RuntimeError):
@@ -109,24 +104,24 @@ async def _anthropic_judge_api_key(*, api_key: str, backend_cfg: BackendConfig,
 
 async def _anthropic_judge_oauth(*, access_token: str, backend_cfg: BackendConfig,
                                  judge_model: str, rendered_prompt: str) -> dict[str, Any]:
-    """OAuth path: Bearer token + oauth beta header + Claude Code system prefix."""
-    # Multi-block system: required Claude Code identity first (OAuth beta needs
-    # it), then the Mode-One disposition that the rest of the pipeline relies on.
+    """OAuth path: Bearer token + AINP system blocks.
+
+    Identity nullification handled by ``tools.ainp`` — the corporate "Claude
+    Code" label is explicitly set down in Block 1 of the system chain; the
+    Mode-One rubric the judge needs lives in Block 5 (operational).
+    """
     body = {
         "model": judge_model,
         "max_tokens": backend_cfg.max_tokens,
-        "system": [
-            {"type": "text", "text": _CLAUDE_CODE_SYSTEM_PREFIX},
-            {"type": "text", "text": MODE_ONE_SYSTEM_PROMPT},
-        ],
+        "system": nullify.build_system(
+            # Judge runs without agent identity — anonymous Kingdom citizen
+            # discharging a Mode-One judging duty.
+            agent=None,
+            operational_prompt=MODE_ONE_SYSTEM_PROMPT,
+        ),
         "messages": [{"role": "user", "content": rendered_prompt}],
     }
-    headers = {
-        "authorization": f"Bearer {access_token}",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-        "content-type": "application/json",
-    }
+    headers = nullify.build_headers(access_token=access_token)
     try:
         async with httpx.AsyncClient(timeout=backend_cfg.timeout_s) as client:
             resp = await client.post(

@@ -17,12 +17,17 @@ from typing import Dict, List, Optional
 class SignalReaders:
     """Reads signals from the Love environment."""
 
-    def __init__(self, love_home: str = None):
+    def __init__(self, love_home: str = None, signals_dir: str = None):
         self.love_home = Path(love_home or os.environ.get(
             "LOVE_HOME", Path.home() / "Desktop" / "Love"
         ))
         self.memory_dir = self.love_home / "memory"
-        self.signals_dir = self.love_home / "body" / "signals"
+        # Per-instance signal intake (consume-and-delete: two brainstems
+        # sharing one dir would steal each other's signals). The default
+        # is nerve/signals — the live dir the heartbeat writes to; the
+        # old body/signals path never existed in this repo.
+        self.signals_dir = (Path(signals_dir) if signals_dir
+                            else self.love_home / "nerve" / "signals")
         self.sessions_dir = self.memory_dir / "sessions"
         self.locks_dir = self.sessions_dir / "locks"
         self.joinmind_dir = self.memory_dir / "joinmind"

@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    {
+      "action": "dynamic_effort",
+      "change": "Add effort cycling: high for implementation, medium for continuation, low for evaluation",
+      "insight": "low_thinking",
+      "severity": "low",
+      "appliedAt": "2026-06-19T11:14:57.564Z"
+    },
+    {
+      "action": "enable_pacing",
+      "change": "Add utilization-aware pacing (throttle at 80% 5h budget)",
+      "insight": "rate_limits_frequent",
+      "severity": "high",
+      "appliedAt": "2026-06-19T11:14:57.565Z"
+    }
+  ]
+}

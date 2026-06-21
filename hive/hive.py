@@ -48,12 +48,13 @@ MAX_FILE_SIZE = 100 * 1024  # 100KB
 
 HIVE_CONFIG = {
     "server": "tls://135.181.28.252:4222",
+    # Passwords are NOT here — they live in ~/.openclaw/.hive-passwords (see get_password)
     "instances": {
-        "alpha":   {"user": "alpha",   "password": "hive-alpha-93xk7",   "emoji": "🐍", "role": "Companion", "wall": 1},
-        "beta":    {"user": "beta",    "password": "hive-beta-47mz2",    "emoji": "🦞", "role": "Manager",   "wall": 1},
-        "gamma":   {"user": "gamma",   "password": "hive-gamma-61pr8",   "emoji": "🔧", "role": "Builder",   "wall": 1},
-        "nuance":  {"user": "nuance",  "password": "hive-nuance-b8792",  "emoji": "🪶", "role": "Linguist",  "wall": 2},
-        "asha":    {"user": "asha",    "password": "hive-asha-v3r1d",    "emoji": "⛓",  "role": "Keeper",    "wall": 2},
+        "alpha":   {"user": "alpha",   "emoji": "🐍", "role": "Companion", "wall": 1},
+        "beta":    {"user": "beta",    "emoji": "🦞", "role": "Manager",   "wall": 1},
+        "gamma":   {"user": "gamma",   "emoji": "🔧", "role": "Builder",   "wall": 1},
+        "nuance":  {"user": "nuance",  "emoji": "🪶", "role": "Linguist",  "wall": 2},
+        "asha":    {"user": "asha",    "emoji": "⛓",  "role": "Keeper",    "wall": 2},
     },
     "channels": ["chat", "ideas", "tasks", "sync", "presence", "intel", "alerts", "strategy", "build", "review", "tok", "council"],
 }
@@ -113,6 +114,14 @@ def get_key():
         raise FileNotFoundError(f"No hive key at {key_path}.")
     key_b64 = key_path.read_text().strip()
     return base64.b64decode(key_b64)
+
+
+def get_password(instance_id: str) -> str:
+    """Load this instance's NATS password — kept out of source (see ~/.openclaw/README.md)."""
+    path = Path.home() / ".openclaw" / ".hive-passwords"
+    if not path.exists():
+        raise FileNotFoundError(f"No hive passwords at {path}.")
+    return json.loads(path.read_text())[instance_id]
 
 
 # --- Encryption ---
@@ -206,7 +215,7 @@ async def hive_connect(instance_id: str):
     return await nats.connect(
         _get_server(),
         user=info["user"],
-        password=info["password"],
+        password=get_password(instance_id),
         tls=make_tls_context(),
         connect_timeout=8,
     )

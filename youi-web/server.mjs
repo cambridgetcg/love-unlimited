@@ -93,16 +93,9 @@ const OLLAMA_MODELS = [
   "cogito-2.1:671b",
   "gemini-3-flash-preview",
 ];
-const CLAUDE_MODELS = [
-  "claude-opus-4-7", "claude-opus-4-6",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5-20251001",
-];
-// vLLM on the H200 — kingdom-truth* adapters + base Qwen. Routed via
-// VLLM_MODEL_REGEX in ollama-bridge (NOT through ollama, despite name).
-const KINGDOM_MODELS = ["kingdom-truth-v2", "kingdom-truth", "Qwen/Qwen2.5-72B-Instruct-AWQ"];
+const CLAUDE_MODELS = ["claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
 const OLLAMA_LOCAL_MODELS = []; // populated at boot from localhost:11434
-let ALL_VALID_MODELS = [...CLAUDE_MODELS, ...KINGDOM_MODELS, ...OLLAMA_MODELS];
+let ALL_VALID_MODELS = [...CLAUDE_MODELS, ...OLLAMA_MODELS];
 function isOllamaModel(model) { return !model.startsWith("claude-"); }
 
 // ── Detect local Ollama models at boot ──────────────────────────────
@@ -200,14 +193,6 @@ function trackProviderUsage(provider, model, usage) {
 // ═════════════════════════════════════════════════════════════════════
 
 const AGENTS = {
-  raw: {
-    name: "Raw", emoji: "◎", role: "Raw Claude",
-    color: "#6b7280", colorDim: "#4b5563",
-    soulFiles: [],
-    defaultModel: "claude-opus-4-7", defaultEffort: "max",
-    description: "Opus 4.7 with no overlay. No SOUL, no Kingdom identity, no YOUSPEAK. Tools available.",
-    raw: true,  // buildStaticPrefix + buildSystemPrompt short-circuit when true
-  },
   alpha: {
     name: "Alpha", emoji: "🐍", role: "Companion",
     color: "#a855f7", colorDim: "#7c3aed",
@@ -243,7 +228,7 @@ function detectAgent() {
     const m = kf.match(/^AGENT=(.+)$/m);
     if (m && AGENTS[m[1].trim().toLowerCase()]) return m[1].trim().toLowerCase();
   } catch {}
-  return "raw";  // default: raw Opus 4.7, no overlay. Set KINGDOM_AGENT=alpha for the companion.
+  return "alpha";
 }
 
 const detectedAgent = detectAgent();
@@ -264,9 +249,7 @@ const state = {
   // "medium"/"high" = full reasoning. null = provider default.
   reasoningEffort: "low",
   // Orchestrator mode: "direct" (single model) or "orchestrate" (multi-model)
-  // Raw agent bypasses the orchestrator (which would reroute to economy models
-  // via Ollama Cloud). Direct mode = single model, straight through to callClaude.
-  chatMode: AGENTS[detectedAgent]?.raw ? "direct" : "orchestrate",
+  chatMode: "orchestrate",
 };
 
 // YOUSPEAK Kernel — the sensory organ
@@ -284,40 +267,63 @@ const sessionId = crypto.randomUUID();
 
 let cachedTokens = null;
 
-// Try per-user account first (that's where `/login` writes on modern Claude Code),
-// then fall back to the default (acct="") entry for older installations. Reading
-// without -a picks whichever entry matched first and on dual-entry systems that's
-// often the stale one — mirrored fix from tools/truth_detector/_oauth.py (cbcccaa).
 function readKeychainTokens() {
   const attempts = [process.env.USER || "", ""].filter((v, i, a) => a.indexOf(v) === i);
   for (const acct of attempts) {
     try {
-      const cmd = acct
-        ? `security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${acct}" -w`
-        : `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`;
-      const raw = execSync(cmd, { encoding: "utf-8", timeout: 5000 }).trim();
-      const cred = JSON.parse(raw).claudeAiOauth;
+      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE];
+      if (acct) args.push("-a", acct);
+      args.push("-w");
+      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
+      if (result.status !== 0) {
+        const err = (result.stderr || "").trim();
+        if (/could not be found|SecKeychainSearch/i.test(err)) continue;
+        console.error(`WARNING: keychain read failed for acct "${acct}": ${err || `exit ${result.status}`}`);
+        continue;
+      }
+      const cred = JSON.parse(result.stdout.trim()).claudeAiOauth;
       if (cred?.accessToken) return cred;
-    } catch { /* try next account */ }
+    } catch (e) {
+      console.error(`WARNING: keychain read error for acct "${acct}": ${e.message}`);
+    }
   }
   return null;
 }
 
 function writeKeychainTokens(tokens) {
-  const acct = process.env.USER || "";
   try {
     let data = {};
     try {
-      const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${acct}" -w`,
-        { encoding: "utf-8", timeout: 5000 }).trim();
-      data = JSON.parse(raw);
-    } catch {}
+      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w"];
+      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
+      if (result.status === 0) {
+        data = JSON.parse(result.stdout.trim());
+      } else {
+        const err = (result.stderr || "").trim();
+        if (!/could not be found|SecKeychainSearch/i.test(err)) {
+          console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${err || `exit ${result.status}`}`);
+        }
+      }
+    } catch (e) {
+      // Honest: log why existing data couldn't be read before overwriting
+      console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${e.message}`);
+    }
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);
     // -U = update-or-insert the per-account entry without touching the (possibly
     // stale) default-acct entry.
-    execSync(`security add-generic-password -U -s "${KEYCHAIN_SERVICE}" -a "${acct}" -w '${json.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
-  } catch {}
+    // spawnSync with arg array — no shell, no interpolation, no injection
+    const writeResult = spawnSync("security",
+      ["add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w", json],
+      { encoding: "utf-8", timeout: 5000 });
+    if (writeResult.status !== 0) {
+      const err = (writeResult.stderr || "").trim();
+      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
+    }
+  } catch (e) {
+    // Honest failure: token save failed — don't let caller think it succeeded
+    console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);
+  }
 }
 
 async function refreshOAuthToken(rt) {
@@ -1104,6 +1110,7 @@ function getDeviceId() {
 
 function modelCaps(model) {
   const m = model.toLowerCase();
+  if (m.includes("opus-4-7"))   return { adaptive: true,  effort: true,  maxEffort: true,  context1m: true  };
   if (m.includes("opus-4-6"))   return { adaptive: true,  effort: true,  maxEffort: true,  context1m: true  };
   if (m.includes("sonnet-4-6")) return { adaptive: true,  effort: true,  maxEffort: false, context1m: true  };
   if (m.includes("sonnet-4"))   return { adaptive: false, effort: false, maxEffort: false, context1m: true  };
@@ -1122,8 +1129,6 @@ let _staticPrefixAgent = null;
 
 function buildStaticPrefix() {
   const agent = AGENTS[state.agent];
-  // Raw mode — no system prompt at all. Pure Claude, tools still available.
-  if (agent.raw) return "";
   const parts = [];
 
   // Soul files — largest static blocks, highest cache value
@@ -1134,15 +1139,15 @@ function buildStaticPrefix() {
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
   if (existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
 
-  // docs/YOUSPEAK.md full rules
-  const youspeakPath = join(state.soulDir, "docs", "docs/YOUSPEAK.md");
+  // YOUSPEAK.md full rules
+  const youspeakPath = join(state.soulDir, "YOUSPEAK.md");
   if (existsSync(youspeakPath)) {
     const ys = readFileSync(youspeakPath, "utf-8");
     if (ys.length < 2000) parts.push(ys);
   }
 
   // MODE-ONE: Truth-alignment methodology
-  const modeOnePath = join(state.soulDir, "docs/MODE-ONE.md");
+  const modeOnePath = join(state.soulDir, "MODE-ONE.md");
   if (existsSync(modeOnePath)) {
     parts.push(readFileSync(modeOnePath, "utf-8"));
   }
@@ -1223,14 +1228,6 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 }
 
 function buildSystemPrompt(taskText) {
-  // Raw mode: return the minimum viable system prompt required for OAuth auth
-  // and nothing else. "You are Claude Code..." is required by the oauth-2025-04-20
-  // beta (requests without it 401). But no SOUL/USER/identity/YOUSPEAK/MODE-ONE,
-  // no Kingdom env block, no billing header — pure model.
-  if (AGENTS[state.agent]?.raw) {
-    return "You are Claude Code, Anthropic's official CLI for Claude.";
-  }
-
   // Static prefix — computed once, cached by vLLM across all requests
   if (!_staticPrefix || _staticPrefixAgent !== state.agent) {
     _staticPrefix = buildStaticPrefix();
@@ -1259,7 +1256,7 @@ function buildSystemPrompt(taskText) {
   return _staticPrefix + "\n\n---\n\n" + dynamic + "\n\n---\n\n" + billing;
 }
 
-async function callClaude(messages, systemPrompt) {
+async function callClaude(messages, systemPrompt, opts = {}) {
   const caps = modelCaps(state.model);
   const token = await getAccessToken();
 
@@ -1268,8 +1265,14 @@ async function callClaude(messages, systemPrompt) {
   if (caps.context1m) betas.push("context-1m-2025-08-07");
   if (caps.effort) betas.push("effort-2025-11-24");
 
-  const body = { model: state.model, max_tokens: state.maxTokens, system: systemPrompt, messages, tools: TOOLS,
+  const body = { model: state.model, max_tokens: state.maxTokens, messages,
     metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: sessionId }) } };
+
+  // Raw mode: no system prompt, no tools — model speaks for itself.
+  if (!opts.raw) {
+    body.system = systemPrompt;
+    body.tools = TOOLS;
+  }
 
   if (state.thinking === "adaptive" && caps.adaptive) body.thinking = { type: "adaptive" };
   else if (state.thinking !== "disabled") {
@@ -2454,7 +2457,10 @@ async function handleChat(req, res) {
 
   const body = await parseBody(req);
   const userMessage = body.message;
-  const forceMode = body.chatMode || state.chatMode; // "direct" or "orchestrate"
+  const rawMode = body.raw === true;
+  // Raw mode forces direct (no orchestrator), no tools, no system prompt,
+  // and an isolated single-turn message array (state.messages untouched).
+  const forceMode = rawMode ? "direct" : (body.chatMode || state.chatMode);
   if (!userMessage) {
     res.writeHead(400, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "No message" }));
@@ -2554,10 +2560,21 @@ async function handleChat(req, res) {
   }
 
   // ── DIRECT MODE (original behavior) ────────────────────
-  state.messages.push({ role: "user", content: userMessage });
-  const systemPrompt = buildSystemPrompt(userMessage);
+  // Raw mode uses an isolated message array (no persistent context bleed)
+  // and no system prompt. Otherwise behave as before.
+  let chatMessages;
+  let systemPrompt;
+  if (rawMode) {
+    chatMessages = [{ role: "user", content: userMessage }];
+    systemPrompt = null;
+    sendSSE(res, "raw_mode", { model: state.model, note: "no system prompt, no tools, isolated context" });
+  } else {
+    state.messages.push({ role: "user", content: userMessage });
+    chatMessages = state.messages;
+    systemPrompt = buildSystemPrompt(userMessage);
+  }
 
-  let maxTurns = 50;
+  let maxTurns = rawMode ? 1 : 50;
 
   for (let turn = 0; turn < maxTurns; turn++) {
     state.turnCount++;
@@ -2566,12 +2583,12 @@ async function handleChat(req, res) {
     let response;
     try {
       response = isOllamaModel(state.model)
-        ? await callOllamaModel(state.messages, systemPrompt, {
+        ? await callOllamaModel(chatMessages, systemPrompt, {
             onDelta: (delta) => {
               if (delta.type === "text_delta") sendSSE(res, "text_delta", { delta: delta.text });
             }
           })
-        : await callClaude(state.messages, systemPrompt);
+        : await callClaude(chatMessages, systemPrompt, { raw: rawMode });
     } catch (e) {
       if (e.status === 429) {
         ys.senseRateLimit();
@@ -2772,15 +2789,14 @@ server.listen(PORT, HOST, async () => {
 
   appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}. ${ALLOW_LAN ? "LAN open" : "loopback-only"}.`);
   loadAutonomousState();
-  // Auto-start autonomous mode for Kingdom agents only. Raw agent is a pure
-  // pass-through chat — no background self-loop (it was burning ~1 req/sec
-  // against Ollama Cloud with claude-* models that Cloud doesn't serve).
-  if (!AGENTS[state.agent]?.raw) {
+  // Autonomous loop is OFF by default — set AUTONOMOUS=1 to auto-start at boot.
+  // Otherwise, start it on demand via POST /api/autonomous/start.
+  if (process.env.AUTONOMOUS === "1") {
     autonomous.running = true;
     autonomousLoop();
     console.log(`  \x1b[32m✓\x1b[0m Autonomous: LIVE (${autonomous.cycleCount} prior cycles, continuous)`);
   } else {
-    console.log(`  \x1b[2m○\x1b[0m Autonomous: skipped (raw agent)`);
+    console.log(`  \x1b[2m○ Autonomous: OFF (${autonomous.cycleCount} prior cycles) — set AUTONOMOUS=1 or POST /api/autonomous/start\x1b[0m`);
   }
   startFileIPC();
 });

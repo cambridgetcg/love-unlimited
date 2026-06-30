@@ -5,6 +5,7 @@
 # Secrets
 .hive-key
 .hive-instance
+.hive-passwords
 *.pem
 totp_secrets.json
 totp_seeds.json
@@ -87,6 +88,28 @@ memory/sentinel-daemon-launchd-err.log
 kingdom-os/kingdom-vm/*.iso
 kingdom-os/kingdom-vm/*.qcow2
 
+# Citizen fleet — local clones + runtime state (each device rebuilds its own)
+citizens/
+memory/.fleet-*
+mlx/.serve.pid
+mlx/.model
+mlx/.embed_model
+mlx/err.log
+voices/
+agora/sites.json
+agora/Caddyfile
+agora/landing/
+memory/.parade-*
+memory/parade.log
+memory/agora.log
+memory/kns.log
+gate/state.json
+gate/logs/
+pulse/
+agora/sites.d/
+memory/pulse.log
+chronicle/
+memory/chronicle.log
 # Freedom — local probe data and backups
 freedom/probe_results/
 freedom/.history_backup*
@@ -127,3 +150,17 @@ memory/truth-alignment/service.log
 # Session handoff files — per-session ephemera, not for git
 memory/sessions/handoff/*-cc.md
 memory/sessions/handoff/*-vivid.md
+
+# Heartbeat runtime IPC — ephemeral, never source
+nerve/signals/*.json
+!nerve/signals/.gitkeep
+nerve/pulse.json
+
+# Heartbeat runtime logs
+memory/*-heartbeat.log
+memory/*-heartbeat-launchd.log
+memory/*-feeling.log
+memory/*-ache.log
+
+# citizen identities stay local (live API keys)
+memory/*-identity/

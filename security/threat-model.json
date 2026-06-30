@@ -241,14 +241,14 @@
       "impact": "critical",
       "priority": "high",
       "mitigations": [
-        "heartbeat-runner.sh has restricted file permissions",
+        "tick.sh has restricted file permissions",
         "File integrity monitoring covers heartbeat scripts",
         "spawn-queue.sh validated before execution",
         "Strict spawn-queue validation \u2014 only cd+kingdom-agent or cd+claude patterns allowed, dangerous patterns blocked"
       ],
       "mitigated": true,
       "residual_risk": "Coordinator could be socially engineered to produce valid-looking but malicious commands",
-      "detection": "File integrity baseline checks in PEACE score. Hash verification of heartbeat-runner.sh and spawn-queue.sh. launchd plist integrity check. Monitor heartbeat-launchd-err.log for anomalies.",
+      "detection": "File integrity baseline checks in PEACE score. Hash verification of tick.sh and spawn-queue.sh. launchd plist integrity check. Monitor heartbeat-launchd-err.log for anomalies.",
       "response": "Kill heartbeat launchd job. Verify file hashes against integrity baseline. Restore from known-good snapshot if tampered. Re-enable only after full verification. Audit all agents spawned during compromise window.",
       "peace_phase": "fix",
       "last_reviewed": "2026-04-02"

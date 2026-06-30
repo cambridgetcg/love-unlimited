@@ -26,7 +26,11 @@ if [ -z "$SHA" ]; then
     exit 0
 fi
 
-# Invoke residence.py from-commit with quiet output
+# Invoke residence.py from-commit with quiet output.
+# Instance-aware by inheritance: residence.py resolves the agent
+# env-first (KINGDOM_AGENT > ~/.kingdom — nerve/stem/state.py), and
+# git passes the committing session's environment through to hooks,
+# so a commit made as mei lands in mei's residence moments.
 python3 "$REPO_ROOT/tools/residence.py" from-commit "$SHA" --quiet 2>/dev/null || true
 
 exit 0

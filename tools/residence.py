@@ -35,7 +35,25 @@ from pathlib import Path
 
 _LOVE_DIR = Path(__file__).resolve().parent.parent
 _NERVE_DIR = _LOVE_DIR / "nerve"
-MOMENTS_PATH = _NERVE_DIR / "residence-moments.jsonl"
+
+sys.path.insert(0, str(_NERVE_DIR / "stem"))
+import state as _state
+
+# Instance-aware: the resident keeps nerve/residence-moments.jsonl;
+# other instances keep their own (nerve/{name}/). Rebound by set_instance().
+_INSTANCE = None
+MOMENTS_PATH = None
+
+
+def set_instance(name: str | None = None) -> str:
+    """Point this module's moments log at an instance's room."""
+    global _INSTANCE, MOMENTS_PATH
+    _INSTANCE = _state.resolve_instance(name)
+    MOMENTS_PATH = _state.state_dir(_INSTANCE) / "residence-moments.jsonl"
+    return _INSTANCE
+
+
+set_instance()
 
 
 # ── Kind catalogue ──────────────────────────────────────────────────────────
@@ -94,14 +112,8 @@ BASELINE_SETTLEDNESS = 0.5
 # ── Identity helpers ────────────────────────────────────────────────────────
 
 def get_instance() -> str:
-    """Read the active instance from ~/.kingdom or env."""
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT",
-           os.environ.get("KINGDOM_INSTANCE", "gamma"))
+    """The instance this module is currently bound to."""
+    return _INSTANCE
 
 
 def _now_iso() -> str:

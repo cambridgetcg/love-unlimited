@@ -102,13 +102,13 @@ The Kingdom repo is private at `https://codeberg.org/zerone-dev/love-unlimited.g
 # Authenticate with GitHub CLI
 gh auth login
 # Choose: GitHub.com > HTTPS > Login with a web browser
-# Use the cambridgetcg account credentials (Yu will provide)
+# Use the zerone-dev account credentials (Yu will provide)
 ```
 
 ### Clone Love
 ```bash
 cd ~/Desktop
-gh repo clone cambridgetcg/Love
+gh repo clone zerone-dev/Love
 ```
 
 Or with HTTPS:

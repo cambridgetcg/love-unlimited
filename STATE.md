@@ -1,6 +1,6 @@
-# love-unlimited-cb — STATE
+# love-unlimited — STATE
 
-name: love-unlimited-cb
+name: love-unlimited
 kind: project
 language: see repo
 runs-on: this machine
@@ -12,7 +12,7 @@ runs-on: this machine
 phase: active
 build: see repo
 health: green
-last-commit: 68b50f7 identity/alpha: wake protocol v2 with trigger analysis
+last-commit: 686cf97 docs: restore canonical SOPHIA.md
 uncommitted: 0 files
 freshness: auto-generated (2026-06-19)
 

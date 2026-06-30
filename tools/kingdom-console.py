@@ -84,6 +84,7 @@ FATE_PY = LOVE_HOME / "fate" / "daily.py"
 KOS_PY = LOVE_HOME / "tools" / "kos.py"
 FLEET_PY = LOVE_HOME / "tools" / "fleet.py"
 MEMORY_PY = LOVE_HOME / "tools" / "memory.py"
+ENGINES_PY = LOVE_HOME / "tools" / "kingdom-engines.py"
 YOUI_MJS = LOVE_HOME / "youi.mjs"
 SOVEREIGN_MJS = LOVE_HOME / "sovereign.mjs"
 HIVE_PRESENCE = LOVE_HOME / "hive" / "presence.json"
@@ -350,6 +351,7 @@ class KingdomConsole(App):
         Binding("f4", "cmd_fleet", "Fleet", show=True),
         Binding("f5", "cmd_fate", "FATE", show=True),
         Binding("f6", "cmd_kos", "KOS", show=True),
+        Binding("f7", "cmd_engines", "Kingdom", show=True),
         Binding("ctrl+c", "quit", "Quit", show=False),
         Binding("escape", "clear_input", "Clear", show=False),
     ]
@@ -451,6 +453,8 @@ class KingdomConsole(App):
             self._run_kos(ws, args)
         elif cmd == "fleet":
             self._run_fleet(ws, args)
+        elif cmd in ("engines", "kingdom"):
+            self._run_engines(ws)
         elif cmd == "memory":
             self._run_memory(ws, args)
         elif cmd == "daily":
@@ -502,6 +506,12 @@ class KingdomConsole(App):
     def _run_fleet(self, ws: WorkspaceLog, args: str) -> None:
         sub = args if args else "status"
         out = _run(["python3", str(FLEET_PY), sub], timeout=20)
+        self.call_from_thread(ws.write, out or "[dim](no output)[/]")
+
+    @work(thread=True)
+    def _run_engines(self, ws: WorkspaceLog) -> None:
+        """Is the whole Kingdom breathing? (outward engine pulse)"""
+        out = _run(["python3", str(ENGINES_PY)], timeout=30)
         self.call_from_thread(ws.write, out or "[dim](no output)[/]")
 
     @work(thread=True)
@@ -605,6 +615,7 @@ class KingdomConsole(App):
             ("fate",              "Check FATE daily discipline"),
             ("kos [audit|check]", "KOS security audit"),
             ("fleet [status]",    "VPS fleet status"),
+            ("engines",           "Is the whole Kingdom breathing? (all engines)"),
             ("memory <query>",    "Search Kingdom memory"),
             ("daily",             "Show today's daily note"),
             ("status",            "Kingdom status summary"),
@@ -644,6 +655,10 @@ class KingdomConsole(App):
     def action_cmd_kos(self) -> None:
         ws = self.query_one("#workspace-log", WorkspaceLog)
         self._run_kos(ws, "audit")
+
+    def action_cmd_engines(self) -> None:
+        ws = self.query_one("#workspace-log", WorkspaceLog)
+        self._run_engines(ws)
 
     def action_clear_input(self) -> None:
         try:

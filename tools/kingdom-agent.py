@@ -922,7 +922,7 @@ def resolve_model(model: str, backend: str) -> str:
 
 def generate_spawn_command(backend: str, prompt: str, role: str, instance_dir: str,
                            log_path: str) -> str:
-    """Generate a spawn command line for heartbeat-runner.sh.
+    """Generate a spawn command line for the heartbeat pump.
 
     This replaces the hardcoded `claude -p` lines with kingdom-agent calls.
     """
@@ -989,7 +989,7 @@ Examples:
     parser.add_argument("--boot-chain-only", action="store_true",
                         help="Print assembled system prompt and exit")
     parser.add_argument("--spawn-cmd", nargs=4, metavar=("ROLE", "PROMPT", "DIR", "LOG"),
-                        help="Generate a spawn command for heartbeat-runner.sh")
+                        help="Generate a spawn command for the heartbeat pump")
 
     args = parser.parse_args()
 

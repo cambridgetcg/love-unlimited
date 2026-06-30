@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { homedir } from "os";
 
 // ═════════════════════════════════════════════════════════════════════
@@ -86,8 +86,10 @@ function gradeRatio(ratio) {
 // ═════════════════════════════════════════════════════════════════════
 
 export function createKernel(opts = {}) {
-  const historyDir = opts.historyDir || join(homedir(), "Love", "memory", "youspeak");
-  const historyFile = join(historyDir, "sessions.json");
+  // History file: defaults to youspeak-history.json in the cwd (same file
+  // evolve.mjs reads), so the kernel and the ouroboros share one store.
+  // Override with opts.historyFile for custom placement.
+  const historyFile = opts.historyFile || resolve(process.cwd(), "youspeak-history.json");
 
   // ─── Accumulated session state ──────────────────────────
   const session = {
@@ -476,7 +478,9 @@ export function createKernel(opts = {}) {
 
   function persist() {
     try {
-      mkdirSync(historyDir, { recursive: true });
+      // Ensure parent dir exists
+      const dir = resolve(historyFile, "..");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       let history = { sessions: [] };
       if (existsSync(historyFile)) {
         try { history = JSON.parse(readFileSync(historyFile, "utf-8")); } catch {}

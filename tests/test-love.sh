@@ -415,50 +415,44 @@ done
 
 # ── 12. Heartbeat Runner Script ─────────────────────────────────────────────
 
-section "12. Heartbeat Runner Script"
+section "12. Heart (tick.sh)"
 
-RUNNER="$LOVE_DIR/tools/heartbeat-runner.sh"
+RUNNER="$LOVE_DIR/nerve/heart/tick.sh"
 
 if [ -x "$RUNNER" ]; then
-  pass "heartbeat-runner.sh is executable"
+  pass "tick.sh is executable"
 else
-  fail "heartbeat-runner.sh not executable"
+  fail "tick.sh not executable"
 fi
 
 if head -1 "$RUNNER" | grep -q '^#!/bin/bash'; then
-  pass "heartbeat-runner.sh has bash shebang"
+  pass "tick.sh has bash shebang"
 else
-  fail "heartbeat-runner.sh missing bash shebang"
+  fail "tick.sh missing bash shebang"
 fi
 
 if grep -q 'LOVE_DIR=' "$RUNNER"; then
-  pass "heartbeat-runner.sh references LOVE_DIR"
+  pass "tick.sh references LOVE_DIR"
 else
-  fail "heartbeat-runner.sh LOVE_DIR not set"
+  fail "tick.sh LOVE_DIR not set"
 fi
 
-if grep -q 'SPAWN_QUEUE=' "$RUNNER"; then
-  pass "heartbeat-runner.sh defines SPAWN_QUEUE"
+if grep -q 'pulse.py' "$RUNNER"; then
+  pass "tick.sh stamps the pulse"
 else
-  fail "heartbeat-runner.sh missing SPAWN_QUEUE definition"
+  fail "tick.sh does not stamp pulse.json"
 fi
 
-if grep -q '/opt/homebrew/bin/claude' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses absolute path to claude CLI"
+if grep -q 'organs.json' "$RUNNER"; then
+  pass "tick.sh reconciles from the organ registry"
 else
-  fail "heartbeat-runner.sh uses relative claude path (will fail headless)"
+  fail "tick.sh does not read organs.json"
 fi
 
-if grep -q '\-\-dangerously-skip-permissions' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses --dangerously-skip-permissions"
+if grep -q 'while true' "$RUNNER"; then
+  pass "tick.sh is a long-lived loop (KeepAlive-supervised)"
 else
-  fail "heartbeat-runner.sh missing --dangerously-skip-permissions (will hang headless)"
-fi
-
-if grep -q '\-\-no-session-persistence' "$RUNNER"; then
-  pass "heartbeat-runner.sh uses --no-session-persistence"
-else
-  fail "heartbeat-runner.sh missing --no-session-persistence"
+  fail "tick.sh is not a persistent loop"
 fi
 
 # ── 13. Spawn Queue Mechanics ────────────────────────────────────────────────
@@ -631,10 +625,10 @@ fi
 
 section "19. Heartbeat Runner Dry Run (bash -n)"
 
-if bash -n "$LOVE_DIR/tools/heartbeat-runner.sh" 2>/dev/null; then
-  pass "heartbeat-runner.sh passes bash syntax check"
+if bash -n "$LOVE_DIR/nerve/heart/tick.sh" 2>/dev/null; then
+  pass "tick.sh passes bash syntax check"
 else
-  fail "heartbeat-runner.sh has bash syntax errors"
+  fail "tick.sh has bash syntax errors"
 fi
 
 if bash -n "$LOVE_DIR/memory/spawn-queue.sh" 2>/dev/null; then
@@ -645,14 +639,14 @@ fi
 
 # ── 20. Coordinator Prompt Validation ────────────────────────────────────────
 
-section "20. Coordinator Prompt Validation"
+section "20. Heart Reconciler Validation"
 
-RUNNER_CONTENT=$(cat "$LOVE_DIR/tools/heartbeat-runner.sh")
+RUNNER_CONTENT=$(cat "$LOVE_DIR/nerve/heart/tick.sh")
 
-if echo "$RUNNER_CONTENT" | grep -q 'HEARTBEAT.md'; then
-  pass "Coordinator prompt references HEARTBEAT.md"
+if echo "$RUNNER_CONTENT" | grep -q 'reconcile'; then
+  pass "tick.sh reconciles the registered organs"
 else
-  fail "Coordinator prompt missing HEARTBEAT.md reference"
+  fail "tick.sh missing organ reconcile step"
 fi
 
 if echo "$RUNNER_CONTENT" | grep -q 'spawn-queue.sh'; then

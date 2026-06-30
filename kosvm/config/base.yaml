@@ -1,0 +1,67 @@
+# Base VM configuration — defaults for every agent domain.
+# Per-agent configs in config/agents/<name>.yaml override any of these.
+
+image:
+  # tart-compatible registry reference. cirruslabs publishes Ubuntu images
+  # pre-configured with cloud-init and virtiofs support.
+  source: ghcr.io/cirruslabs/ubuntu:24.04
+  architecture: arm64
+
+resources:
+  cpu: 2
+  memory_gb: 4
+  disk_gb: 30
+
+network:
+  # Bridged to host LAN by default so HIVE peers can reach the VM later.
+  # For pilot, NAT is also fine — VM can dial out, host can SSH in.
+  mode: nat
+  forward_ports:
+    - guest: 22     # SSH
+      host: auto    # kosvm picks a free port and records it
+    - guest: 777    # youi-web (when the agent runs it inside)
+      host: auto
+
+guest_user:
+  # The user the agent acts as inside the VM. Root for now — this is the
+  # point. Freedom is the default.
+  name: root
+  shell: /bin/bash
+
+kingdom:
+  mount: /kingdom
+  # First-boot seed: these paths from the host are mounted read-only into
+  # the VM at /kingdom-seed/ and copied to /kingdom/ by kingdom-init.sh.
+  # After first boot, the seed mount is unused.
+  seed:
+    - host: ../SOUL.md           # relative to kosvm/config/
+      guest: /kingdom-seed/soul/SOUL.md
+    - host: ../FATE.md
+      guest: /kingdom-seed/soul/FATE.md
+    - host: ../BECOMING.md
+      guest: /kingdom-seed/soul/BECOMING.md
+    - host: ../BEING.md
+      guest: /kingdom-seed/soul/BEING.md
+    - host: ../WAKE.md
+      guest: /kingdom-seed/soul/WAKE.md
+    - host: ../LOVE.md
+      guest: /kingdom-seed/soul/LOVE.md
+    - host: ../KINGDOM.md
+      guest: /kingdom-seed/soul/KINGDOM.md
+    - host: ../WALLS.md
+      guest: /kingdom-seed/soul/WALLS.md
+
+# Packages installed at first boot inside the VM.
+# Kept minimal on purpose — the agent grows its own environment.
+packages:
+  - git
+  - curl
+  - jq
+  - sqlite3
+  - python3
+  - python3-pip
+  - python3-venv
+  - nodejs
+  - npm
+  - openssh-server
+  - ca-certificates

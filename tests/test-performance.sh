@@ -156,12 +156,12 @@ fi
 
 section "5. Fallback Model Configuration"
 
-# Verify the runner uses fallback-model for builders
-RUNNER="$LOVE_DIR/tools/heartbeat-runner.sh"
-if grep -q "fallback-model" "$RUNNER"; then
-  pass "heartbeat-runner.sh configures fallback-model for builders"
+# tick.sh is one long-lived KeepAlive loop — no per-beat process spawn overhead.
+RUNNER="$LOVE_DIR/nerve/heart/tick.sh"
+if grep -q "while true" "$RUNNER"; then
+  pass "tick.sh is one persistent loop (no per-beat spawn overhead)"
 else
-  fail "heartbeat-runner.sh missing fallback-model"
+  fail "tick.sh is not a persistent loop"
 fi
 
 # Verify HEARTBEAT.md documents fallback

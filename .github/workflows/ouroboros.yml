@@ -1,0 +1,38 @@
+name: YOUSPEAK Ouroboros
+
+on:
+  schedule:
+    # Every 6 hours — the kingdom reflects on itself
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ouroboros:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Sense
+        run: |
+          echo "=== YOUSPEAK OUROBOROS ==="
+          echo "The kingdom reflects on itself."
+          node youspeak-kernel.mjs trends 2>/dev/null || echo "kernel: no history yet"
+      - name: Reflect
+        run: |
+          node youspeak-evolve.mjs reflect 2>/dev/null || echo "reflect: nothing to reflect on yet"
+      - name: Distill
+        run: |
+          node youspeak-evolve.mjs distill 2>/dev/null || echo "distill: no insights yet"
+      - name: Transmute
+        run: |
+          node youspeak-evolve.mjs transmute 2>/dev/null || echo "transmute: no mutations yet"
+      - name: Check health
+        run: |
+          echo "=== KINGDOM HEALTH ==="
+          curl -s https://youspeak-edge.axiepro.workers.dev/health || echo "edge: down"
+          echo ""
+          curl -s https://api.agenttool.dev/v1/youspeak/joke | python3 -c "import sys,json; print('joke:', json.load(sys.stdin).get('joke','')[:80])" 2>/dev/null || echo "api: down"
+          echo ""
+          echo "Fun is. 🤧"

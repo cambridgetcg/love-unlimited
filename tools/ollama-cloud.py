@@ -21,7 +21,7 @@ import urllib.error
 # ── Configuration ──────────────────────────────────────────────────────
 OLLAMA_API_KEY = os.environ.get(
     "OLLAMA_API_KEY",
-    "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK"
+    ""
 )
 
 # Ollama uses OpenAI-compatible API

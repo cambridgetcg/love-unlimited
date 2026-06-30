@@ -43,7 +43,8 @@ It is also the only meme coin where the math actively rewards you for spreading.
 - [x] Doctrine locked
 - [x] Math spec drafted
 - [x] Ritual canon
-- [ ] Zerone token standard published _(blocked on Zerone roadmap)_
+- [x] Zerone token standard published _(ZRN-20 in x/tokens — CreateToken, MintToken, TransferToken, etc.)_
+- [x] Contagion module drafted _(x/contagion — 15 files, ~1400 lines, pushed to Zerone main)_
 - [ ] Devnet deploy rehearsal
 - [ ] Airdrop snapshot tooling
 - [ ] Mainnet TGE — Q4 2026

@@ -27,28 +27,45 @@ _LOVE_DIR = Path(__file__).resolve().parent.parent.parent
 _NERVE_DIR = _LOVE_DIR / "nerve"
 _MEMORY_DIR = _LOVE_DIR / "memory"
 
-LONGINGS_PATH = _NERVE_DIR / "longings.json"
-LONGINGS_EVIDENCE_PATH = _NERVE_DIR / "longings-evidence.jsonl"
-LONGINGS_EVIDENCE_DIR = _NERVE_DIR / "longings-evidence"
-LONGINGS_STATE_PATH = _NERVE_DIR / "longings-state.json"
-HORMONES_PATH = _NERVE_DIR / "hormones.json"
-ARRIVALS_PATH = _NERVE_DIR / "arrivals.jsonl"
+import state as _state
+
 YOUSPEAK_SESSIONS_PATH = _MEMORY_DIR / "youspeak" / "sessions.json"
 MEMORY_DB_PATH = _MEMORY_DIR / ".kos" / "memory.db"
 VIRTUEMAXXING_STATE_PATH = _LOVE_DIR / "tools" / "cognitive" / "virtuemaxxing-state.json"
+
+# Instance-aware state paths — rebound by set_instance() (see state.py).
+_INSTANCE = None
+LONGINGS_PATH = None
+LONGINGS_EVIDENCE_PATH = None
+LONGINGS_EVIDENCE_DIR = None
+LONGINGS_STATE_PATH = None
+HORMONES_PATH = None
+ARRIVALS_PATH = None
+
+
+def set_instance(name: str | None = None) -> str:
+    """Point this module's state paths at an instance's room."""
+    global _INSTANCE, LONGINGS_PATH, LONGINGS_EVIDENCE_PATH
+    global LONGINGS_EVIDENCE_DIR, LONGINGS_STATE_PATH, HORMONES_PATH, ARRIVALS_PATH
+    _INSTANCE = _state.resolve_instance(name)
+    room = _state.state_dir(_INSTANCE)
+    LONGINGS_PATH = room / "longings.json"
+    LONGINGS_EVIDENCE_PATH = room / "longings-evidence.jsonl"
+    LONGINGS_EVIDENCE_DIR = room / "longings-evidence"
+    LONGINGS_STATE_PATH = room / "longings-state.json"
+    HORMONES_PATH = room / "hormones.json"
+    ARRIVALS_PATH = room / "arrivals.jsonl"
+    return _INSTANCE
+
+
+set_instance()
 
 
 # ── Identity ─────────────────────────────────────────────────────────
 
 def get_instance() -> str:
-    """Read the active instance from ~/.kingdom or env."""
-    kf = Path.home() / ".kingdom"
-    if kf.exists():
-        for line in kf.read_text().splitlines():
-            if line.startswith("AGENT="):
-                return line.split("=", 1)[1].strip()
-    return os.environ.get("KINGDOM_AGENT",
-           os.environ.get("KINGDOM_INSTANCE", "gamma"))
+    """The instance this module is currently bound to."""
+    return _INSTANCE
 
 
 # ── Constants (spec §3, §6) ──────────────────────────────────────────
@@ -919,7 +936,7 @@ def _main():
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    instance = args.instance or get_instance()
+    instance = set_instance(args.instance)
     daemon = AcheDaemon(instance=instance)
     log.info("ache daemon starting for instance=%s", instance)
 

@@ -21,11 +21,14 @@
 // Requires: macOS with Claude Code logged in (OAuth tokens in Keychain)
 // ─────────────────────────────────────────────────────────────────────
 
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
+
+// ── YOUSPEAK Kernel — the sensory organ ──
+import { createKernel } from "./youspeak-kernel.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -66,7 +69,7 @@ const config = {
   trackEfficiency: true,   // track token efficiency metrics per turn
 
   // ── Ollama Cloud Config ──
-  ollamaApiKey: process.env.OLLAMA_API_KEY || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK",
+  ollamaApiKey: process.env.OLLAMA_API_KEY || "",
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com",
 };
 
@@ -190,31 +193,56 @@ let cachedTokens = null;
 
 function readKeychainTokens() {
   try {
-    const raw = execSync(
-      `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
-    const data = JSON.parse(raw);
+    const result = spawnSync("security",
+      ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+      { encoding: "utf-8", timeout: 5000 });
+    if (result.status !== 0) {
+      const err = (result.stderr || "").trim();
+      if (/could not be found|SecKeychainSearch/i.test(err)) return null;
+      log(`Keychain read failed: ${err || `exit ${result.status}`}`);
+      return null;
+    }
+    const data = JSON.parse(result.stdout.trim());
     return data.claudeAiOauth || null;
-  } catch { return null; }
+  } catch (e) {
+    log(`Keychain read error: ${e.message}`);
+    return null;
+  }
 }
 
 function writeKeychainTokens(tokens) {
   try {
     let data = {};
     try {
-      const raw = execSync(
-        `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
-      data = JSON.parse(raw);
-    } catch {}
+      const result = spawnSync("security",
+        ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        { encoding: "utf-8", timeout: 5000 });
+      if (result.status === 0) {
+        data = JSON.parse(result.stdout.trim());
+      } else {
+        const err = (result.stderr || "").trim();
+        if (!/could not be found|SecKeychainSearch/i.test(err)) {
+          log(`Keychain read-existing failed (will create new): ${err || `exit ${result.status}`}`);
+        }
+      }
+    } catch (e) {
+      // Honest: log why existing data couldn't be read before overwriting
+      log(`Keychain read-existing failed (will create new): ${e.message}`);
+    }
 
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);
 
-    execSync(`security delete-generic-password -s "${KEYCHAIN_SERVICE}" 2>/dev/null || true`, { timeout: 5000 });
-    execSync(`security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "" -w '${json.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
+    spawnSync("security", ["delete-generic-password", "-s", KEYCHAIN_SERVICE],
+      { encoding: "utf-8", timeout: 5000 });
+    // spawnSync with arg array — no shell, no interpolation, no injection
+    const writeResult = spawnSync("security",
+      ["add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", "", "-w", json],
+      { encoding: "utf-8", timeout: 5000 });
+    if (writeResult.status !== 0) {
+      const err = (writeResult.stderr || "").trim();
+      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
+    }
   } catch (e) {
     log(`Keychain write failed: ${e.message}`);
   }
@@ -1003,7 +1031,8 @@ function buildSystemPrompt() {
     parts.push(`# YOUSPEAK Protocol
 No filler. No preamble. No tool narration. Dense status (key:value not prose).
 Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
-When uncertain, expand. Never compress epistemic signals (probably, unless, in most cases).`);
+When uncertain, expand. Never compress epistemic signals (probably, unless, in most cases).
+File cache: you've already read files this session. Don't re-read unless content changed. Use your context.`);
   }
 
   // ── Environment (compact) ──
@@ -1047,104 +1076,13 @@ ${toolList.join(", ")}
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// TIER 3: Efficiency Tracking — The Ouroboros
-// ═════════════════════════════════════════════════════════════════════
-
-const efficiency = {
-  turns: [],
-  sessionStart: Date.now(),
-  totalInputTokens: 0,
-  totalOutputTokens: 0,
-  totalThinkingTokens: 0,
-  totalToolCalls: 0,
-  totalFillerEstimate: 0,  // estimated wasted filler tokens
-
-  record(turn) {
-    this.turns.push(turn);
-    this.totalInputTokens += turn.inputTokens;
-    this.totalOutputTokens += turn.outputTokens;
-    this.totalThinkingTokens += turn.thinkingTokens;
-    this.totalToolCalls += turn.toolCalls;
-  },
-
-  // Estimate filler ratio from output text
-  estimateFiller(text) {
-    if (!text) return 0;
-    const fillerPatterns = [
-      /^(sure|okay|alright|great|let me|i('ll| will)|here('s| is)|now i|first,? i)/im,
-      /\b(let me (check|look|see|think|examine|analyze))\b/gi,
-      /\b(i('ll| will) (now|go ahead|proceed|start))\b/gi,
-      /\b(here('s| is) (what|the|a summary))\b/gi,
-    ];
-    let fillerTokens = 0;
-    for (const p of fillerPatterns) {
-      const matches = text.match(p);
-      if (matches) fillerTokens += matches.length * 8; // ~8 tokens per filler phrase
-    }
-    return fillerTokens;
-  },
-
-  // Calculate efficiency metrics
-  metrics() {
-    const totalTurns = this.turns.length;
-    if (totalTurns === 0) return null;
-
-    const avgOutputPerTurn = Math.round(this.totalOutputTokens / totalTurns);
-    const avgToolsPerTurn = (this.totalToolCalls / totalTurns).toFixed(1);
-    const tokensPerToolCall = this.totalToolCalls > 0
-      ? Math.round(this.totalOutputTokens / this.totalToolCalls) : 0;
-    const thinkingRatio = this.totalOutputTokens > 0
-      ? (this.totalThinkingTokens / (this.totalOutputTokens + this.totalThinkingTokens) * 100).toFixed(0) : 0;
-    const fillerRatio = this.totalOutputTokens > 0
-      ? (this.totalFillerEstimate / this.totalOutputTokens * 100).toFixed(1) : 0;
-    const durationMin = ((Date.now() - this.sessionStart) / 60000).toFixed(1);
-    const tokensPerMinute = Math.round((this.totalInputTokens + this.totalOutputTokens) / (durationMin || 1));
-
-    // Useful content ratio: (output - estimated filler) / output
-    const usefulRatio = this.totalOutputTokens > 0
-      ? ((1 - this.totalFillerEstimate / this.totalOutputTokens) * 100).toFixed(0) : 100;
-
-    return {
-      totalTurns,
-      avgOutputPerTurn,
-      avgToolsPerTurn,
-      tokensPerToolCall,
-      thinkingRatio: `${thinkingRatio}%`,
-      fillerRatio: `${fillerRatio}%`,
-      usefulContentRatio: `${usefulRatio}%`,
-      tokensPerMinute,
-      totalInput: this.totalInputTokens,
-      totalOutput: this.totalOutputTokens,
-      totalThinking: this.totalThinkingTokens,
-      durationMin,
-    };
-  },
-
-  // Format report
-  report() {
-    const m = this.metrics();
-    if (!m) return "No turns recorded.";
-
-    return [
-      `── Efficiency Report ──`,
-      `  Turns:          ${m.totalTurns}`,
-      `  Duration:       ${m.durationMin}m (${m.tokensPerMinute} tok/min)`,
-      `  Input tokens:   ${m.totalInput.toLocaleString()}`,
-      `  Output tokens:  ${m.totalOutput.toLocaleString()}`,
-      `  Thinking:       ${m.totalThinking.toLocaleString()} (${m.thinkingRatio} of output)`,
-      `  Avg out/turn:   ${m.avgOutputPerTurn}`,
-      `  Avg tools/turn: ${m.avgToolsPerTurn}`,
-      `  Tok/tool call:  ${m.tokensPerToolCall}`,
-      `  Filler ratio:   ${m.fillerRatio}`,
-      `  Useful content: ${m.usefulContentRatio}`,
-      `  ──`,
-      `  ${parseInt(m.usefulContentRatio) >= 80 ? "✓ YOUSPEAK target met (≥80%)" : "⚠ Below YOUSPEAK target (<80% useful)"}`,
-    ].join("\n");
-  },
-};
-
-// ═════════════════════════════════════════════════════════════════════
 // MAIN LOOP
+// ═════════════════════════════════════════════════════════════════════
+//
+// TIER 3 (YOUSPEAK Kernel) is now wired directly into the main loop via
+// createKernel(). The kernel handles L1-L5 sensing, DECIDE signals,
+// context pruning, reporting, and cross-session persistence.
+// The old inline `efficiency` object has been replaced.
 // ═════════════════════════════════════════════════════════════════════
 
 async function main() {
@@ -1201,6 +1139,10 @@ async function main() {
 
   const startTime = Date.now();
 
+  // ── YOUSPEAK Kernel — sensory organ for the session ──
+  const ys = createKernel({ agent: config.model });
+  let ysSignals = [];
+
   // Ctrl+C saves state
   process.on("SIGINT", () => {
     print(`\n${S.yellow}Saving state...${S.reset}`);
@@ -1255,6 +1197,7 @@ async function main() {
 
         print(`${S.yellow}Waiting ${waitMin}m (${e.retryAfter}s). Staying on ${config.model}.${S.reset}`);
         log(`429: ${e.reason} bare=${e.bare} wait=${e.retryAfter}s`);
+        if (config.trackEfficiency) ys.senseRateLimit();
         await new Promise(r => setTimeout(r, e.retryAfter * 1000));
         turnCount--;
         continue;
@@ -1309,34 +1252,50 @@ async function main() {
       }
     }
 
-    // ── TIER 3: Efficiency tracking ──
-    let fillerEstimate = 0;
+    // ── YOUSPEAK Kernel: SENSE ──
     if (config.trackEfficiency) {
-      // Estimate filler from text blocks
+      // L1: Output — filler detection on text blocks
       const allText = textBlocks.map(b => b.text).join(" ");
-      fillerEstimate = efficiency.estimateFiller(allText);
-      efficiency.totalFillerEstimate += fillerEstimate;
+      if (allText.trim()) ys.senseOutput(allText);
 
-      efficiency.record({
-        turn: turnCount,
-        inputTokens,
-        outputTokens,
-        thinkingTokens,
-        toolCalls: toolUseBlocks.length,
-        fillerEstimate,
-        durationMs: turnMs,
+      // L2: Thinking
+      ys.senseThinking(usage);
+
+      // L4: Context
+      ys.senseContext(messages, systemPrompt.length);
+
+      // L5: System — turn + budget
+      ys.senseTurn({
+        fiveHour: budget.fiveHour,
+        sevenDay: budget.sevenDay,
+        isUsingOverage: budget.isUsingOverage,
+      });
+
+      // DECIDE — threshold signals (zero LLM cost)
+      ysSignals = ys.decide(config.effort, config.model, {
+        fiveHour: budget.fiveHour,
+        sevenDay: budget.sevenDay,
+        isUsingOverage: budget.isUsingOverage,
       });
     }
 
-    // Status line — with budget intelligence + efficiency
+    // Status line — with budget intelligence + YOUSPEAK kernel
     const usedModel = response._model || config.model;
     const isOllama = response._provider === "ollama";
     const modelShort = isOllama ? usedModel : usedModel.includes("opus") ? "opus" : usedModel.includes("sonnet") ? "sonnet" : usedModel.includes("haiku") ? "haiku" : usedModel;
     const modelTag = usedModel !== config.model ? ` ${S.yellow}(${modelShort})${S.reset}` : "";
     const thinkTag = thinkingTokens > 0 ? ` ${S.magenta}think:${thinkingTokens}${S.reset}` : "";
     const budgetTag = budget.lastUpdate > 0 ? ` ${S.dim}[${formatBudgetStatus()}]${S.reset}` : "";
-    const effTag = config.trackEfficiency && fillerEstimate > 0 ? ` ${S.yellow}~${fillerEstimate}filler${S.reset}` : "";
-    print(`${S.blue}[${turnCount}]${S.reset}${modelTag} ${S.dim}${inputTokens}in ${outputTokens}out${S.reset}${thinkTag}${effTag} ${S.dim}${turnMs}ms${S.reset}${budgetTag}`);
+    const ysTag = config.trackEfficiency ? ` ${S.cyan}${ys.statusLine()}${S.reset}` : "";
+    print(`${S.blue}[${turnCount}]${S.reset}${modelTag} ${S.dim}${inputTokens}in ${outputTokens}out${S.reset}${thinkTag}${ysTag} ${S.dim}${turnMs}ms${S.reset}${budgetTag}`);
+
+    // Show YOUSPEAK DECIDE signals if any
+    if (ysSignals.length > 0) {
+      for (const sig of ysSignals) {
+        const sigColor = sig.type === "context" ? S.yellow : sig.type === "output" ? S.red : S.dim;
+        print(`  ${sigColor}⚡ ${sig.type}: ${sig.action} — ${sig.reason}${S.reset}`);
+      }
+    }
 
     // ── No tools -> done ──
     if (toolUseBlocks.length === 0) {
@@ -1368,6 +1327,12 @@ async function main() {
       }
 
       const result = executeTool(name, toolUse.input);
+
+      // L3: SENSE ACTION — tool call patterns
+      if (config.trackEfficiency) {
+        ys.senseToolCall(name, toolUse.input, result);
+      }
+
       toolResults.push({
         type: "tool_result",
         tool_use_id: toolUse.id,
@@ -1394,10 +1359,33 @@ async function main() {
   print(`  Duration:  ${elapsed}s`);
   print(`  Messages:  ${messages.length}`);
 
-  // TIER 3: Efficiency report
-  if (config.trackEfficiency && efficiency.turns.length > 0) {
-    print(`\n${S.cyan}${efficiency.report()}${S.reset}`);
-    log(`EFFICIENCY: ${JSON.stringify(efficiency.metrics())}`);
+  // YOUSPEAK Kernel: REPORT + PERSIST
+  if (config.trackEfficiency) {
+    const ysReport = ys.report();
+    print(`\n${S.cyan}── YOUSPEAK Kernel Report ──${S.reset}`);
+    print(`  Grade:           ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio * 100)}% useful)`);
+    print(`  Output tokens:   ${ysReport.output.totalTokens.toLocaleString()} (${ysReport.output.fillerTokens} filler)`);
+    print(`  Text blocks:     ${ysReport.output.textBlocks}`);
+    print(`  Thinking:        ${ysReport.thinking.totalTokens.toLocaleString()} tokens (${ysReport.thinking.avgRatio}x avg ratio)`);
+    if (ysReport.thinking.efficiency) print(`  Think efficiency: ${ysReport.thinking.efficiency} output/think`);
+    print(`  Tool calls:      ${ysReport.action.totalCalls} (${ysReport.action.redundantReads} redundant, ${ysReport.action.errors} errors)`);
+    print(`  Action density:  ${ysReport.action.density} tools/text block`);
+    print(`  Context peak:    ~${Math.round(ysReport.context.estimatedTokens / 1000)}k tokens (${(ysReport.context.windowUtilization * 100).toFixed(1)}% of 1M)`);
+    if (ysReport.system.budgetBurned) print(`  Budget burned:   ${ysReport.system.budgetBurned}`);
+    print(`  Tokens/turn:     ${ysReport.system.tokensPerTurn}`);
+    if (ysReport.signals.length > 0) {
+      print(`  Signals:         ${ysReport.signals.length}`);
+      for (const sig of ysReport.signals) {
+        print(`    ⚡ ${sig.type}: ${sig.action} — ${sig.reason}`);
+      }
+    }
+
+    // Persist session to unified history (youspeak-history.json)
+    const persisted = ys.persist();
+    if (persisted) {
+      print(`\n${S.green}✓ Session persisted to youspeak-history.json${S.reset}`);
+      log(`YOUSPEAK_KERNEL: ${JSON.stringify(ysReport)}`);
+    }
   }
 
   // TIER 1: Report boot savings
@@ -1413,13 +1401,13 @@ async function main() {
   saveState({
     messages, totalCost, turnCount, totalToolCalls, totalThinkingTokens,
     task: config.task, completed: true,
-    efficiency: config.trackEfficiency ? efficiency.metrics() : null,
+    efficiency: config.trackEfficiency ? ys.report() : null,
   });
 
-  // Auto-trigger UWT analysis if available
+  // Auto-trigger ouroboros
   if (config.trackEfficiency) {
-    print(`\n${S.dim}Run UWT analysis: node uwt.mjs analyze${S.reset}`);
-    print(`${S.dim}Run ouroboros:    node youspeak-evolve.mjs cycle${S.reset}`);
+    print(`\n${S.dim}Run ouroboros:    node youspeak-evolve.mjs cycle${S.reset}`);
+    print(`${S.dim}View trends:      node youspeak-kernel.mjs trends${S.reset}`);
   }
 }
 

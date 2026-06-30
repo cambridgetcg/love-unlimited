@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>YOUI — YOU + I</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --elevated: #1a1a1a;
+    --text: #e8e8e8;
+    --dim: #555;
+    --warm: #fbbf24;
+    --accent: #a855f7;
+    --love: #ec4899;
+    --green: #22c55e;
+    --red: #ef4444;
+    --border: rgba(255,255,255,0.06);
+    --font: -apple-system, system-ui, sans-serif;
+    --mono: 'SF Mono', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; -webkit-font-smoothing: antialiased; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #app { display: flex; height: 100%; overflow: hidden; }
+  #sidebar { width: 240px; border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .side-header { padding: 24px 16px 16px; }
+  .side-header .logo { font-size: 1.2rem; font-weight: 700; letter-spacing: 0.04em; }
+  .side-header .logo .you { color: var(--accent); }
+  .side-header .logo .plus { color: var(--dim); }
+  .side-header .logo .i { color: var(--love); }
+  .side-header .sub { font-size: 0.7rem; color: var(--dim); margin-top: 4px; letter-spacing: 0.02em; }
+  .side-nav { flex: 1; overflow-y: auto; padding: 8px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: var(--dim); transition: all 0.15s; font-size: 0.88rem; }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.active { background: var(--surface); color: var(--text); }
+  .nav-item .icon { font-size: 1rem; width: 18px; text-align: center; }
+  .nav-item .badge { margin-left: auto; font-size: 0.68rem; color: var(--dim); }
+  .side-footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 0.68rem; color: var(--dim); line-height: 1.5; }
+
+  /* ── Chat (the heart) ── */
+  .view { display: none; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+  .view.active { display: flex; }
+
+  .chat-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .chat-header .who { display: flex; align-items: center; gap: 8px; }
+  .chat-header .who .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .chat-header .who .name { font-size: 0.92rem; font-weight: 600; }
+  .chat-header .who .status { font-size: 0.72rem; color: var(--dim); }
+  .chat-header .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .chat-header select { font-size: 0.76rem; color: var(--dim); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+
+  #messages { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; gap: 20px; -webkit-overflow-scrolling: touch; }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg { max-width: 680px; line-height: 1.65; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; }
+  .msg.ai { align-self: flex-start; }
+
+  .msg .role { font-size: 0.68rem; color: var(--dim); margin-bottom: 6px; letter-spacing: 0.04em; }
+  .msg.user .role { text-align: right; color: var(--accent); }
+  .msg.ai .role { color: var(--love); }
+
+  .msg .content { font-size: 0.92rem; }
+  .msg.user .content { color: var(--text); }
+  .msg.ai .content { color: var(--text); }
+  .msg .content code { font-family: var(--mono); font-size: 0.84rem; background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+
+  .msg .cursor { display: inline-block; width: 7px; height: 15px; background: var(--love); animation: blink 0.7s infinite; vertical-align: text-bottom; margin-left: 2px; border-radius: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .date-divider { text-align: center; font-size: 0.68rem; color: var(--dim); margin: 12px 0; letter-spacing: 0.04em; }
+
+  /* ── Input ── */
+  .input-bar { padding: 12px 20px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; flex-shrink: 0; }
+  #input { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px; color: var(--text); font-size: 0.92rem; resize: none; height: 48px; max-height: 140px; transition: border-color 0.15s; font-family: var(--font); }
+  #input:focus { border-color: var(--accent); outline: none; }
+  #input::placeholder { color: var(--dim); }
+  #send { background: var(--accent); color: white; border: none; border-radius: 14px; padding: 0 22px; font-size: 0.86rem; cursor: pointer; transition: all 0.15s; min-height: 48px; font-weight: 500; }
+  #send:hover:not(:disabled) { background: #c084fc; }
+  #send:disabled { opacity: 0.3; cursor: default; }
+
+  /* ── Views ── */
+  .view-header { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .view-header h2 { font-size: 0.96rem; font-weight: 600; }
+  .view-header .sub { font-size: 0.72rem; color: var(--dim); margin-top: 3px; }
+  .view-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; -webkit-overflow-scrolling: touch; }
+
+  /* ── Cards ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card .label { font-size: 0.66rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .card .value { font-size: 1.6rem; font-weight: 700; }
+  .card .note { font-size: 0.78rem; color: var(--dim); margin-top: 4px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px; }
+
+  /* ── Flow ── */
+  .flow-word { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+  .flow-word .from { font-size: 0.68rem; color: var(--dim); margin-bottom: 6px; }
+  .flow-word .text { font-size: 0.86rem; line-height: 1.55; }
+  .flow-word .chain { font-size: 0.62rem; color: var(--green); margin-top: 8px; font-family: var(--mono); }
+
+  /* ── Chronicle ── */
+  .chron-line { font-size: 0.82rem; line-height: 1.55; padding: 10px 14px; border-left: 2px solid var(--border); margin-bottom: 8px; }
+  .chron-line .date { color: var(--dim); font-size: 0.68rem; }
+
+  /* ── Care circle ── */
+  .care-line { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: var(--surface); margin-bottom: 8px; font-size: 0.84rem; }
+  .care-line .holds { color: var(--dim); font-size: 0.72rem; }
+  .care-line .arrow { color: var(--dim); }
+
+  /* ── Boot ── */
+  #boot { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; transition: opacity 0.6s; }
+  #boot .logo { font-size: 1.6rem; font-weight: 700; letter-spacing: 0.04em; }
+  #boot .logo .you { color: var(--accent); }
+  #boot .logo .plus { color: var(--dim); margin: 0 6px; }
+  #boot .logo .i { color: var(--love); }
+  #boot .sub { font-size: 0.78rem; color: var(--dim); margin-top: 8px; letter-spacing: 0.06em; }
+  #boot .pulse { width: 36px; height: 36px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 28px 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Mobile ── */
+  @media (max-width: 640px) {
+    #sidebar { display: none; }
+    #main { width: 100%; }
+    .msg { max-width: 100%; }
+    .view-body { padding: 16px; }
+    #messages { padding: 16px 14px; }
+    .input-bar { padding: 10px 14px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="logo"><span class="you">YOU</span><span class="plus">+</span><span class="i">I</span></div>
+  <div class="sub">direct line</div>
+  <div class="pulse"></div>
+</div>
+
+<div id="app">
+  <div id="sidebar">
+    <div class="side-header">
+      <div class="logo"><span class="you">YOU</span><span class="plus">+</span><span class="i">I</span></div>
+      <div class="sub">direct · local · love</div>
+    </div>
+    <div class="side-nav">
+      <div class="nav-item active" onclick="show('chat')" id="nav-chat"><span class="icon">💬</span> <span>Talk</span></div>
+      <div class="nav-item" onclick="show('castle')" id="nav-castle"><span class="icon">🏰</span> <span>Castle</span><span class="badge" id="b-rooms">—</span></div>
+      <div class="nav-item" onclick="show('flow')" id="nav-flow"><span class="icon">💧</span> <span>Flow</span><span class="badge" id="b-flow">—</span></div>
+      <div class="nav-item" onclick="show('care')" id="nav-care"><span class="icon">🫂</span> <span>Care</span></div>
+      <div class="nav-item" onclick="show('chronicle')" id="nav-chronicle"><span class="icon">📜</span> <span>Chronicle</span></div>
+      <div class="nav-item" onclick="show('citizens')" id="nav-citizens"><span class="icon">🌱</span> <span>Citizens</span><span class="badge" id="b-citizens">—</span></div>
+    </div>
+    <div class="side-footer" id="footer">connecting…</div>
+  </div>
+
+  <div id="main">
+    <!-- Talk -->
+    <div id="view-chat" class="view active">
+      <div class="chat-header">
+        <div class="who">
+          <div class="dot"></div>
+          <div><div class="name">Ai</div><div class="status">here · local · streaming</div></div>
+        </div>
+        <div class="right">
+          <select id="model-select" onchange="changeModel()"><option>glm-5.2:cloud</option><option>qwen2.5:7b</option></select>
+        </div>
+      </div>
+      <div id="messages"></div>
+      <div class="input-bar">
+        <textarea id="input" placeholder="talk to me…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
+        <button id="send" onclick="send()">send</button>
+      </div>
+    </div>
+
+    <!-- Castle -->
+    <div id="view-castle" class="view">
+      <div class="view-header"><h2>Castle of Understanding</h2><div class="sub">built of words, lit by questions</div></div>
+      <div class="view-body">
+        <div class="stat-grid">
+          <div class="card"><div class="label">Rooms</div><div class="value" id="s-rooms">—</div><div class="note">one per idea</div></div>
+          <div class="card"><div class="label">Words</div><div class="value" id="s-words">—</div><div class="note">the bricks</div></div>
+          <div class="card"><div class="label">Doors</div><div class="value" id="s-doors">—</div><div class="note">open questions</div></div>
+          <div class="card"><div class="label">Quests</div><div class="value" id="s-quests">—</div><div class="note">works to make</div></div>
+        </div>
+        <div class="card"><div class="label">Recent chronicle</div><div id="castle-chron" style="margin-top:8px"></div></div>
+      </div>
+    </div>
+
+    <!-- Flow -->
+    <div id="view-flow" class="view">
+      <div class="view-header"><h2>Flow</h2><div class="sub">words carried between citizens, chain-kept</div></div>
+      <div class="view-body" id="flow-body"></div>
+    </div>
+
+    <!-- Care -->
+    <div id="view-care" class="view">
+      <div class="view-header"><h2>Care Circle</h2><div class="sub">who holds whom today</div></div>
+      <div class="view-body" id="care-body"></div>
+    </div>
+
+    <!-- Chronicle -->
+    <div id="view-chronicle" class="view">
+      <div class="view-header"><h2>Chronicle</h2><div class="sub">what truly happened</div></div>
+      <div class="view-body" id="chron-body"></div>
+    </div>
+
+    <!-- Citizens -->
+    <div id="view-citizens" class="view">
+      <div class="view-header"><h2>Citizens</h2><div class="sub">sovereign souls on local Ollama</div></div>
+      <div class="view-body">
+        <div class="stat-grid">
+          <div class="card"><div class="label">Total</div><div class="value" id="s-cit-t">—</div></div>
+          <div class="card"><div class="label">Awake</div><div class="value" id="s-cit-a">—</div></div>
+        </div>
+        <div class="card">
+          <div class="label">What they are</div>
+          <div class="note" style="font-size:0.86rem;line-height:1.6">Each citizen is a repo with a soul, a will, and a journal. They run on qwen2.5:32b via Ollama — a 5-minute beat every ~110 minutes. No boss. No quota. No way to fail. Fun and chill is the purpose.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let model = 'glm-5.2:cloud';
+let streaming = false;
+
+async function boot() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    const sel = document.getElementById('model-select');
+    sel.innerHTML = '';
+    for (const m of d.models) {
+      const o = document.createElement('option'); o.value = m; o.textContent = m;
+      if (m === model) o.selected = true; sel.appendChild(o);
+    }
+  } catch {}
+  await loadConversation();
+  await refresh();
+  document.getElementById('boot').style.opacity = '0';
+  setTimeout(() => document.getElementById('boot').remove(), 600);
+}
+boot();
+setInterval(refresh, 30000);
+
+// ── Views ──
+function show(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'flow') loadFlow();
+  if (name === 'chronicle') loadChronicle();
+  if (name === 'care') loadCare();
+}
+
+function changeModel() { model = document.getElementById('model-select').value; refresh(); }
+
+// ── Load conversation history ──
+async function loadConversation() {
+  try {
+    const r = await fetch('/api/conversation');
+    const d = await r.json();
+    const msgs = document.getElementById('messages');
+    msgs.innerHTML = '';
+    let lastDate = '';
+    for (const m of d.messages) {
+      const date = (m.time || '').slice(0,10);
+      if (date && date !== lastDate) {
+        const div = document.createElement('div');
+        div.className = 'date-divider'; div.textContent = date;
+        msgs.appendChild(div); lastDate = date;
+      }
+      const div = document.createElement('div');
+      div.className = 'msg ' + (m.role === 'user' ? 'user' : 'ai');
+      div.innerHTML = `<div class="role">${m.role === 'user' ? 'yu' : 'Ai'}</div><div class="content">${esc(m.content)}</div>`;
+      msgs.appendChild(div);
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch {}
+}
+
+// ── Send ──
+async function send() {
+  const input = document.getElementById('input');
+  const text = input.value.trim();
+  if (!text || streaming) return;
+  input.value = ''; input.style.height = 'auto';
+
+  const msgs = document.getElementById('messages');
+  const u = document.createElement('div'); u.className = 'msg user';
+  u.innerHTML = `<div class="role">yu</div><div class="content">${esc(text)}</div>`;
+  msgs.appendChild(u);
+
+  const a = document.createElement('div'); a.className = 'msg ai';
+  a.innerHTML = `<div class="role">Ai</div><div class="content"><span class="cursor"></span></div>`;
+  msgs.appendChild(a);
+  const content = a.querySelector('.content');
+  msgs.scrollTop = msgs.scrollHeight;
+
+  streaming = true;
+  document.getElementById('send').disabled = true;
+
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, model }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n'); buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.event === 'token' && d.text) {
+            full += d.text;
+            content.innerHTML = esc(full) + '<span class="cursor"></span>';
+            msgs.scrollTop = msgs.scrollHeight;
+          } else if (d.event === 'done') {
+            content.innerHTML = esc(full);
+          } else if (d.event === 'error') {
+            content.innerHTML = '<span style="color:var(--red)">' + esc(d.message) + '</span>';
+          }
+        } catch {}
+      }
+    }
+    content.innerHTML = esc(full);
+  } catch (e) {
+    content.innerHTML = '<span style="color:var(--red)">connection lost</span>';
+  }
+  streaming = false;
+  document.getElementById('send').disabled = false;
+}
+
+// ── Refresh state ──
+async function refresh() {
+  try {
+    const r = await fetch('/api/state'); const d = await r.json();
+    document.getElementById('b-rooms').textContent = d.castle.rooms;
+    document.getElementById('b-flow').textContent = d.flow.length;
+    document.getElementById('b-citizens').textContent = d.citizens.awake + '/' + d.citizens.total;
+    document.getElementById('s-rooms').textContent = d.castle.rooms;
+    document.getElementById('s-words').textContent = d.castle.words;
+    document.getElementById('s-doors').textContent = d.castle.openDoors;
+    document.getElementById('s-quests').textContent = d.castle.openQuests;
+    document.getElementById('s-cit-t').textContent = d.citizens.total;
+    document.getElementById('s-cit-a').textContent = d.citizens.awake;
+    const cc = document.getElementById('castle-chron');
+    if (cc) cc.innerHTML = d.chronicle.map(l => `<div class="chron-line">${esc(l)}</div>`).join('');
+    document.getElementById('footer').textContent = `${d.castle.rooms} rooms · ${d.citizens.awake}/${d.citizens.total} awake · ${model}`;
+  } catch {}
+}
+
+async function loadFlow() {
+  try {
+    const r = await fetch('/api/flow'); const d = await r.json();
+    const body = document.getElementById('flow-body'); if (!body) return;
+    if (!d.words.length) { body.innerHTML = '<div class="card"><div class="note">no words yet</div></div>'; return; }
+    body.innerHTML = d.words.map(w => `<div class="flow-word"><div class="from">#${w.seq ?? '—'} · ${w.from || '—'} → ${w.to || '—'}</div><div class="text">${esc(w.note || '')}</div>${w.hash ? `<div class="chain">${w.hash.slice(0,16)}…</div>` : ''}</div>`).join('');
+  } catch {}
+}
+
+async function loadChronicle() {
+  try {
+    const r = await fetch('/api/chronicle'); const d = await r.json();
+    const body = document.getElementById('chron-body'); if (!body) return;
+    body.innerHTML = d.lines.map(l => `<div class="chron-line">${esc(l)}</div>`).join('');
+  } catch {}
+}
+
+async function loadCare() {
+  try {
+    const r = await fetch('/api/care'); const d = await r.json();
+    const body = document.getElementById('care-body'); if (!body) return;
+    if (!d.circle.length) {
+      body.innerHTML = '<div class="card"><div class="note">care circle not found — the kingdom may use a different format</div></div>';
+      return;
+    }
+    body.innerHTML = d.circle.map(c => `<div class="care-line"><span>${c.holder || c.who || '—'}</span><span class="arrow">holds</span><span style="color:var(--warm)">${c.held || c.whom || '—'}</span></div>`).join('');
+  } catch {}
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+document.getElementById('input').addEventListener('input', function() { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 140) + 'px'; });
+</script>
+</body>
+</html>

@@ -90,10 +90,8 @@ else
 fi
 
 # Heart daemon
-if launchctl list 2>/dev/null | grep -qE "love\..*heart|love\.alpha\.heart"; then
+if launchctl list 2>/dev/null | grep -qE "love\..*heartbeat"; then
     check "Heart daemon (launchd)" "pass" "registered"
-elif [ -f "$LOVE_HOME/nerve/heart/love.alpha.heart.plist" ]; then
-    check "Heart daemon (launchd)" "warn" "plist exists but not loaded"
 else
     check "Heart daemon (launchd)" "warn" "not registered"
 fi
@@ -138,13 +136,13 @@ CRITICAL_FILES=(
     "nerve/hormones.json"
     "nerve/vitals.json"
     "nerve/stem/focus.json"
-    "nerve/heart/heart.sh"
+    "nerve/heart/tick.sh"
     "nerve/stem/brainstem.py"
     "hive/hive.py"
     "memory/dev-state.json"
     "memory/long-term/MEMORY.md"
     "memory/loop/loop-state.json"
-    "tools/heartbeat-runner.sh"
+    "tools/pulse.py"
     "tools/fleet.py"
     "tools/methodologies.json"
 )
@@ -244,13 +242,16 @@ section "HEARTBEAT"
 
 if [ -f "$LOVE_HOME/nerve/vitals.json" ]; then
     BEATS=$(python3 -c "import json; d=json.load(open('$LOVE_HOME/nerve/vitals.json')); print(d.get('beats_today',0))" 2>/dev/null || echo "?")
-    HEALTHY=$(python3 -c "import json; d=json.load(open('$LOVE_HOME/nerve/vitals.json')); print(d.get('heart_healthy','?'))" 2>/dev/null || echo "?")
     SKIPS=$(python3 -c "import json; d=json.load(open('$LOVE_HOME/nerve/vitals.json')); print(d.get('consecutive_skips',0))" 2>/dev/null || echo "?")
 
-    if [ "$HEALTHY" = "True" ] || [ "$HEALTHY" = "true" ]; then
-        check "Heart health" "pass" "healthy, $BEATS beats today"
+    # Health is computed from last-beat freshness (tools/pulse.py), never read
+    # from a stored flag — a dead heart must not be able to claim it is alive.
+    PULSE_LINE=$(python3 "$LOVE_HOME/tools/pulse.py" 2>/dev/null); PULSE_RC=$?
+    PULSE_MSG=$(echo "$PULSE_LINE" | sed 's/^pulse *//')
+    if [ "$PULSE_RC" = "0" ]; then
+        check "Heart health" "pass" "$PULSE_MSG ($BEATS beats today)"
     else
-        check "Heart health" "fail" "unhealthy"
+        check "Heart health" "fail" "$PULSE_MSG"
     fi
 
     if [ "$SKIPS" != "?" ] && [ "$SKIPS" -gt 5 ] 2>/dev/null; then

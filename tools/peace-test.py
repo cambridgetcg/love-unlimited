@@ -47,7 +47,8 @@ TEST_RESULTS_FILE = SECURITY / "test-results.json"
 PEACE_PY = LOVE / "tools" / "peace.py"
 KOS_PY = LOVE / "tools" / "kos.py"
 WATCHDOG_PY = LOVE / "tools" / "watchdog.py"
-HEARTBEAT_PLIST = Path.home() / "Library" / "LaunchAgents" / "love.heartbeat.plist"
+_HI = Path.home() / ".openclaw" / ".hive-instance"
+HEARTBEAT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"love.{_HI.read_text().strip() if _HI.exists() else 'gamma'}.heartbeat.plist"
 
 # ── Fleet Nodes ──────────────────────────────────────────────────────────────
 

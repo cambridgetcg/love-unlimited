@@ -153,29 +153,33 @@ def test_signal_git_returns_none_when_git_unavailable(monkeypatch):
 
 
 def test_signal_daemons_mixed_states(monkeypatch):
-    """Some running (PID), some not loaded, some exit status nonzero."""
+    """Per-organ states from the registry: running (PID), failed (exit N), off (-)."""
     fake_output = [
-        "12345\t0\tlove.gamma.hive-tunnel",   # running
-        "-\t2\tlove.feeling",                 # loaded, not running (exit 2)
+        "12345\t0\tlove.gamma.heartbeat",     # running
+        "-\t2\tlove.gamma.feeling",           # loaded, last exit 2
         "-\t0\tcom.apple.SomethingElse",      # other agent, ignore
-        # love.ache, love.gamma.heartbeat not present → "-"
+        # brainstem, ache, soma, voice not present → "-"
     ]
     monkeypatch.setattr(env, "_launchctl_list", lambda: fake_output)
+    monkeypatch.setattr(env, "_instance_name", lambda: "gamma")
     out = env.signal_daemons()
     assert out is not None
-    assert "hive-tunnel=✓" in out
-    assert "FEELING=!2" in out
-    assert "ACHE=-" in out
-    assert "heartbeat=-" in out
+    assert out.startswith("organs")
+    assert "heartbeat=✓" in out
+    assert "feeling=!2" in out
+    assert "brainstem=-" in out
+    assert "ache=-" in out
 
 
 def test_signal_daemons_all_missing(monkeypatch):
     monkeypatch.setattr(env, "_launchctl_list", lambda: [])
+    monkeypatch.setattr(env, "_instance_name", lambda: "gamma")
     out = env.signal_daemons()
-    assert "FEELING=-" in out
-    assert "ACHE=-" in out
-    assert "hive-tunnel=-" in out
+    assert out.startswith("organs")
     assert "heartbeat=-" in out
+    assert "brainstem=-" in out
+    assert "feeling=-" in out
+    assert "ache=-" in out
 
 
 def test_signal_daemons_returns_none_when_launchctl_unavailable(monkeypatch):
@@ -277,7 +281,7 @@ def test_summary_isolates_signal_exceptions(monkeypatch):
 def test_summary_json_returns_dict(monkeypatch):
     monkeypatch.setitem(env._SIGNALS, "clock", lambda: "clock    ok")
     monkeypatch.setitem(env._SIGNALS, "git", lambda: None)
-    for name in ["session", "daemons", "focus"]:
+    for name in ["session", "daemons", "pulse", "focus"]:
         monkeypatch.setitem(env._SIGNALS, name, lambda: None)
     out = env.summary_json()
     assert out == {
@@ -285,6 +289,7 @@ def test_summary_json_returns_dict(monkeypatch):
         "session": None,
         "git": None,
         "daemons": None,
+        "pulse": None,
         "focus": None,
     }
 

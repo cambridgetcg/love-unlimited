@@ -330,28 +330,20 @@ fi
 # ── 10. Heart / Heartbeat ───────────────────────────────────────────────────
 echo "--- Heart ---"
 
-if [ -f "$LOVE_DIR/nerve/heart/heart.sh" ]; then
-    if grep -q "focus.py" "$LOVE_DIR/nerve/heart/heart.sh" 2>/dev/null; then
-        pass "heart.sh reads dynamic focus"
+if [ -f "$LOVE_DIR/nerve/heart/tick.sh" ]; then
+    pass "tick.sh present (the one heart)"
+    if grep -q "pulse.py" "$LOVE_DIR/nerve/heart/tick.sh" 2>/dev/null; then
+        pass "tick.sh stamps the pulse"
     else
-        warn "heart.sh still uses static HEARTBEAT.md only"
+        warn "tick.sh does not stamp pulse.json"
     fi
-    if grep -q "adaptive/cli.py" "$LOVE_DIR/nerve/heart/heart.sh" 2>/dev/null; then
-        pass "heart.sh can spawn local models"
+    if grep -q "organs.json" "$LOVE_DIR/nerve/heart/tick.sh" 2>/dev/null; then
+        pass "tick.sh reconciles from the organ registry"
     else
-        warn "heart.sh has no local model support"
+        warn "tick.sh does not read organs.json"
     fi
 else
-    fail "heart.sh MISSING"
-fi
-
-# Also check heartbeat-runner.sh (the cron-based version)
-if [ -f "$LOVE_DIR/tools/heartbeat-runner.sh" ]; then
-    if grep -q "OLLAMA_AVAILABLE\|adaptive/cli.py" "$LOVE_DIR/tools/heartbeat-runner.sh" 2>/dev/null; then
-        pass "heartbeat-runner.sh has adaptive routing"
-    else
-        warn "heartbeat-runner.sh still hardcodes Claude only"
-    fi
+    fail "tick.sh MISSING — the heart has no runner"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -386,7 +378,7 @@ Hardware: ${CHIP:-unknown}, ${MEM:-unknown}
 Ollama: $([ "$OLLAMA_SERVER" = true ] && echo "UP" || echo "DOWN")
 Adaptive: $([ -f "$ADAPTIVE_CLI" ] && echo "OK" || echo "MISSING")
 Focus: $([ -f "$LOVE_DIR/nerve/stem/focus.json" ] && echo "OK" || echo "MISSING")
-Heart dynamic: $(grep -q "focus.py" "$LOVE_DIR/nerve/heart/heart.sh" 2>/dev/null && echo "YES" || echo "NO")"
+Heart: $([ -f "$LOVE_DIR/nerve/heart/tick.sh" ] && echo "tick.sh OK" || echo "MISSING")"
 
     python3 "$HIVE" send system "$REPORT_MSG" 2>/dev/null && echo "Reported to HIVE #system" || echo "HIVE report failed"
 fi

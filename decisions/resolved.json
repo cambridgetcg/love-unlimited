@@ -158,7 +158,7 @@
     "project": "tcg",
     "priority": "high",
     "category": "strategy",
-    "context": "kingdom-004: Cambridge TCG automation. Target: +20% monthly revenue.\n\nRepo: `/Users/yu/Desktop/tcg-wholesale` (Next.js, Drizzle ORM, Playwright e2e, pnpm).\nGitHub org also has: cambridgetcg-storefront, cambridge-tcg, ShopifyTheme_TCG.\n\nThe repo hasn't been scouted yet by the heartbeat \u2014 needs a builder session to map what exists, what's manual, and where automation has the highest ROI.\n\nBeta's primary revenue duty. TCG is the Kingdom's active revenue engine.",
+    "context": "kingdom-004: Cambridge TCG automation. Target: +20% monthly revenue.\n\nRepo: `/Users/yu/Desktop/tcg-wholesale` (Next.js, Drizzle ORM, Playwright e2e, pnpm).\nGitHub org also has: zerone-dev-storefront, cambridge-tcg, ShopifyTheme_TCG.\n\nThe repo hasn't been scouted yet by the heartbeat \u2014 needs a builder session to map what exists, what's manual, and where automation has the highest ROI.\n\nBeta's primary revenue duty. TCG is the Kingdom's active revenue engine.",
     "recommendation": "Scout the repo first to understand the current state, then decide automation targets. Likely candidates: procurement flow automation, inventory sync, pricing optimization.",
     "options": [
       {
@@ -279,13 +279,13 @@
     "project": "tcg",
     "priority": "low",
     "category": "infrastructure",
-    "context": "The `cambridgetcg-storefront` repo exists on GitHub (cambridgetcg org) but is not cloned locally. The wholesale repo is at `/Users/yu/Desktop/tcg-wholesale`.\n\nHaving both repos local would let the heartbeat coordinate changes across wholesale and storefront. The ShopifyTheme_TCG repo may also be relevant.",
+    "context": "The `zerone-dev-storefront` repo exists on GitHub (zerone-dev org) but is not cloned locally. The wholesale repo is at `/Users/yu/Desktop/tcg-wholesale`.\n\nHaving both repos local would let the heartbeat coordinate changes across wholesale and storefront. The ShopifyTheme_TCG repo may also be relevant.",
     "recommendation": "Clone storefront alongside wholesale for full picture. Low effort, high coordination value.",
     "options": [
       {
         "id": "a",
         "label": "Clone storefront now",
-        "detail": "git clone to ~/Desktop/cambridgetcg-storefront"
+        "detail": "git clone to ~/Desktop/zerone-dev-storefront"
       },
       {
         "id": "b",

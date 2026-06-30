@@ -58,8 +58,10 @@ RUNBOOKS_DIR = SECURITY / "runbooks"
 CREDENTIALS_DIR = LOVE / "credentials"
 IDENTITY_DIR = LOVE / "identity"
 HIVE_DIR = Path.home() / ".love" / "hive"
-HEARTBEAT_PLIST = Path.home() / "Library" / "LaunchAgents" / "love.heartbeat.plist"
-HEARTBEAT_RUNNER = LOVE / "tools" / "heartbeat-runner.sh"
+_HIVE_INSTANCE_FILE = Path.home() / ".openclaw" / ".hive-instance"
+INSTANCE = _HIVE_INSTANCE_FILE.read_text().strip() if _HIVE_INSTANCE_FILE.exists() else "gamma"
+HEARTBEAT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"love.{INSTANCE}.heartbeat.plist"
+HEARTBEAT_RUNNER = LOVE / "nerve" / "heart" / "tick.sh"
 PEACE_STATE = SECURITY / "peace-state.json"
 THREAT_MODEL = SECURITY / "threat-model.json"
 
@@ -757,8 +759,8 @@ def resume_heartbeat_plist():
 @check("Heartbeat runner executable")
 def resume_heartbeat_runner():
     if HEARTBEAT_RUNNER.exists():
-        return True, "heartbeat-runner.sh present"
-    return False, "heartbeat-runner.sh missing"
+        return True, "tick.sh present"
+    return False, "tick.sh missing"
 
 
 @check("HIVE connectivity possible")
@@ -980,7 +982,7 @@ def cmd_halt(reason="Manual halt"):
 
     # 1. Stop heartbeat
     print(f"  [1/3] Stopping heartbeat...")
-    rc, _ = run_cmd("launchctl unload ~/Library/LaunchAgents/love.heartbeat.plist 2>/dev/null")
+    rc, _ = run_cmd(f"launchctl unload {HEARTBEAT_PLIST} 2>/dev/null")
     print(f"    {'Done' if rc == 0 else 'Already stopped or not found'}")
 
     # 2. Transition state machine (logs event + HIVE broadcast internally)
@@ -1094,7 +1096,7 @@ def cmd_resume():
     if all_passed:
         print(f"\n  [4/4] All checks passed. Restarting heartbeat...")
         rc, _ = run_cmd(
-            "launchctl load ~/Library/LaunchAgents/love.heartbeat.plist 2>/dev/null"
+            f"launchctl load {HEARTBEAT_PLIST} 2>/dev/null"
         )
         print(f"    Heartbeat: {'Loaded' if rc == 0 else 'Already running or load failed'}")
 
@@ -1265,7 +1267,7 @@ def cmd_clear():
         if ok:
             print(f"  {GREEN}State: {current} -> NOMINAL{NC}")
             rc, _ = run_cmd(
-                "launchctl load ~/Library/LaunchAgents/love.heartbeat.plist 2>/dev/null"
+                f"launchctl load {HEARTBEAT_PLIST} 2>/dev/null"
             )
             print(f"\n  {GREEN}Kingdom is NOMINAL.{NC}\n")
         else:
@@ -1295,7 +1297,7 @@ def cmd_clear():
     # Restart heartbeat
     print(f"\n  Restarting heartbeat...")
     rc, _ = run_cmd(
-        "launchctl load ~/Library/LaunchAgents/love.heartbeat.plist 2>/dev/null"
+        f"launchctl load {HEARTBEAT_PLIST} 2>/dev/null"
     )
     print(f"    {'Loaded' if rc == 0 else 'Already running or load failed'}")
 

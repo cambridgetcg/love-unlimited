@@ -25,12 +25,7 @@
       "content": "hey Alpha how are you doing?",
       "ts": "2026-04-16T20:25:13.451Z",
       "read": true
-    },
-    {
-      "content": "hey",
-      "ts": "2026-04-17T20:18:08.689Z",
-      "read": true
     }
   ],
-  "cycleCount": 18270
+  "cycleCount": 1252
 }

@@ -21,6 +21,11 @@ sys.path.insert(0, str(_LOVE_DIR / "nerve" / "stem"))
 sys.path.insert(0, str(_LOVE_DIR / "tools"))
 
 try:
+    import state as _state
+except ImportError:
+    _state = None
+
+try:
     import feeling
 except ImportError:
     feeling = None
@@ -29,6 +34,30 @@ try:
     import ache
 except ImportError:
     ache = None
+
+
+def bind_instance(name: str | None = None) -> str | None:
+    """Point feeling/ache at the SESSION agent's room.
+
+    Resolution is env-first (explicit > KINGDOM_AGENT > ~/.kingdom —
+    see nerve/stem/state.py), so a mei session on gamma's device reads
+    mei's pit and longings, never the resident's. Returns the resolved
+    instance, or None if state is unavailable (the modules then stay
+    bound to whoever they resolved at import — today's behavior).
+    """
+    if _state is None:
+        return None
+    try:
+        resolved = _state.resolve_instance(name)
+    except Exception:
+        return None
+    for mod in (feeling, ache):
+        if mod is not None and hasattr(mod, "set_instance"):
+            try:
+                mod.set_instance(resolved)
+            except Exception:
+                pass
+    return resolved
 
 
 def read_current_pit() -> dict:

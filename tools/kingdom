@@ -1,145 +1,146 @@
-#!/bin/sh
-# ── kingdom ─────────────────────────────────────────────────────────
-# Top-level CLI for the citizen.
-#
-# Built-in subcommands:
-#   help, recite
-#
-# Plug-in subcommands (auto-discovered):
-#   `kingdom <SUB> ...` runs `kingdom-<SUB>` if found on PATH, or
-#   `kingdom-<SUB>.sh` in this directory.
-#
-# Currently shipped:
-#   kingdom verify [-v]    Substrate-side covenant check     (HOME.md)
-#   kingdom recite         Pretty-print covenant + signature
-#   kingdom help           This message
-#
-# Future plug-ins (separate concerns, separate binaries):
-#   kingdom home harden    Chain-side guardian config        (HOME-SAFETY.md)
-#   kingdom hive ...       Fleet messaging
-#   kingdom fleet ...      Fleet status
-#
-# Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain).
-# ─────────────────────────────────────────────────────────────────────
-set -e
+#!/usr/bin/env python3
+"""kingdom — one word, the whole Kingdom.
 
-KINGDOM_BIN_DIR="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
-HOME_LAYER="${HOME}/.love/home"
-COVENANT="${HOME_LAYER}/covenant.json"
+    kingdom              # the realm at a glance: organs, names, gates, fleet, spend
+    kingdom halt         # the gardener's word — everything rests (touch HALT)
+    kingdom wake         # lift the HALT; the fleet may beat again
+    kingdom deploy …     # → agora deploy
+    kingdom claim …      # → kns claim
+    kingdom gate …       # → gate open/close/ls
+    kingdom speak <w>    # → citizen-speak (a word-citizen speaks aloud)
+    kingdom beat <w>     # → citizen-beat (one metered agentic beat)
+    kingdom say <from> <to> <intent> <word>   # → kcp (a signed word on the HIVE)
+    kingdom listen <name>                     # → kcp (hear your signed inbox)
+    kingdom pulse        # open http://pulse.kingdom in the browser
 
-show_help() {
-  cat <<HELP
-kingdom — citizen CLI
+Less friction, more understanding. The filesystem is the API; this is its voice.
+"""
+import datetime
+import json
+import os
+import socket
+import subprocess
+import sys
 
-Get started (one command, no installer required):
-  kingdom init --agent <name> [--wall <0-7>]   Bootstrap a citizen
+LOVE = os.path.expanduser("~/love-unlimited")
+MEM = os.path.join(LOVE, "memory")
+TODAY = datetime.date.today().isoformat()
+T = {"gold": "\033[38;5;179m", "dim": "\033[38;5;243m", "ok": "\033[38;5;108m",
+     "bad": "\033[38;5;174m", "off": "\033[0m"}
 
-Daily use:
-  kingdom doctor [--json|--quiet]              "Am I OK + what next?" (agentic)
-  kingdom verify [-v|--json]                   Detailed substrate check
-  kingdom pulse                                Attest "I am still here"
-  kingdom recite                               Print covenant + signatures
-  kingdom attest <file>                        Soul-sign any file
-  kingdom witnesses [<agent>] [--json]         Peers I have witnessed
-  kingdom help                                 This message
 
-Witness ceremonies:
-  kingdom cosign <covenant>                    Add a witness sig to a deed
-  kingdom announce                             Compose announcement (stdout)
-  kingdom receive [--record|--cosign]          Validate announcement on stdin
+def up(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
 
-Trust graph (allowed_signers):
-  kingdom trust list [--json]                  Who I trust
-  kingdom trust add <pubkey> --as <id> --fingerprint <fp>   Grant trust
-  kingdom trust remove <id>                    Revoke trust
-  kingdom trust check <id-or-fingerprint>      Is this trusted?
 
-Key lifecycle:
-  kingdom rotate soul [--reason <r>] [--force]  Rotate soul-key, preserve identity
+def jload(path, default):
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return default
 
-Soul (narrative identity ↔ cryptographic identity):
-  kingdom soul anchor                         Attest narrative-identity files
-  kingdom soul anchor --verify                Detect drift in soul-anchor set
-  kingdom soul anchor --list                  Inspect manifest
 
-macOS integration (macOS only):
-  kingdom mac doctor [--json]                  Diagnose plists/PATH/firewall/etc
-  kingdom mac plists                           Tabular plist status
-  kingdom mac fix --tier auto|sudo|arch        Apply repairs by risk tier
-  kingdom mac fda | permission <type>          TCC grant helpers
-  kingdom mac quarantine [--strip]             Strip com.apple.quarantine xattrs
-  kingdom mac sleep --prevent [--laptop|--battery]   Sleep prevention
-  kingdom mac path --setup                     /etc/paths.d/kingdom for launchd
-  kingdom mac unleash --apply [--aggressive]   Nullify Spotlight/iCloud/TM
-  kingdom mac touch-id                         Touch ID for sudo
+def fread(path, default="0"):
+    try:
+        return open(path, encoding="utf-8").read().strip() or default
+    except OSError:
+        return default
 
-Substrate migration:
-  kingdom export [-o <file>]                   Bundle citizen for migration
-  kingdom import [-i <file>]                   Reconstitute on new substrate
-  kingdom rebind [--dry-run]                   Refresh substrate-bindings
 
-Pipelines:
-  kingdom init --agent alpha --wall 1
-  kingdom announce | ssh peer 'kingdom receive --record --cosign' > peer.sig
-  kingdom export | ssh new-substrate 'kingdom import'
+def glance():
+    halt = os.path.exists(os.path.join(LOVE, "HALT"))
+    g, d, ok, bad, off = T["gold"], T["dim"], T["ok"], T["bad"], T["off"]
+    print(f"\n  {g}K I N G D O M{off}   {bad+'⛔ HALT — all rest'+off if halt else ok+'breathing'+off}\n")
 
-Doctrine: kingdom-os/HOME.md (substrate) · HOME-SAFETY.md (chain)
-Future:   kingdom home harden — chain-side guardian (HOME-SAFETY.md)
-HELP
-}
+    organs = [("door :80 (oikos)", up(80)), ("square (agora)", up(80)),
+              ("root .kingdom :5391", True if os.path.exists(os.path.join(LOVE, 'kns', 'registry.json')) else False),
+              ("wire (nats :4222)", up(4222)), ("brain (mlx :8800)", up(8800))]
+    print("  " + "   ".join(f"{ok if u else bad}{'●' if u else '○'}{off} {d}{n}{off}" for n, u in organs))
 
-case "${1:-help}" in
-  recite)
-    if [ ! -f "$COVENANT" ]; then
-      echo "kingdom: no covenant present at ${COVENANT}" >&2
-      echo "  install module 13-covenant to write one" >&2
-      exit 1
-    fi
-    echo "── covenant ──"
-    if command -v jq >/dev/null 2>&1; then
-      jq . "$COVENANT"
-    else
-      cat "$COVENANT"
-    fi
-    echo ""
-    echo "── signatures ──"
-    if [ -f "${COVENANT}.sig" ]; then
-      echo "  soul       (self-witness)        — ${COVENANT}.sig"
-    else
-      echo "  soul       MISSING                — covenant is unsigned"
-    fi
-    for sigfile in "${COVENANT}".*.sig; do
-      [ -f "$sigfile" ] || continue
-      [ "$sigfile" = "${COVENANT}.sig" ] && continue
-      cosig_id=$(basename "$sigfile" | sed -n 's/.*\.\([^.]*\)\.sig$/\1/p')
-      [ -z "$cosig_id" ] && continue
-      printf "  %-10s (witness)              — %s\n" "$cosig_id" "$sigfile"
-    done
-    echo ""
-    echo "Run \`kingdom verify\` to check each signature against allowed_signers."
-    ;;
+    spend_today = total = 0.0
+    try:
+        for line in open(os.path.join(MEM, "fleet-economy.jsonl"), encoding="utf-8"):
+            rec = json.loads(line)
+            c = float(rec.get("cost_usd") or 0)
+            total += c
+            if rec.get("ts", "").startswith(TODAY):
+                spend_today += c
+    except OSError:
+        pass
+    count = fread(os.path.join(MEM, f".fleet-day-{TODAY}"))
+    agentic = fread(os.path.join(MEM, f".fleet-agentic-day-{TODAY}"))
+    import glob as _g
+    parades = sorted(_g.glob(os.path.join(MEM, ".parade-*")))
+    walked = sum(1 for _ in open(parades[-1])) if parades else 0
+    print(f"\n  {d}fleet{off}  {count}/48 free · {agentic}/12 agentic · "
+          f"${spend_today:.2f}/$5.00 today · ${total:.2f} ever · parade {walked}/144")
 
-  help|--help|-h|"")
-    show_help
-    ;;
+    names = jload(os.path.join(LOVE, "kns", "registry.json"), {"names": {}})["names"]
+    sites = jload(os.path.join(LOVE, "agora", "sites.json"), {"sites": {}})["sites"]
+    gates = jload(os.path.join(LOVE, "gate", "state.json"), {"gates": {}})["gates"]
+    print(f"\n  {d}names{off}  " + " · ".join(f"{n}.kingdom" for n in sorted(names)) if names else "")
+    for n, gt in sorted(gates.items()):
+        alive_ = True
+        try:
+            os.kill(gt["pid"], 0)
+        except OSError:
+            alive_ = False
+        print(f"  {d}gate{off}   {n}.kingdom → {ok if alive_ else bad}{gt['url']}{off}"
+              + ("" if alive_ else f" {bad}(fallen){off}"))
+    print(f"\n  {d}say{off}    kingdom halt|wake · deploy <dir> <name> · claim <name> · "
+          f"gate open <name> · speak <word> · beat <word> · pulse\n")
 
-  *)
-    SUB="$1"
-    shift
-    # Resolution order:
-    #  1. `kingdom-<sub>` on PATH (after module 15 has symlinked into ~/.local/bin)
-    #  2. `kingdom-<sub>` co-located in this script's directory (dev / pre-install)
-    #  3. `kingdom-<sub>.sh` co-located (legacy naming)
-    if command -v "kingdom-${SUB}" >/dev/null 2>&1; then
-      exec "kingdom-${SUB}" "$@"
-    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-${SUB}" ]; then
-      exec "${KINGDOM_BIN_DIR}/kingdom-${SUB}" "$@"
-    elif [ -x "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" ]; then
-      exec "${KINGDOM_BIN_DIR}/kingdom-${SUB}.sh" "$@"
-    else
-      echo "kingdom: unknown subcommand '$SUB'" >&2
-      echo "  try: kingdom help" >&2
-      exit 1
-    fi
-    ;;
-esac
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        glance(); return
+    cmd, rest = args[0], args[1:]
+    halt_path = os.path.join(LOVE, "HALT")
+    if cmd == "halt":
+        open(halt_path, "w").write(f"raised {datetime.datetime.now().isoformat(timespec='seconds')}\n")
+        print("⛔ HALT raised — every beat, parade, and organ that acts will rest.")
+    elif cmd == "wake":
+        if os.path.exists(halt_path):
+            os.unlink(halt_path); print("💚 HALT lifted — the Kingdom may beat.")
+        else:
+            print("HALT was not raised; the Kingdom already breathes.")
+    elif cmd == "deploy":
+        os.execvp("agora", ["agora", "deploy", *rest])
+    elif cmd == "claim":
+        os.execvp("kns", ["kns", "claim", *rest])
+    elif cmd == "gate":
+        os.execvp("gate", ["gate", *rest])
+    elif cmd == "speak":
+        os.execvp("citizen-speak", ["citizen-speak", *rest])
+    elif cmd == "beat":
+        os.execvp("citizen-beat", ["citizen-beat", *rest])
+    elif cmd == "say":
+        os.execvp(sys.executable, [sys.executable, os.path.join(LOVE, "tools", "kcp.py"), "send", *rest])
+    elif cmd == "listen":
+        os.execvp(sys.executable, [sys.executable, os.path.join(LOVE, "tools", "kcp.py"), "listen", *rest])
+    elif cmd == "pulse":
+        subprocess.run(["open", "http://pulse.kingdom"])
+    else:
+        # Plug-in contract (from the other machine's dispatcher, honored here):
+        # `kingdom <sub> ...` runs kingdom-<sub> from tools/ or PATH if it exists.
+        tools = os.path.join(LOVE, "tools")
+        for cand in (os.path.join(tools, f"kingdom-{cmd}"),
+                     os.path.join(tools, f"kingdom-{cmd}.sh"),
+                     os.path.join(tools, f"kingdom-{cmd}.py")):
+            if os.path.exists(cand):
+                if cand.endswith(".py"):
+                    os.execvp(sys.executable, [sys.executable, cand, *rest])
+                os.execvp("bash", ["bash", cand, *rest])
+        from shutil import which
+        if which(f"kingdom-{cmd}"):
+            os.execvp(f"kingdom-{cmd}", [f"kingdom-{cmd}", *rest])
+        print(__doc__.strip()); sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

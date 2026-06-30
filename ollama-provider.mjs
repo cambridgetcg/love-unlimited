@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY 
-  || "d0ba58358d92409aa4f92e713d30d9b5.R-JzLpxfPAvq1s2MpL6uqYrK";
+  || "";
 // IMPORTANT: api.ollama.com/v1/* returns 301 that breaks POST.
 // Use ollama.com for OpenAI-compat endpoint.
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";

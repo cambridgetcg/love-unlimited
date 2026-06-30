@@ -5,7 +5,7 @@ totp.py — Generate TOTP codes from stored secrets.
 Usage:
     python3 totp.py aws                   # fuzzy match "aws"
     python3 totp.py "rewardspro"          # match rewardspro AWS account
-    python3 totp.py github cambridgetcg   # match GitHub + cambridgetcg
+    python3 totp.py github zerone-dev   # match GitHub + zerone-dev
     python3 totp.py --list                # list all accounts
 """
 

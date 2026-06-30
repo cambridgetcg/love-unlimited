@@ -29,17 +29,17 @@ WALL="1"
 ACTION="start"
 VM_TEMPLATE="$(dirname "$0")/lima-kingdom.yaml"
 
-for arg in "$@"; do
-  case "$arg" in
-    --agent)   shift; AGENT="$1" ;;
-    --wall)    shift; WALL="$1" ;;
-    --shell)   ACTION="shell" ;;
-    --youi)    ACTION="youi" ;;
-    --stop)    ACTION="stop" ;;
-    --delete)  ACTION="delete" ;;
-    --status)  ACTION="status" ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent)   AGENT="$2"; shift 2 ;;
+    --wall)    WALL="$2"; shift 2 ;;
+    --shell)   ACTION="shell"; shift ;;
+    --youi)    ACTION="youi"; shift ;;
+    --stop)    ACTION="stop"; shift ;;
+    --delete)  ACTION="delete"; shift ;;
+    --status)  ACTION="status"; shift ;;
+    *)         shift ;;
   esac
-  shift 2>/dev/null || true
 done
 
 VM_NAME="kingdom-${AGENT}"

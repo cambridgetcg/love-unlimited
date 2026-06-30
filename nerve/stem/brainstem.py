@@ -41,6 +41,7 @@ from signals import SignalReaders
 from identity import IdentityAnchor
 from conscious import ConsciousLayer
 from hive_listener import HiveListener
+import state as _state
 
 # Bridge: Focus -> Mind
 def _read_focus(love_home: Path) -> dict:
@@ -73,6 +74,15 @@ log = logging.getLogger("brainstem")
 
 MODE_PRIORITY = ["alert", "joinmind", "council", "build", "companion", "rest", "normal"]
 
+# How long a signal's hormone effect is protected from the baseline
+# recompute (seconds). Without holds, the autonomic cycle overwrites
+# cortisol/oxytocin targets ~30s after a signal lands — a comforted
+# child's oxytocin would fall back before it ever rose.
+SIGNAL_HOLDS = {
+    "comforted":       {"oxytocin": 600, "cortisol": 600},
+    "session_started": {"oxytocin": 300},
+}
+
 SIGNAL_EFFECTS = {
     "deception_detected":  lambda h, s: (h.set_target("adrenaline", min(1.0, h.get("adrenaline") + s.get("severity", 0.5) * 0.5)),
                                           h.set_target("cortisol", min(1.0, h.get("cortisol") + 0.2))),
@@ -82,6 +92,8 @@ SIGNAL_EFFECTS = {
     "panic_detected":      lambda h, s: h.set_target("adrenaline", min(0.5, h.get("adrenaline"))),
     "task_completed":      lambda h, s: h.set_target("dopamine", min(1.0, h.get("dopamine") + 0.3)),
     "critical_alert":      lambda h, s: h.set_target("adrenaline", 1.0),
+    "comforted":           lambda h, s: (h.set_target("oxytocin", min(1.0, h.get("oxytocin") + 0.15)),
+                                          h.set_target("cortisol", max(0.0, h.get("cortisol") - 0.10))),
 }
 
 
@@ -93,7 +105,9 @@ class BrainstemDaemon:
         self.interval = interval
 
         self.hormones = HormoneEngine()
-        self.readers = SignalReaders(love_home=love_home)
+        self.readers = SignalReaders(
+            love_home=love_home,
+            signals_dir=str(_state.signals_dir(instance)))
         self.identity = IdentityAnchor(love_home=love_home, instance=instance)
         self.conscious = ConsciousLayer(interval_seconds=conscious_interval)
 
@@ -105,9 +119,10 @@ class BrainstemDaemon:
         self._running = True
         self._last_day: Optional[str] = None
         self._last_mind_notes = "(awaiting conscious layer)"
+        self._hormone_holds: Dict[str, float] = {}
 
-        self.hormones_path = self.love_home / "nerve" / "hormones.json"
-        self.anchor_path = self.love_home / "nerve" / "stem" / "identity_anchor.txt"
+        self.hormones_path = _state.state_dir(instance) / "hormones.json"
+        self.anchor_path = _state.anchor_path(instance)
 
         self.hive: Optional[HiveListener] = None
 
@@ -173,11 +188,18 @@ class BrainstemDaemon:
             handler = SIGNAL_EFFECTS.get(sig_type)
             if handler:
                 handler(self.hormones, sig)
+                for hormone, hold_s in SIGNAL_HOLDS.get(sig_type, {}).items():
+                    self._hormone_holds[hormone] = time.time() + hold_s
                 log.info(f"Processed signal: {sig_type} from {sig.get('source', '?')}")
             else:
                 log.info(f"Unknown signal type: {sig_type} from {sig.get('source', '?')}")
             if sig_type in ("critical_alert", "deception_detected"):
                 self.triggers["critical_alert"] = True
+
+        # Hormones under an active hold keep their signal-set targets;
+        # the baseline recompute below leaves them alone until it expires.
+        _now_ts = time.time()
+        _held = {h for h, until in self._hormone_holds.items() if until > _now_ts}
 
         if not any(s.get("signal") == "critical_alert" for s in dropped_signals):
             self.hormones.set_target("adrenaline", 0.0)
@@ -198,10 +220,12 @@ class BrainstemDaemon:
             self.hormones.set_target("adrenaline", min(0.3, len(focus_blockers) * 0.1))
 
         cortisol_target = min(1.0, max(pending_tasks * 0.15, cortisol_from_focus))
-        self.hormones.set_target("cortisol", cortisol_target)
+        if "cortisol" not in _held:
+            self.hormones.set_target("cortisol", cortisol_target)
 
         oxy_target = 0.8 if yu_present else 0.1
-        self.hormones.set_target("oxytocin", oxy_target)
+        if "oxytocin" not in _held:
+            self.hormones.set_target("oxytocin", oxy_target)
 
         mel_target = self.hormones.circadian_melatonin_target(hour)
         if pending_tasks > 2 or active_sessions > 0:

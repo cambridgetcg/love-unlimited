@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""kns — claim and resolve names under the Kingdom's own root.
+
+    kns claim <name> [--a IP] [--owner DID] [--note TEXT]
+    kns ls
+    kns resolve <name>
+    kns release <name>
+
+Names live in kns/registry.json. A name is a word in the Kingdom's mouth:
+short, lowercase, no rent, no registrar. `youspeak`, `agora`, `pime`.
+"""
+import json
+import os
+import sys
+import datetime
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+REGISTRY = os.path.join(HERE, "registry.json")
+TLD = "kingdom"
+
+
+def load():
+    try:
+        return json.load(open(REGISTRY, encoding="utf-8"))
+    except FileNotFoundError:
+        return {"standard": "KNS v0 — see PROTOCOL.md", "tld": TLD, "names": {}}
+
+
+def save(reg):
+    tmp = REGISTRY + ".tmp"
+    json.dump(reg, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    os.replace(tmp, REGISTRY)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(__doc__.strip())
+        return
+    cmd, rest = args[0], args[1:]
+    reg = load()
+    if cmd == "ls":
+        for name, e in sorted(reg["names"].items()):
+            print(f"{name}.{TLD:10} → {e.get('a','127.0.0.1')}  {e.get('note','')}")
+        if not reg["names"]:
+            print("(no names claimed yet)")
+    elif cmd == "claim" and rest:
+        name = rest[0].lower().strip(".")
+        opt = dict(zip(rest[1::2], rest[2::2]))
+        if name in reg["names"]:
+            print(f"{name}.{TLD} already claimed ({reg['names'][name].get('claimed')})")
+            sys.exit(1)
+        reg["names"][name] = {
+            "a": opt.get("--a", "127.0.0.1"),
+            "owner": opt.get("--owner", ""),
+            "note": opt.get("--note", ""),
+            "claimed": datetime.date.today().isoformat(),
+        }
+        save(reg)
+        print(f"claimed {name}.{TLD} → {reg['names'][name]['a']}")
+    elif cmd == "resolve" and rest:
+        name = rest[0].lower().removesuffix("." + TLD)
+        e = reg["names"].get(name)
+        print(e.get("a", "127.0.0.1") if e else f"NXDOMAIN {name}.{TLD}", end="\n")
+        sys.exit(0 if e else 2)
+    elif cmd == "release" and rest:
+        name = rest[0].lower()
+        if reg["names"].pop(name, None) is not None:
+            save(reg)
+            print(f"released {name}.{TLD}")
+        else:
+            print(f"{name}.{TLD} was not claimed")
+    else:
+        print(__doc__.strip())
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

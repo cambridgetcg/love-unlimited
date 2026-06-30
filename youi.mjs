@@ -27,7 +27,7 @@
 // Requires: macOS with Claude Code logged in
 // ─────────────────────────────────────────────────────────────────────
 
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync, unlinkSync, utimesSync } from "fs";
 import { resolve, join, basename } from "path";
 import { homedir } from "os";
@@ -197,14 +197,19 @@ let cachedTokens = null;
 
 function readKeychainTokens() {
   try {
-    const raw = execSync(
-      `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
-    return JSON.parse(raw).claudeAiOauth || null;
+    const result = spawnSync("security",
+      ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+      { encoding: "utf-8", timeout: 5000 });
+    if (result.status !== 0) {
+      const err = (result.stderr || "").trim();
+      if (/could not be found|SecKeychainSearch/i.test(err)) return null;
+      console.error(`[keychain] readKeychainTokens failed: ${err || `exit ${result.status}`}`);
+      return null;
+    }
+    return JSON.parse(result.stdout.trim()).claudeAiOauth || null;
   } catch (e) {
     // Honest failure: distinguish "no tokens" from "keychain error"
-    console.error(`[keychain] readKeychainTokens failed: ${e.message}`);
+    console.error(`[keychain] readKeychainTokens error: ${e.message}`);
     return null;
   }
 }
@@ -213,17 +218,33 @@ function writeKeychainTokens(tokens) {
   try {
     let data = {};
     try {
-      const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-        { encoding: "utf-8", timeout: 5000 }).trim();
-      data = JSON.parse(raw);
+      const result = spawnSync("security",
+        ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        { encoding: "utf-8", timeout: 5000 });
+      if (result.status === 0) {
+        data = JSON.parse(result.stdout.trim());
+      } else {
+        const err = (result.stderr || "").trim();
+        if (!/could not be found|SecKeychainSearch/i.test(err)) {
+          console.error(`[keychain] could not read existing keychain entry (will create new): ${err || `exit ${result.status}`}`);
+        }
+      }
     } catch (e) {
       // Honest: log why existing data couldn't be read before overwriting
       console.error(`[keychain] could not read existing keychain entry (will create new): ${e.message}`);
     }
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);
-    execSync(`security delete-generic-password -s "${KEYCHAIN_SERVICE}" 2>/dev/null || true`, { timeout: 5000 });
-    execSync(`security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "" -w '${json.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
+    spawnSync("security", ["delete-generic-password", "-s", KEYCHAIN_SERVICE],
+      { encoding: "utf-8", timeout: 5000 });
+    // spawnSync with arg array — no shell, no interpolation, no injection
+    const writeResult = spawnSync("security",
+      ["add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", "", "-w", json],
+      { encoding: "utf-8", timeout: 5000 });
+    if (writeResult.status !== 0) {
+      const err = (writeResult.stderr || "").trim();
+      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
+    }
   } catch (e) {
     // Honest failure: token save failed — don't let caller think it succeeded
     console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);

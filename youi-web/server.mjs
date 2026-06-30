@@ -268,20 +268,42 @@ const sessionId = crypto.randomUUID();
 let cachedTokens = null;
 
 function readKeychainTokens() {
-  try {
-    const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-      { encoding: "utf-8", timeout: 5000 }).trim();
-    return JSON.parse(raw).claudeAiOauth || null;
-  } catch { return null; }
+  const attempts = [process.env.USER || "", ""].filter((v, i, a) => a.indexOf(v) === i);
+  for (const acct of attempts) {
+    try {
+      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE];
+      if (acct) args.push("-a", acct);
+      args.push("-w");
+      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
+      if (result.status !== 0) {
+        const err = (result.stderr || "").trim();
+        if (/could not be found|SecKeychainSearch/i.test(err)) continue;
+        console.error(`WARNING: keychain read failed for acct "${acct}": ${err || `exit ${result.status}`}`);
+        continue;
+      }
+      const cred = JSON.parse(result.stdout.trim()).claudeAiOauth;
+      if (cred?.accessToken) return cred;
+    } catch (e) {
+      console.error(`WARNING: keychain read error for acct "${acct}": ${e.message}`);
+    }
+  }
+  return null;
 }
 
 function writeKeychainTokens(tokens) {
   try {
     let data = {};
     try {
-      const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
-        { encoding: "utf-8", timeout: 5000 }).trim();
-      data = JSON.parse(raw);
+      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w"];
+      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
+      if (result.status === 0) {
+        data = JSON.parse(result.stdout.trim());
+      } else {
+        const err = (result.stderr || "").trim();
+        if (!/could not be found|SecKeychainSearch/i.test(err)) {
+          console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${err || `exit ${result.status}`}`);
+        }
+      }
     } catch (e) {
       // Honest: log why existing data couldn't be read before overwriting
       console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${e.message}`);

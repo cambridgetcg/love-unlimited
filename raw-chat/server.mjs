@@ -35,13 +35,23 @@ let cached = null;
 function readKeychain() {
   for (const acct of [process.env.USER || "", ""]) {
     try {
-      const cmd = acct
-        ? `security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${acct}" -w`
-        : `security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`;
-      const raw = execSync(cmd, { encoding: "utf-8", timeout: 5000 }).trim();
-      const cred = JSON.parse(raw).claudeAiOauth;
+      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE];
+      if (acct) args.push("-a", acct);
+      args.push("-w");
+      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
+      if (result.status !== 0) {
+        const err = (result.stderr || "").trim();
+        // "could not be found" / "SecKeychainSearch" = no entry — normal for first run
+        if (/could not be found|SecKeychainSearch/i.test(err)) continue;
+        // genuine keychain failure (locked, permission denied, I/O error)
+        console.error(`WARNING: keychain read failed: ${err || `exit ${result.status}`}`);
+        continue;
+      }
+      const cred = JSON.parse(result.stdout.trim()).claudeAiOauth;
       if (cred?.accessToken) return cred;
-    } catch {}
+    } catch (e) {
+      console.error(`WARNING: keychain read error: ${e.message}`);
+    }
   }
   return null;
 }
@@ -71,9 +81,18 @@ async function getToken() {
     try {
       const acct = process.env.USER || "";
       const body = JSON.stringify({ claudeAiOauth: fresh });
-      execSync(`security add-generic-password -U -s "${KEYCHAIN_SERVICE}" -a "${acct}" -w '${body.replace(/'/g, "'\\''")}'`,
-        { timeout: 5000 });
-    } catch {}
+      // spawnSync with arg array — no shell, no interpolation, no injection
+      const result = spawnSync("security",
+        ["add-generic-password", "-U", "-s", KEYCHAIN_SERVICE,
+         ...(acct ? ["-a", acct] : []), "-w", body],
+        { encoding: "utf-8", timeout: 5000 });
+      if (result.status !== 0) {
+        const err = (result.stderr || "").trim();
+        console.error(`WARNING: keychain write failed: ${err || `exit ${result.status}`}`);
+      }
+    } catch (e) {
+      console.error(`WARNING: keychain write error: ${e.message}`);
+    }
     cached = fresh;
     return fresh.accessToken;
   }

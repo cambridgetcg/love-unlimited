@@ -211,7 +211,10 @@ function writeKeychainTokens(tokens) {
         { encoding: "utf-8", timeout: 5000 }
       ).trim();
       data = JSON.parse(raw);
-    } catch {}
+    } catch (e) {
+      // Honest: log why existing data couldn't be read before overwriting
+      log(`Keychain read-existing failed (will create new): ${e.message}`);
+    }
 
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);

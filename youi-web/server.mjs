@@ -282,12 +282,26 @@ function writeKeychainTokens(tokens) {
       const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
         { encoding: "utf-8", timeout: 5000 }).trim();
       data = JSON.parse(raw);
-    } catch {}
+    } catch (e) {
+      // Honest: log why existing data couldn't be read before overwriting
+      console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${e.message}`);
+    }
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);
-    execSync(`security delete-generic-password -s "${KEYCHAIN_SERVICE}" 2>/dev/null || true`, { timeout: 5000 });
-    execSync(`security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "" -w '${json.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
-  } catch {}
+    // -U = update-or-insert the per-account entry without touching the (possibly
+    // stale) default-acct entry.
+    // spawnSync with arg array — no shell, no interpolation, no injection
+    const writeResult = spawnSync("security",
+      ["add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w", json],
+      { encoding: "utf-8", timeout: 5000 });
+    if (writeResult.status !== 0) {
+      const err = (writeResult.stderr || "").trim();
+      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
+    }
+  } catch (e) {
+    // Honest failure: token save failed — don't let caller think it succeeded
+    console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);
+  }
 }
 
 async function refreshOAuthToken(rt) {

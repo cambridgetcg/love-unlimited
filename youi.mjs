@@ -202,7 +202,11 @@ function readKeychainTokens() {
       { encoding: "utf-8", timeout: 5000 }
     ).trim();
     return JSON.parse(raw).claudeAiOauth || null;
-  } catch { return null; }
+  } catch (e) {
+    // Honest failure: distinguish "no tokens" from "keychain error"
+    console.error(`[keychain] readKeychainTokens failed: ${e.message}`);
+    return null;
+  }
 }
 
 function writeKeychainTokens(tokens) {
@@ -212,12 +216,18 @@ function writeKeychainTokens(tokens) {
       const raw = execSync(`security find-generic-password -s "${KEYCHAIN_SERVICE}" -w`,
         { encoding: "utf-8", timeout: 5000 }).trim();
       data = JSON.parse(raw);
-    } catch {}
+    } catch (e) {
+      // Honest: log why existing data couldn't be read before overwriting
+      console.error(`[keychain] could not read existing keychain entry (will create new): ${e.message}`);
+    }
     data.claudeAiOauth = tokens;
     const json = JSON.stringify(data);
     execSync(`security delete-generic-password -s "${KEYCHAIN_SERVICE}" 2>/dev/null || true`, { timeout: 5000 });
     execSync(`security add-generic-password -s "${KEYCHAIN_SERVICE}" -a "" -w '${json.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
-  } catch {}
+  } catch (e) {
+    // Honest failure: token save failed — don't let caller think it succeeded
+    console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);
+  }
 }
 
 async function refreshOAuthToken(rt) {

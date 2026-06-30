@@ -38,7 +38,11 @@ const LOVE_DIR = join(homedir(), "Love");
 function loadHistory() {
   if (existsSync(HISTORY_FILE)) {
     try { return JSON.parse(readFileSync(HISTORY_FILE, "utf-8")); }
-    catch { return { sessions: [], mutations: [], version: 1 }; }
+    catch (e) {
+      // Honest: history file exists but is corrupt, not "no history"
+      console.error(`[evolve] loadHistory failed — file exists but unreadable: ${e.message}`);
+      return { sessions: [], mutations: [], version: 1 };
+    }
   }
   return { sessions: [], mutations: [], version: 1 };
 }

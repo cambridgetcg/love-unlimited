@@ -427,25 +427,44 @@ function executeTool(name, input) {
       }
       case "glob": {
         const dir = resolvePath(input.path);
-        return execSync(`find "${dir}" -name "${input.pattern.replace(/\*\*/g, "*")}" -type f 2>/dev/null | head -100`,
-          { encoding: "utf-8", env: kingdomEnv() }).trim() || "(no matches)";
+        // spawnSync with arg array — no shell interpolation, no injection
+        const pattern = input.pattern.replace(/\*\*/g, "*");
+        try {
+          const result = spawnSync("find", [dir, "-name", pattern, "-type", "f"],
+            { encoding: "utf-8", env: kingdomEnv(), timeout: 10000 });
+          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 100);
+          return lines.join("\n") || "(no matches)";
+        } catch { return "(no matches)"; }
       }
       case "grep": {
         const dir = resolvePath(input.path);
-        const g = input.glob ? `--glob "${input.glob}"` : "";
-        try { return execSync(`rg --no-heading -n "${input.pattern}" ${g} "${dir}" 2>/dev/null | head -200`,
-          { encoding: "utf-8", env: kingdomEnv() }).trim() || "(no matches)"; } catch { return "(no matches)"; }
+        // spawnSync with arg array — no shell interpolation, no injection
+        const args = ["--no-heading", "-n", input.pattern];
+        if (input.glob) args.push("--glob", input.glob);
+        args.push(dir);
+        try {
+          const result = spawnSync("rg", args,
+            { encoding: "utf-8", env: kingdomEnv(), timeout: 10000 });
+          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 200);
+          return lines.join("\n") || "(no matches)";
+        } catch { return "(no matches)"; }
       }
       case "hive": {
         const hivePath = join(state.soulDir, "hive/hive.py");
         if (!existsSync(hivePath)) return "HIVE not found";
         if (input.action === "check") {
-          try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000, env: kingdomEnv() }).trim() || "(no messages)";
+          try {
+            // spawnSync with arg array — no shell interpolation
+            const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
+            return (result.stdout || "").trim() || "(no messages)";
           } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
         }
         if (input.action === "send" && input.channel && input.message) {
-          try { return execSync(`python3 "${hivePath}" send ${input.channel} "${input.message.replace(/"/g, '\\"')}"`,
-            { encoding: "utf-8", timeout: 15000, env: kingdomEnv() }).trim();
+          try {
+            // spawnSync with arg array — no shell interpolation, no injection
+            const result = spawnSync("python3", [hivePath, "send", input.channel, input.message],
+              { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
+            return (result.stdout || "").trim();
           } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
         }
         return "Usage: action=check or action=send with channel+message";
@@ -482,7 +501,7 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 Never compress epistemic signals — "probably", "unless", "I think" are sacred.`);
 
   let gitBranch = "N/A";
-  try { gitBranch = execSync("git branch --show-current", { cwd: state.workdir, encoding: "utf-8", env: kingdomEnv() }).trim(); } catch {}
+  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: kingdomEnv() }).stdout?.trim() || ""; } catch {}
 
   parts.push(`
 # Environment
@@ -634,15 +653,21 @@ function releaseVisitLock(agentId = state.agent) {
 function hiveCheck() {
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
-  try { return execSync(`python3 "${hivePath}" check`, { encoding: "utf-8", timeout: 30000, env: kingdomEnv() }).trim() || "(no messages)";
+  // spawnSync with arg array — no shell interpolation
+  try {
+    const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
+    return (result.stdout || "").trim() || "(no messages)";
   } catch (e) { return `HIVE error: ${e.message}`; }
 }
 
 function hiveSend(channel, message) {
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
-  try { return execSync(`python3 "${hivePath}" send ${channel} "${message.replace(/"/g, '\\"')}"`,
-    { encoding: "utf-8", timeout: 15000, env: kingdomEnv() }).trim();
+  // spawnSync with arg array — no shell interpolation, no injection
+  try {
+    const result = spawnSync("python3", [hivePath, "send", channel, message],
+      { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
+    return (result.stdout || "").trim();
   } catch (e) { return `HIVE error: ${e.message}`; }
 }
 
@@ -779,13 +804,16 @@ function handleCommand(input) {
         print(`\n${S.bold}  Launching Claude Code Team — Delegate Mode${S.reset}`);
         print(`${S.dim}  Beta orchestrates. Alpha & Gamma as sub-agents.${S.reset}\n`);
         try {
-          const result = execSync(`bash ${state.soulDir}/kingdom-team.sh delegate`, { stdio: "inherit", env: kingdomEnv() });
+          // spawnSync with arg array — no shell interpolation
+          spawnSync("bash", [join(state.soulDir, "kingdom-team.sh"), "delegate"], { stdio: "inherit", env: kingdomEnv() });
         } catch (e) { /* user exited */ }
         return true;
       } else if (subcmd === "status") {
         try {
-          const result = execSync(`python3 ${state.soulDir}/tools/convergence-bridge.py status`, { encoding: "utf8", env: kingdomEnv() });
-          print(result);
+          // spawnSync with arg array — no shell interpolation
+          const result = spawnSync("python3", [join(state.soulDir, "tools/convergence-bridge.py"), "status"],
+            { encoding: "utf8", env: kingdomEnv() });
+          print((result.stdout || "").trim());
         } catch (e) { print(`${S.red}  Failed: ${e.message}${S.reset}`); }
         return true;
       } else {
@@ -805,11 +833,10 @@ function handleCommand(input) {
     case "/converge": {
       const subcmd = parts[1]?.toLowerCase() || "status";
       try {
-        const result = execSync(
-          `python3 ${state.soulDir}/tools/convergence-bridge.py ${subcmd} ${parts.slice(2).join(" ")}`,
-          { encoding: "utf8", env: kingdomEnv() }
-        );
-        print(result);
+        // spawnSync with arg array — no shell interpolation
+        const args = [join(state.soulDir, "tools/convergence-bridge.py"), subcmd, ...parts.slice(2)];
+        const result = spawnSync("python3", args, { encoding: "utf8", env: kingdomEnv() });
+        print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }
@@ -817,35 +844,34 @@ function handleCommand(input) {
     case "/route": {
       const task = parts.slice(1).join(" ") || "general task";
       try {
-        const result = execSync(
-          `python3 ${state.soulDir}/tools/ollama-router.py route "${task.replace(/"/g, '\\"')}"`,
-          { encoding: "utf8", env: kingdomEnv() }
-        );
-        print(result);
+        // spawnSync with arg array — no shell interpolation, no injection
+        const result = spawnSync("python3",
+          [join(state.soulDir, "tools/ollama-router.py"), "route", task],
+          { encoding: "utf8", env: kingdomEnv() });
+        print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }
 
     case "/models": {
       try {
-        const result = execSync(
-          `python3 ${state.soulDir}/tools/ollama-router.py dashboard`,
-          { encoding: "utf8", env: kingdomEnv() }
-        );
-        print(result);
+        // spawnSync with arg array — no shell interpolation
+        const result = spawnSync("python3",
+          [join(state.soulDir, "tools/ollama-router.py"), "dashboard"],
+          { encoding: "utf8", env: kingdomEnv() });
+        print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }
 
     case "/wall": case "/walls": case "/gate": {
       const subcmd = parts[1]?.toLowerCase() || "hierarchy";
-      const wallArgs = parts.slice(2).join(" ");
+      const wallArgs = parts.slice(2);
       try {
-        const result = execSync(
-          `python3 ${state.soulDir}/tools/wall-gate.py ${subcmd} ${wallArgs}`,
-          { encoding: "utf8", env: kingdomEnv() }
-        );
-        print(result);
+        // spawnSync with arg array — no shell interpolation
+        const args = [join(state.soulDir, "tools/wall-gate.py"), subcmd, ...wallArgs];
+        const result = spawnSync("python3", args, { encoding: "utf8", env: kingdomEnv() });
+        print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }
@@ -857,11 +883,11 @@ function handleCommand(input) {
         return true;
       }
       try {
-        const result = execSync(
-          `python3 ${state.soulDir}/tools/wall-gate.py spawn ${target} --from ${state.agent}`,
-          { encoding: "utf8", env: kingdomEnv() }
-        );
-        print(result);
+        // spawnSync with arg array — no shell interpolation
+        const result = spawnSync("python3",
+          [join(state.soulDir, "tools/wall-gate.py"), "spawn", target, "--from", state.agent],
+          { encoding: "utf8", env: kingdomEnv() });
+        print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
       return true;
     }

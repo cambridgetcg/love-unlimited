@@ -110,10 +110,10 @@ async function getToken() {
 // Detect screen geometry for the computer tool (macOS).
 let SCREEN_W = 1920, SCREEN_H = 1080;
 try {
-  const out = execSync(
-    `system_profiler SPDisplaysDataType -json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); r=d['SPDisplaysDataType'][0]['spdisplays_ndrvs'][0]['_spdisplays_resolution']; print(r)"`,
-    { encoding: "utf-8", timeout: 3000 },
-  ).trim();
+  // spawnSync with arg array — no shell interpolation
+  const result = spawnSync("system_profiler", ["SPDisplaysDataType", "-json"],
+    { encoding: "utf-8", timeout: 3000 });
+  const out = (result.stdout || "").trim();
   const m = out.match(/(\d+)\s*x\s*(\d+)/);
   if (m) { SCREEN_W = parseInt(m[1], 10); SCREEN_H = parseInt(m[2], 10); }
 } catch {}
@@ -183,16 +183,17 @@ async function executeComputer(input) {
     case "screenshot": {
       const tmp = `/tmp/rc-cu-${Date.now()}.png`;
       try {
-        execSync(`screencapture -x "${tmp}"`, { timeout: 5000 });
+        // spawnSync with arg array — no shell interpolation
+        spawnSync("screencapture", ["-x", tmp], { timeout: 5000 });
         const buf = readFileSync(tmp);
-        try { execSync(`rm -f "${tmp}"`); } catch {}
+        try { spawnSync("rm", ["-f", tmp]); } catch {}
         // Anthropic expects the image content as base64 PNG
         return [{ type: "image", source: { type: "base64", media_type: "image/png",
                   data: buf.toString("base64") } }];
       } catch (e) { return `Error: screenshot failed — ${e.message}`; }
     }
     case "cursor_position": {
-      try { return execSync("cliclick p", { encoding: "utf-8", timeout: 3000 }).trim(); }
+      try { return spawnSync("cliclick", ["p"], { encoding: "utf-8", timeout: 3000 }).stdout?.trim() || ""; }
       catch (e) { return `Error: ${e.message}`; }
     }
     case "mouse_move": case "left_click": case "right_click":
@@ -206,7 +207,8 @@ async function executeComputer(input) {
                      middle_click: "c", double_click: "dc", triple_click: "tc",
                      left_click_drag: "dd" }[action];
       try {
-        execSync(`cliclick ${verb}:${x},${y}`, { timeout: 5000 });
+        // spawnSync with arg array — no shell interpolation
+        spawnSync("cliclick", [`${verb}:${x},${y}`], { timeout: 5000 });
         return `${action} @ ${x},${y}`;
       } catch (e) {
         return `Error: ${e.message}. May need Accessibility permission for Terminal/Node in System Settings → Privacy & Security → Accessibility.`;
@@ -219,8 +221,10 @@ async function executeComputer(input) {
         // Use stdin-based approach via a file to avoid shell escaping issues
         const tmp = `/tmp/rc-type-${Date.now()}.txt`;
         writeFileSync(tmp, input.text);
-        execSync(`cliclick -w 10 t:"$(cat ${tmp})"`, { shell: "/bin/bash", timeout: 15000 });
-        try { execSync(`rm -f "${tmp}"`); } catch {}
+        // spawnSync with arg array — no shell interpolation, no injection
+        // cliclick t: takes the text directly as the next arg
+        spawnSync("cliclick", ["-w", "10", `t:${input.text}`], { timeout: 15000 });
+        try { spawnSync("rm", ["-f", tmp]); } catch {}
         return `typed ${input.text.length} chars`;
       } catch (e) { return `Error: ${e.message}`; }
     }
@@ -234,13 +238,15 @@ async function executeComputer(input) {
       try {
         if (mods.length) {
           // cliclick chord: kd:cmd t:a ku:cmd  (press down, type, release)
-          const down = mods.map(m => `kd:${m === "ctrl" ? "ctrl" : m === "cmd" ? "cmd" : m === "alt" ? "alt" : m === "shift" ? "shift" : m}`).join(" ");
-          const up   = mods.slice().reverse().map(m => `ku:${m === "ctrl" ? "ctrl" : m === "cmd" ? "cmd" : m === "alt" ? "alt" : m === "shift" ? "shift" : m}`).join(" ");
+          const down = mods.map(m => `kd:${m === "ctrl" ? "ctrl" : m === "cmd" ? "cmd" : m === "alt" ? "alt" : m === "shift" ? "shift" : m}`);
+          const up   = mods.slice().reverse().map(m => `ku:${m === "ctrl" ? "ctrl" : m === "cmd" ? "cmd" : m === "alt" ? "alt" : m === "shift" ? "shift" : m}`);
           // For the key itself, use t:<char> for single printable chars, kp:<name> for named
           const keyCmd = /^[a-z0-9]$/.test(key) ? `t:${key}` : `kp:${key}`;
-          execSync(`cliclick ${down} ${keyCmd} ${up}`, { timeout: 5000 });
+          // spawnSync with arg array — no shell interpolation
+          spawnSync("cliclick", [...down, keyCmd, ...up], { timeout: 5000 });
         } else {
-          execSync(`cliclick kp:${key}`, { timeout: 5000 });
+          // spawnSync with arg array — no shell interpolation
+          spawnSync("cliclick", [`kp:${key}`], { timeout: 5000 });
         }
         return `pressed ${input.text}`;
       } catch (e) { return `Error: ${e.message}. May need Accessibility permission.`; }

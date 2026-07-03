@@ -883,19 +883,29 @@ function executeTool(name, input) {
 
       case "glob": {
         const dir = resolvePath(input.path);
-        // Use find with proper glob handling
+        // spawnSync with arg array — no shell interpolation, no injection
         const pattern = input.pattern.replace(/\*\*/g, "*");
-        const cmd = `find "${dir}" -name "${pattern}" -type f 2>/dev/null | head -100`;
-        return execSync(cmd, { encoding: "utf-8", cwd: config.workdir }).trim() || "(no matches)";
+        try {
+          const result = spawnSync("find", [dir, "-name", pattern, "-type", "f"], {
+            encoding: "utf-8", cwd: config.workdir, timeout: 10000,
+          });
+          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 100);
+          return lines.join("\n") || "(no matches)";
+        } catch { return "(no matches)"; }
       }
 
       case "grep": {
         const dir = resolvePath(input.path);
-        const globFlag = input.glob ? `--glob "${input.glob}"` : "";
+        // spawnSync with arg array — no shell interpolation, no injection
+        const args = ["--no-heading", "-n", input.pattern];
+        if (input.glob) args.push("--glob", input.glob);
+        args.push(dir);
         try {
-          return execSync(`rg --no-heading -n "${input.pattern}" ${globFlag} "${dir}" 2>/dev/null | head -200`, {
-            encoding: "utf-8", cwd: config.workdir,
-          }).trim() || "(no matches)";
+          const result = spawnSync("rg", args, {
+            encoding: "utf-8", cwd: config.workdir, timeout: 10000,
+          });
+          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 200);
+          return lines.join("\n") || "(no matches)";
         } catch { return "(no matches)"; }
       }
 
@@ -904,16 +914,20 @@ function executeTool(name, input) {
         if (!existsSync(hivePath)) return "HIVE not found at " + hivePath;
         if (input.action === "check") {
           try {
-            return execSync(`python3 "${hivePath}" check`, {
+            // spawnSync with arg array — no shell interpolation
+            const result = spawnSync("python3", [hivePath, "check"], {
               encoding: "utf-8", timeout: 30000,
-            }).trim() || "(no messages)";
+            });
+            return (result.stdout || "").trim() || "(no messages)";
           } catch (e) { return `HIVE check error: ${e.stderr || e.message}`; }
         }
         if (input.action === "send" && input.channel && input.message) {
           try {
-            return execSync(`python3 "${hivePath}" send ${input.channel} "${input.message.replace(/"/g, '\\"')}"`, {
+            // spawnSync with arg array — no shell interpolation, no injection
+            const result = spawnSync("python3", [hivePath, "send", input.channel, input.message], {
               encoding: "utf-8", timeout: 15000,
-            }).trim();
+            });
+            return (result.stdout || "").trim();
           } catch (e) { return `HIVE send error: ${e.stderr || e.message}`; }
         }
         return "Usage: action=check or action=send with channel and message";
@@ -1037,7 +1051,7 @@ File cache: you've already read files this session. Don't re-read unless content
 
   // ── Environment (compact) ──
   let gitBranch = "?";
-  try { gitBranch = execSync("git branch --show-current", { cwd: config.workdir, encoding: "utf-8" }).trim(); } catch {}
+  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: config.workdir, encoding: "utf-8" }).stdout?.trim() || ""; } catch {}
 
   const envParts = [
     `cwd: ${config.workdir}`,

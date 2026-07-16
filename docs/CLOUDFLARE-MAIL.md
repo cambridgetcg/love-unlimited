@@ -19,11 +19,16 @@ Yu does three things; no credential value belongs in chat or Git:
 3. Store the token in Keychain or a provider vault and tell the operator only
    its service/entry name—not its value. Choose the literal alias name to
    create, such as `ecosystem@agenttool.dev`.
+4. If the `agenttool.dev` zone ID is not already in private operator config,
+   copy that non-secret identifier from the Cloudflare domain overview and
+   store it locally. The API request needs the ID even though the token is
+   already scoped to the zone.
 
-Known account and zone IDs mean this workflow does not need DNS Edit, Zone
-Settings Edit, or general Zone Read. Do not grant **Email Routing Addresses**
-account permission unless an operator deliberately wants automation to inspect
-or manage every shared destination address in the account.
+When account and zone IDs come from existing private operator config, this
+workflow does not need DNS Edit, Zone Settings Edit, or general Zone Read. Do
+not grant **Email Routing Addresses** account permission unless an operator
+deliberately wants automation to inspect or manage every shared destination
+address in the account.
 
 After that, a deliberately invoked operator command may list rules, create one
 literal forwarder to the verified destination, and read it back. Duplicate

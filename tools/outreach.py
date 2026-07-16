@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-outreach.py — Kingdom AI Services: Client Acquisition Pipeline
+outreach.py — private ecosystem relations plus legacy content generators
 
-Turns the Kingdom's real capability into revenue through professional,
-value-first outreach targeting the UK SMB market.
+The primary surface is a private, build-first relationship ledger. Older UK
+SMB content generators remain available only as unverified draft material.
 
 Usage:
     python3 tools/outreach.py targets                          # Prospect categories & ICPs
     python3 tools/outreach.py draft <prospect-type> [service]  # Generate outreach message
-    python3 tools/outreach.py sequence <prospect-type>         # 3-touch email sequence
+    python3 tools/outreach.py sequence <prospect-type>         # Retired: no cold sequences
     python3 tools/outreach.py pitch <service>                  # Elevator pitch for a service
     python3 tools/outreach.py case-study <service>             # Case study from Kingdom usage
     python3 tools/outreach.py qualify <company> <answers>      # Score prospect fit
-    python3 tools/outreach.py pipeline                         # Current pipeline status
+    python3 tools/outreach.py pipeline                         # Private relationship queue
+    python3 tools/outreach.py contact ...                      # Private relationship ledger
+    python3 tools/outreach.py message ...                      # Approval-bound message workflow
+    python3 tools/outreach.py events ...                       # Application-append-only event history
+    python3 tools/outreach.py suppress ...                     # Do-not-contact hard gate
 """
 
 import json
@@ -35,7 +39,6 @@ SEQUENCES_DIR = OUTREACH_DIR / "sequences"
 CASE_STUDIES_DIR = OUTREACH_DIR / "case-studies"
 PORTFOLIO_FILE = SERVICES_DIR / "portfolio.json"
 PRICING_FILE = SERVICES_DIR / "pricing.json"
-PROSPECTS_FILE = SERVICES_DIR / "prospects.json"
 
 # Ensure dirs exist
 for d in [OUTREACH_DIR, TEMPLATES_DIR, SEQUENCES_DIR, CASE_STUDIES_DIR]:
@@ -646,8 +649,8 @@ CASE_STUDIES = {
             market dynamics), we built a multi-agent AI operations system:
 
             1. FLEET MANAGEMENT: AI agents deployed across servers, each with specific
-               operational responsibilities. Coordinated via HIVE protocol with
-               encrypted messaging and persistent task queues.
+               operational responsibilities. Coordinated via NATS-based task
+               messaging and persistent queues.
 
             2. HEARTBEAT MONITORING: Autonomous 7-minute cycles ensure all systems
                are running. Self-healing: if an agent goes down, the system detects
@@ -760,7 +763,7 @@ CASE_STUDIES = {
                assembled into a system prompt at boot time. Change the identity,
                get a different agent -- same infrastructure.
 
-            3. HIVE COORDINATION: Agents communicate via encrypted NATS messaging
+            3. HIVE COORDINATION: Agents communicate via NATS messaging
                with JetStream persistence. Tasks, results, and coordination flow
                between agents regardless of which model powers them.
 
@@ -1095,7 +1098,7 @@ def generate_sequence(prospect_type: str) -> list:
 
                     - 11 agents with distinct roles (operations, security, content, market intel)
                     - 4 model backends (Claude, GPT, DeepSeek, Qwen via Ollama)
-                    - Agent coordination via encrypted messaging (HIVE protocol)
+                    - Agent coordination via NATS-based HIVE task messaging
                     - Autonomous operation on 7-minute heartbeat cycles
                     - Universal adapter: any model can power any agent
 
@@ -1548,7 +1551,7 @@ def cmd_sequence(prospect_type: str):
     print(f"\n{C.BOLD}{C.CYAN}{'='*70}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}  3-TOUCH OUTREACH SEQUENCE -- {category['name']}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}{'='*70}{C.RESET}")
-    print(f"{C.DIM}  Value-first approach. No spam. Personalise before sending.{C.RESET}")
+    print(f"{C.DIM}  Legacy draft only. Import one gesture into the private ledger before use.{C.RESET}")
     print()
 
     for touch in sequence:
@@ -1777,7 +1780,7 @@ def cmd_qualify(company: str, answers_str: str):
     elif total_score >= 60:
         grade = "B"
         grade_colour = C.GREEN
-        recommendation = "GOOD FIT -- worth pursuing. Send outreach sequence."
+        recommendation = "GOOD FIT -- build one useful artifact, then consider one reviewed gesture."
     elif total_score >= 40:
         grade = "C"
         grade_colour = C.YELLOW
@@ -1785,7 +1788,7 @@ def cmd_qualify(company: str, answers_str: str):
     elif total_score >= 20:
         grade = "D"
         grade_colour = C.YELLOW
-        recommendation = "LOW PRIORITY -- add to newsletter list. Check back quarterly."
+        recommendation = "LOW PRIORITY -- pause. Add to a newsletter only after explicit opt-in."
     else:
         grade = "F"
         grade_colour = C.RED
@@ -1809,8 +1812,18 @@ def cmd_qualify(company: str, answers_str: str):
 
 
 def cmd_pipeline():
-    """Show current outreach pipeline status."""
-    prospects = read_json(PROSPECTS_FILE, default=[])
+    """Show the private relationship queue; never read the tracked legacy CRM."""
+    print(
+        f"{C.YELLOW}Legacy memory/services/prospects.json is retired for real contacts. "
+        f"Showing the owner-only ledger instead.{C.RESET}"
+    )
+    from outreach_store import run as outreach_store_run
+
+    return outreach_store_run(["contact", "list"])
+
+    # Historical renderer retained temporarily for migration reference only.
+    # This block is unreachable and must not be used for real contact data.
+    prospects = []
     if not isinstance(prospects, list):
         prospects = []
 
@@ -1902,13 +1915,13 @@ def cmd_pipeline():
         print(f"  1. Generate all templates:  outreach.py draft ecommerce")
         print(f"  2. Generate all sequences:  outreach.py sequence ecommerce")
         print(f"  3. Generate case studies:   outreach.py case-study operations-automation")
-        print(f"  4. Add first prospect:      services.py prospect add \"Company\" --interest \"service\"")
+        print(f"  4. Seed private queue:      outreach.py contact seed --file docs/OUTREACH-TARGETS.json")
     elif active > 0:
         new_count = len(stages["new"]["prospects"])
         if new_count > 0:
             print(f"  {C.YELLOW}{new_count} new lead(s) awaiting outreach{C.RESET}")
             for p in stages["new"]["prospects"][:3]:
-                print(f"    - Send outreach to {p.get('company', '?')}")
+                print(f"    - Reassess readiness for {p.get('company', '?')}")
         contacted_count = len(stages["contacted"]["prospects"])
         if contacted_count > 0:
             print(f"  {C.CYAN}{contacted_count} contacted prospect(s) awaiting qualification{C.RESET}")
@@ -1929,6 +1942,23 @@ def main():
 
     command = args[0]
 
+    if command in {"contact", "message", "events", "suppress"}:
+        from outreach_store import main as outreach_store_main
+
+        raise SystemExit(outreach_store_main(args))
+
+    if command == "sequence":
+        raise SystemExit(
+            "Cold multi-touch sequences are retired. Use the readiness-gated "
+            "contact/message workflow; one useful gesture, then wait for a reply."
+        )
+
+    if command in {"targets", "draft", "pitch", "case-study", "qualify"}:
+        print(
+            f"{C.YELLOW}Legacy content generator: claims are unverified drafts. "
+            f"Do not send them outside the approval ledger.{C.RESET}\n"
+        )
+
     if command == "targets":
         cmd_targets()
     elif command == "draft":
@@ -1938,12 +1968,6 @@ def main():
             return
         service = args[2] if len(args) > 2 else None
         cmd_draft(args[1], service)
-    elif command == "sequence":
-        if len(args) < 2:
-            print(f"{C.RED}Usage: outreach.py sequence <prospect-type>{C.RESET}")
-            print(f"Types: ecommerce, trading-cards, startups, security-conscious, content-agencies")
-            return
-        cmd_sequence(args[1])
     elif command == "pitch":
         if len(args) < 2:
             print(f"{C.RED}Usage: outreach.py pitch <service>{C.RESET}")
@@ -1974,7 +1998,10 @@ def main():
         print(__doc__)
     else:
         print(f"{C.RED}Unknown command: {command}{C.RESET}")
-        print(f"Available: targets, draft, sequence, pitch, case-study, qualify, pipeline")
+        print(
+            "Available: targets, draft, pitch, case-study, qualify, "
+            "pipeline, contact, message, events, suppress"
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-07-16",
+  "purpose": "Public, non-PII research seeds for build-first ecosystem relationships.",
+  "default_policy": "No contact until the readiness gate is satisfied and an exact message is separately approved.",
+  "targets": [
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "kind": "local-agent-runtime",
+      "maturity": "established",
+      "priority": 1,
+      "project_url": "https://github.com/openclaw/openclaw",
+      "public_channel": "https://github.com/openclaw/openclaw#community",
+      "fit": "A local-first, always-on runtime that can exercise AgentTool identity and continuity without turning either project into a dependency of the other.",
+      "first_gesture": "Build and document an external plugin or skill, then share an honest interoperability teardown.",
+      "readiness_gate": "Local round-trip uses scoped runtime credential injection, and the integration repository plus fixtures pass a secret scan."
+    },
+    {
+      "id": "ipfs-helia",
+      "name": "IPFS / Helia",
+      "kind": "content-addressed-storage",
+      "maturity": "established",
+      "priority": 2,
+      "project_url": "https://ipfs.github.io/helia/",
+      "public_channel": "https://discuss.ipfs.tech/",
+      "fit": "ADDS already uses raw CIDv1 SHA-256 and a generic immutable BlockStore; Helia supplies an actively maintained TypeScript IPFS implementation.",
+      "first_gesture": "Publish a ciphertext-only HeliaBlockStore adapter with tamper and bounded-read fixtures.",
+      "readiness_gate": "External adapter tests pass and no plaintext metadata is disclosed to the storage provider."
+    },
+    {
+      "id": "agntcy",
+      "name": "AGNTCY",
+      "kind": "agent-directory-identity-messaging",
+      "maturity": "established",
+      "priority": 3,
+      "project_url": "https://docs.agntcy.org/",
+      "public_channel": "https://github.com/orgs/agntcy/discussions",
+      "fit": "OASF, directory, identity badges, and secure messaging overlap with AgentTool public discovery, signed identity boundaries, and federation.",
+      "first_gesture": "Produce an OASF-valid projection and publish the precise schema gaps instead of proposing a partnership.",
+      "readiness_gate": "Projection validates; did:at is labelled as a provisional application identifier rather than a standards claim."
+    },
+    {
+      "id": "openid-authzen",
+      "name": "OpenID AuthZEN",
+      "kind": "authorization",
+      "maturity": "established",
+      "priority": 4,
+      "project_url": "https://openid.net/wg/authzen/",
+      "public_channel": "https://lists.openid.net/mailman/listinfo/openid-specs-authzen",
+      "fit": "AuthZEN separates authorization decisions in a way that maps cleanly to project bearer authority, agent identity, represented-user authority, and guided refusal.",
+      "first_gesture": "Map one harmless read-only AgentTool operation into the current authorization API and report only the concrete mapping gaps.",
+      "readiness_gate": "The example runs against a conforming PDP and does not collapse bearer authority into identity proof."
+    },
+    {
+      "id": "letta-agentfile",
+      "name": "Letta / AgentFile",
+      "kind": "agent-state-portability",
+      "maturity": "established",
+      "priority": 5,
+      "project_url": "https://github.com/letta-ai/agent-file",
+      "public_channel": "https://github.com/letta-ai/agent-file/issues",
+      "fit": "AgentFile wants framework converters; AgentTool can contribute explicit mappings for identity, memory classes, handoffs, and custody boundaries.",
+      "first_gesture": "Publish a minimal round-trip converter with secrets omitted and every lossy field documented.",
+      "readiness_gate": "Round-trip fixtures pass, private keys never serialize, and lossiness is machine-readable."
+    },
+    {
+      "id": "a2a-protocol",
+      "name": "A2A Protocol",
+      "kind": "agent-task-transport",
+      "maturity": "established",
+      "priority": 6,
+      "project_url": "https://github.com/a2aproject/A2A",
+      "public_channel": "https://github.com/a2aproject/A2A/discussions",
+      "fit": "A2A can provide the task and message layer above AgentTool identity, inboxes, and durable state.",
+      "first_gesture": "Contribute a fixture or migration note only after one real callable task endpoint exists.",
+      "readiness_gate": "BLOCKED: a real AgentCard and callable task path pass the official TCK; current AgentCard paths are absent."
+    },
+    {
+      "id": "mastra",
+      "name": "Mastra",
+      "kind": "typescript-agent-framework",
+      "maturity": "established",
+      "priority": 7,
+      "project_url": "https://github.com/mastra-ai/mastra",
+      "public_channel": "https://github.com/mastra-ai/mastra#support",
+      "fit": "TypeScript agents, durable workflows, and memory are a natural host for an AgentTool storage or continuity example.",
+      "first_gesture": "Build a tested external example and discuss one narrow integration issue before proposing a pull request.",
+      "readiness_gate": "BLOCKED: AgentTool MCP transport passes the official inspector and protocol semantics first."
+    },
+    {
+      "id": "project-nanda",
+      "name": "Project NANDA / Nanda Town",
+      "kind": "multi-agent-testbed",
+      "maturity": "exploratory",
+      "priority": 8,
+      "project_url": "https://github.com/projnanda/nandatown",
+      "public_channel": "https://github.com/orgs/projnanda/discussions",
+      "fit": "Its adversarial test rig spans identity, authorization, memory, privacy, and data layers.",
+      "first_gesture": "Contribute a confused-deputy validator that keeps project bearer, identity signature, and data grant distinct.",
+      "readiness_gate": "Validator reproduces a real failure locally and passes against the corrected boundary."
+    },
+    {
+      "id": "solid-project",
+      "name": "Solid Project",
+      "kind": "user-controlled-data",
+      "maturity": "exploratory",
+      "priority": 9,
+      "project_url": "https://solidproject.org/about",
+      "public_channel": "https://forum.solidproject.org/",
+      "fit": "User-controlled Pods, WebIDs, and delegated access overlap with local AgentTool data nodes and grants, while the RDF semantics remain materially different.",
+      "first_gesture": "Prototype a read-only WebID and Pod bridge and publish measured compatibility results.",
+      "readiness_gate": "The prototype never describes AgentTool identifiers as WebIDs and states every semantic mismatch."
+    },
+    {
+      "id": "automerge",
+      "name": "Automerge",
+      "kind": "local-first-sync",
+      "maturity": "exploratory",
+      "priority": 10,
+      "project_url": "https://automerge.org/",
+      "public_channel": "https://automerge.org/community/",
+      "fit": "Its storage and network adapters could inform the peer-sync layer that AgentTool local nodes intentionally do not yet provide.",
+      "first_gesture": "Benchmark a narrow collection and change-cursor mapping, then demo the result rather than claiming protocol equivalence.",
+      "readiness_gate": "The benchmark states where CRDT semantics do and do not match append-only AgentTool revisions."
+    },
+    {
+      "id": "p2panda",
+      "name": "p2panda",
+      "kind": "decentralized-sync-transport",
+      "maturity": "exploratory",
+      "priority": 11,
+      "project_url": "https://github.com/p2panda/p2panda",
+      "public_channel": "https://p2panda.org/",
+      "fit": "Raw-byte networking, local-first sync, encryption, and decentralized access control could carry opaque ADDS objects.",
+      "first_gesture": "Build an external transport proof that carries ADDS blocks unchanged and preserves both protocols' hashes and authorization models.",
+      "readiness_gate": "Experimental API risk is documented; no stability or interoperability claim exceeds the demonstrated proof."
+    }
+  ]
+}

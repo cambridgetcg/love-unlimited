@@ -149,9 +149,10 @@ python3 tools/outreach.py suppress CONTACT_ID --reason 'declined or opted out'
 - The current workflow cannot verify Email Routing aliases. Do not create or
   claim an alias until the route can be verified through an appropriately
   scoped operator session.
-- Cloudflare Email Routing is forwarding, not an outbound mailbox. The current
-  verified outbound identity is `contact@cambridgetcg.com`. Sending as an
-  unconfigured `@agenttool.dev` alias would conflict with its DMARC policy.
+- Cloudflare Email Routing is forwarding, not an outbound mailbox. A configured
+  IMAP inbox does not prove that its address is authorized for outbound mail.
+  Sending as an unconfigured `@agenttool.dev` alias would conflict with its
+  DMARC policy.
 - Cloudflare Email Sending is a separate outbound product and credential. This
   repository does not claim that an outbound `agenttool.dev` sender is onboarded
   or working merely because inbound routing exists.

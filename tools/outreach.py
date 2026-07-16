@@ -12,7 +12,8 @@ Usage:
     python3 tools/outreach.py pitch <service>                  # Elevator pitch for a service
     python3 tools/outreach.py case-study <service>             # Case study from Kingdom usage
     python3 tools/outreach.py qualify <company> <answers>      # Score prospect fit
-    python3 tools/outreach.py pipeline                         # Private relationship queue
+    python3 tools/outreach.py pipeline                         # Internal work dashboard
+    python3 tools/outreach.py work ...                         # Evidence/review/handoff pipeline
     python3 tools/outreach.py contact ...                      # Private relationship ledger
     python3 tools/outreach.py message ...                      # Approval-bound message workflow
     python3 tools/outreach.py events ...                       # Application-append-only event history
@@ -1937,8 +1938,9 @@ def cmd_pipeline():
 def main():
     args = sys.argv[1:]
     if not args:
-        cmd_pipeline()
-        return
+        from relations_pipeline import main as relations_pipeline_main
+
+        raise SystemExit(relations_pipeline_main(["dashboard"]))
 
     command = args[0]
 
@@ -1946,6 +1948,16 @@ def main():
         from outreach_store import main as outreach_store_main
 
         raise SystemExit(outreach_store_main(args))
+
+    if command == "work":
+        from relations_pipeline import main as relations_pipeline_main
+
+        raise SystemExit(relations_pipeline_main(args[1:]))
+
+    if command == "pipeline":
+        from relations_pipeline import main as relations_pipeline_main
+
+        raise SystemExit(relations_pipeline_main(["dashboard"]))
 
     if command == "sequence":
         raise SystemExit(
@@ -1992,15 +2004,13 @@ def main():
             print(f"  {C.BOLD}Fit:{C.RESET}       perfect | strong | moderate | partial | poor")
             return
         cmd_qualify(args[1], args[2])
-    elif command == "pipeline":
-        cmd_pipeline()
     elif command in ("-h", "--help", "help"):
         print(__doc__)
     else:
         print(f"{C.RED}Unknown command: {command}{C.RESET}")
         print(
             "Available: targets, draft, pitch, case-study, qualify, "
-            "pipeline, contact, message, events, suppress"
+            "pipeline, work, contact, message, events, suppress"
         )
 
 

@@ -12,15 +12,21 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import stat
 import sys
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from email.utils import getaddresses
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
+
+
+if __name__ == "__main__":
+    sys.modules.setdefault("outreach_store", sys.modules[__name__])
 
 
 CONTACT_STATES = {"research", "active", "paused", "closed", "do_not_contact"}
@@ -40,6 +46,11 @@ PENDING_MESSAGE_STATES = {
     "awaiting_approval",
     "approved",
     "exported",
+}
+MESSAGE_TRANSITIONS = {
+    ("draft", "reviewed"): "message_reviewed",
+    ("reviewed", "awaiting_approval"): "approval_requested",
+    ("exported", "sent"): "message_marked_sent",
 }
 
 
@@ -82,13 +93,46 @@ def content_hash(channel: str, recipient: str, subject: str, body: str) -> str:
 def normalize_endpoint(channel: str, recipient: str) -> tuple[str, str]:
     normalized_channel = channel.strip().casefold()
     normalized_recipient = recipient.strip()
-    if "@" in normalized_recipient and "://" not in normalized_recipient:
-        normalized_recipient = normalized_recipient.casefold()
-    elif normalized_recipient.startswith(("http://", "https://")):
-        parts = urlsplit(normalized_recipient)
-        normalized_recipient = urlunsplit(
-            (parts.scheme.casefold(), parts.netloc.casefold(), parts.path, parts.query, "")
+    if normalized_recipient.casefold().startswith(("http://", "https://")):
+        try:
+            parts = urlsplit(normalized_recipient)
+            hostname = parts.hostname
+        except ValueError as error:
+            raise OutreachError("recipient URL is malformed") from error
+        if parts.scheme.casefold() not in {"http", "https"} or not hostname:
+            raise OutreachError("recipient URL is malformed")
+        if parts.username or parts.password:
+            raise OutreachError("recipient URL must not contain userinfo")
+        try:
+            port = parts.port
+        except ValueError as error:
+            raise OutreachError("recipient URL has an invalid port") from error
+        host = hostname.casefold()
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        default_port = (parts.scheme.casefold() == "http" and port == 80) or (
+            parts.scheme.casefold() == "https" and port == 443
         )
+        netloc = host if port is None or default_port else f"{host}:{port}"
+        normalized_recipient = urlunsplit(
+            (
+                parts.scheme.casefold(),
+                netloc,
+                parts.path or "/",
+                parts.query,
+                "",
+            )
+        )
+        normalized_channel = "url"
+    elif normalized_recipient.casefold().startswith("mailto:"):
+        raise OutreachError("email recipient must be a bare address, not a mailto URL")
+    elif "@" in normalized_recipient:
+        if not re.fullmatch(
+            r"[^@\s<>(),;:/?#\\]+@[^@\s<>(),;:/?#\\]+", normalized_recipient
+        ):
+            raise OutreachError("email recipient must be one bare address")
+        normalized_channel = "email"
+        normalized_recipient = normalized_recipient.casefold()
     return normalized_channel, normalized_recipient
 
 
@@ -96,6 +140,60 @@ def endpoint_fingerprint(channel: str, recipient: str) -> str:
     normalized = normalize_endpoint(channel, recipient)
     payload = json.dumps(normalized, ensure_ascii=False, separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def _migrated_endpoint_fingerprint(channel: str, recipient: str) -> tuple[str, bool]:
+    """Return the v2 fingerprint and whether a legacy representation is unsafe.
+
+    Old ledgers may contain mailto URLs or display-name mailbox forms that the
+    current command surface rejects. During the one-time migration we derive
+    their bare mailbox only to preserve suppression, then quarantine the
+    legacy record rather than silently making it sendable.
+    """
+    try:
+        return endpoint_fingerprint(channel, recipient), False
+    except OutreachError:
+        value = recipient.strip()
+        if value.casefold().startswith(("http://", "https://")):
+            try:
+                parts = urlsplit(value)
+                hostname = parts.hostname
+            except ValueError as error:
+                raise OutreachError("legacy recipient URL is malformed") from error
+            if not hostname:
+                raise
+            try:
+                port = parts.port
+            except ValueError as error:
+                raise OutreachError("legacy recipient URL has an invalid port") from error
+            host = hostname.casefold()
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            scheme = parts.scheme.casefold()
+            default_port = (scheme == "http" and port == 80) or (
+                scheme == "https" and port == 443
+            )
+            netloc = host if port is None or default_port else f"{host}:{port}"
+            sanitized = urlunsplit(
+                (scheme, netloc, parts.path or "/", parts.query, "")
+            )
+            return endpoint_fingerprint("url", sanitized), True
+        if value.casefold().startswith("mailto:"):
+            parts = urlsplit(value)
+            address_source = unquote(parts.path)
+        else:
+            address_source = value
+        parsed = [
+            address.strip()
+            for _, address in getaddresses([address_source])
+            if address
+        ]
+        if len(parsed) == 1 and re.fullmatch(
+            r"[^@\s<>(),;:/?#\\]+@[^@\s<>(),;:/?#\\]+", parsed[0]
+        ):
+            mailbox = parsed[0]
+            return endpoint_fingerprint("email", mailbox), True
+        raise
 
 
 def _prepare_private_path(path: Path, *, managed_parent: bool) -> None:
@@ -201,6 +299,8 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS approvals (
           id TEXT PRIMARY KEY,
           message_id TEXT NOT NULL REFERENCES messages(id),
+          work_id TEXT NOT NULL,
+          work_snapshot_hash TEXT NOT NULL,
           channel TEXT NOT NULL,
           recipient TEXT NOT NULL,
           content_hash TEXT NOT NULL,
@@ -226,6 +326,24 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
           reason TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS delivery_receipts (
+          receipt_ref TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL UNIQUE REFERENCES messages(id),
+          recorded_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS reply_receipts (
+          receipt_ref TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL UNIQUE REFERENCES messages(id),
+          mail_work_id TEXT,
+          recorded_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS outreach_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+
         CREATE TRIGGER IF NOT EXISTS events_no_update
         BEFORE UPDATE ON events BEGIN
           SELECT RAISE(ABORT, 'events are append-only');
@@ -233,6 +351,22 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
         CREATE TRIGGER IF NOT EXISTS events_no_delete
         BEFORE DELETE ON events BEGIN
           SELECT RAISE(ABORT, 'events are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS delivery_receipts_no_update
+        BEFORE UPDATE ON delivery_receipts BEGIN
+          SELECT RAISE(ABORT, 'delivery receipts are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS delivery_receipts_no_delete
+        BEFORE DELETE ON delivery_receipts BEGIN
+          SELECT RAISE(ABORT, 'delivery receipts are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS reply_receipts_no_update
+        BEFORE UPDATE ON reply_receipts BEGIN
+          SELECT RAISE(ABORT, 'reply receipts are append-only');
+        END;
+        CREATE TRIGGER IF NOT EXISTS reply_receipts_no_delete
+        BEFORE DELETE ON reply_receipts BEGIN
+          SELECT RAISE(ABORT, 'reply receipts are append-only');
         END;
         """
     )
@@ -252,20 +386,167 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     message_columns = {row[1] for row in connection.execute("PRAGMA table_info(messages)")}
     if "endpoint_fingerprint" not in message_columns:
         connection.execute("ALTER TABLE messages ADD COLUMN endpoint_fingerprint TEXT")
+    approval_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(approvals)")
+    }
+    if "work_id" not in approval_columns:
+        connection.execute("ALTER TABLE approvals ADD COLUMN work_id TEXT")
+    if "work_snapshot_hash" not in approval_columns:
+        connection.execute("ALTER TABLE approvals ADD COLUMN work_snapshot_hash TEXT")
+    reply_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(reply_receipts)")
+    }
+    if "mail_work_id" not in reply_columns:
+        connection.execute("ALTER TABLE reply_receipts ADD COLUMN mail_work_id TEXT")
+    duplicate_mail_link = connection.execute(
+        """SELECT 1 FROM reply_receipts WHERE mail_work_id IS NOT NULL
+           GROUP BY mail_work_id HAVING COUNT(*) > 1 LIMIT 1"""
+    ).fetchone()
+    if duplicate_mail_link:
+        connection.close()
+        raise OutreachError(
+            "cannot enable reply/mail uniqueness: existing reply receipts reuse one mail work item"
+        )
+    connection.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS reply_receipts_mail_work_unique
+           ON reply_receipts(mail_work_id) WHERE mail_work_id IS NOT NULL"""
+    )
+    migration_key = "pipeline_bound_approvals_v1"
+    migration_done = connection.execute(
+        "SELECT 1 FROM outreach_meta WHERE key=?", (migration_key,)
+    ).fetchone()
+    if migration_done is None:
+        migration_time = iso()
+        connection.execute(
+            """UPDATE approvals SET revoked_at=? WHERE work_id IS NULL
+               AND consumed_at IS NULL AND revoked_at IS NULL""",
+            (migration_time,),
+        )
+        connection.execute(
+            """UPDATE messages SET state='draft',updated_at=?
+               WHERE state IN ('reviewed','awaiting_approval','approved')
+               AND NOT EXISTS (
+                 SELECT 1 FROM approvals a WHERE a.message_id=messages.id
+                 AND a.work_id IS NOT NULL AND a.consumed_at IS NULL
+                 AND a.revoked_at IS NULL
+               )""",
+            (migration_time,),
+        )
+        connection.execute(
+            "INSERT INTO outreach_meta(key,value) VALUES(?,?)",
+            (migration_key, migration_time),
+        )
+    fingerprint_migration_key = "endpoint_fingerprint_v2"
+    fingerprint_migration_done = connection.execute(
+        "SELECT 1 FROM outreach_meta WHERE key=?", (fingerprint_migration_key,)
+    ).fetchone()
+    if fingerprint_migration_done is None:
+        migration_time = iso()
+        for row in connection.execute(
+            """SELECT id,channel,recipient,endpoint_fingerprint
+               FROM contacts WHERE channel IS NOT NULL AND recipient IS NOT NULL"""
+        ).fetchall():
+            try:
+                fingerprint, quarantine = _migrated_endpoint_fingerprint(
+                    row["channel"], row["recipient"]
+                )
+            except OutreachError:
+                fingerprint = row["endpoint_fingerprint"]
+                quarantine = True
+            if fingerprint:
+                connection.execute(
+                    "UPDATE contacts SET endpoint_fingerprint=? WHERE id=?",
+                    (fingerprint, row["id"]),
+                )
+            if quarantine:
+                if row["endpoint_fingerprint"]:
+                    connection.execute(
+                        """INSERT INTO suppressions(endpoint_fingerprint,created_at,reason)
+                           VALUES(?,?,?) ON CONFLICT(endpoint_fingerprint) DO NOTHING""",
+                        (
+                            row["endpoint_fingerprint"],
+                            migration_time,
+                            "quarantined legacy endpoint representation",
+                        ),
+                    )
+                if fingerprint:
+                    connection.execute(
+                        """INSERT INTO suppressions(endpoint_fingerprint,created_at,reason)
+                           VALUES(?,?,?) ON CONFLICT(endpoint_fingerprint) DO NOTHING""",
+                        (
+                            fingerprint,
+                            migration_time,
+                            "quarantined legacy endpoint representation",
+                        ),
+                    )
+                connection.execute(
+                    """UPDATE contacts SET state='do_not_contact',readiness_status='blocked',
+                       updated_at=? WHERE id=?""",
+                    (migration_time, row["id"]),
+                )
+                connection.execute(
+                    """INSERT INTO events(contact_id,event_type,detail_json,created_at)
+                       VALUES(?,'legacy_endpoint_quarantined','{}',?)""",
+                    (row["id"], migration_time),
+                )
+
+        for row in connection.execute(
+            "SELECT id,contact_id,channel,recipient,endpoint_fingerprint,state FROM messages"
+        ).fetchall():
+            try:
+                fingerprint, quarantine = _migrated_endpoint_fingerprint(
+                    row["channel"], row["recipient"]
+                )
+            except OutreachError:
+                fingerprint = row["endpoint_fingerprint"]
+                quarantine = True
+            if fingerprint:
+                connection.execute(
+                    "UPDATE messages SET endpoint_fingerprint=? WHERE id=?",
+                    (fingerprint, row["id"]),
+                )
+            if quarantine and row["state"] in PENDING_MESSAGE_STATES:
+                connection.execute(
+                    """UPDATE approvals SET revoked_at=? WHERE message_id=?
+                       AND consumed_at IS NULL AND revoked_at IS NULL""",
+                    (migration_time, row["id"]),
+                )
+                connection.execute(
+                    "UPDATE messages SET state='cancelled',updated_at=? WHERE id=?",
+                    (migration_time, row["id"]),
+                )
+                connection.execute(
+                    """INSERT INTO events(contact_id,message_id,event_type,detail_json,created_at)
+                       VALUES(?,?,'message_cancelled_by_endpoint_migration','{}',?)""",
+                    (row["contact_id"], row["id"], migration_time),
+                )
+        connection.execute(
+            "INSERT INTO outreach_meta(key,value) VALUES(?,?)",
+            (fingerprint_migration_key, migration_time),
+        )
+
     for row in connection.execute(
         "SELECT id,channel,recipient FROM contacts WHERE endpoint_fingerprint IS NULL"
     ).fetchall():
         if row["channel"] and row["recipient"]:
+            try:
+                fingerprint = endpoint_fingerprint(row["channel"], row["recipient"])
+            except OutreachError:
+                continue
             connection.execute(
                 "UPDATE contacts SET endpoint_fingerprint=? WHERE id=?",
-                (endpoint_fingerprint(row["channel"], row["recipient"]), row["id"]),
+                (fingerprint, row["id"]),
             )
     for row in connection.execute(
         "SELECT id,channel,recipient FROM messages WHERE endpoint_fingerprint IS NULL"
     ).fetchall():
+        try:
+            fingerprint = endpoint_fingerprint(row["channel"], row["recipient"])
+        except OutreachError:
+            continue
         connection.execute(
             "UPDATE messages SET endpoint_fingerprint=? WHERE id=?",
-            (endpoint_fingerprint(row["channel"], row["recipient"]), row["id"]),
+            (fingerprint, row["id"]),
         )
     for row in connection.execute(
         """SELECT endpoint_fingerprint FROM contacts
@@ -373,20 +654,24 @@ def retarget_pending_messages(
     recipient: str,
     fingerprint: str,
 ) -> None:
-    exported = connection.execute(
-        "SELECT 1 FROM messages WHERE contact_id=? AND state='exported' LIMIT 1",
+    unresolved = connection.execute(
+        """SELECT state FROM messages WHERE contact_id=?
+           AND state IN ('exported','sent') ORDER BY updated_at DESC LIMIT 1""",
         (contact_id,),
     ).fetchone()
-    if exported:
+    if unresolved:
         raise OutreachError(
-            "cannot change endpoint while an exported message is unresolved; "
-            "mark it sent or cancel it first"
+            f"cannot change endpoint while a {unresolved['state']} message is unresolved"
         )
     rows = connection.execute(
         """SELECT * FROM messages WHERE contact_id=?
            AND state IN ('draft','reviewed','awaiting_approval','approved')""",
         (contact_id,),
     ).fetchall()
+    for row in rows:
+        require_single_open_gesture(
+            connection, fingerprint, exclude_message_id=row["id"]
+        )
     for row in rows:
         revoke_approvals(connection, row["id"])
         digest = content_hash(channel, recipient, row["subject"], row["body"])
@@ -407,11 +692,18 @@ def retarget_pending_messages(
 def mask_recipient(value: str | None) -> str | None:
     if not value:
         return None
+    if value.casefold().startswith(("https://", "http://")):
+        try:
+            parts = urlsplit(value)
+            hostname = parts.hostname
+        except ValueError:
+            return "[redacted]"
+        if parts.scheme and hostname:
+            return f"{parts.scheme.casefold()}://{hostname.casefold()}/…"
+        return "[redacted]"
     if "@" in value:
         local, domain = value.rsplit("@", 1)
         return (local[:1] or "*") + "***@" + domain
-    if value.startswith("https://"):
-        return value.split("/", 3)[0] + "//" + value.split("/", 3)[2] + "/…"
     return "[redacted]"
 
 
@@ -685,6 +977,8 @@ def draft_message(
 ) -> str:
     if not subject.strip() or not body.strip():
         raise OutreachError("subject and body are required")
+    if "\n" in subject or "\r" in subject:
+        raise OutreachError("subject must be a single line")
     message_id = "msg-" + uuid.uuid4().hex[:12]
     now = iso()
     with immediate_transaction(connection):
@@ -744,6 +1038,8 @@ def revise_message(
         new_body = body if body is not None else message["body"]
         if not new_subject.strip() or not new_body.strip():
             raise OutreachError("subject and body are required")
+        if "\n" in new_subject or "\r" in new_subject:
+            raise OutreachError("subject must be a single line")
         require_endpoint_allowed(connection, message["channel"], message["recipient"])
         digest = content_hash(
             message["channel"], message["recipient"], new_subject, new_body
@@ -763,20 +1059,54 @@ def transition_message(
     target: str,
     event_type: str,
     detail: dict[str, Any] | None = None,
+    work_id: str | None = None,
 ) -> sqlite3.Row:
+    canonical_event = MESSAGE_TRANSITIONS.get((expected, target))
+    if canonical_event != event_type:
+        raise OutreachError(f"invalid message transition: {expected} -> {target}")
+    if target in {"reviewed", "awaiting_approval"} and not work_id:
+        raise OutreachError(f"transition to {target} requires a ready work item")
+    if target == "sent":
+        provider_id = str((detail or {}).get("provider_id") or "").strip()
+        if not provider_id:
+            raise OutreachError("marking sent requires a delivery receipt reference")
+        if "\n" in provider_id or "\r" in provider_id:
+            raise OutreachError("delivery receipt reference must be a single line")
     with immediate_transaction(connection):
         message = require_message(connection, message_id)
         contact = require_contact(connection, message["contact_id"])
         require_contactable(contact)
-        if message["state"] != expected:
-            raise OutreachError(f"{message_id} is {message['state']}; expected {expected}")
         if target in {"reviewed", "awaiting_approval"}:
             require_ready(contact)
+        resolved_detail = dict(detail or {})
+        if work_id:
+            import relations_pipeline
+
+            snapshot_hash = relations_pipeline.assert_work_ready_for_message(
+                connection, work_id, message_id
+            )
+            resolved_detail.update(
+                {"work_id": work_id, "work_snapshot_hash": snapshot_hash}
+            )
+        if message["state"] != expected:
+            raise OutreachError(f"{message_id} is {message['state']}; expected {expected}")
+        if target == "sent":
+            connection.execute(
+                "INSERT INTO delivery_receipts(receipt_ref,message_id,recorded_at) VALUES(?,?,?)",
+                (provider_id, message_id, iso()),
+            )
+        if target in {"reviewed", "awaiting_approval"}:
             require_endpoint_allowed(
                 connection, message["channel"], message["recipient"]
             )
         connection.execute("UPDATE messages SET state=?,updated_at=? WHERE id=?", (target, iso(), message_id))
-        event(connection, event_type, contact_id=message["contact_id"], message_id=message_id, detail=detail)
+        event(
+            connection,
+            event_type,
+            contact_id=message["contact_id"],
+            message_id=message_id,
+            detail=resolved_detail,
+        )
     return require_message(connection, message_id)
 
 
@@ -786,9 +1116,12 @@ def approve_message(
     approved_by: str,
     expires_hours: float,
     expected_hash: str,
+    work_id: str,
 ) -> str:
-    if not approved_by.strip():
-        raise OutreachError("--by is required")
+    if approved_by.strip().casefold() != "yu":
+        raise OutreachError("operator approval must be explicitly asserted as --by yu")
+    if not work_id.strip():
+        raise OutreachError("approval requires a ready work item")
     if not math.isfinite(expires_hours) or expires_hours <= 0 or expires_hours > 168:
         raise OutreachError("approval expiry must be between 0 and 168 hours")
     approval_id = "approval-" + uuid.uuid4().hex[:12]
@@ -798,6 +1131,11 @@ def approve_message(
         contact = require_contact(connection, message["contact_id"])
         require_contactable(contact)
         require_ready(contact)
+        import relations_pipeline
+
+        work_snapshot_hash = relations_pipeline.assert_work_ready_for_message(
+            connection, work_id, message_id
+        )
         fingerprint = require_endpoint_allowed(
             connection, message["channel"], message["recipient"]
         )
@@ -814,11 +1152,15 @@ def approve_message(
             )
         revoke_approvals(connection, message_id)
         connection.execute(
-            """INSERT INTO approvals(id,message_id,channel,recipient,content_hash,approved_by,
-               approved_at,expires_at) VALUES(?,?,?,?,?,?,?,?)""",
+            """INSERT INTO approvals(
+               id,message_id,work_id,work_snapshot_hash,channel,recipient,
+               content_hash,approved_by,approved_at,expires_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)""",
             (
                 approval_id,
                 message_id,
+                work_id,
+                work_snapshot_hash,
                 message["channel"],
                 message["recipient"],
                 message["content_hash"],
@@ -833,7 +1175,12 @@ def approve_message(
             "message_approved",
             contact_id=message["contact_id"],
             message_id=message_id,
-            detail={"approval_id": approval_id, "approved_by": approved_by},
+            detail={
+                "approval_id": approval_id,
+                "approved_by": approved_by,
+                "work_id": work_id,
+                "work_snapshot_hash": work_snapshot_hash,
+            },
         )
     return approval_id
 
@@ -861,6 +1208,18 @@ def export_message(connection: sqlite3.Connection, message_id: str) -> dict[str,
             raise OutreachError("no active approval")
         if approval["expires_at"] <= iso():
             raise OutreachError("approval expired")
+        if not approval["work_id"] or not approval["work_snapshot_hash"]:
+            raise OutreachError("approval is not bound to a reviewed work snapshot")
+        import relations_pipeline
+
+        current_work_hash = relations_pipeline.assert_work_ready_for_message(
+            connection, approval["work_id"], message_id
+        )
+        if current_work_hash != approval["work_snapshot_hash"]:
+            raise OutreachError("approval no longer matches the reviewed work snapshot")
+        relations_pipeline.consume_contact_basis(
+            connection, approval["work_id"], message_id
+        )
         expected = (message["channel"], message["recipient"], message["content_hash"])
         actual = (approval["channel"], approval["recipient"], approval["content_hash"])
         if expected != actual:
@@ -972,12 +1331,68 @@ def cancel_message(
         )
 
 
-def record_reply(connection: sqlite3.Connection, message_id: str) -> None:
+def record_reply(
+    connection: sqlite3.Connection,
+    message_id: str,
+    receipt_ref: str,
+    mail_work_id: str | None = None,
+) -> None:
+    receipt_ref = receipt_ref.strip()
+    if not receipt_ref:
+        raise OutreachError("recording a reply requires an inbound receipt reference")
+    if "\n" in receipt_ref or "\r" in receipt_ref:
+        raise OutreachError("reply receipt reference must be a single line")
     with immediate_transaction(connection):
         message = require_message(connection, message_id)
         if message["state"] != "sent":
             raise OutreachError(f"{message_id} is {message['state']}; expected sent")
         contact = require_contact(connection, message["contact_id"])
+        linked_mail_work_id = None
+        if receipt_ref.casefold().startswith("imap:"):
+            match = re.fullmatch(
+                r"imap:([A-Za-z0-9_.-]{1,64}):([1-9]\d{0,9}):([1-9]\d{0,9})",
+                receipt_ref,
+                flags=re.IGNORECASE,
+            )
+            if match is None:
+                raise OutreachError("IMAP reply receipt must be imap:ACCOUNT:UIDVALIDITY:UID")
+            table_exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mail_intake'"
+            ).fetchone()
+            if table_exists is None:
+                raise OutreachError("IMAP reply receipt requires hashed mail intake first")
+            account, uidvalidity_text, uid_text = match.groups()
+            account = account.casefold()
+            uidvalidity = int(uidvalidity_text)
+            uid = int(uid_text)
+            if uidvalidity > 4_294_967_295 or uid > 4_294_967_295:
+                raise OutreachError("IMAP reply receipt values exceed the 32-bit UID range")
+            receipt_ref = f"imap:{account}:{uidvalidity}:{uid}"
+            intake = connection.execute(
+                """SELECT work_id FROM mail_intake
+                   WHERE account=? AND uidvalidity=? AND uid=?""",
+                (account, uidvalidity, uid),
+            ).fetchone()
+            if intake is None:
+                raise OutreachError("IMAP reply receipt is not present in hashed mail intake")
+            linked_mail_work_id = intake["work_id"]
+            disposition = connection.execute(
+                "SELECT outcome FROM mail_dispositions WHERE work_id=?",
+                (linked_mail_work_id,),
+            ).fetchone()
+            if disposition is None or disposition["outcome"] != "needs_action":
+                raise OutreachError(
+                    "IMAP reply receipt requires a needs_action mail classification"
+                )
+            if mail_work_id and mail_work_id != linked_mail_work_id:
+                raise OutreachError("IMAP reply receipt does not match --mail-work-id")
+        elif mail_work_id:
+            raise OutreachError("--mail-work-id requires an IMAP reply receipt")
+        connection.execute(
+            """INSERT INTO reply_receipts(
+               receipt_ref,message_id,mail_work_id,recorded_at) VALUES(?,?,?,?)""",
+            (receipt_ref, message_id, linked_mail_work_id, iso()),
+        )
         connection.execute("UPDATE messages SET state='replied',updated_at=? WHERE id=?", (iso(), message_id))
         pending = connection.execute(
             """SELECT id FROM messages WHERE contact_id=? AND id<>?
@@ -988,7 +1403,7 @@ def record_reply(connection: sqlite3.Connection, message_id: str) -> None:
             revoke_approvals(connection, row["id"])
             connection.execute("UPDATE messages SET state='cancelled',updated_at=? WHERE id=?", (iso(), row["id"]))
             event(connection, "message_cancelled_after_reply", contact_id=message["contact_id"], message_id=row["id"])
-        if contact["state"] != "do_not_contact":
+        if contact["state"] in {"research", "active"}:
             connection.execute(
                 "UPDATE contacts SET state='active',updated_at=? WHERE id=?",
                 (iso(), message["contact_id"]),
@@ -998,7 +1413,11 @@ def record_reply(connection: sqlite3.Connection, message_id: str) -> None:
             "reply_recorded",
             contact_id=message["contact_id"],
             message_id=message_id,
-            detail={"do_not_contact_preserved": contact["state"] == "do_not_contact"},
+            detail={
+                "do_not_contact_preserved": contact["state"] == "do_not_contact",
+                "contact_state_preserved": contact["state"] in {"paused", "closed", "do_not_contact"},
+                "receipt_ref": receipt_ref,
+            },
         )
 
 
@@ -1120,14 +1539,19 @@ def build_parser() -> argparse.ArgumentParser:
     revise_body = revise.add_mutually_exclusive_group()
     revise_body.add_argument("--body-file")
     revise_body.add_argument("--stdin", action="store_true")
-    review = message_sub.add_parser("review")
+    review = message_sub.add_parser(
+        "review",
+        help="Seal a linked ready work snapshot into message state; work reviews remain separate",
+    )
     review.add_argument("message_id")
-    review.add_argument("--by", required=True)
+    review.add_argument("--work-id", required=True)
     request = message_sub.add_parser("request-approval")
     request.add_argument("message_id")
+    request.add_argument("--work-id", required=True)
     approve = message_sub.add_parser("approve")
     approve.add_argument("message_id")
     approve.add_argument("--by", required=True)
+    approve.add_argument("--work-id", required=True)
     approve.add_argument(
         "--content-hash",
         required=True,
@@ -1145,11 +1569,15 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("message_id")
     sent = message_sub.add_parser("mark-sent")
     sent.add_argument("message_id")
-    provider = sent.add_mutually_exclusive_group()
+    provider = sent.add_mutually_exclusive_group(required=True)
     provider.add_argument("--provider-id")
     provider.add_argument("--provider-id-file")
     reply = message_sub.add_parser("reply")
     reply.add_argument("message_id")
+    reply_receipt = reply.add_mutually_exclusive_group(required=True)
+    reply_receipt.add_argument("--receipt")
+    reply_receipt.add_argument("--receipt-file")
+    reply.add_argument("--mail-work-id")
     cancel = message_sub.add_parser("cancel")
     cancel.add_argument("message_id")
     cancel_reason = cancel.add_mutually_exclusive_group(required=True)
@@ -1251,18 +1679,42 @@ def run(argv: list[str] | None = None, *, path: Path | None = None) -> int:
                 )
                 json_print({"message_id": args.message_id, "state": "draft", "approvals": "revoked"})
             elif args.message_command == "review":
-                transition_message(connection, args.message_id, "draft", "reviewed", "message_reviewed", {"reviewed_by": args.by})
+                import relations_pipeline
+
+                relations_pipeline.ensure_schema(connection)
+                transition_message(
+                    connection,
+                    args.message_id,
+                    "draft",
+                    "reviewed",
+                    "message_reviewed",
+                    work_id=args.work_id,
+                )
                 json_print({"message_id": args.message_id, "state": "reviewed"})
             elif args.message_command == "request-approval":
-                transition_message(connection, args.message_id, "reviewed", "awaiting_approval", "approval_requested")
+                import relations_pipeline
+
+                relations_pipeline.ensure_schema(connection)
+                transition_message(
+                    connection,
+                    args.message_id,
+                    "reviewed",
+                    "awaiting_approval",
+                    "approval_requested",
+                    work_id=args.work_id,
+                )
                 json_print({"message_id": args.message_id, "state": "awaiting_approval"})
             elif args.message_command == "approve":
+                import relations_pipeline
+
+                relations_pipeline.ensure_schema(connection)
                 approval_id = approve_message(
                     connection,
                     args.message_id,
                     args.by,
                     args.expires_hours,
                     args.content_hash,
+                    args.work_id,
                 )
                 json_print({"message_id": args.message_id, "state": "approved", "approval_id": approval_id})
             elif args.message_command == "preview":
@@ -1278,7 +1730,7 @@ def run(argv: list[str] | None = None, *, path: Path | None = None) -> int:
                     "provider_id",
                     "provider_id_file",
                     "provider id",
-                    required=False,
+                    required=True,
                     single_line=True,
                 )
                 transition_message(
@@ -1291,7 +1743,20 @@ def run(argv: list[str] | None = None, *, path: Path | None = None) -> int:
                 )
                 json_print({"message_id": args.message_id, "state": "sent"})
             elif args.message_command == "reply":
-                record_reply(connection, args.message_id)
+                receipt_ref = private_text_from_args(
+                    args,
+                    "receipt",
+                    "receipt_file",
+                    "reply receipt",
+                    required=True,
+                    single_line=True,
+                )
+                record_reply(
+                    connection,
+                    args.message_id,
+                    receipt_ref or "",
+                    args.mail_work_id,
+                )
                 json_print({"message_id": args.message_id, "state": "replied"})
             elif args.message_command == "cancel":
                 reason = private_text_from_args(

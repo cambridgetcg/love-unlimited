@@ -24,9 +24,9 @@
       "priority": 2,
       "project_url": "https://ipfs.github.io/helia/",
       "public_channel": "https://discuss.ipfs.tech/",
-      "fit": "ADDS already uses raw CIDv1 SHA-256 and a generic immutable BlockStore; Helia supplies an actively maintained TypeScript IPFS implementation.",
-      "first_gesture": "Publish a ciphertext-only HeliaBlockStore adapter with tamper and bounded-read fixtures.",
-      "readiness_gate": "External adapter tests pass and no plaintext metadata is disclosed to the storage provider."
+      "fit": "ADDS already uses CIDv1 with the raw codec and sha2-256 plus a generic immutable BlockStore; Helia is an actively maintained TypeScript IPFS implementation.",
+      "first_gesture": "Publish a payload-ciphertext-only HeliaBlockStore adapter with tamper, bounded-read, and metadata-disclosure fixtures.",
+      "readiness_gate": "Adapter tests pass against a recorded Helia release and tested block-size envelope; payload plaintext and unwrapped data-encryption keys never enter Helia, while unencrypted Manifest/control metadata and network disclosure are documented honestly."
     },
     {
       "id": "agntcy",

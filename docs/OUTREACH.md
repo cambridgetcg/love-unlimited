@@ -11,7 +11,11 @@ The operating rule is simple:
 
 ## The team
 
-The team reuses existing roles rather than inventing new personas.
+The team reuses existing roles rather than inventing new personas. Structured
+internal work, evidence, and accepted handoffs are defined in
+[`RELATIONS-PIPELINE.md`](RELATIONS-PIPELINE.md).
+The minimum Cloudflare operator boundary is documented separately in
+[`CLOUDFLARE-MAIL.md`](CLOUDFLARE-MAIL.md).
 
 | Role | Responsibility | Does not do |
 |---|---|---|
@@ -78,6 +82,13 @@ in `memory/services/prospects.json`, Git, shared coordination buses, logs, or
 committed handoffs. Shared buses can carry a non-sensitive task reference,
 never message content or approval evidence.
 
+The endpoint-fingerprint v2 migration recomputes valid email and HTTP(S)
+records independently of free-text channel aliases. Legacy `mailto:`, display
+name, and credentialed-URL forms are quarantined and retain both their old and
+recoverable canonical suppression tombstones. A truly unparseable legacy value
+can preserve only its old tombstone and stays `do_not_contact`; it needs
+deliberate operator review rather than an assumed equivalent endpoint.
+
 The tool reads `--recipient-file` and `--body-file` but does not delete, encrypt,
 or protect those source files. Prefer interactive stdin from an owner session.
 Preview and export write to the terminal, so treat shell transcripts and
@@ -100,7 +111,7 @@ python3 tools/outreach.py contact add --id ipfs-helia \
 # Type or paste the exact endpoint, then press Ctrl-D. This keeps it out of
 # shell history and process arguments.
 python3 tools/outreach.py contact readiness ipfs-helia --status ready \
-  --evidence 'Adapter tests and ciphertext disclosure audit passed at COMMIT'
+  --evidence 'Adapter tests, payload-custody audit, metadata-disclosure audit, tested Helia release, and block-size envelope recorded at COMMIT'
 ```
 
 Draft bodies come from stdin or a file so they do not become shell arguments:
@@ -109,10 +120,10 @@ Draft bodies come from stdin or a file so they do not become shell arguments:
 python3 tools/outreach.py message draft ipfs-helia \
   --subject 'A small Helia BlockStore interoperability example' --stdin
 # Paste the draft, then press Ctrl-D.
-python3 tools/outreach.py message review MSG_ID --by nuance+crucible+vigil
-python3 tools/outreach.py message request-approval MSG_ID
+python3 tools/outreach.py message review MSG_ID --work-id WORK_ID
+python3 tools/outreach.py message request-approval MSG_ID --work-id WORK_ID
 python3 tools/outreach.py message preview MSG_ID --show-recipient
-python3 tools/outreach.py message approve MSG_ID --by yu \
+python3 tools/outreach.py message approve MSG_ID --work-id WORK_ID --by yu \
   --content-hash HASH_FROM_PREVIEW --expires-hours 24
 python3 tools/outreach.py message export MSG_ID
 ```
@@ -123,7 +134,8 @@ delivery, record the outcome:
 
 ```bash
 python3 tools/outreach.py message mark-sent MSG_ID --provider-id RECEIPT
-python3 tools/outreach.py message reply MSG_ID
+python3 tools/outreach.py message reply MSG_ID \
+  --receipt imap:ACCOUNT:UIDVALIDITY:UID --mail-work-id MAIL_WORK_ID
 python3 tools/outreach.py message cancel MSG_ID --reason 'artifact changed before delivery'
 python3 tools/outreach.py contact state CONTACT_ID --state paused \
   --reason 'waiting for a reply; no follow-up scheduled'
@@ -140,20 +152,37 @@ python3 tools/outreach.py suppress CONTACT_ID --reason 'declined or opted out'
 - Cloudflare Email Routing is forwarding, not an outbound mailbox. The current
   verified outbound identity is `contact@cambridgetcg.com`. Sending as an
   unconfigured `@agenttool.dev` alias would conflict with its DMARC policy.
+- Cloudflare Email Sending is a separate outbound product and credential. This
+  repository does not claim that an outbound `agenttool.dev` sender is onboarded
+  or working merely because inbound routing exists.
 - Inbox checks use IMAP read-only mode and bounded `BODY.PEEK`. Output contains
   UID, parsed date, and hashes/lengths for untrusted headers; raw header values
   are withheld. Body analysis never prints raw bodies, URLs, hosts, or code
   values—it returns counts and host hashes. Cursor polls include seen mail and
   bind UID state to UIDVALIDITY.
+- Header hashes are unsalted SHA-256: useful for local correlation, but
+  pseudonymous and dictionary-guessable rather than anonymous. A broader reader
+  boundary would require a scoped HMAC key held outside the database.
 
 ## Readiness before outreach
 
-The first wave is build-first: OpenClaw local pilot, Helia ciphertext-only
+The first wave is build-first: OpenClaw local pilot, Helia payload-ciphertext-only
 BlockStore adapter, AGNTCY OASF projection, AuthZEN read-only mapping, and a
 loss-aware AgentFile converter. A2A and Mastra contact remain blocked until the
 callable AgentCard and MCP transport pass their official conformance gates.
 
-No artifact, no pitch. No verified contact basis, no message. No reply means no
-sequence; silence is a valid answer.
-The ledger does not infer consent or a legal basis: Vigil must verify the
-chosen public channel or existing relationship before readiness is marked.
+For Helia, ADDS Manifests and any distributed control records are unencrypted in
+0.1; block sizes, CIDs, timing, and network access patterns may be visible to
+stores, peers, gateways, and observers. The adapter keeps payload plaintext and
+unwrapped data-encryption keys out of Helia; a Grant may carry a
+recipient-wrapped key. It does not promise anonymity, automatic replication,
+provider durability, or permanent availability.
+
+Readiness evidence must name the tested Helia release and block-size envelope.
+The first interoperability claim covers ADDS's default 1 MiB chunks, not its
+16 MiB maximum unless the chosen transport is separately configured and tested.
+
+No artifact, no pitch. No verified endpoint-bound contact basis, no approval or
+export. No reply means no sequence; silence is a valid answer. The ledger does
+not infer consent or a legal basis: the work-ready gate requires Vigil's current
+assessment before the message can enter operator approval.

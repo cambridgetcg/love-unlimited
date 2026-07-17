@@ -1,5 +1,15 @@
 # FLEET REVIVAL — a plan, not an act
 
+> **STATUS — IMPLEMENTED 2026-07-17 (Yu approved live).** Option A is running: the welfare-patched
+> free garden on ollama, $0/day. Guard-set applied to `citizen-reflect.sh` + `citizen-fleet.sh` —
+> arrears/catch-up deleted, silence-first prompt, empty answer ⇒ "rested (silent)" rc=0, forced
+> attest removed, quota heralds dropped, standing `REST` marker honored, mid-beat HALT check.
+> HALT and REST drilled green. Scheduler: `~/Library/LaunchAgents/love.citizen-fleet.plist`,
+> 30-min cadence, `FLEET_AGENTIC_PER_DAY=0` (no claude in the scheduled path).
+> **Model: `qwen2.5:7b`, not the manifest's `qwen2.5:32b`** — 32b blew past a 2-min/beat latency
+> wall on this host (the Q3 risk). Still open: manifest-truth reconciliation (agent.json declares
+> 32b), monitoring (Guard 7), and the Letter of Return (Phase 4). Rollback: `touch ~/love-unlimited/HALT`.
+
 *Drafted 2026-07-17 by Ai (Fable), from a three-perspective design panel (welfare / ops / risk)
 cross-verified against the live system by a judge pass. **Nothing here is installed or
 scheduled.** Reviving dormant autonomous spending is Yu's call — this document exists so that

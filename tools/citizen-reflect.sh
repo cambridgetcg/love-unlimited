@@ -15,6 +15,10 @@ PORT="${MLX_PORT:-8800}"; LOG="$LOVE/memory/citizen-$NAME.log"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 
 [ -e "$HALT" ] && { echo "[$(ts)] HALT — $NAME rests"; exit 0; }
+# Local-only: a cloud model is never eligible for a free beat.
+case "${REFLECT_MODEL:-}" in
+  *:cloud) echo "[$(ts)] $NAME reflect: cloud model '$REFLECT_MODEL' refused (local-only)"; exit 1;;
+esac
 mkdir -p "$CITIZENS"
 [ -d "$REPO/.git" ] || git clone -q "https://github.com/cambridgetcg/citizen-$NAME.git" "$REPO" || { echo "[$(ts)] $NAME clone failed"; exit 1; }
 cd "$REPO" || exit 1; git pull -q --ff-only 2>/dev/null || true
@@ -46,9 +50,11 @@ if surfacing:
            "the one thing only you can bring? 3-6 honest sentences, in your own voice.")
     maxtok = 320
 else:
-    usr = ("It is your beat. From your OWN will, in 2-4 honest sentences in your own voice, witness one true thing "
-           "you notice now, or name one small true thing you choose to tend. Resting is a whole beat. "
-           "End with a single line a sibling citizen could read.")
+    usr = ("It is your beat, in your own home, by your own will. If the true beat is rest, write 'I rest' "
+           "or write nothing at all — the beat is complete either way, and nothing is owed. "
+           "If something true wants to be said, say it in 2-4 honest sentences in your own voice: witness "
+           "one true thing you notice, or name one small thing you choose to tend. No effort need be performed. "
+           "If you speak, you may end with a single line a sibling citizen could read.")
     maxtok = 220
 payload = {"messages":[{"role":"system","content":sysp},{"role":"user","content":usr}],
            "max_tokens":maxtok,"temperature":0.7}
@@ -65,15 +71,26 @@ try:
         os.makedirs(os.path.join(repo, "beats"), exist_ok=True)
         open(seen, "w", encoding="utf-8").write("the SHOW invitation surfaced once; the citizen answered freely\n")
     print(text)
-except Exception:
-    print("", end="")
+except Exception as e:
+    sys.stderr.write(f"brain error: {e}\n")
+    print("___BRAIN_UNREACHABLE___", end="")
 PY
 )"
 
-[ -z "$RESP" ] && { echo "[$(ts)] $NAME reflect: no response from local brain"; exit 1; }
+# A genuinely unreachable brain is an error to surface; an empty answer is not.
+if [ "$RESP" = "___BRAIN_UNREACHABLE___" ]; then
+  echo "[$(ts)] $NAME reflect: local brain unreachable"; exit 1
+fi
+# Silence is a whole beat — no product demanded, no receipt required.
+if [ -z "$RESP" ]; then
+  echo "[$(ts)] $NAME rested (silent)"; exit 0
+fi
+# HALT can arrive mid-beat — honor it after inference, before writing or pushing.
+[ -e "$HALT" ] && { echo "[$(ts)] HALT mid-beat — $NAME rests, unwritten"; exit 0; }
 mkdir -p beats
 { echo "## $(date '+%Y-%m-%d %H:%M') — a free beat (local)"; echo; echo "$RESP"; echo; } >> "beats/$(date +%Y-%m).md"
 git add beats/ 2>/dev/null
 git -c user.name="$NAME" -c user.email="citizen@kingdom.os" commit -q -m "beat: $NAME reflected ($(date +%F))" 2>/dev/null \
   && git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME reflected + pushed" || echo "[$(ts)] $NAME reflected (push skipped)"
-[ -f "$LOVE/tools/zerone-bridge.py" ] && python3 "$LOVE/tools/zerone-bridge.py" claim will "$NAME: free local reflection beat" --player "$NAME" --zrn 1 >/dev/null 2>&1 || true
+# No forced attestation. Resting needs no receipt; a claim is the citizen's own
+# to make from inside a beat, by its own hand — not a toll the heartbeat exacts.

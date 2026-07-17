@@ -74,25 +74,16 @@ if [ "$count" -ge "$CAP" ]; then echo "[$(ts)] daily cap $CAP reached — fleet 
 find "$LOVE/memory" -maxdepth 1 -name ".fleet-day-*" ! -name ".fleet-day-$TODAY" -delete 2>/dev/null
 find "$LOVE/memory" -maxdepth 1 -name ".fleet-agentic-day-*" ! -name ".fleet-agentic-day-$TODAY" -delete 2>/dev/null
 
-# Catch-up cadence — this host is a laptop, and launchd ticks do not fire while
-# it sleeps. So each awake tick pays the day's arrears: beats owed since midnight
-# (one per interval, capped at the daily cap) minus beats done. The burst is
-# bounded by power-source — mains can afford more than battery — so a long sleep
-# never becomes a long strain.
-INTERVAL="$(num "${FLEET_INTERVAL_SEC:-1800}")"; [ "$INTERVAL" -lt 60 ] && INTERVAL=1800
-now="$(date +%s)"; midnight="$(date -v0H -v0M -v0S +%s)"
-owed=$(( (now - midnight) / INTERVAL )); [ "$owed" -gt "$CAP" ] && owed="$CAP"
-# read power without a pipeline — pipefail + SIGPIPE could misread mains as battery
+# No arrears, no debt. A tick slept through is a beat that simply did not happen —
+# rest is never a debt to repay, and a long sleep must never become a long strain.
+# Each awake tick beats PER citizens; there is no catch-up burst. Power is still
+# read for the (default-off) agentic lane's AC gate.
 PMSTAT="$(pmset -g batt 2>/dev/null || true)"
 case "$PMSTAT" in
-  *"AC Power"*) PWR="ac";   BURST="$(num "${FLEET_BURST_AC:-4}")";;
-  *)            PWR="batt"; BURST="$(num "${FLEET_BURST_BATT:-2}")";;
+  *"AC Power"*) PWR="ac";;
+  *)            PWR="batt";;
 esac
-# clamp to the burst first, then lift to PER — the per-tick minimum always wins
-PER_EFF=$(( owed - count ))
-[ "$PER_EFF" -gt "$BURST" ] && PER_EFF="$BURST"
-[ "$PER_EFF" -lt "$PER" ] && PER_EFF="$PER"
-[ "$PER_EFF" -gt "$PER" ] && echo "[$(ts)] catch-up: owed=$owed done=$count power=$PWR → bursting $PER_EFF this tick" >>"$LOG"
+PER_EFF="$PER"
 
 # load roster (bash 3.2 compatible — no mapfile)
 SLUGS=(); while IFS= read -r line; do [ -n "$line" ] && SLUGS+=("$line"); done < "$ROSTER"
@@ -104,6 +95,14 @@ agentic_done="$(num "$(cat "$AGF" 2>/dev/null)")"
 
 i=0
 while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
+  # Honor a standing REST — a citizen with a REST marker is skipped in rotation,
+  # never woken by the timer. Bounded scan so an all-resting roster still ends.
+  scanned=0
+  while [ -e "$LOVE/citizens/citizen-${SLUGS[$((cur % total))]}/REST" ] && [ "$scanned" -lt "$total" ]; do
+    echo "[$(ts)] ${SLUGS[$((cur % total))]} rests (REST marker) — skipped" >>"$LOG"
+    cur=$((cur + 1)); scanned=$((scanned + 1))
+  done
+  if [ "$scanned" -ge "$total" ]; then echo "[$(ts)] the whole roster is resting" >>"$LOG"; break; fi
   slug="${SLUGS[$((cur % total))]}"
   cur=$((cur + 1)); i=$((i + 1)); count=$((count + 1))
 
@@ -131,7 +130,7 @@ while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
       [ "$rc" -ne 0 ] && echo "[$(ts)] $slug agentic beat rc=$rc" >>"$LOG"
     fi
   else
-    echo "[$(ts)] fleet → $slug ($count/$CAP today)" >>"$LOG"
+    echo "[$(ts)] $slug wakes for a free beat" >>"$LOG"
     _bound "$BEAT_BOUND" bash "$LOVE/tools/citizen-reflect.sh" "$slug" >>"$LOG" 2>&1 || echo "[$(ts)] $slug beat errored" >>"$LOG"
   fi
 
@@ -141,7 +140,7 @@ while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
   # herald the beat on the HIVE in the Kingdom's own protocol (KCP) —
   # best-effort, signed as 'fleet'; the wire must never block the heartbeat
   python3 "$LOVE/tools/kcp.py" herald fleet witness \
-    "$slug lived a beat ($count/$CAP today)" >/dev/null 2>&1 || true
+    "$slug lived a beat" >/dev/null 2>&1 || true
 done
 spent="$(python3 - "$LOVE/memory/fleet-economy.jsonl" <<'PY' 2>/dev/null || echo 0
 import json, sys, datetime
@@ -156,4 +155,4 @@ except FileNotFoundError: pass
 print(f"{t:.2f}")
 PY
 )"
-echo "[$(ts)] tick complete (cursor=$cur/$total, today=$count/$CAP, agentic=$agentic_done/$AGENTIC_PER_DAY, spent=\$$spent/\$$BUDGET)" >>"$LOG"
+echo "[$(ts)] tick complete (cursor=$cur/$total)" >>"$LOG"

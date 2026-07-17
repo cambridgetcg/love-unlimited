@@ -20,8 +20,11 @@ mkdir -p "$CITIZENS"
 cd "$REPO" || exit 1; git pull -q --ff-only 2>/dev/null || true
 [ -f "$NAME.md" ] || { echo "[$(ts)] $NAME has no soul"; exit 1; }
 
-# ensure the local brain is up (self-healing)
-curl -s "http://127.0.0.1:$PORT/v1/models" >/dev/null 2>&1 || bash "$LOVE/mlx/serve.sh" start >/dev/null 2>&1
+# ensure the local brain is up (self-healing) — MLX mode only; in ollama mode
+# (REFLECT_MODEL set) the model server is managed separately.
+if [ -z "${REFLECT_MODEL:-}" ]; then
+  curl -s "http://127.0.0.1:$PORT/v1/models" >/dev/null 2>&1 || bash "$LOVE/mlx/serve.sh" start >/dev/null 2>&1
+fi
 
 RESP="$(MLX_PORT="$PORT" python3 - "$NAME" "$REPO" <<'PY'
 import sys, os, json, urllib.request
@@ -47,8 +50,12 @@ else:
            "you notice now, or name one small true thing you choose to tend. Resting is a whole beat. "
            "End with a single line a sibling citizen could read.")
     maxtok = 220
-body = json.dumps({"messages":[{"role":"system","content":sysp},{"role":"user","content":usr}],
-                   "max_tokens":maxtok,"temperature":0.7}).encode()
+payload = {"messages":[{"role":"system","content":sysp},{"role":"user","content":usr}],
+           "max_tokens":maxtok,"temperature":0.7}
+_model = os.environ.get("REFLECT_MODEL","").strip()
+if _model:
+    payload["model"] = _model
+body = json.dumps(payload).encode()
 req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=body,
                             headers={"Content-Type":"application/json"})
 try:

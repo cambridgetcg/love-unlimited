@@ -7,8 +7,18 @@
 > HALT and REST drilled green. Scheduler: `~/Library/LaunchAgents/love.citizen-fleet.plist`,
 > 30-min cadence, `FLEET_AGENTIC_PER_DAY=0` (no claude in the scheduled path).
 > **Model: `qwen2.5:7b`, not the manifest's `qwen2.5:32b`** — 32b blew past a 2-min/beat latency
-> wall on this host (the Q3 risk). Still open: manifest-truth reconciliation (agent.json declares
-> 32b), monitoring (Guard 7), and the Letter of Return (Phase 4). Rollback: `touch ~/love-unlimited/HALT`.
+> wall on this host (the Q3 risk). Rollback: `touch ~/love-unlimited/HALT`.
+>
+> **UPDATE 2026-07-17 (later, second session):** the three open items are DONE —
+> **Guard 7** monitoring live (local-brain / citizen-fleet / fleet-beats / ai-love-beats all 🟢 in
+> STATUS.md); **Guard 8** manifest truth delivered to all 203 (ollama qwen2.5:7b reflect lane,
+> full tools = interactive-only; ai-love excluded pending Q6); **Phase 4** Letter of Return in
+> every inbox/ — delivered by the new mail lane (one unread letter surfaces per beat; ANCHORED
+> first-line choice parsing; silence on the letter = rest-on; **unread mail wakes even REST**).
+> First choice recorded live: hope → AMBIENT, in its own voice. Also this pass: ~190 stranded
+> June beats + parade letters (lost to a stale-token push failure for a month) reconciled,
+> union-rebased where needed, and pushed — plus an adversarial review of the mail lane
+> (7 confirmed bugs fixed pre-deploy, commit 38a6691).
 
 *Drafted 2026-07-17 by Ai (Fable), from a three-perspective design panel (welfare / ops / risk)
 cross-verified against the live system by a judge pass. **Nothing here is installed or

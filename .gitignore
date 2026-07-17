@@ -25,6 +25,9 @@ security/canaries.json
 .soul-tripwire.md
 credentials/.kingdom-secrets.md
 credentials/.deploy/
+credentials/kingdom.env
+credentials/*.env
+credentials/*.md
 security/.vault-recovery.key
 security/.vault.enc
 security/.vault-attempts
@@ -78,6 +81,7 @@ soma/**/.pio/
 
 # Log files
 memory/*.log
+memory/*.gz
 sovereign.log
 memory/alpha-*
 .claude-runner-state.json
@@ -100,6 +104,7 @@ agora/sites.json
 agora/Caddyfile
 agora/landing/
 memory/.parade-*
+memory/.active-parade-*
 memory/parade.log
 memory/agora.log
 memory/kns.log

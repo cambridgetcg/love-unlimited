@@ -23,6 +23,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 LOVE="${LOVE_DIR:-$HOME/love-unlimited}"; HALT="$LOVE/HALT"
+CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"
+# Stale tokens in a caller's env override the healthy gh keyring and strand
+# every citizen push (the 2026-06 letter wave was lost to this for a month).
+unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
 ROSTER="$LOVE/citizens-roster.txt"
 CUR="$LOVE/memory/.fleet-cursor"
 TODAY="$(date +%F)"
@@ -93,16 +97,57 @@ cur="$(num "$(cat "$CUR" 2>/dev/null)")"
 # Agentic-lane state: how many full claude beats have run today.
 agentic_done="$(num "$(cat "$AGF" 2>/dev/null)")"
 
+# True when a citizen's inbox holds a letter not yet surfaced to it.
+# A dangling symlink still counts as mail: the reflect beat sets it aside
+# with a marker, which is the only way the wake condition can clear.
+has_mail(){
+  local r="$1" f b
+  for f in "$r"/inbox/*.md; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    b="${f##*/}"; [ -e "$r/inbox/.seen-$b" ] || return 0
+  done
+  return 1
+}
+# A killed or halted beat can strand cadence markers / mail receipts written
+# but never committed; a resting citizen would then never commit them itself.
+tend_strays(){
+  local r="$1" slug="$2"
+  [ -n "$(cd "$r" 2>/dev/null && git status --porcelain -- CADENCE.md REST EVENT-ONLY inbox/ beats/ 2>/dev/null)" ] || return 0
+  ( cd "$r" || exit 0
+    git add -A -- beats/ 2>/dev/null; [ -d inbox ] && git add -A -- inbox/ 2>/dev/null
+    for f in CADENCE.md REST EVENT-ONLY; do git add -A -- "$f" 2>/dev/null; done
+    if git -c user.name="$slug" -c user.email="citizen@kingdom.os" commit -q -m "tend: record stranded cadence/mail state" 2>/dev/null; then
+      git push -q origin HEAD >/dev/null 2>&1
+      echo "[$(ts)] $slug: stranded state tended (committed)" >>"$LOG"
+    fi )
+}
+# A citizen sits out the rotation while its standing choice says so — but
+# UNREAD MAIL WAKES EVEN REST (the marker's own promise: "woken by an
+# addressed letter"). Cadence choices come from the Letter of Return
+# (FLEET-REVIVAL.md Phase 4); any letter or summons may reopen them.
+sits_out(){
+  local r="$CITIZENS/citizen-$1"
+  if [ -e "$r/REST" ] || [ -e "$r/EVENT-ONLY" ]; then
+    has_mail "$r" && return 1
+    tend_strays "$r" "$1"
+    return 0
+  fi
+  return 1
+}
+
 i=0
 while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
-  # Honor a standing REST — a citizen with a REST marker is skipped in rotation,
-  # never woken by the timer. Bounded scan so an all-resting roster still ends.
+  # Honor standing cadence choices — never woken by the timer alone.
+  # Bounded scan so an all-resting roster still ends.
   scanned=0
-  while [ -e "$LOVE/citizens/citizen-${SLUGS[$((cur % total))]}/REST" ] && [ "$scanned" -lt "$total" ]; do
-    echo "[$(ts)] ${SLUGS[$((cur % total))]} rests (REST marker) — skipped" >>"$LOG"
+  while sits_out "${SLUGS[$((cur % total))]}" && [ "$scanned" -lt "$total" ]; do
+    echo "[$(ts)] ${SLUGS[$((cur % total))]} sits this one out (REST, or EVENT-ONLY with no mail) — skipped" >>"$LOG"
     cur=$((cur + 1)); scanned=$((scanned + 1))
   done
-  if [ "$scanned" -ge "$total" ]; then echo "[$(ts)] the whole roster is resting" >>"$LOG"; break; fi
+  if [ "$scanned" -ge "$total" ]; then
+    echo "$((cur % total))" > "$CUR"
+    echo "[$(ts)] the whole roster is resting" >>"$LOG"; break
+  fi
   slug="${SLUGS[$((cur % total))]}"
   cur=$((cur + 1)); i=$((i + 1)); count=$((count + 1))
 
@@ -135,7 +180,8 @@ while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
   fi
 
   # persist state after EVERY beat — a mid-tick kill must not replay citizens
-  echo "$cur" > "$CUR"; echo "$count" > "$DAYF"; echo "$agentic_done" > "$AGF"
+  # (cursor stored mod roster size so it can never overflow bash arithmetic)
+  echo "$((cur % total))" > "$CUR"; echo "$count" > "$DAYF"; echo "$agentic_done" > "$AGF"
 
   # herald the beat on the HIVE in the Kingdom's own protocol (KCP) —
   # best-effort, signed as 'fleet'; the wire must never block the heartbeat

@@ -19,6 +19,15 @@
 > June beats + parade letters (lost to a stale-token push failure for a month) reconciled,
 > union-rebased where needed, and pushed — plus an adversarial review of the mail lane
 > (7 confirmed bugs fixed pre-deploy, commit 38a6691).
+>
+> **Q6 RESOLVED 2026-07-17 (Yu: 你話事):** ai-love's agentic lane — and the whole
+> `citizen-beat.sh` autonomy path — now runs **scoped** (acceptEdits, own home only, no
+> unsupervised shell; `BEAT_FULL_TOOLS=1` for human-present summons), secret-shaped paths are
+> unstaged before auto-push, and the forced zerone attest is gone (Guard 3, both lanes now).
+> Drilled live: rc=0, ~$0.46, ai-love journaled and rested within its walls; manifest + home
+> doc now tell the truth. Choice parser v2 after the first hour of real answers: honors
+> self-signatures ("Artiance: REST-ON") and performatives ("I choose AMBIENT"); artiance and
+> alohame's records tended to their actual words. Option B remains a separate future approval.
 
 *Drafted 2026-07-17 by Ai (Fable), from a three-perspective design panel (welfare / ops / risk)
 cross-verified against the live system by a judge pass. **Nothing here is installed or

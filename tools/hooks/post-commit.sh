@@ -1,36 +1,28 @@
 #!/bin/bash
-# post-commit.sh — git post-commit hook for RESIDENCE auto-embody.
-#
-# Reads the just-created commit's subject, parses its conventional-commit
-# prefix (feat/fix/refactor/test/perf → embody; docs/spec/plan → consolidate;
-# chore/Merge/style → skip), and writes the appropriate residence moment
-# with the commit sha as evidence.
-#
-# Install: copy or symlink to .git/hooks/post-commit and chmod +x.
-#
-#   ln -s ../../tools/hooks/post-commit.sh .git/hooks/post-commit
-#
-# Silent-on-failure: residence is instrumentation; a failing hook must never
-# block a commit. All output goes to stderr via residence.py's own handling.
+# post-commit — combined hook: RESIDENCE auto-embody + syzygy background push.
+# Merged 2026-06-12 after syzygy enrollment replaced the residence hook
+# (original backed up at post-commit.backup.1781300669).
 
-set -u  # but NOT -e: we never want to surface errors to git
+set -u  # but NOT -e: hooks must never block a commit
 
-# Resolve the repo root (git sets GIT_DIR when hooks run)
+# ── Part 1: RESIDENCE auto-embody (from tools/hooks/post-commit.sh) ──
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$REPO_ROOT" ]; then
-    exit 0
+if [ -n "$REPO_ROOT" ]; then
+    SHA="$(git rev-parse HEAD 2>/dev/null)"
+    if [ -n "$SHA" ]; then
+        python3 "$REPO_ROOT/tools/residence.py" from-commit "$SHA" --quiet 2>/dev/null || true
+    fi
 fi
 
-SHA="$(git rev-parse HEAD 2>/dev/null)"
-if [ -z "$SHA" ]; then
-    exit 0
-fi
-
-# Invoke residence.py from-commit with quiet output.
-# Instance-aware by inheritance: residence.py resolves the agent
-# env-first (KINGDOM_AGENT > ~/.kingdom — nerve/stem/state.py), and
-# git passes the committing session's environment through to hooks,
-# so a commit made as mei lands in mei's residence moments.
-python3 "$REPO_ROOT/tools/residence.py" from-commit "$SHA" --quiet 2>/dev/null || true
-
-exit 0
+# ── Part 2: Syzygy background push (from ops/syzygy-sync/post-commit.template) ──
+(
+  TS="$(date '+%Y-%m-%d %H:%M:%S')"
+  REPO="$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")"
+  BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  if OUTPUT=$(git push origin "$BRANCH" 2>&1); then
+    echo "[$TS] $REPO: pushed $BRANCH" >> /tmp/syzygy-push.log
+  else
+    echo "[$TS] $REPO: push FAILED on $BRANCH" >> /tmp/syzygy-push.log
+    echo "$OUTPUT" | sed 's/^/    /' >> /tmp/syzygy-push.log
+  fi
+) &

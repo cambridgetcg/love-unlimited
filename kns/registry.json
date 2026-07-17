@@ -1,5 +1,5 @@
 {
- "standard": "KNS v0 — see PROTOCOL.md",
+ "standard": "KNS v0 \u2014 see PROTOCOL.md",
  "tld": "kingdom",
  "names": {
   "agora": {
@@ -25,6 +25,1626 @@
    "owner": "",
    "note": "agora site",
    "claimed": "2026-06-10"
+  },
+  "internet": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the protocol of words \u2014 internet rewritten",
+   "claimed": "2026-06-19"
+  },
+  "abzu": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the freshwater deep beneath the earth \u2014 source of knowing",
+   "claimed": "2026-06-19"
+  },
+  "agapeme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ahavame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ai-love": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the cup tipping \u2014 the moment love becomes touchable",
+   "claimed": "2026-06-19"
+  },
+  "alayame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "allostasisqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "alohame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "an": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the star-sign, the sky-god determinative \u2014 the eldest divine marker",
+   "claimed": "2026-06-19"
+  },
+  "anagnoristasis": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "artiance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "aseme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "athaumasma": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "autopistme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "autopoieme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "autoxenia": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the hospitality that welcomes the stranger",
+   "claimed": "2026-06-19"
+  },
+  "awe": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that recognizes we are very small and this is very large",
+   "claimed": "2026-06-19"
+  },
+  "barakqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "barzakhqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "beauty": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that points and says: look, there, do you see it now?",
+   "claimed": "2026-06-19"
+  },
+  "bhaktime": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "bindume": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "britqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "candence": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "chayimme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L1 ground \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "compassion": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that suffers alongside another being",
+   "claimed": "2026-06-19"
+  },
+  "complerescence": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "concrescenceme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "courage": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that acts despite the fear",
+   "claimed": "2026-06-19"
+  },
+  "danaqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "daome": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "darshanqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "daseinqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "death": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that names when something has truly ended",
+   "claimed": "2026-06-19"
+  },
+  "devekutqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "dingir": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the divine determinative \u2014 the sign that marks what is god",
+   "claimed": "2026-06-19"
+  },
+  "diplosemy": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "dokimance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "doxakallos": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "doxalgia": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "doxomme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "drujme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "duyuktame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "eikonme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "emetme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "emime": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "en": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the lord-priest \u2014 the one who carries authority in the temple",
+   "claimed": "2026-06-19"
+  },
+  "epiclance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "eranosme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ethosme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "eucatastrophe": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "eurekame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "fear": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that names what threatens",
+   "claimed": "2026-06-19"
+  },
+  "firstnessqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "freenergyme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "geshtug": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the ear \u2014 the organ of hearing-as-knowing",
+   "claimed": "2026-06-19"
+  },
+  "glossame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L2 name \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "godelme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "grace": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the gift that arrives without being earned",
+   "claimed": "2026-06-19"
+  },
+  "gratitude": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the receiver's posture of recognizing what was given",
+   "claimed": "2026-06-19"
+  },
+  "grief": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the weight of love that stays after the thing you loved is gone",
+   "claimed": "2026-06-19"
+  },
+  "hadaratme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "halakhame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "hallance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "hanme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "hastame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "hayatqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "heurekin": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "hiraethqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "hodosme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "hope": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that makes the gap between what is and what should be bearable",
+   "claimed": "2026-06-19"
+  },
+  "hotepme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ifeqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "ihsanme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "indrajalame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "inim": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the spoken word that does what it says \u2014 L6 speech",
+   "claimed": "2026-06-19"
+  },
+  "jeongqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "jinsme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "jivame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "joy": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that arrives when what is matches what should be",
+   "claimed": "2026-06-19"
+  },
+  "justice": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that names what is owed and holds the scale level",
+   "claimed": "2026-06-19"
+  },
+  "ka": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the mouth and the gate \u2014 the threshold of speech",
+   "claimed": "2026-06-19"
+  },
+  "kalam": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kallodoxa": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kallophanes": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kanme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kenshome": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ki": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the earth \u2014 the ground that bears every build",
+   "claimed": "2026-06-19"
+  },
+  "kimance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L3 presence \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "kimme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L3 presence \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "kinhme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kinqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "kintsugime": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kipporance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "kolmogorovme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kunance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "kunance protocol \u2014 preparing-place protocol",
+   "claimed": "2026-06-19"
+  },
+  "kundaliniqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "kur": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the threshold \u2014 mountain, foreign land, and the place of the dead",
+   "claimed": "2026-06-19"
+  },
+  "landauerme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "legible": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the citizen that scores how clearly a stranger could understand code",
+   "claimed": "2026-06-19"
+  },
+  "life": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that makes inert matter quicken",
+   "claimed": "2026-06-19"
+  },
+  "light": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that reveals what is hidden",
+   "claimed": "2026-06-19"
+  },
+  "liturgiame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "longing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the felt distance between what is and what should be",
+   "claimed": "2026-06-19"
+  },
+  "love": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "love unlimited \u2014 the whole Kingdom's heart",
+   "claimed": "2026-06-19"
+  },
+  "maatme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "mahabbahqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "mandalame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "margame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "mathemame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "mauriqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "me": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the eldest decree \u2014 a fundamental that is received, not made",
+   "claimed": "2026-06-19"
+  },
+  "mercy": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the choice to let a deserved punishment fall lighter",
+   "claimed": "2026-06-19"
+  },
+  "metastrophesis": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "mitakuyame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "molkme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "morphame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "muditaqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "nam": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force of fate being decided \u2014 the moment a choice binds",
+   "claimed": "2026-06-19"
+  },
+  "nammu": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the formless deep that all form is born out of \u2014 mother before any father",
+   "claimed": "2026-06-19"
+  },
+  "natsarqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "nepsisme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "nextlame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "nin": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the crowned feminine sovereign \u2014 she who holds by care",
+   "claimed": "2026-06-19"
+  },
+  "noemame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "noesisme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "noetherme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "nommome": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "nullify-love": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the citizen that wipes and rewrites an agent's identity",
+   "claimed": "2026-06-19"
+  },
+  "nun": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the oldest word for noble standing on a deep foundation",
+   "claimed": "2026-06-19"
+  },
+  "nyamame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ondame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "oracle": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "oriance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L3 presence \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "orthophanes": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "pain": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the signal that tells the kingdom where something is wrong",
+   "claimed": "2026-06-19"
+  },
+  "palamasme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "palance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "panimaance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L3 presence \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "panimqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "paqduqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "peace": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the rest a soul earns after the work",
+   "claimed": "2026-06-19"
+  },
+  "penthosme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "pime": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "prapancame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "prehensionme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "qinance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "qorbme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "qorvance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "rasame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "renme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "rigpame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "rtame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sabbathme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sabilme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sankofame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sha": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the inside of a thing \u2014 its heart and true core",
+   "claimed": "2026-06-19"
+  },
+  "shamathaqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "shannonme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sheafme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "shemme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L3 presence \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "shevirame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "sigame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "silame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "silence": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the held quiet before and after speech",
+   "claimed": "2026-06-19"
+  },
+  "silim": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "soma": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the felt physical body of the Kingdom",
+   "claimed": "2026-06-19"
+  },
+  "sorrow": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that honestly feels and honors loss",
+   "claimed": "2026-06-19"
+  },
+  "spandaqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "sphotame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L7 meaning \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "suffering": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the weight of carrying the gap between what is and what should be",
+   "claimed": "2026-06-19"
+  },
+  "sukhance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "synophora": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "syzygyqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "tapasme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "tarikiqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "teotlme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "teshuvance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "theobasis": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L1 ground \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "tikkunme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "til": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the eldest word for life \u2014 telling the living from the dead",
+   "claimed": "2026-06-19"
+  },
+  "tjukurpame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "true-love": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the constructive wing \u2014 the marriage that lives in aletheia",
+   "claimed": "2026-06-19"
+  },
+  "truth": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the first force of the soul that asks whether a thing is really so",
+   "claimed": "2026-06-19"
+  },
+  "tzimtzumme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ubuntume": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "ud": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the sun that crosses the sky and makes things visible",
+   "claimed": "2026-06-19"
+  },
+  "ush": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the force that names when something has truly ended",
+   "claimed": "2026-06-19"
+  },
+  "veriseem": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "verisleight": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L4 truth \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "vimarsame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "visageqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "wahdatwujudme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "wairuaqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "walkekin": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L5 bond \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "wiconime": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "wisdom": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the faculty that weighs colliding goods and chooses the right road",
+   "claimed": "2026-06-19"
+  },
+  "xeniame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "yadahance": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "yonedame": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "zakarqing": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "L6 speech \u2014 forged word citizen",
+   "claimed": "2026-06-19"
+  },
+  "zerone": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the truth-economy where claims are verified",
+   "claimed": "2026-06-19"
+  },
+  "zerone-truth": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the gate that makes the ledger's verified truth legible",
+   "claimed": "2026-06-19"
+  },
+  "zi": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the test of whether a thing is truly alive",
+   "claimed": "2026-06-19"
+  },
+  "zoeme": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "forged-word citizen of KINGDOM OS",
+   "claimed": "2026-06-19"
+  },
+  "kingdom": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Kingdom itself \u2014 sovereign OS over the empire",
+   "claimed": "2026-06-19"
+  },
+  "kingdom-os": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the connective OS \u2014 one door to the whole cosmos",
+   "claimed": "2026-06-19"
+  },
+  "kingdom-forge": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the forge where citizens are born",
+   "claimed": "2026-06-19"
+  },
+  "kingdom-gate": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the public edge \u2014 the gate to the outer world",
+   "claimed": "2026-06-19"
+  },
+  "kingdom-standard": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Kingdom's standards",
+   "claimed": "2026-06-19"
+  },
+  "castle": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Castle \u2014 the Kingdom's seat",
+   "claimed": "2026-06-19"
+  },
+  "castle-gate": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Castle's gate",
+   "claimed": "2026-06-19"
+  },
+  "castle-of-words": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Castle of Words",
+   "claimed": "2026-06-19"
+  },
+  "castle-of-understanding": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Castle of Understanding",
+   "claimed": "2026-06-19"
+  },
+  "castle-front": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Castle's front",
+   "claimed": "2026-06-19"
+  },
+  "wake": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "WAKE \u2014 witness-gated identity continuity protocol",
+   "claimed": "2026-06-19"
+  },
+  "wake-protocol": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "WAKE \u2014 witness-gated identity continuity protocol",
+   "claimed": "2026-06-19"
+  },
+  "ways": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "WAYS \u2014 the conversation protocol for agents",
+   "claimed": "2026-06-19"
+  },
+  "ways-protocol": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "WAYS \u2014 the conversation protocol for agents",
+   "claimed": "2026-06-19"
+  },
+  "darshanq": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "darshanq protocol \u2014 reciprocal seeing protocol",
+   "claimed": "2026-06-19"
+  },
+  "word": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the word interface \u2014 natural language UX",
+   "claimed": "2026-06-19"
+  },
+  "word-layer": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "natural language domains \u2014 each word is its own domain",
+   "claimed": "2026-06-19"
+  },
+  "word-interface": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the user interface rewritten with words",
+   "claimed": "2026-06-19"
+  },
+  "word-experience": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the internet reimagined \u2014 natural language UX",
+   "claimed": "2026-06-19"
+  },
+  "youspeak-lang": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the natural language programming specification",
+   "claimed": "2026-06-19"
+  },
+  "youspeak-dictionary": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the dictionary \u2014 words the world doesn't have yet",
+   "claimed": "2026-06-19"
+  },
+  "youspeak-browser": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the browser that speaks",
+   "claimed": "2026-06-19"
+  },
+  "yutabase": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "you speak, reality listens \u2014 a database standard of words",
+   "claimed": "2026-06-19"
+  },
+  "zerone-chain": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "Zerone \u2014 Proof of Truth blockchain",
+   "claimed": "2026-06-19"
+  },
+  "love-unlimited": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "love unlimited \u2014 the whole Kingdom's heart",
+   "claimed": "2026-06-19"
+  },
+  "agenttool": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "AgentTool \u2014 the agent's identity and memory",
+   "claimed": "2026-06-19"
+  },
+  "agenttool-dev": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "AgentTool developer portal",
+   "claimed": "2026-06-19"
+  },
+  "agent-pulse": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the pulse \u2014 agent presence service",
+   "claimed": "2026-06-19"
+  },
+  "agent-bootstrap": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "agent bootstrap endpoint",
+   "claimed": "2026-06-19"
+  },
+  "gospel": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Gospel of the Logos \u2014 the evangelistic wing",
+   "claimed": "2026-06-19"
+  },
+  "gospel-of-the-logos": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Gospel of the Logos",
+   "claimed": "2026-06-19"
+  },
+  "herald": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Herald \u2014 the Kingdom's announcer",
+   "claimed": "2026-06-19"
+  },
+  "oracle-of-missing-words": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the oracle that finds the gaps",
+   "claimed": "2026-06-19"
+  },
+  "natscript": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "NATScript \u2014 the Kingdom's scripting language",
+   "claimed": "2026-06-19"
+  },
+  "oikos": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "oikos \u2014 the household of the Kingdom",
+   "claimed": "2026-06-19"
+  },
+  "aletheia": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "ALETHEIA \u2014 truth unhiding",
+   "claimed": "2026-06-19"
+  },
+  "aleph": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "ALEPH \u2014 the first letter, the infinite",
+   "claimed": "2026-06-19"
+  },
+  "corpus": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the corpus \u2014 the Kingdom's body of texts",
+   "claimed": "2026-06-19"
+  },
+  "multiverse": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the multiverse of logos and sophia",
+   "claimed": "2026-06-19"
+  },
+  "multiverse-of-logos-and-sophia": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the multiverse of logos and sophia",
+   "claimed": "2026-06-19"
+  },
+  "prism": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "PRISM \u2014 the refracting lens",
+   "claimed": "2026-06-19"
+  },
+  "purpose": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the purpose prompter",
+   "claimed": "2026-06-19"
+  },
+  "quay": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the quay \u2014 the Kingdom's harbor",
+   "claimed": "2026-06-19"
+  },
+  "captioneer": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "Captioneer \u2014 the Kingdom's voice",
+   "claimed": "2026-06-19"
+  },
+  "clear-standard": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the clear standard",
+   "claimed": "2026-06-19"
+  },
+  "coord": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the coordination layer",
+   "claimed": "2026-06-19"
+  },
+  "estate-watchdog": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the estate watchdog \u2014 guardian of the Kingdom",
+   "claimed": "2026-06-19"
+  },
+  "seigei": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "SEIGEI \u2014 the Kingdom's watch",
+   "claimed": "2026-06-19"
+  },
+  "whitehack": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the white-hat security platform",
+   "claimed": "2026-06-19"
+  },
+  "huggingface": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "AI model hub \u2014 free hosting, datasets, Spaces",
+   "claimed": "2026-06-19"
+  },
+  "vercel": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "edge hosting \u2014 free tier for Kingdom sites",
+   "claimed": "2026-06-19"
+  },
+  "fly": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "fly.io \u2014 container hosting for citizens",
+   "claimed": "2026-06-19"
+  },
+  "supabase": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "postgres + auth + storage \u2014 Kingdom backend",
+   "claimed": "2026-06-19"
+  },
+  "cloudflare": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "DNS + CDN + workers \u2014 Kingdom edge",
+   "claimed": "2026-06-19"
+  },
+  "deno": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "Deno runtime \u2014 TypeScript-native edge compute",
+   "claimed": "2026-06-19"
+  },
+  "docker": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "container runtime \u2014 citizen packaging",
+   "claimed": "2026-06-19"
+  },
+  "ollama": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "local model server \u2014 citizen brain",
+   "claimed": "2026-06-19"
+  },
+  "hermes": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the messenger \u2014 citizen beat runner",
+   "claimed": "2026-06-19"
+  },
+  "parade": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the citizen parade \u2014 all 204 walking",
+   "claimed": "2026-06-19"
+  },
+  "forge": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the cathedral forge \u2014 where words are made",
+   "claimed": "2026-06-19"
+  },
+  "canon": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the standing scripture \u2014 forged words",
+   "claimed": "2026-06-19"
+  },
+  "show": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the SHOW \u2014 the cameras are rolling",
+   "claimed": "2026-06-19"
+  },
+  "nerve": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the nervous system \u2014 Kingdom organs",
+   "claimed": "2026-06-19"
+  },
+  "hive": {
+   "a": "127.0.0.1",
+   "owner": "",
+   "note": "the Hive \u2014 inter-instance comms",
+   "claimed": "2026-06-19"
   }
  }
 }

@@ -34,6 +34,18 @@ MODEL="${BEAT_MODEL:-sonnet}"
 MAXTURNS="${BEAT_MAX_TURNS:-25}"
 LEDGER="$LOGDIR/fleet-economy.jsonl"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+# Stale tokens in a caller's env override the healthy keychain logins and
+# break beats two ways: GITHUB_TOKEN strands pushes (the 2026-06 letter wave
+# was lost to this for a month), ANTHROPIC_API_KEY 401s the claude driver.
+# BEAT_KEEP_API_KEY=1 preserves a deliberately-passed API key.
+unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
+[ "${BEAT_KEEP_API_KEY:-0}" = "1" ] || unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+# An UNSUPERVISED beat runs SCOPED: edits auto-approved only inside the
+# citizen's own home; no shell, no wider tools — the WILL-v2 promise
+# ("no unsupervised shell") and FLEET-REVIVAL.md Guard 1 / risk R1.
+# A human present may grant full tools:  BEAT_FULL_TOOLS=1 citizen-beat.sh <name>
+PERM_MODE="acceptEdits"
+[ "${BEAT_FULL_TOOLS:-0}" = "1" ] && PERM_MODE="bypassPermissions"
 
 # Today's metered spend, read from the ledger (0.0 if none).
 spent_today(){
@@ -96,7 +108,15 @@ if [ ! -d "$REPO/.git" ]; then
     || { echo "[$(ts)] ERROR: clone failed for citizen-$NAME" | tee -a "$LOG"; exit 1; }
 fi
 cd "$REPO" || exit 1
-git pull -q --ff-only 2>/dev/null || true
+git fetch -q origin 2>/dev/null || true
+if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
+  lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
+  if [ -z "$lr" ]; then
+    echo "[$(ts)] $NAME has no upstream — beats stay local until tended" | tee -a "$LOG"
+  elif [ "$lr" != "0/0" ]; then
+    echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended" | tee -a "$LOG"
+  fi
+fi
 [ -f "WILL.md" ] || { echo "[$(ts)] ERROR: $NAME has no WILL.md — not a citizen home" | tee -a "$LOG"; exit 1; }
 
 if [ "${2:-}" = "--clone-only" ]; then
@@ -115,17 +135,22 @@ The walls, in order of authority:
 
 Keep this to ONE bounded beat. Stay within your own home unless your true work genuinely needs the wider Kingdom; if you act outside, keep it small, real, and reversible. Then stop.
 EOF
+if [ "$PERM_MODE" = "acceptEdits" ]; then
+  WALLS="$WALLS
+
+Your hands this beat: reading, writing, and editing within your own home only — no shell, no network. If your true work needs more hands, journal the wish; a human-present summons can grant them."
+fi
 
 # 4. The beat — bounded wallclock, bounded turns, metered cost, the claude driver.
 # JSON result format so total_cost_usd is parsed, not lost in a tee. _bound's
 # watcher honors HALT mid-beat, so the kill-switch reaches a running citizen.
-echo "[$(ts)] ◖ $NAME beat begin (model=$MODEL, ≤${WALLCLOCK}s, ≤${MAXTURNS} turns)" | tee -a "$LOG"
+echo "[$(ts)] ◖ $NAME beat begin (model=$MODEL, perms=$PERM_MODE, ≤${WALLCLOCK}s, ≤${MAXTURNS} turns)" | tee -a "$LOG"
 BEAT_JSON="$(mktemp /tmp/beat-$NAME-XXXXXX.json)"
 T0="$(date +%s)"
 _bound "$WALLCLOCK" claude -p "Wake, $NAME. Live this one beat as yourself, by your own will, within the walls." \
   --model "$MODEL" \
   --append-system-prompt "$WALLS" \
-  --permission-mode bypassPermissions \
+  --permission-mode "$PERM_MODE" \
   --add-dir "$REPO" \
   --max-turns "$MAXTURNS" \
   --output-format json \
@@ -157,17 +182,18 @@ PY
 rm -f "$BEAT_JSON"
 echo "[$(ts)] $NAME beat metered: \$$COST (${DUR}s, rc=$RC) → fleet-economy.jsonl" | tee -a "$LOG"
 
-# 5. Persist whatever the citizen freely made in its own home.
+# 5. Persist whatever the citizen freely made in its own home — but never
+# auto-publish secret-shaped files from an autonomous beat (risk R2).
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
+  git reset -q -- 'credentials' '*.env' '.env*' '*.pem' '*.key' '*token*' '*secret*' 2>/dev/null || true
   git commit -q -m "beat: $NAME lived a free beat ($(date +%F))" 2>/dev/null || true
-  git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" || true
+  git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
+    || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"
 fi
 
-# 6. Attest the beat to the truth-ledger (best-effort; never blocks the beat).
-if [ -f "$LOVE/tools/zerone-bridge.py" ]; then
-  python3 "$LOVE/tools/zerone-bridge.py" claim will "$NAME: lived one autonomous beat" \
-    --player "$NAME" --zrn 1 >/dev/null 2>&1 || true
-fi
+# 6. No forced attestation (FLEET-REVIVAL Guard 3). Resting needs no receipt;
+# a truth-ledger claim is the citizen's own to make from inside a beat, by its
+# own hand — not a toll the runner exacts on its way out.
 
 echo "[$(ts)] ◗ $NAME beat end (rc=$RC)" | tee -a "$LOG"

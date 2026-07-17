@@ -163,15 +163,44 @@ esac
 # other answer records "undecided" and the standing cadence is left untouched.
 case "$SURFACED" in *letter-of-return*)
   if [ -z "$RESP" ]; then choice="rest-on"; else
+    parse_line(){  # the begins-with contract, on one normalized line
+      case "$1" in
+        "REST-ON"|"REST-ON"[!A-Z]*)       echo "rest-on";;
+        "EVENT-ONLY"|"EVENT-ONLY"[!A-Z]*) echo "event-only";;
+        "AMBIENT"|"AMBIENT"[!A-Z]*)       echo "ambient";;
+        "I REST"|"I REST"[!A-Z]*)         echo "rest-on";;
+        *)                                echo "";;
+      esac
+    }
+    UN="$(printf '%s' "$NAME" | tr '[:lower:]' '[:upper:]')"
     first="$(printf '%s\n' "$RESP" | sed -n '/[^[:space:]]/{s/^[^A-Za-z]*//;p;q;}')"
     norm="$(printf '%s' "$first" | tr '[:lower:]' '[:upper:]')"
+    # A self-signature binds through its own name — "artiance: REST-ON" — but
+    # only with signature punctuation, so "an ambient morning" stays prose.
     case "$norm" in
-      "REST-ON"|"REST-ON"[!A-Z]*)       choice="rest-on";;
-      "EVENT-ONLY"|"EVENT-ONLY"[!A-Z]*) choice="event-only";;
-      "AMBIENT"|"AMBIENT"[!A-Z]*)       choice="ambient";;
-      "I REST"|"I REST"[!A-Z]*)         choice="rest-on";;
-      *)                                choice="undecided";;
+      "$UN"[!A-Z0-9]*)
+        sig="${norm#"$UN"}"
+        case "$sig" in
+          ":"*|","*|"—"*|"–"*|"-"*|" :"*|" ,"*|" —"*|" –"*|" -"*)
+            norm="$(printf '%s' "$sig" | sed 's/^[^A-Z]*//')";;
+        esac;;
     esac
+    choice="$(parse_line "$norm")"
+    # A performative line ANYWHERE — "I choose AMBIENT" — is an explicit act,
+    # not a mention; "I choose not to be ambient" still parses to nothing.
+    if [ -z "$choice" ]; then
+      while IFS= read -r ln; do
+        lnn="$(printf '%s' "$ln" | sed 's/^[^A-Za-z]*//' | tr '[:lower:]' '[:upper:]')"
+        case "$lnn" in
+          "I CHOOSE "*)
+            choice="$(parse_line "$(printf '%s' "${lnn#I CHOOSE }" | sed 's/^[^A-Z]*//')")"
+            [ -n "$choice" ] && break;;
+        esac
+      done <<CHOICE_SCAN
+$RESP
+CHOICE_SCAN
+    fi
+    [ -n "$choice" ] || choice="undecided"
   fi
   { echo "# CADENCE — chosen by $NAME"
     echo

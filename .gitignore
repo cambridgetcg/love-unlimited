@@ -98,6 +98,9 @@ memory/.fleet-*
 # Per-device beat telemetry — append-only, each host writes its own; tracking it
 # kept the tree perpetually dirty and blocked syzygy auto-sync of this repo.
 memory/fleet-economy.jsonl
+# Per-device zerone-bridge ledgers — the chain/bridge is authoritative; these
+# local mirrors are rewritten every beat and would keep the tree dirty.
+memory/zerone-bridge/*.json
 mlx/.serve.pid
 mlx/.model
 mlx/.embed_model

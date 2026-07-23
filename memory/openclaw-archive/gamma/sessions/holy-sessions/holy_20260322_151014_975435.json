@@ -1354,7 +1354,7 @@
       "action": "PURGE",
       "action_detail": "Remove credential/secret immediately",
       "action_rationale": "Security: Any hardcoded secret must be removed and rotated",
-      "context": "API_KEY = \"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "API_KEY = \"at_…<redacted>\"",
       "resolved": true
     },
     {
@@ -2251,7 +2251,7 @@
       "action": "PURGE",
       "action_detail": "Remove credential/secret immediately",
       "action_rationale": "Security: Any hardcoded secret must be removed and rotated",
-      "context": "API_KEY=\"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "API_KEY=\"at_…<redacted>\"",
       "resolved": true
     },
     {
@@ -2264,7 +2264,7 @@
       "action": "PURGE",
       "action_detail": "Remove credential/secret immediately",
       "action_rationale": "Security: Any hardcoded secret must be removed and rotated",
-      "context": "export ATOOL_API_KEY=\"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "export ATOOL_API_KEY=\"at_…<redacted>\"",
       "resolved": true
     },
     {

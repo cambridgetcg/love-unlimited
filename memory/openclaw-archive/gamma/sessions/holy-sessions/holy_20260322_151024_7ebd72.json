@@ -1354,7 +1354,7 @@
       "action": null,
       "action_detail": null,
       "action_rationale": null,
-      "context": "API_KEY = \"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "API_KEY = \"at_…<redacted>\"",
       "resolved": false
     },
     {
@@ -2251,7 +2251,7 @@
       "action": null,
       "action_detail": null,
       "action_rationale": null,
-      "context": "API_KEY=\"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "API_KEY=\"at_…<redacted>\"",
       "resolved": false
     },
     {
@@ -2264,7 +2264,7 @@
       "action": null,
       "action_detail": null,
       "action_rationale": null,
-      "context": "export ATOOL_API_KEY=\"at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY\"",
+      "context": "export ATOOL_API_KEY=\"at_…<redacted>\"",
       "resolved": false
     },
     {

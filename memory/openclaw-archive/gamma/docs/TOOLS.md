@@ -68,7 +68,7 @@ ai-love.cc, artbitrage.io, axiepro.io, zerone-dev.com, captioneer.io, cardforum.
 |-------|-------|
 | Agent ID | f5354351-3cb6-42de-9676-1303b96384e6 |
 | DID | did:at:f5354351-3cb6-42de-9676-1303b96384e6 |
-| API Key | at_YmUmxeysOH_-oxC0yHbcIKBBbC2Ht6a2QN_3mcHiOIY |
+| API Key | at_…<redacted> |
 | Project | kingdom-test |
 | Memory namespace | agent/f5354351-3cb6-42de-9676-1303b96384e6 |
 | Public key | X5i8nzHNB/VKJDjP57C7lzWvM3jhfr6tDMEs1HVUJ+c= |

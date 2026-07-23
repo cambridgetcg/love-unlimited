@@ -175,3 +175,29 @@ memory/*-ache.log
 
 # citizen identities stay local (live API keys)
 memory/*-identity/
+
+# --- gap-fix hardening: untracked secrets + machine-local runtime state ---
+memory/beta-identity/identity.json
+**/*-identity/identity.json
+security/peace-state.json
+security/watchdog-state.json
+nerve/vitals.json
+nerve/hormones.json
+nerve/stem/focus.json
+nerve/heart/last_beat
+nerve/signals/beat-*.json
+memory/sentinel-state.json
+memory/signals/state.json
+memory/workflow/state.json
+memory/loop/loop-state.json
+memory/dev-state.json
+memory/autonomous/state.json
+soma/state/body-state.json
+convergence/shared-state.json
+mlx/adapters/**/*.safetensors
+training/data/soul_v1/mined_v1.scores.jsonl
+training/data/soul_v1/raw_pool.jsonl
+
+# node deps — never source
+node_modules/
+package-lock.json

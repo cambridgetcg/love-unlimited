@@ -157,6 +157,9 @@ _SECRET_PATTERNS = [
     re.compile(r"-----BEGIN [A-Z ]+-----"),
     re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),          # HuggingFace
     re.compile(r"\bsk-[A-Za-z0-9]{40,}\b"),          # OpenAI legacy (long, to avoid false-pos on short sk-prefixed strings)
+    re.compile(r"\bat_[A-Za-z0-9]{38,}\b"),          # AgentTool (anchored, no _/- so snake_case identifiers don't match)
+    re.compile(r"\bhive-(?:alpha|beta|gamma|nuance)-[A-Za-z0-9]{5,}\b"),  # NATS bus password (real users only)
+    re.compile(r"\bd0ba[0-9a-f]{20,}\b"),            # Ollama Cloud key shape
 ]
 
 _HOME_RE = re.compile(r"/Users/yuai(?=/|\b)")

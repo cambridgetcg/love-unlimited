@@ -24,7 +24,7 @@ from machine import Pin, PWM, ADC
 # ============================================================
 
 WIFI_SSID = "NO WIFI"
-WIFI_PASS = "Kwok0514"
+WIFI_PASS = ""  # set on-device via untracked wifi_config.py (was hardcoded)
 HTTP_PORT = 80
 
 # Safety limits — NEVER raise these

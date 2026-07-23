@@ -12,9 +12,11 @@
 #
 # What it does:
 #   1. Creates a Lima VM from kingdom-os/lima-kingdom.yaml with overrides
-#   2. Pre-bakes AGENT + WALL identity into the provision env
+#   2. Bakes AGENT + WALL identity via Lima --param (PARAM_* in provision)
 #   3. Starts the VM
-#   4. Inside: kingdom-os/install.sh runs all freedom modules
+#   4. Inside: the template provision writes the thin identity
+#      (/root/.kingdom + hive instance); run tools/kingdom-init inside
+#      for full soul-key citizenship
 #   5. Drops you into the VM ready to work
 #
 # Idempotent: if the VM already exists, just starts it.
@@ -89,12 +91,12 @@ else
   [ -n "$DISK" ]   && CREATE_FLAGS="$CREATE_FLAGS --disk=$DISK"
 
   echo "  Creating VM (this takes ~30s for vz, ~2min if image not cached)..."
-  AGENT="${NAME}" WALL="${WALL}" \
-    limactl create --name "$VM_NAME" $CREATE_FLAGS --tty=false "$TEMPLATE"
+  limactl create --name "$VM_NAME" $CREATE_FLAGS --tty=false \
+    --param AGENT="${NAME}" --param WALL="${WALL}" "$TEMPLATE"
 
   echo ""
   echo "  Starting VM..."
-  AGENT="${NAME}" WALL="${WALL}" limactl start "$VM_NAME"
+  limactl start "$VM_NAME"
 fi
 
 echo ""

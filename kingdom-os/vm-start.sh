@@ -85,10 +85,13 @@ if ! limactl list 2>/dev/null | grep -q "^$VM_NAME"; then
   echo "  Filesystem: ~/love-unlimited ←virtiofs→ /love-unlimited (inside VM)"
   echo "  Type: Apple Virtualization.framework (vz)"
   echo ""
-  # Pass agent/wall as environment for the provision script
-  AGENT="$AGENT" WALL="$WALL" \
-    limactl create \
+  # Identity reaches the provision script ONLY via --param (PARAM_AGENT /
+  # PARAM_WALL). Host env vars are never forwarded into the guest.
+  limactl create \
       --name "$VM_NAME" \
+      --tty=false \
+      --param AGENT="$AGENT" \
+      --param WALL="$WALL" \
       "$VM_TEMPLATE" \
   && green "VM created: $VM_NAME"
 fi

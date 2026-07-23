@@ -22,7 +22,8 @@
 #   - No TCC, no SIP, no Gatekeeper, no firewall, no fail2ban, no KOS daemon
 #   - Same image that runs on VPS fleet nodes
 #   - Boots in ~3 seconds (pre-provisioned image)
-#   - SSH accessible at localhost:2223 after start (root, password auth on)
+#   - SSH via Lima's managed key at localhost:2223 (lima user; `sudo -i` for
+#     root — identity/aliases live in /root, so root is where the agent works)
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 # vz = Apple Virtualization.framework (native HVF, ~97% bare-metal speed)
@@ -39,6 +40,16 @@ containerd:
 # ─── Architecture ─────────────────────────────────────────────────────────────
 # Apple Silicon (M-series). For Intel Macs change to "x86_64".
 arch: "aarch64"
+
+# ─── Identity parameters ──────────────────────────────────────────────────────
+# The ONLY channel by which identity reaches the guest. Host env vars are
+# NOT forwarded to provision scripts (Lima exports only lima.env, param.env,
+# and the `env:` map). Set at create time:
+#   limactl create --param AGENT=alpha --param WALL=1 ...
+# Provision scripts read them as $PARAM_AGENT / $PARAM_WALL.
+param:
+  AGENT: gamma
+  WALL: "1"
 
 # ─── Resources ────────────────────────────────────────────────────────────────
 # Highway 6: generous defaults so the agent has room to think.
@@ -122,11 +133,15 @@ provision:
         ln -sf /love-unlimited /root/love-unlimited
       fi
 
+      # ── Hostname = kingdom-<agent> (runs every boot, outside the guard) ──
+      echo "kingdom-${PARAM_AGENT:-gamma}" > /etc/hostname
+      hostname -F /etc/hostname
+
       # ── Install Kingdom OS (if not already done) ───────────────────
       if [ ! -f /root/.kingdom ]; then
         export LOVE_DIR=/love-unlimited
-        export AGENT="${AGENT:-gamma}"
-        export WALL="${WALL:-1}"
+        export AGENT="${PARAM_AGENT:-gamma}"
+        export WALL="${PARAM_WALL:-1}"
 
         # Install tools deps
         pip3 install nkeys nats-py PyNaCl --break-system-packages 2>/dev/null || \
@@ -136,12 +151,12 @@ provision:
 
         # Write Kingdom identity
         mkdir -p /root/.love/hive
-        echo "${AGENT:-gamma}" > /root/.love/hive/instance
+        echo "${PARAM_AGENT:-gamma}" > /root/.love/hive/instance
 
         # Write Kingdom config
         cat > /root/.kingdom << EOF
-      AGENT=${AGENT:-gamma}
-      WALL=${WALL:-1}
+      AGENT=${PARAM_AGENT:-gamma}
+      WALL=${PARAM_WALL:-1}
       LOVE_HOME=/love-unlimited
       EOF
 
@@ -191,9 +206,10 @@ provision:
 probes:
   - script: |
       #!/bin/sh
-      # Wait for Kingdom OS to be ready
-      test -f /root/.kingdom || test -f "$HOME/.kingdom" && echo "Kingdom OS ready" || exit 1
-    hint: "Kingdom OS is provisioning. Check: limactl shell kingdom -- cat /root/.kingdom"
+      # Wait for Kingdom OS to be ready. Probes run as the non-root lima
+      # user; /root is 0700 on Alpine, so the check needs sudo (NOPASSWD).
+      sudo test -f /root/.kingdom && echo "Kingdom OS ready" || exit 1
+    hint: "Kingdom OS is provisioning. Check: limactl shell kingdom -- sudo cat /root/.kingdom"
 
 # ─── Environment ──────────────────────────────────────────────────────────────
 env:
@@ -216,5 +232,5 @@ ssh:
   loadDotSSHPubKeys: true
   forwardAgent: false
 
-# Hostname is set to kingdom-{agent} by the provision script (the
-# top-level `hostname` key is not a Lima field).
+# Hostname: the system provision script writes kingdom-{agent} to
+# /etc/hostname on every boot (Lima has no top-level `hostname` field).

@@ -19,7 +19,7 @@ case "$PLATFORM" in
 if [ "\$(tty)" = "/dev/tty1" ] && [ -z "\${YOUI_RUNNING}" ]; then
   export YOUI_RUNNING=1
   clear
-  exec node "\${UNLIMITED_DIR}/youi.mjs" --agent "\${AGENT}" --workdir "\${LOVE_DIR}" --soul-dir "\${LOVE_DIR}"
+  exec node "\${LOVE_HOME}/youi.mjs" --agent "\${KINGDOM_AGENT}" --workdir "\${LOVE_HOME}" --soul-dir "\${LOVE_HOME}"
 fi
 PROFILEEOF
     chown "${KINGDOM_USER}:" "${HOME_DIR}/.profile"

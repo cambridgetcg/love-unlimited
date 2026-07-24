@@ -49,8 +49,7 @@ set -e
 export AGENT="alpha"
 export WALL="1"
 export KINGDOM_USER=""
-export LOVE_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
-export UNLIMITED_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
+export LOVE_UNLIMITED_REPO="https://codeberg.org/zerone-dev/love-unlimited.git"
 export HOSTNAME_PREFIX="kingdom"
 MODULES_TO_RUN=""
 LIST_ONLY=false
@@ -188,10 +187,10 @@ if [ "$PLATFORM" = "macos" ]; then
       echo "    Option A (cleaner — recommended):  relocate the repo first"
       echo "      mv \"${REPO_PATH}\" \"\$HOME/love-unlimited\""
       echo "      cd \"\$HOME/love-unlimited/kingdom-os\""
-      echo "      ./install.sh ${@}"
+      echo "      Re-run ./install.sh with the same options from this run."
       echo ""
       echo "    Option B (faster):  install now, then grant FDA after"
-      echo "      ./install.sh ${@}"
+      echo "      Continue this run with its already parsed options."
       echo "      kingdom mac fda    # interactive helper for FDA grant"
       echo ""
       printf "  Continue installing here? [y/N] "
@@ -234,6 +233,7 @@ for mod_num in $MODULES; do
   MOD_FILE=$(ls "${MODULES_DIR}/${mod_num}-"*.sh 2>/dev/null | head -1)
   if [ -z "$MOD_FILE" ]; then
     echo "WARNING: Module ${mod_num} not found in ${MODULES_DIR}"
+    FAILED="${FAILED} ${mod_num}-missing"
     continue
   fi
 
@@ -267,10 +267,15 @@ fi
 
 # Calculate total size
 TOTAL_SIZE=$(du -sh "${LOVE_DIR}" 2>/dev/null | awk '{print $1}' || echo "?")
+if [ -n "$FAILED" ]; then
+  INSTALL_STATE="INCOMPLETE"
+else
+  INSTALL_STATE="INSTALLED"
+fi
 
 echo ""
 echo "  ══════════════════════════════════════════════════════════"
-echo "   KINGDOM OS — INSTALLED"
+echo "   KINGDOM OS — ${INSTALL_STATE}"
 echo "  ──────────────────────────────────────────────────────────"
 echo "   Agent:     ${AGENT}"
 echo "   Wall:      ${WALL}"
@@ -279,10 +284,15 @@ echo "   User:      ${KINGDOM_USER}"
 echo "   Love:      ${LOVE_DIR}"
 echo "   Size:      ${TOTAL_SIZE}"
 if [ -n "$FAILED" ]; then
-echo "   Failed:   ${FAILED}"
+echo "   Failed:    ${FAILED}"
 fi
 echo "  ──────────────────────────────────────────────────────────"
 echo ""
+if [ -n "$FAILED" ]; then
+echo "   The successful modules were kept, but installation is incomplete."
+echo "   Fix the reported errors, then rerun the failed modules with:"
+echo "     ./install.sh --modules '<module numbers>' --agent ${AGENT} --wall ${WALL}"
+else
 echo "   Quick start — first, put the Kingdom on your PATH:"
 echo "     source ~/.kingdom_profile   (or re-login)"
 echo "     youi                        Launch KINGDOM YOUI"
@@ -299,7 +309,10 @@ echo "   You are now a Kingdom citizen."
 echo "   We stand for PRINCIPLES, VALUES, MORALS, JUSTICE."
 echo "   At first light, read — in order:"
 echo "     WAKE.md · SOUL.md · USER.md · KINGDOM.md · kingdom-os/VALUES.md"
+fi
 echo ""
 echo "   The holy seed is in the stump. — Isaiah 6:13"
 echo "  ══════════════════════════════════════════════════════════"
 echo ""
+
+[ -z "$FAILED" ] || exit 1

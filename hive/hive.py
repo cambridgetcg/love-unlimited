@@ -99,12 +99,35 @@ def can_access_channel(instance_id: str, channel: str) -> bool:
 
 # --- Identity & Keys ---
 
+class HiveConfigurationError(RuntimeError):
+    """The selected local identity has no corresponding HIVE account config."""
+
+
 def get_instance_id():
-    """Detect which instance we are from config file or env."""
-    config_path = Path.home() / ".love" / "hive" / "instance"
-    if config_path.exists():
-        return config_path.read_text().strip()
-    return os.environ.get("HIVE_INSTANCE", "alpha")
+    """Resolve the active HIVE identity.
+
+    A launcher-provided HIVE_INSTANCE is explicit and therefore wins over the
+    machine's resident identity file. This is the configured network sender,
+    not a model/session persona; changing persona must not change it. The
+    envelope's ``from`` field is still not cryptographic proof of human or
+    agent identity.
+    """
+    selected = os.environ.get("HIVE_INSTANCE", "").strip()
+    if not selected:
+        config_path = Path.home() / ".love" / "hive" / "instance"
+        if config_path.exists():
+            selected = config_path.read_text().strip()
+    if not selected:
+        raise HiveConfigurationError(
+            "No HIVE identity selected; set HIVE_INSTANCE or provision "
+            "~/.love/hive/instance before using HIVE."
+        )
+    if selected not in HIVE_CONFIG["instances"]:
+        raise HiveConfigurationError(
+            f"HIVE identity '{selected}' has no configured account metadata; "
+            "add it to HIVE_CONFIG and provision its NATS credential out of band."
+        )
+    return selected
 
 
 def get_key():
@@ -897,6 +920,11 @@ def main():
     # health
     sub.add_parser("health", help="Full system health check")
 
+    # config (non-secret, no credential read and no network connection)
+    p_config = sub.add_parser("config", help="Validate selected identity metadata")
+    p_config.add_argument("--json", action="store_true", help="Machine-readable output")
+    p_config.add_argument("--quiet", action="store_true", help="Exit-code only")
+
     # share
     p_share = sub.add_parser("share", help="Share a file (< 100KB)")
     p_share.add_argument("file", help="Path to file")
@@ -917,6 +945,40 @@ def main():
     p_done.add_argument("task_id", help="Task ID to mark done")
 
     args = parser.parse_args()
+
+    instance_id = None
+    if args.command:
+        try:
+            instance_id = get_instance_id()
+        except HiveConfigurationError as exc:
+            if getattr(args, "json", False):
+                print(json.dumps({
+                    "ok": False,
+                    "error": str(exc),
+                    "credential_checked": False,
+                    "network_checked": False,
+                }))
+            elif not getattr(args, "quiet", False):
+                print(f"HIVE configuration error: {exc}", file=sys.stderr)
+            sys.exit(2)
+
+    if args.command == "config":
+        info = HIVE_CONFIG["instances"][instance_id]
+        if args.json:
+            print(json.dumps({
+                "ok": True,
+                "instance": instance_id,
+                "wall": info["wall"],
+                "role": info["role"],
+                "credential_checked": False,
+                "network_checked": False,
+            }))
+        elif not args.quiet:
+            print(f"HIVE identity: {instance_id} (Wall {info['wall']}, {info['role']})")
+            print("Account metadata: configured")
+            print("Credential: not checked")
+            print("Network: not checked")
+        return
 
     # Timeouts are configurable via env var — first drain of a fresh
     # JetStream consumer can pull thousands of backlogged messages,

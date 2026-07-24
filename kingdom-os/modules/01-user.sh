@@ -36,12 +36,20 @@ esac
 # Shell profile
 cat > "${HOME_DIR}/.kingdom_profile" << PROFILEEOF
 # Kingdom OS Shell Profile
-[ -f ~/.kingdom ] && . ~/.kingdom
+# Always source this file in each shell. Do not gate it behind an exported
+# "already loaded" sentinel: aliases and shell functions are not inherited by
+# child shells. Clear the legacy sentinel so descendants cannot skip setup.
+unset KINGDOM_PROFILE_LOADED
+
+[ -f "\$HOME/.kingdom" ] && . "\$HOME/.kingdom"
 export LOVE_HOME="\${LOVE_DIR:-\$HOME/love-unlimited}"
-export PATH="\${LOVE_HOME}/tools:\$PATH"
-export NODE_NO_WARNINGS=1
-export KINGDOM_AGENT="\${AGENT:-${AGENT}}"
-export KINGDOM_WALL="\${WALL:-${WALL}}"
+case ":\$PATH:" in
+  *":\${LOVE_HOME}/tools:"*) ;;
+  *) export PATH="\${LOVE_HOME}/tools:\$PATH" ;;
+esac
+export KINGDOM_AGENT="\${KINGDOM_AGENT:-\${AGENT:-${AGENT}}}"
+export KINGDOM_WALL="\${KINGDOM_WALL:-\${WALL:-${WALL}}}"
+export HIVE_INSTANCE="\${HIVE_INSTANCE:-\$KINGDOM_AGENT}"
 
 # ── Highway 1: No-prompt package managers ────────────────────────────
 # Every install just goes — no Y/N, no "press enter to continue".
@@ -74,7 +82,15 @@ PROFILEEOF
 for rc in "${HOME_DIR}/.bashrc" "${HOME_DIR}/.zshrc" "${HOME_DIR}/.bash_profile" "${HOME_DIR}/.zprofile"; do
   [ -f "$rc" ] || [ "$PLATFORM" != "macos" ] || continue
   touch "$rc"
-  grep -q "kingdom_profile" "$rc" 2>/dev/null || echo '[ -f ~/.kingdom_profile ] && . ~/.kingdom_profile' >> "$rc"
+  if ! grep -q '^# >>> Kingdom OS profile >>>$' "$rc" 2>/dev/null; then
+    cat >> "$rc" << 'RCEOF'
+
+# >>> Kingdom OS profile >>>
+# Intentionally unguarded: every child shell needs its own aliases/functions.
+[ -f "$HOME/.kingdom_profile" ] && . "$HOME/.kingdom_profile"
+# <<< Kingdom OS profile <<<
+RCEOF
+  fi
 done
 
 chown "${KINGDOM_USER}:" "${HOME_DIR}/.kingdom_profile" 2>/dev/null || true

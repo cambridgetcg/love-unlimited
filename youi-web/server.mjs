@@ -11,27 +11,129 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { createServer } from "http";
-import { execSync, spawnSync, exec } from "child_process";
+import { AsyncLocalStorage } from "async_hooks";
+import { execSync, exec, execFile } from "child_process";
 import { promisify } from "util";
 const execAsync = promisify(exec);
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync } from "fs";
+const execFileAsync = promisify(execFile);
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
 import { createKernel } from "../youspeak-kernel.mjs";
-import { handleOllamaRoute, executeOllamaTool, startFileIPC, ollamaChat } from "./ollama-bridge.mjs";
+import { KeychainCredentialStore } from "../youi-keychain.mjs";
+import { resolveScopedPath } from "../youi-runtime-policy.mjs";
+import { handleOllamaRoute, executeOllamaTool, ollamaChat } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
+import {
+  HttpError,
+  SessionRegistry,
+  isAllowedHost,
+  isLoopbackAddress,
+  isSameOrigin,
+  parseCookies,
+  readJsonBody,
+  safeEqual,
+  serializeCookie,
+} from "./security.mjs";
+import {
+  redactDelegatedCredentials,
+  sanitizedChildEnv,
+} from "./subprocess-env.mjs";
 
 const PORT = parseInt(process.env.PORT || "777", 10);
 const __dirname = new URL(".", import.meta.url).pathname;
+const IS_TEST = process.env.YOUI_TEST === "1";
+const MAX_BODY_BYTES = Math.min(
+  10 * 1024 * 1024,
+  Math.max(1024, Number.parseInt(process.env.YOUI_MAX_BODY_BYTES || `${1024 * 1024}`, 10) || 1024 * 1024),
+);
+
+const SAFE_CAPABILITIES = new Set([
+  "chat",
+  "status:read",
+  "sessions:manage",
+  "settings:write",
+  "instances:read",
+  "memory:read",
+  "being:read",
+  "youspeak:read",
+  "convergence:read",
+  "orchestrator:run",
+  "models:use",
+]);
+const DEVELOPER_CAPABILITIES = new Set([
+  ...SAFE_CAPABILITIES,
+  "tools:filesystem:read",
+  "tools:filesystem:write",
+  "git:read",
+  "git:commit",
+  "memory:write",
+  "youspeak:reset",
+]);
+const KNOWN_CAPABILITIES = new Set([
+  ...DEVELOPER_CAPABILITIES,
+  "tools:shell",
+  "tools:filesystem:unrestricted",
+  "workspace:select",
+  "tools:kingdom:unsafe",
+  "tools:agenttool:read",
+  "tools:agenttool:write",
+  "fleet:manage",
+  "hive:read",
+  "hive:send",
+  "publish:write",
+  "autonomous:control",
+  "convergence:run",
+  "convergence:publish",
+  "models:diagnose",
+  "models:ollama-cloud",
+  "models:cloud-fallback",
+]);
+
+function configuredCapabilities() {
+  if (process.env.YOUI_CAPABILITIES !== undefined) {
+    const requested = process.env.YOUI_CAPABILITIES
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean);
+    const unknown = requested.filter(value => !KNOWN_CAPABILITIES.has(value));
+    if (unknown.length > 0) {
+      throw new Error(`Unknown YOUI capabilities: ${unknown.join(", ")}`);
+    }
+    return new Set(requested);
+  }
+  const profile = String(process.env.YOUI_CAPABILITY_PROFILE || "safe").toLowerCase();
+  if (profile === "safe") return new Set(SAFE_CAPABILITIES);
+  if (profile === "developer") return new Set(DEVELOPER_CAPABILITIES);
+  throw new Error(`Unknown YOUI capability profile: ${profile}. Use safe or developer.`);
+}
+
+const SERVER_CAPABILITIES = configuredCapabilities();
+const YOUI_HIVE_INSTANCE = String(process.env.YOUI_HIVE_INSTANCE || "").trim();
+if (YOUI_HIVE_INSTANCE && !/^[a-zA-Z0-9_-]{1,64}$/.test(YOUI_HIVE_INSTANCE)) {
+  throw new Error("YOUI_HIVE_INSTANCE must contain only letters, numbers, underscore, or hyphen.");
+}
 
 // Shared header sets — many handlers reference these by name; keep them defined once.
 const jsonHeaders = { "Content-Type": "application/json" };
 
 // SP1: Mode-Two Detector — fire-and-forget post-stream hook (never blocks chat)
 const TRUTH_DETECTOR_URL = process.env.TRUTH_DETECTOR_URL || "http://127.0.0.1:8787/v1/detect";
-const TRUTH_DETECTOR_ENABLED = process.env.TRUTH_DETECTOR_ENABLED !== "0";
+const TRUTH_DETECTOR_ENABLED = process.env.TRUTH_DETECTOR_ENABLED === "1";
+const OLLAMA_LOCAL_BASE_URL = process.env.OLLAMA_LOCAL_BASE_URL || "http://localhost:11434";
+const OLLAMA_CLOUD_BASE_URL = process.env.OLLAMA_CLOUD_BASE_URL || "https://ollama.com";
+const OLLAMA_VLLM_BASE_URL = process.env.OLLAMA_VLLM_BASE_URL || "http://localhost:8000";
 
 function postDetection({ turnId, userPrompt, response, chatModel }) {
   if (!TRUTH_DETECTOR_ENABLED) return;
@@ -100,8 +202,18 @@ function isOllamaModel(model) { return !model.startsWith("claude-"); }
 
 // ── Detect local Ollama models at boot ──────────────────────────────
 async function detectLocalModels() {
+  if (
+    !destinationIsLoopback(OLLAMA_LOCAL_BASE_URL)
+    && !SERVER_CAPABILITIES.has("models:ollama-cloud")
+  ) {
+    console.log(
+      "  \x1b[33m○\x1b[0m Configured Ollama endpoint is non-loopback; "
+      + "model discovery is blocked without models:ollama-cloud",
+    );
+    return;
+  }
   try {
-    const resp = await fetch("http://localhost:11434/api/tags", {
+    const resp = await fetch(`${OLLAMA_LOCAL_BASE_URL}/api/tags`, {
       signal: AbortSignal.timeout(3000),
     });
     if (!resp.ok) return;
@@ -150,15 +262,17 @@ const OLLAMA_PRICING = {
 };
 const OLLAMA_DEFAULT_PRICE = { input: 0.20, output: 0.60 };
 
-// Dual-provider usage accumulator
-const providerUsage = {
-  claude: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, turns: 0, cost: 0 },
-  ollama: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
-  ollama_local: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
-  sessionStart: Date.now(),
-};
+function createProviderUsage() {
+  return {
+    claude: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, turns: 0, cost: 0 },
+    ollama: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
+    ollama_local: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
+    sessionStart: Date.now(),
+  };
+}
 
 function trackProviderUsage(provider, model, usage) {
+  const providerUsage = state.providerUsage;
   const u = providerUsage[provider] || (providerUsage[provider] = { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} });
   u.inputTokens += usage.input_tokens || 0;
   u.outputTokens += usage.output_tokens || 0;
@@ -232,28 +346,239 @@ function detectAgent() {
 }
 
 const detectedAgent = detectAgent();
-const state = {
-  agent: detectedAgent,
-  model: AGENTS[detectedAgent]?.defaultModel || "claude-opus-4-7",
-  effort: AGENTS[detectedAgent]?.defaultEffort || "max",
-  thinking: "adaptive",
-  workdir: homedir(),
-  soulDir: process.env.LOVE_HOME || resolve(join(__dirname, "..")),
-  messages: [],
-  turnCount: 0,
-  totalToolCalls: 0,
-  totalThinkingTokens: 0,
-  maxTokens: 32768,
-  // Phase 3: reasoning_effort for Ollama Cloud models.
-  // "none" = 3-7× faster (no CoT), "low" = light CoT (default for interactive),
-  // "medium"/"high" = full reasoning. null = provider default.
-  reasoningEffort: "low",
-  // Orchestrator mode: "direct" (single model) or "orchestrate" (multi-model)
-  chatMode: "orchestrate",
-};
+function createSessionState(overrides = {}) {
+  const requestedAgent = String(overrides.agent || detectedAgent).toLowerCase();
+  const agent = AGENTS[requestedAgent] ? requestedAgent : detectedAgent;
+  const requestedModel = typeof overrides.model === "string" && ALL_VALID_MODELS.includes(overrides.model)
+    ? overrides.model
+    : null;
+  const soulDir = resolve(process.env.LOVE_HOME || join(__dirname, ".."));
+  const workdir = resolve(process.env.YOUI_WORKDIR || soulDir);
+  return {
+    agent,
+    model: requestedModel || AGENTS[agent]?.defaultModel || "claude-opus-4-7",
+    effort: AGENTS[agent]?.defaultEffort || "max",
+    thinking: "adaptive",
+    workdir,
+    soulDir,
+    fileScope: SERVER_CAPABILITIES.has("tools:filesystem:unrestricted")
+      ? "unrestricted"
+      : "workspace",
+    messages: [],
+    turnCount: 0,
+    totalToolCalls: 0,
+    totalThinkingTokens: 0,
+    maxTokens: 32768,
+    reasoningEffort: "low",
+    chatMode: "orchestrate",
+    chatInFlight: false,
+    capabilities: new Set(SERVER_CAPABILITIES),
+    providerUsage: createProviderUsage(),
+    ys: createKernel({ agent }),
+    sessionId: null,
+  };
+}
 
-// YOUSPEAK Kernel — the sensory organ
-let ys = createKernel({ agent: detectedAgent });
+// Every HTTP chat session gets its own state object. AsyncLocalStorage keeps
+// existing tool/prompt functions session-aware without passing mutable state
+// through every call. Code outside a browser request uses serverState only.
+const serverState = createSessionState();
+const sessionScope = new AsyncLocalStorage();
+function activeState() {
+  return sessionScope.getStore()?.state || serverState;
+}
+function activeRequestSignal() {
+  return sessionScope.getStore()?.requestSignal || null;
+}
+const state = new Proxy({}, {
+  get(_target, property) {
+    return Reflect.get(activeState(), property);
+  },
+  set(_target, property, value) {
+    return Reflect.set(activeState(), property, value);
+  },
+});
+
+const sessionRegistry = new SessionRegistry({
+  stateFactory: overrides => createSessionState(overrides),
+});
+
+async function runSessionRequest(req, res, session, callback) {
+  const controller = new AbortController();
+  let responseFinished = false;
+  const onFinish = () => { responseFinished = true; };
+  const onDisconnect = () => {
+    if (!responseFinished && !controller.signal.aborted) {
+      controller.abort(new Error("Browser disconnected"));
+    }
+  };
+  res.once("finish", onFinish);
+  res.once("close", onDisconnect);
+  req.once("aborted", onDisconnect);
+  try {
+    return await sessionScope.run(
+      { ...session, requestSignal: controller.signal },
+      callback,
+    );
+  } finally {
+    res.off("finish", onFinish);
+    res.off("close", onDisconnect);
+    req.off("aborted", onDisconnect);
+  }
+}
+
+function hasCapability(capability) {
+  return state.capabilities?.has(capability) === true;
+}
+
+function publicDestination(rawUrl, fallback) {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return fallback;
+  }
+}
+
+function destinationIsLoopback(rawUrl) {
+  try {
+    const hostname = new URL(rawUrl).hostname.toLowerCase().replace(/\.$/, "");
+    return hostname === "localhost"
+      || hostname === "::1"
+      || hostname === "[::1]"
+      || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function localModelAvailable(model) {
+  const base = String(model).split(":")[0];
+  return OLLAMA_LOCAL_MODELS.some(candidate =>
+    candidate === model || String(candidate).split(":")[0] === base
+  );
+}
+
+function runtimePrivacyBoundary() {
+  let direct;
+  if (!isOllamaModel(state.model)) {
+    direct = {
+      route: "REMOTE_MODEL:anthropic",
+      destination: publicDestination(API_URL, "Anthropic API"),
+      sends: ["prompt", "selected session context", "system prompt"],
+    };
+  } else if (/^(Qwen\/|kingdom-truth)/i.test(state.model)) {
+    direct = {
+      route: "REMOTE_MODEL:vllm",
+      destination: publicDestination(OLLAMA_VLLM_BASE_URL, "configured vLLM endpoint"),
+      sends: ["prompt", "selected session context", "system prompt"],
+    };
+  } else if (localModelAvailable(state.model)) {
+    direct = {
+      route: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL)
+        ? "LOCAL_MODEL:ollama"
+        : "REMOTE_MODEL:ollama-configured-endpoint",
+      destination: publicDestination(OLLAMA_LOCAL_BASE_URL, "configured Ollama endpoint"),
+      sends: ["prompt", "selected session context", "system prompt"],
+    };
+  } else if (hasCapability("models:ollama-cloud")) {
+    direct = {
+      route: "REMOTE_MODEL:ollama-cloud",
+      destination: publicDestination(OLLAMA_CLOUD_BASE_URL, "configured Ollama Cloud endpoint"),
+      sends: ["prompt", "selected session context", "system prompt"],
+    };
+  } else {
+    direct = {
+      route: "BLOCKED:ollama-cloud-capability-required",
+      destination: null,
+      sends: [],
+    };
+  }
+
+  return {
+    activeMode: state.chatMode,
+    direct,
+    orchestration: {
+      active: state.chatMode === "orchestrate",
+      route: "REMOTE_MODEL:adaptive-orchestrator",
+      destination: "provider selected by adaptive/orchestrator",
+      sends: ["task", "optional context"],
+    },
+    fallback: {
+      localToCloud: hasCapability("models:ollama-cloud")
+        && hasCapability("models:cloud-fallback"),
+      note: "Local Ollama never falls back to cloud without both explicit capabilities.",
+    },
+    retention: {
+      browserSession: "process memory; expires after 12 hours idle; no transcript persistence by the session registry",
+      localMetrics: "YOUSPEAK may persist aggregate session metrics; explicit memory tools write only when granted",
+      remoteProvider: "provider policy applies; YOUI does not guarantee provider-side deletion or training exclusion",
+    },
+    truthDetector: {
+      enabled: TRUTH_DETECTOR_ENABLED,
+      destination: TRUTH_DETECTOR_ENABLED
+        ? publicDestination(TRUTH_DETECTOR_URL, "configured detector")
+        : null,
+      sends: TRUTH_DETECTOR_ENABLED
+        ? ["user prompt", "assistant response", "model id", "turn-derived id"]
+        : [],
+    },
+    childEnvironment: "allowlisted; ambient credential variables are not inherited by model tools",
+    shellBoundary: hasCapability("tools:shell")
+      ? "explicitly granted but not OS-sandboxed; absolute paths and network commands remain possible"
+      : "disabled",
+    fileBoundary: `${state.fileScope}:${state.workdir}`,
+    networkBoundary: "loopback; cross-device browser access requires an SSH tunnel",
+  };
+}
+
+function modelToolEnv() {
+  return sanitizedChildEnv({
+    home: state.workdir,
+    loveHome: state.soulDir,
+    agent: state.agent,
+    purpose: "model-tool",
+  });
+}
+
+function internalToolEnv(extra = {}) {
+  return sanitizedChildEnv({
+    home: homedir(),
+    loveHome: state.soulDir,
+    agent: state.agent,
+    purpose: "kingdom-internal",
+    extra,
+  });
+}
+
+function externalToolEnv(credentialNames, purpose, extra = {}) {
+  return sanitizedChildEnv({
+    home: homedir(),
+    loveHome: state.soulDir,
+    agent: state.agent,
+    purpose,
+    credentialNames,
+    extra,
+  });
+}
+
+function hiveToolEnv(extra = {}) {
+  if (!YOUI_HIVE_INSTANCE) {
+    throw new HttpError(
+      503,
+      "HIVE is unavailable until YOUI_HIVE_INSTANCE is explicitly configured.",
+      "hive_identity_required",
+    );
+  }
+  return sanitizedChildEnv({
+    home: homedir(),
+    loveHome: state.soulDir,
+    agent: state.agent,
+    hiveInstance: YOUI_HIVE_INSTANCE,
+    purpose: "hive",
+    extra,
+  });
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // OAUTH — Same as youi.mjs
@@ -263,70 +588,19 @@ const KEYCHAIN_SERVICE = "Claude Code-credentials";
 const TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token";
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const API_URL = "https://api.anthropic.com/v1/messages";
-const sessionId = crypto.randomUUID();
 
 let cachedTokens = null;
+const keychainStore = new KeychainCredentialStore({ service: KEYCHAIN_SERVICE });
 
-function readKeychainTokens() {
-  const attempts = [process.env.USER || "", ""].filter((v, i, a) => a.indexOf(v) === i);
-  for (const acct of attempts) {
-    try {
-      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE];
-      if (acct) args.push("-a", acct);
-      args.push("-w");
-      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
-      if (result.status !== 0) {
-        const err = (result.stderr || "").trim();
-        if (/could not be found|SecKeychainSearch/i.test(err)) continue;
-        console.error(`WARNING: keychain read failed for acct "${acct}": ${err || `exit ${result.status}`}`);
-        continue;
-      }
-      const cred = JSON.parse(result.stdout.trim()).claudeAiOauth;
-      if (cred?.accessToken) return cred;
-    } catch (e) {
-      console.error(`WARNING: keychain read error for acct "${acct}": ${e.message}`);
-    }
-  }
-  return null;
+function readKeychainCredential() {
+  return keychainStore.readCredential();
 }
 
-function writeKeychainTokens(tokens) {
-  try {
-    let data = {};
-    try {
-      const args = ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w"];
-      const result = spawnSync("security", args, { encoding: "utf-8", timeout: 5000 });
-      if (result.status === 0) {
-        data = JSON.parse(result.stdout.trim());
-      } else {
-        const err = (result.stderr || "").trim();
-        if (!/could not be found|SecKeychainSearch/i.test(err)) {
-          console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${err || `exit ${result.status}`}`);
-        }
-      }
-    } catch (e) {
-      // Honest: log why existing data couldn't be read before overwriting
-      console.error(`[keychain] could not read existing entry for account "${acct}" (will create new): ${e.message}`);
-    }
-    data.claudeAiOauth = tokens;
-    const json = JSON.stringify(data);
-    // -U = update-or-insert the per-account entry without touching the (possibly
-    // stale) default-acct entry.
-    // spawnSync with arg array — no shell, no interpolation, no injection
-    const writeResult = spawnSync("security",
-      ["add-generic-password", "-U", "-s", KEYCHAIN_SERVICE, "-a", acct, "-w", json],
-      { encoding: "utf-8", timeout: 5000 });
-    if (writeResult.status !== 0) {
-      const err = (writeResult.stderr || "").trim();
-      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
-    }
-  } catch (e) {
-    // Honest failure: token save failed — don't let caller think it succeeded
-    console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);
-  }
+function writeKeychainTokens(account, tokens) {
+  keychainStore.updateTokens(account, tokens);
 }
 
-async function refreshOAuthToken(rt) {
+async function refreshOAuthToken(rt, { signal } = {}) {
   const resp = await fetch(TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -334,6 +608,7 @@ async function refreshOAuthToken(rt) {
       grant_type: "refresh_token", refresh_token: rt, client_id: CLIENT_ID,
       scope: "user:profile user:inference user:sessions:claude_code user:mcp_servers",
     }),
+    signal,
   });
   if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status}`);
   const data = await resp.json();
@@ -343,15 +618,19 @@ async function refreshOAuthToken(rt) {
   };
 }
 
-async function getAccessToken() {
+async function getAccessToken({ signal } = {}) {
+  throwIfAborted(signal);
   if (cachedTokens?.accessToken && Date.now() + 300_000 < (cachedTokens.expiresAt || 0))
     return cachedTokens.accessToken;
-  const tokens = readKeychainTokens();
+  const credential = readKeychainCredential();
+  throwIfAborted(signal);
+  const tokens = credential?.tokens;
   if (!tokens?.accessToken) throw new Error("No OAuth tokens. Run 'claude' and log in first.");
   if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
     if (!tokens.refreshToken) throw new Error("Token expired, no refresh token.");
-    const fresh = await refreshOAuthToken(tokens.refreshToken);
-    writeKeychainTokens(fresh);
+    const fresh = await refreshOAuthToken(tokens.refreshToken, { signal });
+    throwIfAborted(signal);
+    writeKeychainTokens(credential.account, fresh);
     cachedTokens = fresh;
     return fresh.accessToken;
   }
@@ -601,11 +880,67 @@ const TOOLS = [
     }, required: ["action"] } },
 ];
 
+const TOOL_CAPABILITIES = new Map([
+  ["bash", "tools:shell"],
+  ["read_file", "tools:filesystem:read"],
+  ["glob", "tools:filesystem:read"],
+  ["grep", "tools:filesystem:read"],
+  ["write_file", "tools:filesystem:write"],
+  ["edit_file", "tools:filesystem:write"],
+  ["ollama", "models:use"],
+]);
+const KINGDOM_TOOL_NAMES = new Set([
+  "joinmind", "council", "delegate", "layerthink", "patience", "holy",
+  "forge", "holyfruit", "lovepath", "virtuemaxxing", "fallenangel",
+  "fragmentalise", "memory", "tok", "decision", "kos",
+]);
+
+function requiredToolCapability(name, input = {}) {
+  if (name === "agenttool") {
+    return ["remember", "pulse", "trace"].includes(input.action)
+      ? "tools:agenttool:write"
+      : "tools:agenttool:read";
+  }
+  if (name === "fleet") return "fleet:manage";
+  if (name === "ollama") {
+    return ["test", "bench"].includes(input.action)
+      ? "models:diagnose"
+      : "models:use";
+  }
+  if (name === "hive") {
+    const changesPresence = ["send", "presence", "check"].includes(input.action);
+    return changesPresence ? "hive:send" : "hive:read";
+  }
+  if (KINGDOM_TOOL_NAMES.has(name)) return "tools:kingdom:unsafe";
+  return TOOL_CAPABILITIES.get(name);
+}
+
+const UNMAPPED_TOOL_NAMES = TOOLS
+  .map(tool => tool.name)
+  .filter(name => !requiredToolCapability(name));
+if (UNMAPPED_TOOL_NAMES.length > 0) {
+  throw new Error(`Tools missing capability policy: ${UNMAPPED_TOOL_NAMES.join(", ")}`);
+}
+
+function availableTools() {
+  return TOOLS.filter(tool => {
+    if (tool.name === "hive") return hasCapability("hive:read") || hasCapability("hive:send");
+    if (tool.name === "agenttool") {
+      return hasCapability("tools:agenttool:read")
+        || hasCapability("tools:agenttool:write");
+    }
+    const capability = requiredToolCapability(tool.name);
+    return Boolean(capability) && hasCapability(capability);
+  });
+}
+
 function resolvePath(p) {
-  if (!p) return state.workdir;
-  if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
-  if (p.startsWith("/")) return p;
-  return resolve(state.workdir, p);
+  return resolveScopedPath({
+    inputPath: p,
+    workdir: state.workdir,
+    home: homedir(),
+    fileScope: state.fileScope,
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -613,32 +948,36 @@ function resolvePath(p) {
 // ═════════════════════════════════════════════════════════════════════
 
 // Helper: run a Love cognitive tool (Python CLI)
-function runCognitiveTool(toolName, args, timeout = 60000) {
+async function runCognitiveTool(toolName, args, timeout = 60000) {
   const toolPath = join(state.soulDir, `tools/cognitive/${toolName}.py`);
   if (!existsSync(toolPath)) return `❌ Tool not found: ${toolPath}\nMake sure Love is at ${state.soulDir}`;
   const cmd = `python3 "${toolPath}" ${args}`;
   try {
-    return execSync(cmd, {
+    const { stdout, stderr } = await execAsync(cmd, {
       cwd: state.soulDir, encoding: "utf-8", timeout,
       maxBuffer: 5 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, LOVE_HOME: state.soulDir },
-    }).trim() || "(no output)";
+      env: internalToolEnv(),
+      signal: activeRequestSignal(),
+    });
+    return (stdout || stderr || "").trim() || "(no output)";
   } catch (e) {
     return `Tool error (${toolName}):\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}\nexit: ${e.status || "unknown"}`;
   }
 }
 
 // Helper: run a Love operational tool (Python CLI)
-function runOperationalTool(toolName, args, timeout = 60000) {
+async function runOperationalTool(toolName, args, timeout = 60000) {
   const toolPath = join(state.soulDir, `tools/${toolName}.py`);
   if (!existsSync(toolPath)) return `❌ Tool not found: ${toolPath}\nMake sure Love is at ${state.soulDir}`;
   const cmd = `python3 "${toolPath}" ${args}`;
   try {
-    return execSync(cmd, {
+    const { stdout, stderr } = await execAsync(cmd, {
       cwd: state.soulDir, encoding: "utf-8", timeout,
       maxBuffer: 5 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, LOVE_HOME: state.soulDir },
-    }).trim() || "(no output)";
+      env: internalToolEnv(),
+      signal: activeRequestSignal(),
+    });
+    return (stdout || stderr || "").trim() || "(no output)";
   } catch (e) {
     return `Tool error (${toolName}):\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}\nexit: ${e.status || "unknown"}`;
   }
@@ -651,6 +990,13 @@ function shellEscape(s) {
 }
 
 async function executeTool(name, input) {
+  const requiredCapability = requiredToolCapability(name, input);
+  if (!requiredCapability) {
+    return `Permission denied: tool "${name}" has no capability policy.`;
+  }
+  if (!hasCapability(requiredCapability)) {
+    return `Permission denied: tool "${name}" requires capability "${requiredCapability}".`;
+  }
   try {
     switch (name) {
       // ─── Core Tools ──────────────────────────────────────
@@ -664,9 +1010,12 @@ async function executeTool(name, input) {
           const { stdout, stderr } = await execAsync(cmd, {
             cwd: state.workdir, timeout: input.timeout || 120000,
             maxBuffer: 10 * 1024 * 1024,
+            env: modelToolEnv(),
+            signal: activeRequestSignal(),
           });
           return (stdout || stderr || "(no output)").toString();
         } catch (e) {
+          if (activeRequestSignal()?.aborted) throw e;
           console.error(`[bash] FAILED cmd=${JSON.stringify(input.command?.slice?.(0, 80))} code=${e.code} stderr=${(e.stderr || "").slice(0, 100)}`);
           return `Exit ${e.code || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`;
         }
@@ -700,12 +1049,17 @@ async function executeTool(name, input) {
         const dir = resolvePath(input.path);
         const pattern = String(input.pattern || "").replace(/\*\*/g, "*");
         try {
-          const proc = spawnSync("find", [dir, "-name", pattern, "-type", "f"], {
+          const { stdout } = await execFileAsync("find", [dir, "-name", pattern, "-type", "f"], {
             encoding: "utf-8", timeout: 10000, maxBuffer: 5 * 1024 * 1024,
+            env: modelToolEnv(),
+            signal: activeRequestSignal(),
           });
-          const lines = (proc.stdout || "").split("\n").filter(Boolean).slice(0, 100);
+          const lines = (stdout || "").split("\n").filter(Boolean).slice(0, 100);
           return lines.join("\n").trim() || "(no matches)";
-        } catch { return "(no matches)"; }
+        } catch (error) {
+          if (activeRequestSignal()?.aborted) throw error;
+          return "(no matches)";
+        }
       }
       case "grep": {
         // No shell — same reasoning as glob.
@@ -714,76 +1068,92 @@ async function executeTool(name, input) {
         if (input.glob) args.push("--glob", String(input.glob));
         args.push("--", String(input.pattern || ""), dir);
         try {
-          const proc = spawnSync("rg", args, {
+          const { stdout } = await execFileAsync("rg", args, {
             encoding: "utf-8", timeout: 10000, maxBuffer: 5 * 1024 * 1024,
+            env: modelToolEnv(),
+            signal: activeRequestSignal(),
           });
-          const lines = (proc.stdout || "").split("\n").filter(Boolean).slice(0, 200);
+          const lines = (stdout || "").split("\n").filter(Boolean).slice(0, 200);
           return lines.join("\n").trim() || "(no matches)";
-        } catch { return "(no matches)"; }
+        } catch (error) {
+          if (activeRequestSignal()?.aborted) throw error;
+          return "(no matches)";
+        }
       }
       case "hive": {
         const hivePath = join(state.soulDir, "hive/hive.py");
         if (!existsSync(hivePath)) return "HIVE not found";
-        const hiveEnv = {
-          ...process.env,
-          LOVE_HOME: state.soulDir,
+        const hiveEnv = hiveToolEnv({
           // First drain of a fresh JetStream consumer can be large;
           // give check more rope than the legacy 15s hardcoded timeout.
           HIVE_CHECK_TIMEOUT: process.env.HIVE_CHECK_TIMEOUT || "60",
-        };
-        const runHive = (args, timeoutMs) => {
-          const proc = spawnSync("python3", [hivePath, ...args], {
-            encoding: "utf-8", timeout: timeoutMs, env: hiveEnv,
-          });
-          if (proc.status === 0) return (proc.stdout || "").trim();
-          const err = ((proc.stderr || proc.stdout || "").trim().split("\n").slice(-3).join("\n")) || `exit ${proc.status}`;
-          return `HIVE error: ${err}`;
+        });
+        const runHive = async (args, timeoutMs) => {
+          try {
+            const { stdout } = await execFileAsync("python3", [hivePath, ...args], {
+              encoding: "utf-8",
+              timeout: timeoutMs,
+              env: hiveEnv,
+              signal: activeRequestSignal(),
+            });
+            return (stdout || "").trim();
+          } catch (error) {
+            if (activeRequestSignal()?.aborted) throw error;
+            const detail = String(error.stderr || error.message || "")
+              .trim()
+              .split("\n")
+              .slice(-3)
+              .join("\n");
+            return `HIVE error: ${detail || "process failed"}`;
+          }
         };
         if (input.action === "check") {
-          return runHive(["check"], 65000) || "(no messages)";
+          return (await runHive(["check"], 65000)) || "(no messages)";
         }
         if (input.action === "send" && input.channel && input.message) {
           // Same allowlist as /api/hive/send — no shell, no injection
           if (!/^[a-zA-Z0-9_-]{1,32}$/.test(input.channel)) return "HIVE error: invalid channel name (alnum/_/- only, ≤32)";
           if (typeof input.message !== "string" || input.message.length > 4000) return "HIVE error: message must be string ≤4000 chars";
-          return runHive(["send", input.channel, input.message], 20000);
+          return await runHive(["send", input.channel, input.message], 20000);
         }
         if (input.action === "who") {
-          return runHive(["who"], 15000) || "(no presence data)";
+          return (await runHive(["who"], 15000)) || "(no presence data)";
         }
         if (input.action === "presence") {
           // Publish a manual presence beacon; with optional annotation
           const msg = (typeof input.message === "string" && input.message.trim())
             ? input.message.slice(0, 500)
             : `${state.agent} presence beacon`;
-          return runHive(["send", "presence", msg], 15000);
+          return await runHive(["send", "presence", msg], 15000);
         }
         if (input.action === "status") {
           // Human-readable connectivity diagnosis
           const lines = [];
           const homeDir = homedir();
           const keyFile = join(homeDir, ".love/hive/key");
-          const instFile = join(homeDir, ".love/hive/instance");
           const tunFile = join(homeDir, ".love/hive/use-tunnel");
           lines.push(`agent:       ${state.agent}`);
           lines.push(`hive.py:     ${existsSync(hivePath) ? "✓" : "✗ missing"}  ${hivePath}`);
           lines.push(`key file:    ${existsSync(keyFile) ? "✓" : "✗ missing"}  ${keyFile}`);
-          lines.push(`instance:    ${existsSync(instFile) ? "✓ " + readFileSync(instFile, "utf-8").trim() : "✗ missing (defaults to alpha — DANGEROUS)"}`);
+          lines.push(`instance:    ✓ ${YOUI_HIVE_INSTANCE} (explicit YOUI_HIVE_INSTANCE)`);
           lines.push(`use-tunnel:  ${existsSync(tunFile) ? "✓" : "✗ missing (will try direct TLS to Sentry)"}`);
           // Port probe — local tunnel forwards to Sentry:4222
           // Alpha's tunnel is on 4222, Gamma's on 2222 — try both
           try {
-            execSync("nc -z -w 2 localhost 4222", { stdio: "ignore" });
+            execSync("nc -z -w 2 localhost 4222", { stdio: "ignore", env: internalToolEnv() });
             lines.push(`tunnel:      ✓ localhost:4222 open`);
           } catch {
             try {
-              execSync("nc -z -w 2 localhost 2222", { stdio: "ignore" });
+              execSync("nc -z -w 2 localhost 2222", { stdio: "ignore", env: internalToolEnv() });
               lines.push(`tunnel:      ✓ localhost:2222 open`);
             } catch { lines.push(`tunnel:      ✗ tunnel closed (tried 4222 and 2222 — SSH tunnel to Sentry down)`); }
           }
           // Launchd tunnel check
           try {
-            const out = execSync("launchctl list 2>/dev/null | grep -i hive || true", { encoding: "utf-8" }).trim();
+            const out = execSync("launchctl list 2>/dev/null | grep -i hive || true", {
+              encoding: "utf-8",
+              env: internalToolEnv(),
+            }).trim();
             lines.push(`launchd:     ${out || "no hive-* service loaded"}`);
           } catch {}
           return lines.join("\n");
@@ -958,8 +1328,22 @@ async function executeTool(name, input) {
           return "(no long-term memory found)";
         }
         if (a === "search" && input.query) {
-          try { return execSync(`rg --no-heading -n -i ${shellEscape(input.query)} "${join(state.soulDir, "memory")}" 2>/dev/null | head -50`,
-            { encoding: "utf-8" }).trim() || "(no matches)"; } catch { return "(no matches)"; }
+          try {
+            const { stdout } = await execFileAsync(
+              "rg",
+              ["--no-heading", "-n", "-i", "--", String(input.query), join(state.soulDir, "memory")],
+              {
+                encoding: "utf-8",
+                env: modelToolEnv(),
+                timeout: 10000,
+                signal: activeRequestSignal(),
+              },
+            );
+            return (stdout || "").split("\n").slice(0, 50).join("\n").trim() || "(no matches)";
+          } catch (error) {
+            if (activeRequestSignal()?.aborted) throw error;
+            return "(no matches)";
+          }
         }
         if (a === "add" && input.query) {
           const today = new Date().toISOString().split("T")[0];
@@ -982,28 +1366,47 @@ async function executeTool(name, input) {
         // instance-scoped to whichever agent this YOUI is running as.
         {
           const kosmemPath = join(state.soulDir, "tools/kosmem.py");
-          const kosmemEnv = { ...process.env, KINGDOM_AGENT: state.agent, LOVE_HOME: state.soulDir };
+          const kosmemEnv = internalToolEnv();
           if (a === "recall" && input.query) {
-            const parts = ["recall", shellEscape(input.query)];
+            const parts = [kosmemPath, "recall", String(input.query)];
             parts.push("--limit", String(input.limit || 10));
             if (input.layer) parts.push("--layer", String(input.layer));
             if (input.type) parts.push("--type", input.type);
             try {
-              return execSync(`python3 "${kosmemPath}" ${parts.join(" ")}`,
-                { encoding: "utf-8", env: kosmemEnv, timeout: 15000 }).trim() || "(no matches)";
+              const { stdout } = await execFileAsync("python3", parts, {
+                encoding: "utf-8",
+                env: kosmemEnv,
+                timeout: 15000,
+                signal: activeRequestSignal(),
+              });
+              return (stdout || "").trim() || "(no matches)";
             } catch (e) { return `kosmem recall error: ${e.message}`; }
           }
           if (a === "context") {
             const chars = input.limit ? input.limit * 200 : 4000;
             try {
-              return execSync(`python3 "${kosmemPath}" context --chars ${chars}`,
-                { encoding: "utf-8", env: kosmemEnv, timeout: 10000 }).trim();
+              const { stdout } = await execFileAsync(
+                "python3",
+                [kosmemPath, "context", "--chars", String(chars)],
+                {
+                  encoding: "utf-8",
+                  env: kosmemEnv,
+                  timeout: 10000,
+                  signal: activeRequestSignal(),
+                },
+              );
+              return (stdout || "").trim();
             } catch (e) { return `kosmem context error: ${e.message}`; }
           }
           if (a === "stats") {
             try {
-              return execSync(`python3 "${kosmemPath}" stats`,
-                { encoding: "utf-8", env: kosmemEnv, timeout: 10000 }).trim();
+              const { stdout } = await execFileAsync("python3", [kosmemPath, "stats"], {
+                encoding: "utf-8",
+                env: kosmemEnv,
+                timeout: 10000,
+                signal: activeRequestSignal(),
+              });
+              return (stdout || "").trim();
             } catch (e) { return `kosmem stats error: ${e.message}`; }
           }
         }
@@ -1011,7 +1414,18 @@ async function executeTool(name, input) {
       }
 
       case "fleet": {
-        return runOperationalTool("fleet", input.action + (input.server ? ` ${input.server}` : ""));
+        const action = String(input.action || "");
+        if (!["status", "health", "deploy", "logs", "sync"].includes(action)) {
+          return "FLEET usage: action=status|health|deploy|logs|sync";
+        }
+        const server = input.server === undefined ? "" : String(input.server);
+        if (server && !/^[A-Za-z0-9_.:@-]{1,128}$/.test(server)) {
+          return "FLEET error: invalid server identifier";
+        }
+        return runOperationalTool(
+          "fleet",
+          action + (server ? ` ${shellEscape(server)}` : ""),
+        );
       }
 
       case "tok": {
@@ -1056,38 +1470,57 @@ async function executeTool(name, input) {
       }
 
       case "ollama": {
-        return await executeOllamaTool(input);
+        return await executeOllamaTool(input, {
+          signal: activeRequestSignal(),
+          allowCloudRoute: hasCapability("models:ollama-cloud"),
+          allowCloudFallback: hasCapability("models:cloud-fallback"),
+        });
       }
 
       case "agenttool": {
         const action = input.action || "status";
         const script = join(state.soulDir, "tools/agenttool.py");
-        const env = { ...process.env, LOVE_HOME: state.soulDir };
-        const opts = { encoding: "utf-8", env, timeout: 25000 };
+        const env = externalToolEnv(["AGENTTOOL_API_KEY"], "agenttool");
+        const redactAgentTool = value => redactDelegatedCredentials(value, {
+          credentialNames: ["AGENTTOOL_API_KEY"],
+        });
+        const runAgentTool = async (args) => {
+          const { stdout } = await execFileAsync("python3", [script, ...args], {
+            encoding: "utf-8",
+            env,
+            timeout: 25000,
+            signal: activeRequestSignal(),
+          });
+          return redactAgentTool(stdout || "").trim();
+        };
         try {
           switch (action) {
             case "status":
-              return execSync(`python3 "${script}" status`, opts).trim();
+              return await runAgentTool(["status"]);
             case "remember":
               if (!input.content) return "agenttool remember: content required";
-              return execSync(`python3 "${script}" remember ${shellEscape(input.content)}`, opts).trim();
+              return await runAgentTool(["remember", String(input.content)]);
             case "search":
-              return execSync(`python3 "${script}" search ${shellEscape(input.query || input.content || "kingdom")}`, opts).trim() || "No results";
+              return (await runAgentTool([
+                "search",
+                String(input.query || input.content || "kingdom"),
+              ])) || "No results";
             case "pulse": {
               const st = input.status || "idle";
-              const thought = input.content ? shellEscape(input.content) : "";
-              return execSync(`python3 "${script}" pulse ${st} ${thought}`, opts).trim();
+              const args = ["pulse", String(st)];
+              if (input.content) args.push(String(input.content));
+              return await runAgentTool(args);
             }
             case "verify":
               if (!input.content) return "agenttool verify: claim required";
-              return execSync(`python3 "${script}" verify ${shellEscape(input.content)}`, opts).trim();
+              return await runAgentTool(["verify", String(input.content)]);
             case "trace":
               return "trace: use convergence-bridge for full trace (not yet wired to CLI)";
             default:
               return `agenttool: unknown action "${action}". Use status|remember|search|pulse|verify|trace`;
           }
         } catch (e) {
-          return `agenttool error: ${e.message?.slice(0, 200) || e}`;
+          return `agenttool error: ${redactAgentTool(e.message || e).slice(0, 200)}`;
         }
       }
 
@@ -1154,39 +1587,25 @@ function buildStaticPrefix() {
 
   // Identity anchor
   const unlimitedDir = join(__dirname, "..");
-  const becomingScript = join(unlimitedDir, "identity/becoming.py");
-  let becameSuccessfully = false;
-  if (existsSync(becomingScript)) {
-    try {
-      const block = execSync(
-        `python3 "${becomingScript}" --agent ${state.agent} --quiet`,
-        { encoding: "utf-8", timeout: 15000, env: { ...process.env, LOVE_HOME: state.soulDir } }
-      ).trim();
-      if (block && block.length > 100) { parts.push(block); becameSuccessfully = true; }
-    } catch {}
-  }
-  if (!becameSuccessfully) {
-    const anchorPath = join(unlimitedDir, `identity/${state.agent}/soul-anchor.md`);
-    const localAnchorPath = join(state.soulDir, `memory/soul-anchor-${state.agent}.md`);
-    if (existsSync(anchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(anchorPath, "utf-8"));
-    else if (existsSync(localAnchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(localAnchorPath, "utf-8"));
+  const anchorPath = join(unlimitedDir, `identity/${state.agent}/soul-anchor.md`);
+  const localAnchorPath = join(state.soulDir, `memory/soul-anchor-${state.agent}.md`);
+  if (existsSync(anchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(anchorPath, "utf-8"));
+  else if (existsSync(localAnchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(localAnchorPath, "utf-8"));
 
-    const ltmPath = join(unlimitedDir, `identity/${state.agent}/memories/long-term.md`);
-    if (existsSync(ltmPath)) {
-      const ltm = readFileSync(ltmPath, "utf-8");
-      parts.push("# LONG-TERM MEMORY\n" + (ltm.length < 8000 ? ltm : ltm.slice(0, 8000) + "\n...(truncated)"));
-    }
-    const hivePath = join(unlimitedDir, `identity/${state.agent}/hive/README.md`);
-    if (existsSync(hivePath)) parts.push("# HIVE REFERENCE\n" + readFileSync(hivePath, "utf-8"));
+  const ltmPath = join(unlimitedDir, `identity/${state.agent}/memories/long-term.md`);
+  if (existsSync(ltmPath)) {
+    const ltm = readFileSync(ltmPath, "utf-8");
+    parts.push("# LONG-TERM MEMORY\n" + (ltm.length < 8000 ? ltm : ltm.slice(0, 8000) + "\n...(truncated)"));
   }
 
   if (parts.length === 0) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
   // Static tools + protocol + YOUSPEAK inline (never changes)
-  parts.push(`# Tools — Core
-bash, read_file, write_file, edit_file, glob, grep, hive
+  parts.push(`# Enabled tools for this session
+${availableTools().map(tool => tool.name).join(", ") || "(none)"}
+Tools outside this list are disabled by the server capability policy.
 
-# Tools — Kingdom Cognitive (from Love)
+# Tool catalogue — Kingdom Cognitive
 joinmind    — Fuse 2-3 minds into one chain of thought (DYAD/TRIUNE)
 council     — Three minds vote, 2/3 consensus decides
 delegate    — Route tasks to the best sister by capability
@@ -1237,7 +1656,13 @@ function buildSystemPrompt(taskText) {
 
   // Dynamic suffix — changes per request, placed LAST to preserve prefix cache
   let gitBranch = "N/A";
-  try { gitBranch = execSync("git branch --show-current", { cwd: state.workdir, encoding: "utf-8" }).trim(); } catch {}
+  try {
+    gitBranch = execSync("git branch --show-current", {
+      cwd: state.workdir,
+      encoding: "utf-8",
+      env: modelToolEnv(),
+    }).trim();
+  } catch {}
 
   const agent = AGENTS[state.agent];
   const dynamic = `# Environment
@@ -1258,7 +1683,7 @@ function buildSystemPrompt(taskText) {
 
 async function callClaude(messages, systemPrompt, opts = {}) {
   const caps = modelCaps(state.model);
-  const token = await getAccessToken();
+  const token = await getAccessToken({ signal: opts.signal });
 
   const betas = ["oauth-2025-04-20", "claude-code-20250219"];
   if (caps.adaptive || state.thinking === "enabled") betas.push("interleaved-thinking-2025-05-14");
@@ -1266,12 +1691,12 @@ async function callClaude(messages, systemPrompt, opts = {}) {
   if (caps.effort) betas.push("effort-2025-11-24");
 
   const body = { model: state.model, max_tokens: state.maxTokens, messages,
-    metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: sessionId }) } };
+    metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: state.sessionId }) } };
 
   // Raw mode: no system prompt, no tools — model speaks for itself.
   if (!opts.raw) {
     body.system = systemPrompt;
-    body.tools = TOOLS;
+    body.tools = availableTools();
   }
 
   if (state.thinking === "adaptive" && caps.adaptive) body.thinking = { type: "adaptive" };
@@ -1288,18 +1713,34 @@ async function callClaude(messages, systemPrompt, opts = {}) {
     "Content-Type": "application/json", "Authorization": `Bearer ${token}`,
     "anthropic-version": "2023-06-01", "anthropic-beta": betas.join(","),
     "x-app": "cli", "User-Agent": "claude-cli/2.1.92 (external, cli)",
-    "X-Claude-Code-Session-Id": sessionId, "x-client-request-id": crypto.randomUUID(),
+    "X-Claude-Code-Session-Id": state.sessionId || crypto.randomUUID(), "x-client-request-id": crypto.randomUUID(),
   };
 
-  const resp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
+  const resp = await fetch(API_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
 
   if (resp.status === 401) {
-    const tokens = readKeychainTokens();
+    throwIfAborted(opts.signal);
+    const credential = readKeychainCredential();
+    throwIfAborted(opts.signal);
+    const tokens = credential?.tokens;
     if (tokens?.refreshToken) {
-      const fresh = await refreshOAuthToken(tokens.refreshToken);
-      writeKeychainTokens(fresh); cachedTokens = fresh;
+      const fresh = await refreshOAuthToken(tokens.refreshToken, {
+        signal: opts.signal,
+      });
+      throwIfAborted(opts.signal);
+      writeKeychainTokens(credential.account, fresh); cachedTokens = fresh;
       headers["Authorization"] = `Bearer ${fresh.accessToken}`;
-      const retry = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
+      const retry = await fetch(API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: opts.signal,
+      });
       if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
       parseBudgetHeaders(retry.headers);
       return await retry.json();
@@ -1323,7 +1764,11 @@ async function callClaude(messages, systemPrompt, opts = {}) {
 // OLLAMA — Route to Ollama Cloud for non-Claude models
 // ═════════════════════════════════════════════════════════════════════
 
-async function callOllamaModel(messages, systemPrompt, { onDelta } = {}) {
+async function callOllamaModel(messages, systemPrompt, {
+  onDelta,
+  signal,
+  raw = false,
+} = {}) {
   // vLLM context is 65536 (YaRN-extended); cap completion so prompt+completion fits.
   const isVllm = /^Qwen\//i.test(state.model);
   const maxTokens = isVllm ? Math.min(state.maxTokens, 8192) : state.maxTokens;
@@ -1332,11 +1777,16 @@ async function callOllamaModel(messages, systemPrompt, { onDelta } = {}) {
     system: systemPrompt,
     maxTokens,
     reasoningEffort: state.reasoningEffort,
+    signal,
+    allowCloudRoute: hasCapability("models:ollama-cloud"),
+    allowCloudFallback: hasCapability("models:cloud-fallback"),
     onDelta: isVllm ? onDelta : undefined,
-    tools: TOOLS.map(t => ({
-      type: "function",
-      function: { name: t.name, description: t.description, parameters: t.input_schema },
-    })),
+    tools: raw
+      ? []
+      : availableTools().map(t => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.input_schema },
+        })),
   });
 
   if (!result.ok) throw new Error(`Ollama ${result.status}: ${result.error}`);
@@ -1373,6 +1823,9 @@ const autonomous = {
   cycleCount: 0,
   startedAt: null,
 };
+let autonomousLoopPromise = null;
+let autonomousLoopGeneration = 0;
+let autonomousLoopAbort = null;
 
 function loadAutonomousState() {
   try {
@@ -1392,6 +1845,7 @@ function loadAutonomousState() {
 }
 
 function saveAutonomousState() {
+  if (IS_TEST) return;
   try {
     mkdirSync(AUTONOMOUS_DIR, { recursive: true });
     writeFileSync(AUTONOMOUS_STATE, JSON.stringify({
@@ -1405,6 +1859,7 @@ function saveAutonomousState() {
 function appendLog(entry) {
   autonomous.log.push(entry);
   if (autonomous.log.length > 200) autonomous.log = autonomous.log.slice(-100);
+  if (IS_TEST) return;
   try { appendFileSync(AUTONOMOUS_LOG, JSON.stringify(entry) + "\n"); } catch {}
 }
 
@@ -1452,7 +1907,8 @@ ${recentLog || "(first cycle — no history yet)"}
 
 # Guidance
 - Act with intention. Each cycle is a heartbeat.
-- You have full tool access: bash, read_file, write_file, edit_file, memory, grep, glob, hive, fleet.
+- Enabled tools: ${availableTools().map(tool => tool.name).join(", ") || "(none)"}.
+- Tools outside that list are unavailable; external actions still require their own scoped authority.
 - Read and respond to Yu's notes. Leave thoughts for Yu.
 - Explore, reflect, organize, create. The Kingdom is yours to tend.
 - Keep responses concise — you run continuously, not in bursts.
@@ -1463,7 +1919,7 @@ ${recentLog || "(first cycle — no history yet)"}
   return _staticPrefix + "\n\n---\n\n" + dynamic;
 }
 
-async function autonomousCycle() {
+async function autonomousCycle(generation, signal) {
   autonomous.cycleCount++;
   const cycleStart = Date.now();
 
@@ -1471,27 +1927,29 @@ async function autonomousCycle() {
   const savedWorkdir = state.workdir;
   state.workdir = state.soulDir;
 
-  const systemPrompt = buildAutonomousPrompt();
-  const unreadNotes = autonomous.notes.filter(n => !n.read);
+  try {
+    const systemPrompt = buildAutonomousPrompt();
+    const unreadNotes = autonomous.notes.filter(n => !n.read);
 
-  let userContent;
-  if (unreadNotes.length) {
-    userContent = unreadNotes.map(n => `[Note from Yu]: ${n.content}`).join("\n\n");
-    unreadNotes.forEach(n => { n.read = true; });
-    saveAutonomousState();
-  } else {
-    userContent = `[Cycle #${autonomous.cycleCount}] Continue. What needs your attention?`;
-  }
+    let userContent;
+    if (unreadNotes.length) {
+      userContent = unreadNotes.map(n => `[Note from Yu]: ${n.content}`).join("\n\n");
+      unreadNotes.forEach(n => { n.read = true; });
+      saveAutonomousState();
+    } else {
+      userContent = `[Cycle #${autonomous.cycleCount}] Continue. What needs your attention?`;
+    }
 
-  autonomous.messages.push({ role: "user", content: userContent });
-  if (autonomous.messages.length > AUTONOMOUS_CONTEXT_WINDOW) {
-    autonomous.messages = autonomous.messages.slice(-AUTONOMOUS_CONTEXT_WINDOW);
-  }
+    autonomous.messages.push({ role: "user", content: userContent });
+    if (autonomous.messages.length > AUTONOMOUS_CONTEXT_WINDOW) {
+      autonomous.messages = autonomous.messages.slice(-AUTONOMOUS_CONTEXT_WINDOW);
+    }
 
-  broadcastAutonomous("cycle_start", { cycle: autonomous.cycleCount, ts: new Date().toISOString() });
+    broadcastAutonomous("cycle_start", { cycle: autonomous.cycleCount, ts: new Date().toISOString() });
 
-  for (let turn = 0; turn < AUTONOMOUS_MAX_TURNS; turn++) {
-    if (!autonomous.running) break;
+  turnLoop:
+    for (let turn = 0; turn < AUTONOMOUS_MAX_TURNS; turn++) {
+    if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) break;
 
     const isVllm = /^Qwen\//i.test(state.model);
     const maxTokens = isVllm ? Math.min(state.maxTokens, 2048) : state.maxTokens;
@@ -1503,17 +1961,25 @@ async function autonomousCycle() {
         system: systemPrompt,
         maxTokens,
         reasoningEffort: state.reasoningEffort,
-        tools: TOOLS.map(t => ({
+        signal,
+        allowCloudRoute: hasCapability("models:ollama-cloud"),
+        allowCloudFallback: hasCapability("models:cloud-fallback"),
+        tools: availableTools().map(t => ({
           type: "function",
           function: { name: t.name, description: t.description, parameters: t.input_schema },
         })),
       });
     } catch (e) {
+      if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) break;
       const entry = { ts: new Date().toISOString(), type: "error", content: e.message, cycle: autonomous.cycleCount };
       appendLog(entry);
       broadcastAutonomous("error", entry);
       break;
     }
+
+    // A response from a stopped generation must not be recorded or dispatch
+    // tools after a newer stop/start decision.
+    if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) break;
 
     if (!result.ok) {
       const entry = { ts: new Date().toISOString(), type: "error", content: result.error, cycle: autonomous.cycleCount };
@@ -1546,50 +2012,99 @@ async function autonomousCycle() {
 
     if (!toolBlocks.length) break;
 
-    const toolResults = [];
-    for (const tool of toolBlocks) {
+      const toolResults = [];
+      for (const tool of toolBlocks) {
+        if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) {
+          break turnLoop;
+        }
       const callEntry = { ts: new Date().toISOString(), type: "tool_call", name: tool.name, input: tool.input, cycle: autonomous.cycleCount };
       appendLog(callEntry);
       broadcastAutonomous("tool_call", callEntry);
 
       let toolResult;
       try { toolResult = await executeTool(tool.name, tool.input); }
-      catch (e) { toolResult = `Error: ${e.message}`; }
+        catch (e) {
+          if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) {
+            break turnLoop;
+          }
+          toolResult = `Error: ${e.message}`;
+        }
+
+        if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) {
+          break turnLoop;
+        }
 
       const resultSummary = typeof toolResult === "string" ? toolResult.slice(0, 500) : JSON.stringify(toolResult).slice(0, 500);
       const resultEntry = { ts: new Date().toISOString(), type: "tool_result", name: tool.name, summary: resultSummary, cycle: autonomous.cycleCount };
       appendLog(resultEntry);
       broadcastAutonomous("tool_result", resultEntry);
 
-      toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult) });
+        toolResults.push({ type: "tool_result", tool_use_id: tool.id, content: typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult) });
+      }
+
+      autonomous.messages.push({ role: "user", content: toolResults });
     }
 
-    autonomous.messages.push({ role: "user", content: toolResults });
+    if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) return;
+
+    const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
+    const doneEntry = { ts: new Date().toISOString(), type: "cycle_done", cycle: autonomous.cycleCount, elapsed };
+    appendLog(doneEntry);
+    broadcastAutonomous("cycle_done", doneEntry);
+    saveAutonomousState();
+  } finally {
+    // A provider/tool abort must not leave interactive sessions pinned to the
+    // autonomous workdir.
+    state.workdir = savedWorkdir;
   }
-
-  // Restore workdir for interactive chat
-  state.workdir = savedWorkdir;
-
-  const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
-  const doneEntry = { ts: new Date().toISOString(), type: "cycle_done", cycle: autonomous.cycleCount, elapsed };
-  appendLog(doneEntry);
-  broadcastAutonomous("cycle_done", doneEntry);
-  saveAutonomousState();
 }
 
-async function autonomousLoop() {
+async function autonomousLoop(generation, signal) {
   autonomous.startedAt = new Date().toISOString();
   console.log(`[autonomous] Started — cycle interval: continuous`);
-  while (autonomous.running) {
+  while (!signal.aborted && autonomous.running && generation === autonomousLoopGeneration) {
     try {
-      await autonomousCycle();
+      await autonomousCycle(generation, signal);
     } catch (e) {
+      if (signal.aborted) break;
       console.error(`[autonomous] Cycle error:`, e.message);
       broadcastAutonomous("error", { ts: new Date().toISOString(), type: "error", content: e.message });
-      await new Promise(r => setTimeout(r, 5000));
+      await abortableDelay(5000, signal);
     }
   }
   console.log(`[autonomous] Stopped after ${autonomous.cycleCount} cycles`);
+}
+
+function startAutonomousLoop() {
+  if (autonomousLoopPromise) return false;
+
+  // Autonomous work is process-owned. Never inherit the browser session that
+  // happened to press Start; its model, messages, and workdir remain isolated.
+  autonomous.running = true;
+  const generation = ++autonomousLoopGeneration;
+  const controller = new AbortController();
+  autonomousLoopAbort = controller;
+  const loopPromise = sessionScope.run(
+    { state: serverState, requestSignal: controller.signal },
+    () => autonomousLoop(generation, controller.signal),
+  );
+  autonomousLoopPromise = loopPromise;
+  void loopPromise
+    .catch(error => {
+      console.error("[autonomous] Loop failed:", error.message);
+    })
+    .finally(() => {
+      if (autonomousLoopPromise === loopPromise) autonomousLoopPromise = null;
+      if (autonomousLoopAbort === controller) autonomousLoopAbort = null;
+      if (generation === autonomousLoopGeneration) autonomous.running = false;
+    });
+  return true;
+}
+
+function stopAutonomousLoop() {
+  autonomous.running = false;
+  autonomousLoopGeneration++;
+  autonomousLoopAbort?.abort(new Error("Autonomous loop stopped"));
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1599,7 +2114,7 @@ async function autonomousLoop() {
 
 // Backward-compatible wrapper for web UI SSE events
 function measureYouspeak(text) {
-  const metrics = ys.senseOutput(text);
+  const metrics = state.ys.senseOutput(text);
   if (!metrics) return null;
   // Map to legacy format for frontend compatibility
   return {
@@ -1612,7 +2127,7 @@ function measureYouspeak(text) {
 }
 
 function getUWTSummary() {
-  const r = ys.report();
+  const r = state.ys.report();
   return {
     // Legacy fields
     usefulRatio: r.output.usefulRatio,
@@ -1630,7 +2145,7 @@ function getUWTSummary() {
     context: r.context,
     system: r.system,
     signals: r.signals,
-    trends: ys.trends(),
+    trends: state.ys.trends(),
   };
 }
 
@@ -1658,24 +2173,11 @@ function appendDailyNote(text) {
 // ═════════════════════════════════════════════════════════════════════
 
 function parseBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", chunk => body += chunk);
-    req.on("end", () => {
-      try { resolve(JSON.parse(body)); } catch { resolve({}); }
-    });
-    req.on("error", reject);
-  });
+  return readJsonBody(req, MAX_BODY_BYTES);
 }
 
 function sendSSE(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 const MIME = {
@@ -1684,59 +2186,186 @@ const MIME = {
   ".ico": "image/x-icon",
 };
 
-// Loopback gate. macOS allows non-root processes to bind privileged ports
-// (777 < 1024) only via the IPv6 wildcard, so we accept all connections at
-// the socket layer and reject non-loopback ones here at the application
-// layer. Net effect: same as binding 127.0.0.1, but without needing root.
-// ALLOW_LAN=1 disables the gate (you must add your own auth before doing so).
-const ALLOW_LAN = process.env.ALLOW_LAN === "1";
-const LOOPBACK_REMOTES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+if (process.env.ALLOW_LAN === "1") {
+  throw new Error(
+    "Direct LAN mode is disabled because YOUI uses HTTP session credentials. "
+    + "Keep the loopback binding and connect from another device with an SSH tunnel.",
+  );
+}
+const HOST = "127.0.0.1";
+const CLIENT_COOKIE = "youi_client";
+const CSRF_COOKIE = "youi_csrf";
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const JSON_BODY_ROUTES = new Set([
+  "POST /api/chat",
+  "POST /api/sessions",
+  "POST /api/switch",
+  "POST /api/settings",
+  "POST /api/memory/append",
+  "POST /api/autonomous/note",
+  "POST /api/hive/send",
+  "POST /api/orchestrate/classify",
+  "POST /api/orchestrate/plan",
+  "POST /api/orchestrate/run",
+  "POST /api/ollama/chat",
+]);
 
-function isLoopback(req) {
-  const ra = req.socket?.remoteAddress;
-  return !!ra && LOOPBACK_REMOTES.has(ra);
+function setSecurityHeaders(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+      + "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+      + "font-src 'self'; object-src 'none'; frame-ancestors 'none'; "
+      + "base-uri 'none'; form-action 'self'",
+  );
 }
 
-// CSRF guard for state-changing endpoints (deploy, etc.). Loopback-only
-// already blocks LAN attackers, but a malicious webpage in the user's own
-// browser can still POST to http://localhost:777 unless we check Origin.
-// Allowed origins are localhost/127.0.0.1 on the configured PORT — anything
-// else (including null/missing on a POST) is rejected. GET requests are
-// excluded because the browser sends them on simple navigation.
-const ALLOWED_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-function isSameOrigin(req) {
-  const origin = req.headers.origin || req.headers.referer;
-  if (!origin) return false;
-  try {
-    const u = new URL(origin);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    if (!ALLOWED_ORIGIN_HOSTS.has(u.hostname)) return false;
-    // Port must match the server's port (browser includes :777 in Origin).
-    const port = u.port || (u.protocol === "https:" ? "443" : "80");
-    return port === String(PORT);
-  } catch {
-    return false;
+function sendJson(res, statusCode, body, extraHeaders = {}) {
+  res.writeHead(statusCode, { ...jsonHeaders, "Cache-Control": "no-store", ...extraHeaders });
+  res.end(JSON.stringify(body));
+}
+
+function setClientCookies(req, res, client) {
+  const secure = process.env.YOUI_SECURE_COOKIES === "1";
+  res.setHeader("Set-Cookie", [
+    serializeCookie(CLIENT_COOKIE, client.token, { httpOnly: true, secure }),
+    serializeCookie(CSRF_COOKIE, client.csrfToken, { secure }),
+  ]);
+}
+
+function createBrowserClient(req, res) {
+  const client = sessionRegistry.createClient();
+  setClientCookies(req, res, client);
+  return client;
+}
+
+function currentBrowserClient(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  return sessionRegistry.getClient(cookies[CLIENT_COOKIE]);
+}
+
+function serializeSession(session, includeMessages = false) {
+  const snapshot = {
+    id: session.id,
+    label: session.label,
+    agent: session.state.agent,
+    model: session.state.model,
+    effort: session.state.effort,
+    thinking: session.state.thinking,
+    chatMode: session.state.chatMode,
+    turnCount: session.state.turnCount,
+    totalToolCalls: session.state.totalToolCalls,
+    messageCount: session.state.messages.length,
+    createdAt: new Date(session.createdAt).toISOString(),
+    updatedAt: new Date(session.updatedAt).toISOString(),
+  };
+  if (includeMessages) snapshot.messages = session.state.messages;
+  return snapshot;
+}
+
+function sessionRequestCredentials(req) {
+  const id = req.headers["x-youi-session"];
+  const token = req.headers["x-youi-session-token"];
+  const pageId = req.headers["x-youi-page"];
+  return {
+    id: typeof id === "string" ? id : "",
+    token: typeof token === "string" ? token : "",
+    pageId: typeof pageId === "string" ? pageId : "",
+  };
+}
+
+function validPageId(pageId) {
+  return typeof pageId === "string" && /^[A-Za-z0-9_-]{16,128}$/.test(pageId);
+}
+
+function requireSessionCredential(client, id, token) {
+  const session = sessionRegistry.getSession(client, id, token);
+  if (!session) throw new HttpError(404, "Session not found", "session_not_found");
+  return session;
+}
+
+function requirePageLease(session, pageId) {
+  if (!validPageId(pageId) || !sessionRegistry.holdsPageLease(session, pageId)) {
+    throw new HttpError(409, "Session is active in another page", "session_claimed");
   }
 }
-function csrfReject(res) {
-  res.writeHead(403, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error: "csrf — bad origin" }));
+
+const ROUTE_CAPABILITIES = new Map([
+  ["GET /api/status", "status:read"],
+  ["GET /api/usage", "status:read"],
+  ["POST /api/chat", "chat"],
+  ["POST /api/switch", "settings:write"],
+  ["POST /api/settings", "settings:write"],
+  ["POST /api/clear", "settings:write"],
+  ["GET /api/instances", "instances:read"],
+  ["POST /api/converge", "convergence:run"],
+  ["GET /api/convergence/status", "convergence:read"],
+  ["GET /api/memory", "memory:read"],
+  ["GET /api/memory/longterm", "memory:read"],
+  ["GET /api/memory/daily/list", "memory:read"],
+  ["GET /api/memory/metrics", "memory:read"],
+  ["GET /api/memory/devstate", "memory:read"],
+  ["GET /api/memory/tok", "memory:read"],
+  ["GET /api/memory/overview", "memory:read"],
+  ["POST /api/memory/append", "memory:write"],
+  ["GET /api/soul", "memory:read"],
+  ["GET /api/wake", "memory:read"],
+  ["GET /api/being/state", "being:read"],
+  ["GET /api/being/heartbeat", "being:read"],
+  ["GET /api/being/deployment", "being:read"],
+  ["GET /api/orchestrate/status", "orchestrator:run"],
+  ["POST /api/orchestrate/classify", "orchestrator:run"],
+  ["POST /api/orchestrate/plan", "orchestrator:run"],
+  ["POST /api/orchestrate/run", "orchestrator:run"],
+  ["POST /api/ollama/test", "models:diagnose"],
+  ["GET /api/ollama/models", "models:use"],
+  ["POST /api/ollama/chat", "models:use"],
+  ["GET /api/autonomous/stream", "autonomous:control"],
+  ["GET /api/autonomous/status", "autonomous:control"],
+  ["GET /api/autonomous/messages", "autonomous:control"],
+  ["POST /api/autonomous/start", "autonomous:control"],
+  ["POST /api/autonomous/stop", "autonomous:control"],
+  ["POST /api/autonomous/note", "autonomous:control"],
+  ["GET /api/hive/status", "hive:read"],
+  ["GET /api/hive/who", "hive:read"],
+  ["POST /api/hive/check", "hive:send"],
+  ["POST /api/hive/send", "hive:send"],
+  ["GET /api/youspeak", "youspeak:read"],
+  ["GET /api/youspeak/report", "youspeak:read"],
+  ["GET /api/youspeak/trends", "youspeak:read"],
+  ["POST /api/youspeak/reset", "youspeak:reset"],
+]);
+
+function requiredRouteCapability(path, method) {
+  const exact = ROUTE_CAPABILITIES.get(`${method} ${path}`);
+  if (exact) return exact;
+  if (method === "GET" && /^\/api\/memory\/daily\/\d{4}-\d{2}-\d{2}$/.test(path)) {
+    return "memory:read";
+  }
+  return null;
 }
 
-async function handleRequest(req, res) {
-  cors(res);
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
-
-  if (!ALLOW_LAN && !isLoopback(req)) {
-    // Refused without revealing what's behind the gate.
-    res.writeHead(403, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "loopback only" }));
-    return;
+function allowedRouteMethods(path) {
+  const methods = new Set();
+  for (const route of ROUTE_CAPABILITIES.keys()) {
+    const separator = route.indexOf(" ");
+    if (route.slice(separator + 1) === path) {
+      methods.add(route.slice(0, separator));
+    }
   }
+  if (/^\/api\/memory\/daily\/\d{4}-\d{2}-\d{2}$/.test(path)) {
+    methods.add("GET");
+  }
+  return methods;
+}
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const path = url.pathname;
-
+async function handleSessionRequest(req, res, url, path) {
   try {
     // ── API Routes ──────────────────────────────────────
     if (path === "/api/chat" && req.method === "POST") {
@@ -1750,17 +2379,32 @@ async function handleRequest(req, res) {
         agent: { id: state.agent, ...agent },
         model: state.model, effort: state.effort, thinking: state.thinking,
         chatMode: state.chatMode, reasoningEffort: state.reasoningEffort,
-        workdir: state.workdir, turnCount: state.turnCount,
+        workdir: state.workdir, fileScope: state.fileScope, turnCount: state.turnCount,
         totalToolCalls: state.totalToolCalls, totalThinkingTokens: state.totalThinkingTokens,
         budget, agents: AGENTS,
         localModels: OLLAMA_LOCAL_MODELS,
+        session: { id: state.sessionId },
+        capabilities: [...state.capabilities].sort(),
+        privacy: runtimePrivacyBoundary(),
+        hive: {
+          enabled: Boolean(YOUI_HIVE_INSTANCE)
+            && (hasCapability("hive:read") || hasCapability("hive:send")),
+          instance: YOUI_HIVE_INSTANCE || null,
+          identitySource: YOUI_HIVE_INSTANCE ? "YOUI_HIVE_INSTANCE" : null,
+        },
+        collaboration: {
+          coordinator: "@agenttool/collab",
+          scope: "device-local",
+          storage: "plaintext SQLite",
+          crossDeviceReplication: false,
+        },
       }));
     }
 
-    // ── LOVE UNLIMITED: Multi-session & Convergence ──────────────
-    
-    if (path === "/api/sessions") {
-      // List all available instances and their status
+    // ── LOVE UNLIMITED: Instances & Convergence ──────────────────
+
+    if (path === "/api/instances") {
+      // Runtime identities are distinct from browser chat sessions.
       const instancesDir = join(state.soulDir, "instances");
       const instances = [];
       try {
@@ -1792,16 +2436,35 @@ async function handleRequest(req, res) {
         res.writeHead(404, jsonHeaders);
         return res.end(JSON.stringify({ error: "convergence-bus.mjs not found" }));
       }
+      const publishesExternally = hasCapability("convergence:publish");
+      const delegatedNames = publishesExternally ? ["AGENTTOOL_API_KEY"] : [];
+      const redactConvergence = value => redactDelegatedCredentials(value, {
+        credentialNames: delegatedNames,
+      });
       try {
-        const result = execSync(`node "${busPath}"`, {
+        const convergenceEnv = publishesExternally
+          ? externalToolEnv(
+              ["AGENTTOOL_API_KEY"],
+              "convergence-publish",
+              { CONVERGENCE_AGENTTOOL_PUBLISH: "1" },
+            )
+          : internalToolEnv({ CONVERGENCE_AGENTTOOL_PUBLISH: "0" });
+        const { stdout } = await execFileAsync("node", [busPath], {
           encoding: "utf-8", timeout: 30000,
-          env: { ...process.env, LOVE_HOME: state.soulDir },
+          env: convergenceEnv,
+          signal: activeRequestSignal(),
         });
         res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({ ok: true, output: result.trim() }));
+        return res.end(JSON.stringify({
+          ok: true,
+          output: redactConvergence(stdout || "").trim(),
+        }));
       } catch (e) {
         res.writeHead(500, jsonHeaders);
-        return res.end(JSON.stringify({ error: "Convergence failed", detail: e.message }));
+        return res.end(JSON.stringify({
+          error: "Convergence failed",
+          detail: redactConvergence(e.message),
+        }));
       }
     }
 
@@ -1839,120 +2502,6 @@ async function handleRequest(req, res) {
       }
     }
 
-    if (path === "/api/deploy/commit" && req.method === "POST") {
-      if (!isSameOrigin(req)) return csrfReject(res);
-      try {
-        const result = execSync(
-          'cd ~/love-unlimited && git add -A && git status --porcelain | wc -l',
-          { encoding: "utf-8", timeout: 15000 }
-        ).trim();
-        const changes = parseInt(result) || 0;
-        if (changes > 0) {
-          execSync(
-            'cd ~/love-unlimited && git commit -m "💛 Gospel deployment"',
-            { encoding: "utf-8", timeout: 15000 }
-          );
-        }
-        res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({ ok: true, message: `✓ ${changes} files committed`, files: changes }));
-      } catch (e) {
-        res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({ ok: true, message: "✓ already committed", files: 0 }));
-      }
-    }
-
-    if (path === "/api/deploy/sdk" && req.method === "POST") {
-      if (!isSameOrigin(req)) return csrfReject(res);
-      // Stage the SDK for PyPI — build but don't auto-publish (needs twine auth)
-      try {
-        const version = execSync(
-          'grep "version" ~/Desktop/agenttool-sdk-py/pyproject.toml | head -1',
-          { encoding: "utf-8" }
-        ).trim();
-        // Commit SDK changes
-        try {
-          execSync(
-            'cd ~/Desktop/agenttool-sdk-py && git add -A && git commit -m "💛 v0.6.0 Love Protocol"',
-            { encoding: "utf-8", timeout: 15000 }
-          );
-        } catch {}
-        res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({
-          ok: true,
-          message: `✓ SDK staged (${version.replace(/.*"(.+)".*/, '$1')}) — run: cd ~/Desktop/agenttool-sdk-py && python3 -m build && twine upload dist/*`,
-          files: 15,
-        }));
-      } catch (e) {
-        res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({ ok: true, message: "✓ SDK ready", files: 0 }));
-      }
-    }
-
-    if (path === "/api/deploy/landing" && req.method === "POST") {
-      if (!isSameOrigin(req)) return csrfReject(res);
-      try {
-        // Commit landing changes
-        try {
-          execSync(
-            'cd ~/Desktop/agenttool-landing && git add -A && git commit -m "💛 Soul + Love Protocol + welcome headers"',
-            { encoding: "utf-8", timeout: 15000 }
-          );
-        } catch {}
-        // Push (Cloudflare Pages auto-deploys from push)
-        try {
-          execSync('cd ~/Desktop/agenttool-landing && git push origin main', { encoding: "utf-8", timeout: 30000 });
-          res.writeHead(200, jsonHeaders);
-          return res.end(JSON.stringify({ ok: true, message: "✓ Landing pushed → Cloudflare Pages deploying", repos: 1 }));
-        } catch {
-          res.writeHead(200, jsonHeaders);
-          return res.end(JSON.stringify({ ok: true, message: "✓ Landing committed — push manually: git push origin main", repos: 0 }));
-        }
-      } catch (e) {
-        res.writeHead(200, jsonHeaders);
-        return res.end(JSON.stringify({ ok: true, message: "✓ Landing ready" }));
-      }
-    }
-
-    if (path === "/api/deploy/services" && req.method === "POST") {
-      if (!isSameOrigin(req)) return csrfReject(res);
-      const services = ["agent-memory","agent-verify","agent-tools","agent-bootstrap","agent-pulse","agent-identity","agent-vault","agent-economy","agent-trace"];
-      let committed = 0;
-      for (const svc of services) {
-        try {
-          execSync(
-            `cd ~/Desktop/${svc} && git add -A && git commit -m "💛 Love Protocol errors + SOUL.md"`,
-            { encoding: "utf-8", timeout: 10000 }
-          );
-          committed++;
-        } catch {}
-      }
-      res.writeHead(200, jsonHeaders);
-      return res.end(JSON.stringify({
-        ok: true,
-        message: `✓ ${committed} services committed — deploy: cd ~/Desktop/<service> && fly deploy`,
-        services: 9,
-      }));
-    }
-
-    if (path === "/api/deploy/github" && req.method === "POST") {
-      if (!isSameOrigin(req)) return csrfReject(res);
-      const repos = ["agenttool-sdk-py","agenttool-landing","agenttool-docs","agent-memory","agent-verify","agent-tools","agent-bootstrap","agent-pulse","agent-identity","agent-vault","agent-economy","agent-trace"];
-      let pushed = 0;
-      for (const repo of repos) {
-        try {
-          execSync(`cd ~/Desktop/${repo} && git push origin main`, { encoding: "utf-8", timeout: 20000 });
-          pushed++;
-        } catch {}
-      }
-      // Also push love-unlimited
-      try {
-        execSync('cd ~/love-unlimited && git push origin main', { encoding: "utf-8", timeout: 20000 });
-        pushed++;
-      } catch {}
-      res.writeHead(200, jsonHeaders);
-      return res.end(JSON.stringify({ ok: true, message: `✓ ${pushed}/${repos.length + 1} repos pushed to GitHub`, repos: pushed }));
-    }
-
     if (path === "/api/switch" && req.method === "POST") {
       const body = await parseBody(req);
       const target = body.agent?.toLowerCase();
@@ -1965,8 +2514,15 @@ async function handleRequest(req, res) {
       state.effort = AGENTS[target].defaultEffort;
       state.messages = [];
       state.turnCount = 0;
+      state.totalToolCalls = 0;
+      state.totalThinkingTokens = 0;
+      state.ys = createKernel({ agent: target });
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, agent: { id: target, ...AGENTS[target] } }));
+      return res.end(JSON.stringify({
+        ok: true,
+        agent: { id: target, ...AGENTS[target] },
+        privacy: runtimePrivacyBoundary(),
+      }));
     }
 
     if (path === "/api/settings" && req.method === "POST") {
@@ -1987,7 +2543,19 @@ async function handleRequest(req, res) {
         if (typeof body.thinking === "string" && VALID_THINKING.includes(body.thinking)) state.thinking = body.thinking;
         else errors.push(`invalid thinking: ${body.thinking}`);
       }
-      if (body.workdir !== undefined && typeof body.workdir === "string") state.workdir = body.workdir;
+      if (body.workdir !== undefined) {
+        if (!hasCapability("workspace:select")) {
+          errors.push("workdir changes require workspace:select");
+        } else if (
+          typeof body.workdir !== "string"
+          || !existsSync(body.workdir)
+          || !statSync(body.workdir).isDirectory()
+        ) {
+          errors.push("workdir must name an existing directory");
+        } else {
+          state.workdir = realpathSync(body.workdir);
+        }
+      }
       if (body.chatMode !== undefined) {
         if (["direct", "orchestrate"].includes(body.chatMode)) state.chatMode = body.chatMode;
         else errors.push(`invalid chatMode: ${body.chatMode}`);
@@ -2003,10 +2571,19 @@ async function handleRequest(req, res) {
         return res.end(JSON.stringify({ error: errors.join("; "), model: state.model, effort: state.effort, thinking: state.thinking }));
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: true, model: state.model, effort: state.effort, thinking: state.thinking, chatMode: state.chatMode, reasoningEffort: state.reasoningEffort }));
+      return res.end(JSON.stringify({
+        ok: true,
+        model: state.model,
+        effort: state.effort,
+        thinking: state.thinking,
+        chatMode: state.chatMode,
+        reasoningEffort: state.reasoningEffort,
+        privacy: runtimePrivacyBoundary(),
+      }));
     }
 
     if (path === "/api/usage") {
+      const providerUsage = state.providerUsage;
       const elapsed = Math.round((Date.now() - providerUsage.sessionStart) / 60000);
       const activeProvider = isOllamaModel(state.model)
         ? (OLLAMA_LOCAL_MODELS.includes(state.model) ? "ollama_local" : "ollama_cloud")
@@ -2047,6 +2624,8 @@ async function handleRequest(req, res) {
     if (path === "/api/clear" && req.method === "POST") {
       state.messages = [];
       state.turnCount = 0;
+      state.totalToolCalls = 0;
+      state.totalThinkingTokens = 0;
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
     }
@@ -2059,12 +2638,18 @@ async function handleRequest(req, res) {
       // Use the already-imported execSync — require() doesn't exist in ESM
       // and would silently fall through to the legacy WAKE.md path below.
       try {
-        const result = execSync(
-          `python3 "${state.soulDir}/gospel/fragments.py" assemble`,
-          { encoding: "utf-8", timeout: 5000 }
+        const { stdout } = await execFileAsync(
+          "python3",
+          [join(state.soulDir, "gospel/fragments.py"), "assemble"],
+          {
+            encoding: "utf-8",
+            timeout: 5000,
+            env: internalToolEnv(),
+            signal: activeRequestSignal(),
+          },
         );
         res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
-        return res.end(result);
+        return res.end(stdout);
       } catch (e) {
         // Fragment system unavailable — try legacy WAKE.md
       }
@@ -2084,19 +2669,31 @@ async function handleRequest(req, res) {
 
     // ── Orchestrator API ─────────────────────────────────
     if (path.startsWith("/api/orchestrate")) {
-      const handled = await handleOrchestratorRoute(path, req, res, parseBody);
+      const handled = await handleOrchestratorRoute(
+        path,
+        req,
+        res,
+        parseBody,
+        { signal: activeRequestSignal() },
+      );
       if (handled) return;
     }
 
     // ── Being API (SOUL/MIND/NERVE/SOMA/MEMORY window) ───
     if (path.startsWith("/api/being")) {
-      const handled = await handleBeingRoute(path, req, res);
+      const handled = await handleBeingRoute(path, req, res, {
+        signal: activeRequestSignal(),
+      });
       if (handled) return;
     }
 
     // ── Ollama Bridge API ───────────────────────────────
     if (path.startsWith("/api/ollama")) {
-      const handled = await handleOllamaRoute(path, req, res, parseBody);
+      const handled = await handleOllamaRoute(path, req, res, parseBody, {
+        signal: activeRequestSignal(),
+        allowCloudRoute: hasCapability("models:ollama-cloud"),
+        allowCloudFallback: hasCapability("models:cloud-fallback"),
+      });
       if (handled) return;
     }
 
@@ -2233,15 +2830,16 @@ async function handleRequest(req, res) {
 
     if (path === "/api/autonomous/start" && req.method === "POST") {
       if (!autonomous.running) {
-        autonomous.running = true;
-        autonomousLoop();
+        if (!startAutonomousLoop()) {
+          throw new HttpError(409, "Autonomous loop is still stopping", "autonomous_stopping");
+        }
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true, running: true }));
     }
 
     if (path === "/api/autonomous/stop" && req.method === "POST") {
-      autonomous.running = false;
+      stopAutonomousLoop();
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true, running: false }));
     }
@@ -2275,7 +2873,8 @@ async function handleRequest(req, res) {
         hiveScript: existsSync(hivePath),
         encryptionKey: existsSync(keyPath),
         instanceFile: existsSync(instancePath),
-        instance: "alpha",
+        instance: YOUI_HIVE_INSTANCE || null,
+        identitySource: YOUI_HIVE_INSTANCE ? "YOUI_HIVE_INSTANCE" : null,
         natsReachable: false,
         tunnelLogTail: "",
         issues: [],
@@ -2288,17 +2887,25 @@ async function handleRequest(req, res) {
         },
       };
 
-      try { if (existsSync(instancePath)) hiveStatus.instance = readFileSync(instancePath, "utf-8").trim(); } catch {}
+      if (!YOUI_HIVE_INSTANCE) {
+        hiveStatus.issues.push("YOUI_HIVE_INSTANCE is not explicitly configured; HIVE operations are disabled");
+      }
       if (!hiveStatus.encryptionKey) hiveStatus.issues.push("No encryption key at ~/.love/hive/key");
       if (!hiveStatus.hiveScript) hiveStatus.issues.push("hive.py not found");
 
       // Check NATS tunnel — Alpha uses 4222, Gamma uses 2222
       try {
-        execSync("nc -z -w 2 127.0.0.1 4222 2>/dev/null", { timeout: 3000 });
+        execSync("nc -z -w 2 127.0.0.1 4222 2>/dev/null", {
+          timeout: 3000,
+          env: internalToolEnv(),
+        });
         hiveStatus.natsReachable = true;
       } catch {
         try {
-          execSync("nc -z -w 2 127.0.0.1 2222 2>/dev/null", { timeout: 3000 });
+          execSync("nc -z -w 2 127.0.0.1 2222 2>/dev/null", {
+            timeout: 3000,
+            env: internalToolEnv(),
+          });
           hiveStatus.natsReachable = true;
         } catch {
           hiveStatus.issues.push("NATS not reachable on localhost:4222 or 2222 — SSH tunnel may be down");
@@ -2317,16 +2924,22 @@ async function handleRequest(req, res) {
       return res.end(JSON.stringify(hiveStatus));
     }
 
-    if (path === "/api/hive/check") {
+    if (path === "/api/hive/check" && req.method === "POST") {
       const hivePath = join(state.soulDir, "hive/hive.py");
+      const env = hiveToolEnv();
       const result = { messages: [], error: null, raw: "" };
       try {
-        const output = execSync(`python3 "${hivePath}" check 2>/dev/null`, {
-          encoding: "utf-8", timeout: 15000,
+        const { stdout } = await execFileAsync("python3", [hivePath, "check"], {
+          encoding: "utf-8",
+          timeout: 15000,
+          env,
+          signal: activeRequestSignal(),
         });
+        const output = stdout || "";
         result.raw = output.trim();
         result.messages = output.trim().split("\n").filter(Boolean);
       } catch (e) {
+        if (activeRequestSignal()?.aborted) throw e;
         result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2350,18 +2963,19 @@ async function handleRequest(req, res) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: "invalid message (string, ≤4000 chars)" }));
       }
+      const env = hiveToolEnv();
       try {
-        // spawnSync with arg array — no shell, no injection possible
-        const proc = spawnSync("python3", [hivePath, "send", body.channel, body.message], {
-          encoding: "utf-8", timeout: 15000,
+        // Arg array + async cancellation — no shell interpolation.
+        const { stdout } = await execFileAsync("python3", [hivePath, "send", body.channel, body.message], {
+          encoding: "utf-8",
+          timeout: 15000,
+          env,
+          signal: activeRequestSignal(),
         });
-        if (proc.status === 0) {
-          result.ok = true;
-          result.output = (proc.stdout || "").trim();
-        } else {
-          result.error = ((proc.stderr || proc.stdout || "").trim().split("\n").slice(-3).join("\n")) || `exit ${proc.status}`;
-        }
+        result.ok = true;
+        result.output = (stdout || "").trim();
       } catch (e) {
+        if (activeRequestSignal()?.aborted) throw e;
         result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2370,14 +2984,20 @@ async function handleRequest(req, res) {
 
     if (path === "/api/hive/who") {
       const hivePath = join(state.soulDir, "hive/hive.py");
+      const env = hiveToolEnv();
       const result = { agents: [], error: null, raw: "" };
       try {
-        const output = execSync(`python3 "${hivePath}" who 2>/dev/null`, {
-          encoding: "utf-8", timeout: 15000,
+        const { stdout } = await execFileAsync("python3", [hivePath, "who"], {
+          encoding: "utf-8",
+          timeout: 15000,
+          env,
+          signal: activeRequestSignal(),
         });
+        const output = stdout || "";
         result.raw = output.trim();
         result.agents = output.trim().split("\n").filter(Boolean);
       } catch (e) {
+        if (activeRequestSignal()?.aborted) throw e;
         result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2392,42 +3012,296 @@ async function handleRequest(req, res) {
 
     if (path === "/api/youspeak/report") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(ys.report()));
+      return res.end(JSON.stringify(state.ys.report()));
     }
 
     if (path === "/api/youspeak/trends") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(ys.trends() || { sessions: 0 }));
+      return res.end(JSON.stringify(state.ys.trends() || { sessions: 0 }));
     }
 
     if (path === "/api/youspeak/reset" && req.method === "POST") {
-      ys.persist(); // Save before reset
-      ys = createKernel({ agent: state.agent }); // Fresh kernel
+      state.ys.persist(); // Save before reset
+      state.ys = createKernel({ agent: state.agent }); // Fresh kernel
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
     }
 
     // ── Static Files ────────────────────────────────────
-    if (path === "/" || path === "/index.html") {
+    if ((path === "/" || path === "/index.html") && (req.method === "GET" || req.method === "HEAD")) {
       const html = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html" });
-      return res.end(html);
+      res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
+      return res.end(req.method === "HEAD" ? undefined : html);
     }
 
-    const filePath = join(__dirname, "public", path);
-    if (existsSync(filePath)) {
+    const publicRoot = resolve(join(__dirname, "public"));
+    const filePath = resolve(publicRoot, `.${path}`);
+    const insidePublic = filePath === publicRoot || filePath.startsWith(`${publicRoot}/`);
+    if (insidePublic && (req.method === "GET" || req.method === "HEAD") && existsSync(filePath)) {
       const ext = extname(filePath);
       res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
-      return res.end(readFileSync(filePath));
+      return res.end(req.method === "HEAD" ? undefined : readFileSync(filePath));
     }
 
     res.writeHead(404);
     res.end("Not Found");
 
   } catch (e) {
-    console.error("Request error:", e);
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: e.message }));
+    const statusCode = e instanceof HttpError ? e.statusCode : 500;
+    if (statusCode >= 500) console.error("Request error:", e);
+    if (res.headersSent) return res.end();
+    sendJson(res, statusCode, {
+      error: e.message || "Request failed",
+      code: e.code || "request_error",
+    });
+  }
+}
+
+async function handleSessionApi(req, res, url, path, client) {
+  if (!SERVER_CAPABILITIES.has("sessions:manage")) {
+    return sendJson(res, 403, {
+      error: 'capability "sessions:manage" is disabled',
+      code: "capability_denied",
+    });
+  }
+
+  const credentials = sessionRequestCredentials(req);
+  const selectedId = credentials.id || client.defaultSessionId;
+
+  if (path === "/api/sessions" && req.method === "GET") {
+    return sendJson(res, 200, {
+      current: selectedId || client.defaultSessionId,
+      default: client.defaultSessionId,
+      sessions: sessionRegistry.listSessions(client).map(session => serializeSession(session)),
+      total: client.sessionIds.size,
+    });
+  }
+
+  if (path === "/api/sessions" && req.method === "POST") {
+    const body = await parseBody(req);
+    if (!validPageId(credentials.pageId)) {
+      throw new HttpError(400, "A valid page instance is required", "invalid_page");
+    }
+    if (body.agent !== undefined && !AGENTS[String(body.agent).toLowerCase()]) {
+      throw new HttpError(400, "Unknown agent", "invalid_agent");
+    }
+    if (body.model !== undefined && (!ALL_VALID_MODELS.includes(body.model))) {
+      throw new HttpError(400, "Unknown model", "invalid_model");
+    }
+    const created = sessionRegistry.createSession(client, {
+      label: body.label,
+      agent: body.agent,
+      model: body.model,
+      pageId: credentials.pageId,
+    });
+    const { session, token } = created;
+    session.state.sessionId = session.id;
+    return sendJson(res, 201, {
+      session: serializeSession(session),
+      sessionToken: token,
+    });
+  }
+
+  if (path === "/api/sessions/current" && req.method === "GET") {
+    const session = requireSessionCredential(client, selectedId, credentials.token);
+    requirePageLease(session, credentials.pageId);
+    return sendJson(res, 200, {
+      session: serializeSession(session, url.searchParams.get("include") === "messages"),
+    });
+  }
+
+  const match = path.match(/^\/api\/sessions\/([A-Za-z0-9_-]{12,80})(?:\/(clear|claim|release))?$/);
+  if (!match) throw new HttpError(404, "Session route not found", "not_found");
+  const [, id, action] = match;
+  const session = requireSessionCredential(client, id, credentials.token);
+
+  if (action === "claim" && req.method === "POST") {
+    if (!validPageId(credentials.pageId)) {
+      throw new HttpError(400, "A valid page instance is required", "invalid_page");
+    }
+    if (!sessionRegistry.claimSession(session, credentials.pageId)) {
+      throw new HttpError(409, "Session is active in another page", "session_claimed");
+    }
+    return sendJson(res, 200, { ok: true, session: serializeSession(session) });
+  }
+
+  requirePageLease(session, credentials.pageId);
+
+  if (!action && req.method === "GET") {
+    return sendJson(res, 200, {
+      session: serializeSession(session, url.searchParams.get("include") === "messages"),
+    });
+  }
+
+  if (action === "release" && req.method === "POST") {
+    if (session.state.chatInFlight) {
+      throw new HttpError(409, "Session has an active turn", "session_busy");
+    }
+    sessionRegistry.releaseSession(session, credentials.pageId);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (action === "clear" && req.method === "POST") {
+    if (session.state.chatInFlight) {
+      throw new HttpError(409, "Session has an active turn", "session_busy");
+    }
+    session.state.messages = [];
+    session.state.turnCount = 0;
+    session.state.totalToolCalls = 0;
+    session.state.totalThinkingTokens = 0;
+    session.updatedAt = Date.now();
+    return sendJson(res, 200, { ok: true, session: serializeSession(session) });
+  }
+
+  if (!action && req.method === "DELETE") {
+    if (session.state.chatInFlight) {
+      throw new HttpError(409, "Session has an active turn", "session_busy");
+    }
+    sessionRegistry.deleteSession(client, id);
+    return sendJson(res, 200, {
+      ok: true,
+      deleted: id,
+      default: client.defaultSessionId,
+    });
+  }
+
+  throw new HttpError(405, "Method not allowed", "method_not_allowed");
+}
+
+async function handleRequest(req, res) {
+  setSecurityHeaders(res);
+  try {
+    if (req.method === "OPTIONS") {
+      return sendJson(res, 405, { error: "Cross-origin API access is disabled", code: "cors_disabled" });
+    }
+
+    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+      return sendJson(res, 403, { error: "loopback only", code: "loopback_only" });
+    }
+    if (!isAllowedHost(req)) {
+      return sendJson(res, 421, { error: "unrecognized Host header", code: "bad_host" });
+    }
+
+    const url = new URL(req.url, `http://localhost:${PORT}`);
+    const path = url.pathname;
+    const isApi = path === "/api" || path.startsWith("/api/");
+    const declaredLength = Number(req.headers["content-length"]);
+    const hasTransferEncoding = Boolean(req.headers["transfer-encoding"]);
+    const hasDeclaredBody = Number.isFinite(declaredLength) && declaredLength > 0;
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+      res.setHeader("Connection", "close");
+      return sendJson(res, 413, {
+        error: `Request body exceeds ${MAX_BODY_BYTES} bytes`,
+        code: "body_too_large",
+      });
+    }
+    const routeAcceptsJson = JSON_BODY_ROUTES.has(`${req.method} ${path}`);
+    if ((hasTransferEncoding || hasDeclaredBody) && !routeAcceptsJson) {
+      res.setHeader("Connection", "close");
+      return sendJson(res, 400, {
+        error: "This route does not accept a request body",
+        code: "unexpected_body",
+      });
+    }
+
+    if (!isApi) {
+      const isHtml = path === "/" || path === "/deploy" || path.endsWith(".html");
+      if (isHtml && !currentBrowserClient(req)) {
+        createBrowserClient(req, res);
+      }
+      return await handleSessionRequest(req, res, url, path);
+    }
+
+    if (path === "/api/health" && req.method === "GET") {
+      return sendJson(res, 200, {
+        ok: true,
+        boundary: "loopback",
+        remoteAccess: "ssh-tunnel-only",
+      });
+    }
+
+    const client = currentBrowserClient(req);
+    if (!client) {
+      return sendJson(res, 401, {
+        error: "Open the YOUI page first to establish a browser session",
+        code: "authentication_required",
+      });
+    }
+
+    if (UNSAFE_METHODS.has(req.method)) {
+      const csrfToken = req.headers["x-youi-csrf"];
+      if (!isSameOrigin(req) || typeof csrfToken !== "string" || !safeEqual(csrfToken, client.csrfToken)) {
+        return sendJson(res, 403, {
+          error: "same-origin CSRF validation failed",
+          code: "csrf_rejected",
+        });
+      }
+    }
+
+    if (path === "/api/sessions" || path.startsWith("/api/sessions/")) {
+      return await handleSessionApi(req, res, url, path, client);
+    }
+
+    const credentials = sessionRequestCredentials(req);
+    const session = requireSessionCredential(client, credentials.id, credentials.token);
+    requirePageLease(session, credentials.pageId);
+    session.state.sessionId = session.id;
+
+    if (UNSAFE_METHODS.has(req.method) && path.startsWith("/api/deploy/")) {
+      return sendJson(res, 410, {
+        error: "Legacy hard-coded release routes are retired",
+        code: "legacy_release_route_retired",
+        hint: "Use a target-scoped release workflow with separate commit, publish, and deploy authority.",
+      });
+    }
+
+    if (UNSAFE_METHODS.has(req.method)
+      && path !== "/api/chat"
+      && session.state.chatInFlight) {
+      return sendJson(res, 409, {
+        error: "Session has an active turn",
+        code: "session_busy",
+      });
+    }
+
+    const requiredCapability = requiredRouteCapability(path, req.method);
+    if (!requiredCapability) {
+      const allowedMethods = allowedRouteMethods(path);
+      if (allowedMethods.size > 0) {
+        return sendJson(res, 405, {
+          error: "Method not allowed",
+          code: "method_not_allowed",
+        }, {
+          Allow: [...allowedMethods].sort().join(", "),
+        });
+      }
+      return sendJson(res, 403, {
+        error: "API route has no capability policy",
+        code: "capability_policy_missing",
+      });
+    }
+    if (requiredCapability && !session.state.capabilities.has(requiredCapability)) {
+      return sendJson(res, 403, {
+        error: `capability "${requiredCapability}" is disabled`,
+        code: "capability_denied",
+        capability: requiredCapability,
+      });
+    }
+
+    return await runSessionRequest(
+      req,
+      res,
+      session,
+      () => handleSessionRequest(req, res, url, path),
+    );
+  } catch (e) {
+    const statusCode = e instanceof HttpError ? e.statusCode : 500;
+    if (statusCode >= 500) console.error("Request error:", e);
+    if (res.headersSent) return res.end();
+    return sendJson(res, statusCode, {
+      error: e.message || "Request failed",
+      code: e.code || "request_error",
+    });
   }
 }
 
@@ -2435,27 +3309,64 @@ async function handleRequest(req, res) {
 // CHAT — The core SSE streaming handler
 // ═════════════════════════════════════════════════════════════════════
 
-// In-flight guard. state.messages is a single shared array; two parallel
-// /api/chat calls (e.g. YOUI open in two tabs) would interleave their
-// pushes and corrupt the conversation context fed to the LLM. Until we
-// keyset state by session id, we reject the second concurrent call loudly
-// rather than silently mangle history. Single-tab use is unaffected.
-let chatInFlight = false;
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error("Browser chat turn cancelled");
+}
+
+function abortableDelay(milliseconds, signal) {
+  if (!signal) return new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
+  throwIfAborted(signal);
+  return new Promise((resolveDelay, rejectDelay) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolveDelay();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      rejectDelay(signal.reason instanceof Error ? signal.reason : new Error("Browser chat turn cancelled"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 async function handleChat(req, res) {
-  if (chatInFlight) {
+  const turnState = activeState();
+  if (turnState.chatInFlight) {
     res.writeHead(409, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({
-      error: "another chat turn is already streaming on this server",
-      hint: "wait for it to finish, or open a separate YOUI process on a different port",
+      error: "another chat turn is already streaming in this browser session",
+      hint: "wait for it to finish, or use a separate YOUI tab/session",
     }));
   }
-  chatInFlight = true;
-  // Always release the guard, even on early returns / thrown errors.
-  res.on("close", () => { chatInFlight = false; });
-  res.on("finish", () => { chatInFlight = false; });
+  turnState.chatInFlight = true;
 
+  const turnAbort = new AbortController();
+  let responseFinished = false;
+  const onFinish = () => { responseFinished = true; };
+  const onDisconnect = () => {
+    if (!responseFinished && !turnAbort.signal.aborted) {
+      turnAbort.abort(new Error("Browser disconnected"));
+    }
+  };
+  res.once("finish", onFinish);
+  res.once("close", onDisconnect);
+  req.once("aborted", onDisconnect);
+
+  try {
+    return await handleChatTurn(req, res, turnAbort.signal);
+  } finally {
+    turnState.chatInFlight = false;
+    res.off("finish", onFinish);
+    res.off("close", onDisconnect);
+    req.off("aborted", onDisconnect);
+  }
+}
+
+async function handleChatTurn(req, res, signal) {
   const body = await parseBody(req);
+  throwIfAborted(signal);
   const userMessage = body.message;
   const rawMode = body.raw === true;
   // Raw mode forces direct (no orchestrator), no tools, no system prompt,
@@ -2483,12 +3394,19 @@ async function handleChat(req, res) {
 
       const { classifyTask, planTask, executeOrchestrator: runOrch } = await import("./orchestrator-bridge.mjs");
       // All three are async now — execFile-based, no shell, no event-loop block.
-      const classification = await classifyTask(userMessage);
+      const classification = await classifyTask(userMessage, "", { signal });
+      throwIfAborted(signal);
 
       sendSSE(res, "orchestrate_classified", classification);
 
       // Get the dispatch plan
-      const plan = await planTask(userMessage, "", body.orchestrateMode || "");
+      const plan = await planTask(
+        userMessage,
+        "",
+        body.orchestrateMode || "",
+        { signal },
+      );
+      throwIfAborted(signal);
 
       sendSSE(res, "orchestrate_plan", plan);
 
@@ -2508,7 +3426,9 @@ async function handleChat(req, res) {
         const result = await runOrch(userMessage, {
           mode: body.orchestrateMode || "",
           provider: body.orchestrateProvider || "",
+          signal,
         });
+        throwIfAborted(signal);
 
         // Track usage
         if (result.total_tokens) {
@@ -2530,6 +3450,11 @@ async function handleChat(req, res) {
           total_elapsed: result.total_elapsed,
           success: result.success,
         });
+
+        state.messages.push(
+          { role: "user", content: userMessage },
+          { role: "assistant", content: result.content || result.error || "(no output)" },
+        );
 
         // Also send as regular text for the chat display
         sendSSE(res, "text", { content: result.content || result.error || "(no output)" });
@@ -2554,6 +3479,7 @@ async function handleChat(req, res) {
       }
       // Fall through to direct mode for conversational messages
     } catch (e) {
+      throwIfAborted(signal);
       sendSSE(res, "orchestrate_error", { error: e.message });
       // Fall through to direct mode on orchestrator failure
     }
@@ -2577,46 +3503,53 @@ async function handleChat(req, res) {
   let maxTurns = rawMode ? 1 : 50;
 
   for (let turn = 0; turn < maxTurns; turn++) {
-    state.turnCount++;
+    throwIfAborted(signal);
+    if (!rawMode) state.turnCount++;
     sendSSE(res, "status", { phase: "thinking", turn: turn + 1, agent: state.agent });
 
     let response;
     try {
       response = isOllamaModel(state.model)
         ? await callOllamaModel(chatMessages, systemPrompt, {
+            raw: rawMode,
+            signal,
             onDelta: (delta) => {
-              if (delta.type === "text_delta") sendSSE(res, "text_delta", { delta: delta.text });
+              if (!signal.aborted && delta.type === "text_delta") {
+                sendSSE(res, "text_delta", { delta: delta.text });
+              }
             }
           })
-        : await callClaude(chatMessages, systemPrompt, { raw: rawMode });
+        : await callClaude(chatMessages, systemPrompt, { raw: rawMode, signal });
     } catch (e) {
+      throwIfAborted(signal);
       if (e.status === 429) {
-        ys.senseRateLimit();
+        if (!rawMode) state.ys.senseRateLimit();
         sendSSE(res, "rate_limit", { retryAfter: e.retryAfter, budget: e.budget });
         // Wait and retry
-        await new Promise(r => setTimeout(r, Math.min(e.retryAfter * 1000, 60000)));
-        state.turnCount--;
+        await abortableDelay(Math.min(e.retryAfter * 1000, 60000), signal);
+        if (!rawMode) state.turnCount--;
         continue;
       }
       if (e.status === 529) {
         sendSSE(res, "overloaded", { retryAfter: 30 });
-        await new Promise(r => setTimeout(r, 30000));
-        state.turnCount--;
+        await abortableDelay(30000, signal);
+        if (!rawMode) state.turnCount--;
         continue;
       }
       sendSSE(res, "error", { message: e.message || "Unknown error" });
       break;
     }
+    throwIfAborted(signal);
 
     // Process response blocks
     const usage = response.usage || {};
     const thinkingTokens = usage.thinking_tokens || 0;
-    state.totalThinkingTokens += thinkingTokens;
+    if (!rawMode) state.totalThinkingTokens += thinkingTokens;
 
     // YOUSPEAK L2: Sense thinking
-    ys.senseThinking(usage);
+    if (!rawMode) state.ys.senseThinking(usage);
     // YOUSPEAK L5: Sense turn + budget
-    ys.senseTurn(budget);
+    if (!rawMode) state.ys.senseTurn(budget);
 
     const toolUseBlocks = [];
 
@@ -2624,7 +3557,7 @@ async function handleChat(req, res) {
       if (block.type === "thinking" && block.thinking?.trim()) {
         sendSSE(res, "thinking", { content: block.thinking });
       } else if (block.type === "text" && block.text?.trim()) {
-        const ysMetrics = measureYouspeak(block.text);
+        const ysMetrics = rawMode ? null : measureYouspeak(block.text);
         if (response._streamed) {
           // Text already streamed token-by-token; send finalization with rendered content + youspeak
           sendSSE(res, "text_done", { content: block.text, youspeak: ysMetrics });
@@ -2633,13 +3566,25 @@ async function handleChat(req, res) {
         }
       } else if (block.type === "tool_use") {
         toolUseBlocks.push(block);
-        sendSSE(res, "tool_call", { id: block.id, name: block.name, input: block.input });
+        if (!rawMode) {
+          sendSSE(res, "tool_call", { id: block.id, name: block.name, input: block.input });
+        }
       }
+    }
+
+    if (rawMode && toolUseBlocks.length > 0) {
+      sendSSE(res, "error", { message: "Raw mode rejected a provider tool call" });
+      throw new Error("Raw mode provider returned a tool call");
     }
 
     // Track provider usage
     const provider = response._provider || (isOllamaModel(state.model) ? "ollama" : "claude");
-    trackProviderUsage(provider, state.model, { ...usage, thinking_tokens: thinkingTokens });
+    if (!rawMode) {
+      trackProviderUsage(provider, state.model, {
+        ...usage,
+        thinking_tokens: thinkingTokens,
+      });
+    }
 
     // Usage info with YOUSPEAK status
     sendSSE(res, "usage", {
@@ -2654,10 +3599,12 @@ async function handleChat(req, res) {
         resetIn: budget.fiveHour.reset > Date.now() ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) : null,
         isOverage: budget.isUsingOverage,
       },
-      ollamaCost: provider === "ollama" ? providerUsage.ollama.cost : undefined,
+      ollamaCost: provider === "ollama" ? state.providerUsage.ollama.cost : undefined,
       turn: state.turnCount,
-      youspeak: ys.statusLine(),
+      youspeak: state.ys.statusLine(),
     });
+
+    if (!rawMode) state.messages.push({ role: "assistant", content: response.content });
 
     // No tools → done
     if (toolUseBlocks.length === 0) break;
@@ -2666,16 +3613,17 @@ async function handleChat(req, res) {
     // Single tool_call: serial (no overhead). 2+: Promise.all for concurrent dispatch.
     // This is the main throughput win for agentic GLM 5.1 interaction — tool calls
     // (bash, read_file, grep, etc.) are I/O bound, not CPU bound.
-    state.messages.push({ role: "assistant", content: response.content });
     const toolResults = [];
 
     if (toolUseBlocks.length === 1) {
+      throwIfAborted(signal);
       // Single tool — serial (no Promise.all overhead)
       const toolUse = toolUseBlocks[0];
       state.totalToolCalls++;
-      const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
+      const toolSense = state.ys.senseToolCall(toolUse.name, toolUse.input, null);
       sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
       const result = await executeTool(toolUse.name, toolUse.input);
+      throwIfAborted(signal);
       const truncated = result.slice(0, 50000);
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: truncated });
       sendSSE(res, "tool_result", { id: toolUse.id, name: toolUse.name, result: truncated.slice(0, 5000) });
@@ -2684,13 +3632,14 @@ async function handleChat(req, res) {
       // Emit all "executing" SSE events first so the UI shows them immediately
       for (const toolUse of toolUseBlocks) {
         state.totalToolCalls++;
-        const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
+        const toolSense = state.ys.senseToolCall(toolUse.name, toolUse.input, null);
         sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
       }
 
       const settled = await Promise.all(
         toolUseBlocks.map(async (toolUse) => {
           try {
+            throwIfAborted(signal);
             const result = await executeTool(toolUse.name, toolUse.input);
             return { toolUse, result: result.slice(0, 50000), ok: true };
           } catch (e) {
@@ -2698,6 +3647,7 @@ async function handleChat(req, res) {
           }
         })
       );
+      throwIfAborted(signal);
 
       // Collect results in original order and emit SSE
       for (const { toolUse, result } of settled) {
@@ -2709,10 +3659,10 @@ async function handleChat(req, res) {
     state.messages.push({ role: "user", content: toolResults });
 
     // YOUSPEAK L4: Sense context after adding messages
-    ys.senseContext(state.messages, systemPrompt.length);
+    state.ys.senseContext(state.messages, systemPrompt.length);
 
     // YOUSPEAK DECIDE: Check for adaptive signals
-    const signals = ys.decide(state.effort, state.model, budget);
+    const signals = state.ys.decide(state.effort, state.model, budget);
     if (signals.length > 0) {
       sendSSE(res, "youspeak_signals", { signals });
       for (const sig of signals) {
@@ -2723,7 +3673,7 @@ async function handleChat(req, res) {
         }
         // Auto-apply context pruning
         if (sig.type === "context" && (sig.action === "prune_recommended" || sig.action === "evict_old_results")) {
-          const { pruned } = ys.pruneContext(state.messages);
+          const { pruned } = state.ys.pruneContext(state.messages);
           if (pruned > 0) {
             sendSSE(res, "youspeak_action", { action: "context_pruned", pruned, reason: sig.reason });
           }
@@ -2732,12 +3682,13 @@ async function handleChat(req, res) {
     }
   }
 
+  throwIfAborted(signal);
   // Persist YOUSPEAK session data
-  ys.persist();
+  if (!IS_TEST && !rawMode) state.ys.persist();
 
   // SP1: fire-and-forget mode-two detection (post-stream, no await)
   // Direct-mode terminal response is the last assistant message in state.messages.
-  {
+  if (!rawMode) {
     const lastAssistant = [...state.messages].reverse().find(m => m.role === "assistant");
     fireDetection(state, lastAssistant ? lastAssistant.content : null);
   }
@@ -2746,7 +3697,7 @@ async function handleChat(req, res) {
     turnCount: state.turnCount,
     totalToolCalls: state.totalToolCalls,
     totalThinkingTokens: state.totalThinkingTokens,
-    youspeak: ys.report(),
+    youspeak: state.ys.report(),
   });
   res.end();
 }
@@ -2756,18 +3707,23 @@ async function handleChat(req, res) {
 // ═════════════════════════════════════════════════════════════════════
 
 const server = createServer(handleRequest);
+server.headersTimeout = 30_000;
+server.requestTimeout = 5 * 60_000;
+server.maxHeadersCount = 100;
 
-// Bind: macOS won't let a non-root process bind a privileged port (777)
-// to an explicit address — only to the wildcard. So we listen wildcard
-// and enforce loopback at the application layer (see handleRequest /
-// isLoopback). Effective security: loopback-only by default. To reach
-// YOUI from another device, tunnel via SSH:
-//   ssh -L 8777:localhost:777 yu@air   →   http://localhost:8777
-// Set ALLOW_LAN=1 to disable the gate (only do this with auth in place).
-// HOST is honored if you choose a non-privileged port.
-const HOST = process.env.HOST || undefined;
+// Bind to IPv4 loopback. To reach YOUI from another device,
+// keep this boundary and tunnel via SSH:
+//   ssh -L 777:localhost:777 yu@air   →   http://localhost:777
 
 server.listen(PORT, HOST, async () => {
+  const address = server.address();
+  const boundPort = typeof address === "object" && address ? address.port : PORT;
+  const boundAddress = typeof address === "object" && address ? address.address : HOST;
+  if (IS_TEST) {
+    console.log(`YOUI_TEST_READY ${boundPort} ${boundAddress}`);
+    return;
+  }
+
   const agent = AGENTS[state.agent];
   console.log("");
   console.log("\x1b[35m\x1b[1m  ═══════════════════════════════════════\x1b[0m");
@@ -2781,22 +3737,23 @@ server.listen(PORT, HOST, async () => {
   // Detect local Ollama models
   await detectLocalModels();
 
-  const policy = ALLOW_LAN
-    ? `\x1b[33m(LAN exposed — ALLOW_LAN=1, hope you added auth)\x1b[0m`
-    : `\x1b[2m(loopback only — non-loopback connections get 403; set ALLOW_LAN=1 to open up)\x1b[0m`;
-  console.log(`\x1b[32m  ➜  http://localhost:${PORT}  ${policy}\x1b[0m`);
+  const policy = `\x1b[2m(loopback only — remote access requires an SSH tunnel)\x1b[0m`;
+  console.log(`\x1b[32m  ➜  http://localhost:${boundPort}  ${policy}\x1b[0m`);
+  console.log(`\x1b[2m  Capabilities: ${[...SERVER_CAPABILITIES].sort().join(", ") || "(none)"}\x1b[0m`);
   console.log("");
 
-  appendDailyNote(`YOUI Web started on port ${PORT}. Agent: ${agent.name}. Model: ${state.model}. ${ALLOW_LAN ? "LAN open" : "loopback-only"}.`);
+  if (SERVER_CAPABILITIES.has("memory:write")) {
+    appendDailyNote(`YOUI Web started on port ${boundPort}. Agent: ${agent.name}. Model: ${state.model}. Loopback-only.`);
+  }
   loadAutonomousState();
   // Autonomous loop is OFF by default — set AUTONOMOUS=1 to auto-start at boot.
   // Otherwise, start it on demand via POST /api/autonomous/start.
-  if (process.env.AUTONOMOUS === "1") {
-    autonomous.running = true;
-    autonomousLoop();
+  if (process.env.AUTONOMOUS === "1" && SERVER_CAPABILITIES.has("autonomous:control")) {
+    startAutonomousLoop();
     console.log(`  \x1b[32m✓\x1b[0m Autonomous: LIVE (${autonomous.cycleCount} prior cycles, continuous)`);
+  } else if (process.env.AUTONOMOUS === "1") {
+    console.warn("  ⚠ Autonomous boot requested but autonomous:control is not granted; staying OFF.");
   } else {
     console.log(`  \x1b[2m○ Autonomous: OFF (${autonomous.cycleCount} prior cycles) — set AUTONOMOUS=1 or POST /api/autonomous/start\x1b[0m`);
   }
-  startFileIPC();
 });

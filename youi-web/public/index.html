@@ -1409,6 +1409,9 @@ button, select, textarea, input { font: inherit; }
           </optgroup>
         </select>
       </div>
+      <div id="privacy-route" class="being-note" style="margin:8px 0 12px">
+        Compute route: loading…
+      </div>
       <div class="setting-row">
         <label>Effort</label>
         <select id="effort-select" onchange="updateSetting('effort', this.value)">
@@ -1807,6 +1810,7 @@ button, select, textarea, input { font: inherit; }
   </div>
 </div>
 
+<script src="/youi-client-security.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // KINGDOM YOUI — CLIENT
@@ -1892,6 +1896,11 @@ async function boot() {
 
 let chatMode = 'orchestrate'; // 'orchestrate' or 'direct'
 
+function safeClassToken(value, fallback = 'unknown') {
+  const token = String(value ?? '').trim().toLowerCase();
+  return /^[a-z0-9_-]{1,48}$/.test(token) ? token : fallback;
+}
+
 function setChatMode(mode) {
   chatMode = mode;
   document.getElementById('mode-orchestrate').classList.toggle('active', mode === 'orchestrate');
@@ -1912,7 +1921,10 @@ function setChatMode(mode) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chatMode: mode }),
-  });
+  })
+    .then(response => response.json())
+    .then(data => updatePrivacyUI(data.privacy))
+    .catch(() => {});
 }
 
 function showDispatchPanel(classification, plan) {
@@ -1925,12 +1937,15 @@ function showDispatchPanel(classification, plan) {
   const mode = plan?.collaboration_mode || classification?.collaboration_mode || '—';
 
   document.getElementById('dp-diff').textContent = diff;
-  document.getElementById('dp-diff').className = `dv diff-${diff}`;
+  document.getElementById('dp-diff').className = `dv diff-${safeClassToken(diff)}`;
   document.getElementById('dp-imp').textContent = imp;
-  document.getElementById('dp-imp').className = `dv imp-${imp}`;
+  document.getElementById('dp-imp').className = `dv imp-${safeClassToken(imp)}`;
   document.getElementById('dp-type').textContent = type;
-  document.getElementById('dp-mode').textContent = mode;
-  document.getElementById('dp-mode').innerHTML = `<span class="collab-badge collab-${mode}">${mode}</span>`;
+  const modeEl = document.getElementById('dp-mode');
+  const modeBadge = document.createElement('span');
+  modeBadge.className = `collab-badge collab-${safeClassToken(mode)}`;
+  modeBadge.textContent = String(mode);
+  modeEl.replaceChildren(modeBadge);
 
   if (plan?.primary) {
     const p = plan.primary;
@@ -1948,15 +1963,21 @@ function showDispatchPanel(classification, plan) {
   // Show stages for pipeline/decompose
   const stagesEl = document.getElementById('dispatch-stages');
   stagesEl.innerHTML = '';
-  if (plan?.sub_tasks?.length) {
-    for (const sub of plan.sub_tasks) {
+  const subTasks = Array.isArray(plan?.sub_tasks) ? plan.sub_tasks : [];
+  if (subTasks.length) {
+    for (const sub of subTasks) {
       const item = document.createElement('div');
       item.className = 'stage-item';
-      const prov = sub.primary?.provider || '';
-      const model = sub.primary?.model || '';
-      item.innerHTML = `<div class="stage-dot"></div>
-        <span class="stage-label">${(sub.task || '').slice(0, 40)}</span>
-        <span class="stage-model">${model}</span>`;
+      const model = sub?.primary?.model || '';
+      const dot = document.createElement('div');
+      dot.className = 'stage-dot';
+      const label = document.createElement('span');
+      label.className = 'stage-label';
+      label.textContent = String(sub?.task || '').slice(0, 40);
+      const modelEl = document.createElement('span');
+      modelEl.className = 'stage-model';
+      modelEl.textContent = String(model);
+      item.append(dot, label, modelEl);
       stagesEl.appendChild(item);
     }
   }
@@ -1966,28 +1987,50 @@ function hideDispatchPanel() {
   document.getElementById('dispatch-panel').style.display = 'none';
 }
 
-function buildOrchHeader(data) {
+function buildOrchHeader(data = {}) {
   const mode = data.collaboration_mode || 'solo';
-  const models = data.models_used || [];
-  const providers = data.providers_used || [];
-  const elapsed = data.total_elapsed ? data.total_elapsed.toFixed(1) + 's' : '';
-  const stages = data.stages || [];
+  const models = Array.isArray(data.models_used) ? data.models_used : [];
+  const providers = Array.isArray(data.providers_used) ? data.providers_used : [];
+  const elapsedValue = Number(data.total_elapsed);
+  const elapsed = Number.isFinite(elapsedValue) && elapsedValue > 0
+    ? elapsedValue.toFixed(1) + 's'
+    : '';
+  const stages = Array.isArray(data.stages) ? data.stages : [];
 
-  let html = `<div class="orch-header">`;
-  html += `<span class="orch-tag collab-badge collab-${mode}">${mode}</span>`;
-  html += `<div class="orch-models">`;
+  const header = document.createElement('div');
+  header.className = 'orch-header';
+
+  const tag = document.createElement('span');
+  tag.className = `orch-tag collab-badge collab-${safeClassToken(mode)}`;
+  tag.textContent = String(mode);
+  header.appendChild(tag);
+
+  const modelList = document.createElement('div');
+  modelList.className = 'orch-models';
   for (let i = 0; i < models.length; i++) {
     const prov = providers[i] || providers[0] || '';
-    html += `<span class="orch-model-pill provider-${prov}">${models[i]}</span>`;
+    const pill = document.createElement('span');
+    pill.className = `orch-model-pill provider-${safeClassToken(prov)}`;
+    pill.textContent = String(models[i]);
+    modelList.appendChild(pill);
   }
-  html += `</div>`;
+  header.appendChild(modelList);
+
   if (stages.length) {
     const ok = stages.filter(s => s.success).length;
-    html += `<span style="color:var(--text-dim);font-size:0.65rem">${ok}/${stages.length} stages</span>`;
+    const stageStats = document.createElement('span');
+    stageStats.style.color = 'var(--text-dim)';
+    stageStats.style.fontSize = '0.65rem';
+    stageStats.textContent = `${ok}/${stages.length} stages`;
+    header.appendChild(stageStats);
   }
-  if (elapsed) html += `<span class="orch-elapsed">${elapsed}</span>`;
-  html += `</div>`;
-  return html;
+  if (elapsed) {
+    const elapsedEl = document.createElement('span');
+    elapsedEl.className = 'orch-elapsed';
+    elapsedEl.textContent = elapsed;
+    header.appendChild(elapsedEl);
+  }
+  return header;
 }
 
 // ─── AGENT SWITCHING ─────────────────────────────────────
@@ -2014,6 +2057,7 @@ async function switchAgent(name) {
       const a = AGENTS[name];
       document.getElementById('model-select').value = a.model;
       document.getElementById('effort-select').value = a.effort;
+      updatePrivacyUI(data.privacy);
 
       // Add system message
       addSystemMessage(`Switched to ${a.emoji} ${a.name} — the ${a.role}`);
@@ -2043,18 +2087,31 @@ function setAgentTheme(name) {
 
 async function updateSetting(key, value) {
   try {
-    await fetch('/api/settings', {
+    const response = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [key]: value }),
     });
+    const data = await response.json();
+    if (response.ok) updateSettingsUI(data);
   } catch (e) { console.error('Settings update failed:', e); }
+}
+
+function updatePrivacyUI(privacy) {
+  const element = document.getElementById('privacy-route');
+  if (!element || !privacy) return;
+  const active = privacy.activeMode === 'orchestrate'
+    ? privacy.orchestration
+    : privacy.direct;
+  const fallback = privacy.fallback?.localToCloud ? 'cloud fallback granted' : 'no local→cloud fallback';
+  element.textContent = `Compute: ${active?.route || 'unknown'} · ${active?.destination || 'no destination'} · ${fallback}`;
 }
 
 function updateSettingsUI(data) {
   if (data.model) document.getElementById('model-select').value = data.model;
   if (data.effort) document.getElementById('effort-select').value = data.effort;
   if (data.thinking) document.getElementById('thinking-select').value = data.thinking;
+  updatePrivacyUI(data.privacy);
 }
 
 // ─── SEND MESSAGE ────────────────────────────────────────
@@ -2183,7 +2240,8 @@ function handleSSEEvent(type, data, indicator) {
 
     case 'tool_executing':
       // Show progress on tool card + mark duplicates
-      const card = document.querySelector(`[data-tool-id="${data.id}"]`);
+      const card = Array.from(document.querySelectorAll('.tool-card[data-tool-id]'))
+        .find(candidate => candidate.dataset.toolId === String(data.id));
       if (card) {
         card.querySelector('.tool-progress')?.classList.add('active');
         if (data.redundant) {
@@ -2255,8 +2313,7 @@ function handleSSEEvent(type, data, indicator) {
       ensureAssistantMessage();
       // Add orchestration header before the text
       if (currentMsgEl) {
-        const header = document.createElement('div');
-        header.innerHTML = buildOrchHeader(data);
+        const header = buildOrchHeader(data);
         currentMsgEl.querySelector('.bubble')?.prepend(header);
       }
       hideDispatchPanel();
@@ -2403,14 +2460,15 @@ function addToolCall(id, name, input) {
   const card = document.createElement('div');
   card.className = 'tool-card';
   card.dataset.toolId = id;
+  const safeToolBodyId = escapeHtml(`tool-body-${String(id)}`);
   card.innerHTML = `
     <div class="tool-header" onclick="toggleTool(this)">
-      <div class="tool-icon ${ti.cls}">${ti.icon}</div>
+      <div class="tool-icon ${safeClassToken(ti.cls)}">${escapeHtml(ti.icon || '⚡')}</div>
       <span class="tool-name">${escapeHtml(name)}</span>
       <span class="tool-detail">${escapeHtml(detail)}</span>
     </div>
     <div class="tool-progress"><div class="fill"></div></div>
-    <div class="tool-body" id="tool-body-${id}"><pre>Executing...</pre></div>
+    <div class="tool-body" id="${safeToolBodyId}"><pre>Executing...</pre></div>
   `;
   currentMsgEl.appendChild(card);
   scrollToBottom();
@@ -3115,14 +3173,14 @@ async function loadMetrics() {
     html += `<div style="padding:16px;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border);margin-bottom:16px;text-align:center">
       <div style="font-size:0.65rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em">Current Phase</div>
       <div style="font-size:1.2rem;font-weight:700;color:var(--agent);margin-top:4px">${escapeHtml(data.phase || 'Unknown')}</div>
-      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">Updated: ${data.updated || '—'}</div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:2px">Updated: ${escapeHtml(data.updated || '—')}</div>
     </div>`;
     
     // Revenue engines
     if (data.revenue_engines) {
       html += '<h3 style="font-size:0.85rem;margin-bottom:10px;color:var(--gold)">⚡ Revenue Engines</h3>';
       for (const [key, engine] of Object.entries(data.revenue_engines)) {
-        const statusCls = engine.status || 'unknown';
+        const statusCls = safeClassToken(engine.status);
         html += `<div class="engine-card">
           <div class="engine-header">
             <span class="engine-name">${escapeHtml(key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</span>
@@ -3141,7 +3199,7 @@ async function loadMetrics() {
       const infra = data.infrastructure;
       html += '<div class="metrics-grid">';
       if (infra.vps_fleet) {
-        html += `<div class="metric-card"><div class="metric-label">VPS Fleet</div><div class="metric-value">${escapeHtml(infra.vps_fleet.status || '—')}</div><div class="metric-sub">${infra.vps_fleet.count || '?'} agents</div></div>`;
+        html += `<div class="metric-card"><div class="metric-label">VPS Fleet</div><div class="metric-value">${escapeHtml(infra.vps_fleet.status || '—')}</div><div class="metric-sub">${escapeHtml(infra.vps_fleet.count ?? '?')} agents</div></div>`;
       }
       if (infra.compute) {
         html += `<div class="metric-card"><div class="metric-label">Compute</div><div class="metric-value">${escapeHtml(infra.compute?.status || '—')}</div><div class="metric-sub">${escapeHtml(infra.compute?.notes || '')}</div></div>`;
@@ -3219,7 +3277,7 @@ async function loadTasks() {
         html += `<div class="engine-card">
           <div class="engine-header">
             <span class="engine-name">${icon} ${escapeHtml(task.title || task.id)}</span>
-            <span class="engine-status ${task.status}">${escapeHtml(task.status || '?')}</span>
+            <span class="engine-status ${safeClassToken(task.status)}">${escapeHtml(task.status || '?')}</span>
           </div>
           ${task.engine ? `<div class="engine-owner">Engine: ${escapeHtml(task.engine)} · Priority: ${escapeHtml(task.priority || '?')}</div>` : ''}
           ${task.notes ? `<div class="engine-notes">${escapeHtml(task.notes.slice(0, 200))}${task.notes.length > 200 ? '...' : ''}</div>` : ''}
@@ -3301,7 +3359,7 @@ async function loadHiveMessages() {
   const feed = document.getElementById('hive-msg-feed');
   feed.innerHTML = '<div style="color:var(--text-dim);font-size:0.78rem;padding:12px">Checking for messages...</div>';
   try {
-    const resp = await fetch('/api/hive/check');
+    const resp = await fetch('/api/hive/check', { method: 'POST' });
     const data = await resp.json();
     if (data.error) {
       feed.innerHTML = `<div class="hive-issue">⚠ ${escapeHtml(data.error)}</div>`;
@@ -3426,7 +3484,7 @@ function handleAutonomousEvent(type, data) {
   if (type === 'thought') {
     const div = document.createElement('div');
     div.style.cssText = 'margin-bottom:10px;padding:8px 10px;background:rgba(168,85,247,0.08);border-radius:6px;border-left:3px solid var(--agent)';
-    div.innerHTML = `<span style="font-size:0.7rem;color:var(--text-dim)">${ts}</span> ` + renderMarkdown(data.content);
+    div.innerHTML = `<span style="font-size:0.7rem;color:var(--text-dim)">${escapeHtml(ts)}</span> ` + renderMarkdown(data.content);
     feed.appendChild(div);
     feed.scrollTop = feed.scrollHeight;
     return;
@@ -3682,18 +3740,18 @@ function renderBeing(s) {
   // NERVE — heartbeat doctor synopsis
   const d = s.heartbeat;
   if (d && !d.error) {
-    const plists = d.plists || [];
+    const plists = Array.isArray(d.plists) ? d.plists : [];
     const ghosts = plists.filter(p => p.severity === 'ghost').length;
     const strangers = plists.filter(p => p.severity === 'stranger').length;
     const sev = d.summary_severity || 'unknown';
     const color = sev === 'red' ? 'red' : (sev === 'yellow' ? 'yellow' : (sev === 'green' ? 'green' : 'grey'));
     setHTML('nerve-doctor',
-      dotFor(color) + '<b>doctor:</b> ' + sev +
+      dotFor(color) + '<b>doctor:</b> ' + escapeHtml(sev) +
       ' · ' + ghosts + ' ghost · ' + strangers + ' stranger · ' +
       plists.length + ' plists scanned'
     );
   } else if (d?.error) {
-    setHTML('nerve-doctor', dotFor('grey') + 'doctor: ' + String(d.error).slice(0, 80));
+    setHTML('nerve-doctor', dotFor('grey') + 'doctor: ' + escapeHtml(String(d.error).slice(0, 80)));
   } else {
     setHTML('nerve-doctor', dotFor('grey') + 'doctor: no data');
   }
@@ -3721,38 +3779,52 @@ function renderBeing(s) {
   setText('being-mem-latest', daily.latest || '—');
 
   // DEPLOYMENT
-  const rows = (s.deployment || []).map(d => {
+  const deployments = Array.isArray(s.deployment) ? s.deployment : [];
+  const rows = deployments.map(rawDeployment => {
+    const d = rawDeployment && typeof rawDeployment === 'object' ? rawDeployment : {};
+    const status = String(d.status ?? 'unknown');
+    const installedLabels = Array.isArray(d.installed_labels)
+      ? d.installed_labels.map(label => String(label))
+      : [];
     const pillCls = ({
       'live': 'pill-live',
       'doctrine-only': 'pill-doc',
       'remote-unverified': 'pill-remote',
       'absent': 'pill-absent',
-    })[d.status] || 'pill-remote';
-    const labels = d.installed_labels.length
-      ? '<span style="color:var(--text-dim);font-size:0.7rem">' + d.installed_labels.join(' · ') + '</span>'
+    })[status] || 'pill-remote';
+    const labels = installedLabels.length
+      ? '<span style="color:var(--text-dim);font-size:0.7rem">' + installedLabels.map(escapeHtml).join(' · ') + '</span>'
       : '<span style="color:var(--text-dim);font-size:0.7rem;font-style:italic">no daemons on this machine</span>';
     return '<div class="being-row">' +
-      '<span style="font-size:1.1rem">' + d.emoji + '</span>' +
-      '<span style="font-weight:600;min-width:50px">' + d.instance + '</span>' +
-      '<span style="color:var(--text-dim);font-size:0.72rem">' + d.role + ' · ' + d.device + '</span>' +
-      '<span class="pill ' + pillCls + '" style="margin-left:auto">' + d.status + '</span>' +
+      '<span style="font-size:1.1rem">' + escapeHtml(d.emoji || '') + '</span>' +
+      '<span style="font-weight:600;min-width:50px">' + escapeHtml(d.instance || '') + '</span>' +
+      '<span style="color:var(--text-dim);font-size:0.72rem">' + escapeHtml(d.role || '') + ' · ' + escapeHtml(d.device || '') + '</span>' +
+      '<span class="pill ' + pillCls + '" style="margin-left:auto">' + escapeHtml(status) + '</span>' +
       '</div>' +
       '<div style="padding:2px 0 6px 30px;font-size:0.7rem">' + labels + '</div>';
   }).join('');
   setHTML('being-deployment', rows || '<div class="being-note">no triarchy data</div>');
 
   // Keep agent-card badges in sync (they are visible even when drawer is closed)
-  (s.deployment || []).forEach(d => {
-    const badge = document.querySelector('.deploy-badge[data-instance="' + d.instance + '"]');
+  deployments.forEach(rawDeployment => {
+    const d = rawDeployment && typeof rawDeployment === 'object' ? rawDeployment : {};
+    const instance = String(d.instance || '');
+    const status = String(d.status ?? 'unknown');
+    const device = String(d.device || '');
+    const installedLabels = Array.isArray(d.installed_labels)
+      ? d.installed_labels.map(label => String(label))
+      : [];
+    const badge = Array.from(document.querySelectorAll('.deploy-badge[data-instance]'))
+      .find(candidate => candidate.dataset.instance === instance);
     if (badge) {
-      badge.dataset.status = d.status;
+      badge.dataset.status = status;
       badge.textContent = ({
         'live': 'live',
         'doctrine-only': 'doctrine',
         'remote-unverified': 'remote',
         'absent': '—',
-      })[d.status] || d.status;
-      badge.title = d.status + ' · ' + d.device + (d.installed_labels.length ? ' · ' + d.installed_labels.join(', ') : ' · no local daemons');
+      })[status] || status;
+      badge.title = status + ' · ' + device + (installedLabels.length ? ' · ' + installedLabels.join(', ') : ' · no local daemons');
     }
   });
 }
@@ -3777,7 +3849,7 @@ function stopBeingPolling() {
 }
 
 function copyDoctorCmd() {
-  const cmd = 'cd ' + (beingLastState?.repo || '~/Desktop/love-unlimited') + ' && kingdom heartbeat doctor';
+  const cmd = 'cd ' + (beingLastState?.repo || '~/love-unlimited') + ' && kingdom heartbeat doctor';
   if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(() => {});
 }
 

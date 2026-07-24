@@ -1,90 +1,50 @@
-# Ollama Bridge Integration — server.mjs Patch Guide
+# Ollama Bridge Integration Notes
 
-Apply these 4 edits to `youi-web/server.mjs` then restart the server.
+Ollama access is already integrated into `youi-web/server.mjs`. There are two
+supported paths:
 
-## 1. Add import (line ~20, after existing imports)
+1. Authenticated `/api/ollama/*` routes for the YOUI browser.
+2. The `ollama` model tool when the active server capability policy permits it.
 
-```javascript
-import { handleOllamaRoute, executeOllamaTool, startFileIPC } from "./ollama-bridge.mjs";
-```
+Both paths stay inside the YOUI server's authentication and authorization
+boundary. They do not make Ollama public, bypass the session policy, or grant
+provider access without the relevant scoped credential.
 
-## 2. Add "ollama" to tool definitions (in TOOLS array, wherever tools are defined)
+The browser route contract is method-specific:
 
-Add this tool definition:
-```javascript
-{
-  name: "ollama",
-  description: "OLLAMA — Call GLM 5.1 and other Ollama cloud models. Runs in-process (bypasses sandbox). Actions: test (connectivity), models (list), chat (send message), bench (benchmark). For chat: message='prompt', model='glm-5.1:cloud', system='optional system prompt'.",
-  input_schema: {
-    type: "object",
-    properties: {
-      action: { type: "string", description: "test|models|chat|bench" },
-      message: { type: "string", description: "Chat message" },
-      model: { type: "string", description: "Model name (default: glm-5.1:cloud)" },
-      system: { type: "string", description: "System prompt" },
-      max_tokens: { type: "number", description: "Max response tokens" },
-      temperature: { type: "number", description: "Temperature 0-1" },
-    },
-    required: ["action"],
-  },
-},
-```
+- `POST /api/ollama/test` requires `models:diagnose`.
+- `GET /api/ollama/models` and `POST /api/ollama/chat` require `models:use`.
+- The model-facing `ollama` tool requires `models:use` to be advertised.
+  Within that tool, `test` and `bench` additionally require
+  `models:diagnose`; other actions require `models:use`.
 
-## 3. Add tool handler (in executeTool switch, before `default:`)
+Local and cloud are separate authority and privacy routes:
 
-```javascript
-case "ollama": {
-  return await executeOllamaTool(input);
-}
-```
+- A locally available model is labelled `LOCAL_MODEL:ollama`.
+- Direct Ollama Cloud routing is labelled `REMOTE_MODEL:ollama-cloud` and
+  requires `models:ollama-cloud`.
+- Local-to-cloud fallback requires both `models:ollama-cloud` and
+  `models:cloud-fallback`; neither the `safe` nor `developer` web profile
+  includes those grants.
+- Without the cloud-route grant, an unavailable local model is reported as
+  `BLOCKED:ollama-cloud-capability-required` and no cloud request is made.
+- A missing cloud credential fails before a provider request. Credentials are
+  not returned by the Ollama routes.
 
-## 4. Add HTTP routes + File IPC (in handleRequest, before static file serving)
+The bridge propagates request cancellation through local detection, retry,
+streaming, and provider calls. Cancellation stops retry; it is not a promise
+that a remote provider has deleted data already received.
 
-After the existing `/api/clear` route block, add:
-```javascript
-// ── Ollama Bridge ───────────────────────────────────
-if (path.startsWith("/api/ollama")) {
-  const handled = await handleOllamaRoute(path, req, res, parseBody);
-  if (handled) return;
-}
-```
+## Removed filesystem bridge
 
-## 5. Start File IPC watcher (at server boot, after server.listen)
+The former shared-temporary-directory request watcher was unauthenticated and
+has been removed. A local filename is not proof of caller identity, and a
+filesystem watcher cannot safely substitute for an authenticated protocol.
 
-Inside the `server.listen()` callback, add:
-```javascript
-startFileIPC();
-```
+`tools/ollama-ipc.py` remains only as a fail-closed compatibility stub so old
+automation receives a clear error instead of silently waiting or recreating
+unsafe request files.
 
-## 6. Add GLM 5.1 to VALID_MODELS (in /api/settings handler)
-
-Change:
-```javascript
-const VALID_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
-```
-To:
-```javascript
-const VALID_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "glm-5.1:cloud"];
-```
-
----
-
-## After Patching
-
-Restart server:
-```bash
-cd ~/love-unlimited/youi-web && node server.mjs
-```
-
-Test from browser:
-```
-http://localhost:777/api/ollama/test
-```
-
-Test from sandboxed session (file IPC):
-```python
-python3 tools/ollama-ipc.py test
-```
-
-Test as tool (from Claude session):
-Use the `ollama` tool with `action: "test"`
+Do not add a shared-directory watcher back to the server. For local automation,
+use an authenticated YOUI client that carries the browser session protections,
+or use an Ollama/provider client with a narrowly scoped credential.

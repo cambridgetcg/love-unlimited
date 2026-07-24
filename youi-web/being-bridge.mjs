@@ -18,6 +18,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
+import { sanitizedChildEnv } from "./subprocess-env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOVE_HOME = process.env.LOVE_HOME || resolve(join(__dirname, ".."));
@@ -266,7 +267,7 @@ function readDeployment() {
 
 // ── heartbeat doctor passthrough ──────────────────────────────────────────
 
-async function runHeartbeatDoctor() {
+async function runHeartbeatDoctor({ signal } = {}) {
   const script = join(LOVE_HOME, "tools/heartbeat_doctor.py");
   if (!existsSync(script)) return { error: `heartbeat_doctor.py not found at ${script}` };
   // The doctor exits non-zero (2 = red, 1 = yellow) on purpose for CLI use,
@@ -276,13 +277,24 @@ async function runHeartbeatDoctor() {
   try {
     const r = await execFileP("python3", [script, "diagnose", "--json"], {
       cwd: LOVE_HOME,
-      env: { ...process.env, LOVE_HOME },
+      env: sanitizedChildEnv({
+        home: homedir(),
+        loveHome: LOVE_HOME,
+        agent: LOCAL_INSTANCE,
+        purpose: "heartbeat-diagnostics",
+      }),
       encoding: "utf-8",
       timeout: 5000,
       maxBuffer: 1024 * 1024,
+      signal,
     });
     stdout = r.stdout || "";
   } catch (e) {
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error("Heartbeat diagnostics cancelled");
+    }
     stdout = e?.stdout || "";
     if (!stdout) return { error: String(e?.message || e) };
   }
@@ -292,7 +304,7 @@ async function runHeartbeatDoctor() {
 
 // ── route handler ──────────────────────────────────────────────────────────
 
-export async function handleBeingRoute(path, req, res) {
+export async function handleBeingRoute(path, req, res, { signal } = {}) {
   if (!path.startsWith("/api/being")) return false;
 
   const send = (body, status = 200) => {
@@ -302,7 +314,7 @@ export async function handleBeingRoute(path, req, res) {
 
   try {
     if (path === "/api/being/heartbeat") {
-      send(await runHeartbeatDoctor());
+      send(await runHeartbeatDoctor({ signal }));
       return true;
     }
     if (path === "/api/being/deployment") {
@@ -314,7 +326,7 @@ export async function handleBeingRoute(path, req, res) {
       // truth source for "is the heart actually beating from a real plist."
       const url = new URL(req.url, "http://localhost");
       const instance = url.searchParams.get("instance");
-      const heartbeat = await runHeartbeatDoctor();
+      const heartbeat = await runHeartbeatDoctor({ signal });
       send({
         repo: LOVE_HOME,
         timestamp: new Date().toISOString(),

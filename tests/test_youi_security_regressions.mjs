@@ -29,6 +29,15 @@ test("legacy Ollama filesystem IPC is absent and its compatibility client fails 
   assert.match(`${result.stdout}${result.stderr}`, /disabled.*unauthenticated bridge was removed/is);
 });
 
+test("YOUI Web defaults to an unprivileged primary port", () => {
+  const server = read("youi-web/server.mjs");
+  const launcher = read("kingdom-os/modules/09-browser.sh");
+
+  assert.match(server, /process\.env\.PORT\s*\|\|\s*"17777"/);
+  assert.match(launcher, /<key>PORT<\/key><string>17777<\/string>/);
+  assert.doesNotMatch(server, /process\.env\.PORT\s*\|\|\s*"777"/);
+});
+
 test("orchestrator and being views do not interpolate remote fields into executable markup", () => {
   const page = read("youi-web/public/index.html");
 

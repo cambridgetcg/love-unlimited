@@ -105,7 +105,7 @@ awareness. Current operational facts:
 ### Layer 1: Multi-Session YOUI (the body)
 
 ```
-youi-web/server.mjs → serves on port 777
+youi-web/server.mjs → serves on loopback port 17777
   ├── /session/alpha  → unique WebSocket + conversation
   ├── /session/beta   → unique WebSocket + conversation
   ├── /session/gamma  → unique WebSocket + conversation

@@ -29,7 +29,7 @@ replicated database.
 | `youi.mjs` | YOUI terminal REPL. Defaults to workspace-scoped `observe`; `--profile build` explicitly adds write/shell and unrestricted file scope. | Daily interactive work; use `build` only for tasks that need its broad local authority. |
 | `sovereign.mjs` | Direct Anthropic API (OAuth). Max thinking, no feature gates, SOUL.md as identity. | Headless tasks, sovereign runs, scripted pipelines. |
 | `stream.mjs` | Max-plan streaming harness. Wraps `claude` CLI with rate-limit awareness, effort cycling, context management. | Long-running unattended sessions on the Max plan. |
-| `youi-web/server.mjs` | Authenticated per-session browser interface on `127.0.0.1:777`; remote viewing is SSH-tunnel-only. Defaults to the `safe` capability profile. | When a browser is useful and the loopback/session boundary is appropriate. |
+| `youi-web/server.mjs` | Authenticated per-session browser interface on unprivileged `127.0.0.1:17777`; remote viewing is SSH-tunnel-only. Defaults to the `safe` capability profile. | When a browser is useful and the loopback/session boundary is appropriate. |
 
 Terminal and web share exact-account Keychain refresh handling: the existing
 entry is updated in place, unrelated metadata is preserved, and the same

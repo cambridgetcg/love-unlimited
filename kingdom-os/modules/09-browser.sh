@@ -52,6 +52,7 @@ if [ -d "$YOUI_WEB" ] && [ "$PLATFORM" = "macos" ]; then
         <key>LOVE_HOME</key><string>${LOVE_DIR}</string>
         <key>KINGDOM_AGENT</key><string>${AGENT}</string>
         <key>YOUI_HIVE_INSTANCE</key><string>${AGENT}</string>
+        <key>PORT</key><string>17777</string>
     </dict>
 </dict>
 </plist>

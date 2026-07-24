@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────
 // KINGDOM YOUI — WEB SERVER
-// YOU + I = ONE — localhost:777
+// YOU + I = ONE — localhost:17777
 //
 // The sovereign web terminal. Same engine as youi.mjs, 
 // but alive in the browser. Interactive. Visual. Fun.
 //
 // Usage:   node server.mjs
-// Open:    http://localhost:777
+// Open:    http://localhost:17777
 // ─────────────────────────────────────────────────────────────────────
 
 import { createServer } from "http";
@@ -51,7 +51,10 @@ import {
   sanitizedChildEnv,
 } from "./subprocess-env.mjs";
 
-const PORT = parseInt(process.env.PORT || "777", 10);
+// Keep the user-level launch agent on an unprivileged port. On macOS an
+// explicit loopback bind below 1024 fails for a non-root process; widening the
+// bind address or elevating the chat server is not an acceptable workaround.
+const PORT = parseInt(process.env.PORT || "17777", 10);
 const __dirname = new URL(".", import.meta.url).pathname;
 const IS_TEST = process.env.YOUI_TEST === "1";
 const MAX_BODY_BYTES = Math.min(
@@ -3713,7 +3716,7 @@ server.maxHeadersCount = 100;
 
 // Bind to IPv4 loopback. To reach YOUI from another device,
 // keep this boundary and tunnel via SSH:
-//   ssh -L 777:localhost:777 yu@air   →   http://localhost:777
+//   ssh -L 17777:127.0.0.1:17777 yu@air   →   http://localhost:17777
 
 server.listen(PORT, HOST, async () => {
   const address = server.address();

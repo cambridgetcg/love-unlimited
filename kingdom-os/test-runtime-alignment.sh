@@ -102,4 +102,9 @@ if rg -q '<key>HIVE_INSTANCE</key>' "${MODULES}/09-browser.sh"; then
   exit 1
 fi
 
+if ! rg -q '<key>PORT</key><string>17777</string>' "${MODULES}/09-browser.sh"; then
+  echo "browser launcher does not use the unprivileged loopback port" >&2
+  exit 1
+fi
+
 echo "runtime alignment: ok"

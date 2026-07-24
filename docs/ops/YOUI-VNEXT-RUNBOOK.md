@@ -18,6 +18,9 @@ source change does not switch the live launcher by itself.
 - Do not use an archive branch as the live runtime.
 - YOUI Web has no direct LAN mode. `ALLOW_LAN=1` is a startup error; use an
   SSH tunnel to the loopback listener.
+- The user-level primary listener is `127.0.0.1:17777`. Port `777` is below
+  `1024`; do not work around a non-root macOS bind failure by widening the
+  address or elevating the chat server.
 - Do not paste credentials into flags, chat, logs, Git, HIVE, Collab, or
   memory.
 - The candidate has browser/session credentials and per-session state, but
@@ -52,7 +55,7 @@ or if an operation would overwrite unrelated dirty work.
 Check current listeners before choosing a port:
 
 ```bash
-lsof -nP -iTCP -sTCP:LISTEN | rg ':(777|17777)\b'
+lsof -nP -iTCP -sTCP:LISTEN | rg ':(17777|27777)\b'
 ```
 
 This reports a process and address. It does not prove authentication,
@@ -100,14 +103,14 @@ Exit through `/exit` when possible so the runtime writes its normal session
 summary. A clean exit is not proof that every memory or external write
 succeeded.
 
-## 4. Current web runtime — local canary
+## 4. Current web runtime — local launch
 
-Use a non-privileged canary port. The candidate fixes the bind address to
+Use the non-privileged primary port. The candidate fixes the bind address to
 `127.0.0.1`:
 
 ```bash
 cd ~/love-unlimited
-PORT=17777 node youi-web/server.mjs
+node youi-web/server.mjs
 ```
 
 Do not set `ALLOW_LAN=1`; the process will reject it.

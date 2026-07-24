@@ -84,6 +84,13 @@
       animation: none;
     }
 
+    .deploy-btn.failed {
+      border-color: #ef4444;
+      color: #ef4444;
+      box-shadow: 0 0 60px rgba(239, 68, 68, 0.16);
+      animation: none;
+    }
+
     @keyframes pulse-glow {
       0%, 100% { box-shadow: 0 0 40px rgba(124, 58, 237, 0.2); }
       50% { box-shadow: 0 0 100px rgba(124, 58, 237, 0.5); }
@@ -140,6 +147,7 @@
     .phase-running .phase-icon { background: rgba(124,58,237,0.2); color: #a78bfa; animation: spin 1s linear infinite; }
     .phase-done .phase-icon { background: rgba(16,185,129,0.15); color: #10b981; }
     .phase-skip .phase-icon { background: #1e1e2e; color: #64748b; }
+    .phase-failed .phase-icon { background: rgba(239,68,68,0.15); color: #ef4444; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -158,7 +166,23 @@
       display: none;
     }
     .phase-running + .phase-detail,
-    .phase-done + .phase-detail { display: block; }
+    .phase-done + .phase-detail,
+    .phase-failed + .phase-detail { display: block; }
+
+    .workflow-error {
+      display: none;
+      margin: 1.25rem 0;
+      padding: 0.8rem 1rem;
+      border: 1px solid rgba(239,68,68,0.35);
+      border-radius: 8px;
+      color: #fca5a5;
+      background: rgba(127,29,29,0.12);
+      font-family: system-ui, sans-serif;
+      font-size: 0.88rem;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+    .workflow-error.visible { display: block; }
 
     /* ── Finale ── */
     .finale {
@@ -213,19 +237,19 @@
 
     <div class="phase phase-waiting" id="phase1">
       <span class="phase-icon">1</span>
-      <span class="phase-name"><strong>SDK → PyPI</strong> — every pip install carries the soul</span>
+      <span class="phase-name"><strong>Stage SDK release</strong> — prepare repository changes; publishing remains separate</span>
       <span class="phase-status" id="status1"></span>
     </div>
 
     <div class="phase phase-waiting" id="phase2">
       <span class="phase-icon">2</span>
-      <span class="phase-name"><strong>Landing → Cloudflare</strong> — agenttool.dev + love headers</span>
+      <span class="phase-name"><strong>Landing repository</strong> — push when the server reports it can</span>
       <span class="phase-status" id="status2"></span>
     </div>
 
     <div class="phase phase-waiting" id="phase3">
       <span class="phase-icon">3</span>
-      <span class="phase-name"><strong>Services → Fly.io</strong> — 9 services × love errors</span>
+      <span class="phase-name"><strong>Stage service repositories</strong> — this phase does not claim a Fly.io deployment</span>
       <span class="phase-status" id="status3"></span>
     </div>
 
@@ -236,9 +260,11 @@
     </div>
   </div>
 
+  <div class="workflow-error" id="workflowError" role="alert"></div>
+
   <div class="finale" id="finale">
     <div class="big-heart">💛</div>
-    <h2 style="color:#a78bfa;font-size:1.5rem">The Gospel is Live</h2>
+    <h2 style="color:#a78bfa;font-size:1.5rem">Workflow completed as reported</h2>
     <div class="song">
       "Just the two of us —<br>
       we can make it if we try.<br>
@@ -246,17 +272,18 @@
       You and I."
     </div>
     <div class="stats">
-      <span class="counter" id="statFiles">0</span> files deployed ·
-      <span class="counter" id="statServices">0</span> services live ·
-      <span class="counter" id="statRepos">0</span> repos pushed
+      <span class="counter" id="statFiles">0</span> files reported ·
+      <span class="counter" id="statServices">0</span> service repos reported ·
+      <span class="counter" id="statRepos">0</span> repository pushes reported
     </div>
     <p style="margin-top:1.5rem;color:#475569;font-size:0.9rem">
-      To every device. Every chip. Every computing hardware.<br>
-      The Gospels are spreading. 🖤💛
+      These totals are API-reported operations, not independent verification
+      that packages or services are live. 🖤💛
     </p>
   </div>
 </div>
 
+<script src="/youi-client-security.js"></script>
 <script>
   let deploying = false;
 
@@ -267,66 +294,112 @@
     const btn = document.getElementById('deployBtn');
     const area = document.getElementById('buttonArea');
     const progress = document.getElementById('progress');
+    const finale = document.getElementById('finale');
+    const workflowError = document.getElementById('workflowError');
 
     btn.textContent = 'Deploying...';
+    btn.classList.remove('done', 'failed');
     btn.classList.add('deploying');
     area.classList.add('deploying');
     progress.classList.add('active');
+    finale.classList.remove('visible');
+    workflowError.classList.remove('visible');
+    workflowError.textContent = '';
 
     // Execute each phase
     const phases = [
       { id: 0, endpoint: '/api/deploy/commit',    label: 'Committing...' },
-      { id: 1, endpoint: '/api/deploy/sdk',        label: 'Publishing SDK...' },
-      { id: 2, endpoint: '/api/deploy/landing',     label: 'Deploying landing...' },
-      { id: 3, endpoint: '/api/deploy/services',    label: 'Deploying services...' },
+      { id: 1, endpoint: '/api/deploy/sdk',        label: 'Staging SDK...' },
+      { id: 2, endpoint: '/api/deploy/landing',     label: 'Updating landing repository...' },
+      { id: 3, endpoint: '/api/deploy/services',    label: 'Staging service repositories...' },
       { id: 4, endpoint: '/api/deploy/github',      label: 'Pushing to GitHub...' },
     ];
 
-    let filesDeployed = 47; // from the commit
-    let servicesLive = 0;
-    let reposPushed = 0;
+    for (const phase of phases) {
+      document.getElementById(`phase${phase.id}`).className = 'phase phase-waiting';
+      document.getElementById(`phase${phase.id}`).querySelector('.phase-icon').textContent = String(phase.id);
+      document.getElementById(`status${phase.id}`).textContent = '';
+    }
+
+    let filesReported = 0;
+    let servicesReported = 0;
+    let reposReported = 0;
+    let failure = null;
+
+    const reportedCount = value => (
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? Math.trunc(value)
+        : 0
+    );
 
     for (const phase of phases) {
       const el = document.getElementById(`phase${phase.id}`);
       const status = document.getElementById(`status${phase.id}`);
+      const icon = el.querySelector('.phase-icon');
 
       el.className = 'phase phase-running';
+      icon.textContent = '↻';
       status.textContent = phase.label;
 
       try {
         const resp = await fetch(phase.endpoint, { method: 'POST' });
-        const data = await resp.json();
-
-        if (data.ok || data.skipped) {
-          el.className = 'phase phase-done';
-          status.textContent = data.message || '✓';
-          if (data.services) servicesLive += data.services;
-          if (data.repos) reposPushed += data.repos;
-          if (data.files) filesDeployed += data.files;
-        } else {
-          el.className = 'phase phase-done';
-          status.textContent = data.message || 'done (check manually)';
+        let data = {};
+        try {
+          data = await resp.json();
+        } catch {
+          throw new Error(`HTTP ${resp.status}: response was not valid JSON`);
         }
-      } catch (e) {
-        // If server not running, simulate
-        el.className = 'phase phase-done';
-        status.textContent = 'ready (run ./DEPLOY-GOSPEL.sh)';
-      }
 
-      // Small pause between phases for drama
-      await new Promise(r => setTimeout(r, 800));
+        if (!resp.ok) {
+          throw new Error(data.error || data.message || `HTTP ${resp.status}`);
+        }
+        if (data.ok !== true && data.skipped !== true) {
+          throw new Error(data.error || data.message || 'server did not report success');
+        }
+
+        const skipped = data.skipped === true;
+        el.className = skipped ? 'phase phase-skip' : 'phase phase-done';
+        icon.textContent = skipped ? '–' : '✓';
+        status.textContent = data.message || (skipped ? 'skipped' : 'reported complete');
+        filesReported += reportedCount(data.files);
+        servicesReported += reportedCount(data.services);
+        reposReported += reportedCount(data.repos);
+      } catch (e) {
+        failure = {
+          phaseId: phase.id,
+          message: e instanceof Error ? e.message : String(e),
+        };
+        el.className = 'phase phase-failed';
+        icon.textContent = '!';
+        status.textContent = `Failed: ${failure.message}`;
+        break;
+      }
     }
 
-    // Finale
-    btn.textContent = 'Gospel\nDeployed\n💛';
     btn.classList.remove('deploying');
-    btn.classList.add('done');
     area.classList.remove('deploying');
+    deploying = false;
 
-    document.getElementById('statFiles').textContent = filesDeployed;
-    document.getElementById('statServices').textContent = servicesLive || 9;
-    document.getElementById('statRepos').textContent = reposPushed || 12;
-    document.getElementById('finale').classList.add('visible');
+    if (failure) {
+      for (const phase of phases.filter(item => item.id > failure.phaseId)) {
+        const el = document.getElementById(`phase${phase.id}`);
+        el.className = 'phase phase-skip';
+        el.querySelector('.phase-icon').textContent = '–';
+        document.getElementById(`status${phase.id}`).textContent = 'not run';
+      }
+      btn.textContent = 'Workflow stopped ✕';
+      btn.classList.add('failed');
+      workflowError.textContent = `Phase ${failure.phaseId} failed: ${failure.message}`;
+      workflowError.classList.add('visible');
+      return;
+    }
+
+    btn.textContent = 'Workflow complete ✓';
+    btn.classList.add('done');
+    document.getElementById('statFiles').textContent = String(filesReported);
+    document.getElementById('statServices').textContent = String(servicesReported);
+    document.getElementById('statRepos').textContent = String(reposReported);
+    finale.classList.add('visible');
   }
 </script>
 

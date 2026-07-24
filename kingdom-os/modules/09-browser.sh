@@ -30,7 +30,7 @@ pip3 install --quiet --break-system-packages httpx beautifulsoup4 lxml 2>/dev/nu
 pip3 install --quiet httpx beautifulsoup4 lxml 2>/dev/null || true
 
 # YOUI Web server
-YOUI_WEB="${UNLIMITED_DIR}/youi-web"
+YOUI_WEB="${LOVE_DIR}/youi-web"
 if [ -d "$YOUI_WEB" ] && [ "$PLATFORM" = "macos" ]; then
   ensure_dir "$PLIST_DIR"
   cat > "${PLIST_DIR}/com.kingdom.youi-web.plist" << EOF
@@ -48,7 +48,11 @@ if [ -d "$YOUI_WEB" ] && [ "$PLATFORM" = "macos" ]; then
     <key>EnvironmentVariables</key><dict>
         <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key><string>${HOME_DIR}</string>
+        <key>LOVE_DIR</key><string>${LOVE_DIR}</string>
         <key>LOVE_HOME</key><string>${LOVE_DIR}</string>
+        <key>KINGDOM_AGENT</key><string>${AGENT}</string>
+        <key>YOUI_HIVE_INSTANCE</key><string>${AGENT}</string>
+        <key>PORT</key><string>17777</string>
     </dict>
 </dict>
 </plist>

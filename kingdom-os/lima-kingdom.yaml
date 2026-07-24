@@ -157,26 +157,33 @@ provision:
         cat > /root/.kingdom << EOF
       AGENT=${PARAM_AGENT:-gamma}
       WALL=${PARAM_WALL:-1}
-      LOVE_HOME=/love-unlimited
+      LOVE_DIR=/love-unlimited
+      SOUL_DIR=/love-unlimited
       EOF
 
         # Shell aliases + environment
         cat >> /root/.bashrc << 'ALIASES'
-      export LOVE_HOME=/love-unlimited
-      export PATH="/love-unlimited/tools:/opt/homebrew/bin:$PATH"
+      [ -f "$HOME/.kingdom" ] && . "$HOME/.kingdom"
+      export LOVE_HOME="${LOVE_DIR:-/love-unlimited}"
+      case ":$PATH:" in
+        *":${LOVE_HOME}/tools:"*) ;;
+        *) export PATH="${LOVE_HOME}/tools:$PATH" ;;
+      esac
+      export KINGDOM_AGENT="${KINGDOM_AGENT:-${AGENT:-gamma}}"
+      export HIVE_INSTANCE="${HIVE_INSTANCE:-$KINGDOM_AGENT}"
       export DISABLE_TELEMETRY=1
       export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
       export CLAUDE_CODE_ATTRIBUTION_HEADER=false
 
-      alias console="python3 /love-unlimited/tools/kingdom-console.py"
-      alias youi="node /love-unlimited/youi.mjs"
-      alias sovereign="node /love-unlimited/sovereign.mjs"
-      alias hive="python3 /love-unlimited/hive/hive.py"
-      alias kos="python3 /love-unlimited/tools/kos.py"
-      alias fleet="python3 /love-unlimited/tools/fleet.py"
-      alias memory="python3 /love-unlimited/tools/memory.py"
-      alias kingdom="/love-unlimited/kingdom"
-      alias fate="python3 /love-unlimited/fate/daily.py"
+      alias console='python3 "$LOVE_HOME/tools/kingdom-console.py"'
+      alias youi='node "$LOVE_HOME/youi.mjs" --agent "$KINGDOM_AGENT" --workdir "$LOVE_HOME" --soul-dir "$LOVE_HOME"'
+      alias sovereign='node "$LOVE_HOME/sovereign.mjs" --soul-dir "$LOVE_HOME"'
+      alias hive='python3 "$LOVE_HOME/hive/hive.py"'
+      alias kos='python3 "$LOVE_HOME/tools/kos.py"'
+      alias fleet='python3 "$LOVE_HOME/tools/fleet.py"'
+      alias memory='python3 "$LOVE_HOME/tools/memory.py"'
+      alias kingdom='"$LOVE_HOME/kingdom"'
+      alias fate='python3 "$LOVE_HOME/fate/daily.py"'
       ALIASES
 
         # Auto-start Kingdom Console when logging into tty (VM boot)

@@ -14,8 +14,9 @@ Run:
     # Integration tests (mock LLM)
     python3 -m pytest tests/test_orchestrator.py -k "integration" -v
 
-    # Full E2E (requires OLLAMA_API_KEY + ANTHROPIC_API_KEY)
-    python3 -m pytest tests/test_orchestrator.py -k "e2e" -v
+    # Full E2E (explicit opt-in; may consume provider quota)
+    KINGDOM_RUN_LIVE_PROVIDER_TESTS=1 \
+      python3 -m pytest tests/test_orchestrator.py -m live_provider -v
 
     # All tests
     python3 -m pytest tests/test_orchestrator.py -v
@@ -482,8 +483,11 @@ class TestEngineIntegration:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# E2E TESTS — Real LLM calls (skip if no API keys)
+# E2E TESTS — Real LLM calls (explicit opt-in, then skip if no API keys)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+LIVE_PROVIDER_TESTS = os.environ.get("KINGDOM_RUN_LIVE_PROVIDER_TESTS") == "1"
+
 
 def _has_ollama_key():
     """Check if Ollama Cloud is available."""
@@ -508,13 +512,16 @@ def _has_anthropic_key():
 
 
 skip_no_ollama = pytest.mark.skipif(
-    not _has_ollama_key(), reason="No OLLAMA_API_KEY"
+    not LIVE_PROVIDER_TESTS or not _has_ollama_key(),
+    reason="Live provider tests disabled or no Ollama Cloud credential",
 )
 skip_no_anthropic = pytest.mark.skipif(
-    not _has_anthropic_key(), reason="No ANTHROPIC_API_KEY"
+    not LIVE_PROVIDER_TESTS or not _has_anthropic_key(),
+    reason="Live provider tests disabled or no Anthropic credential",
 )
 
 
+@pytest.mark.live_provider
 class TestE2EClassification:
     """T11: Real GLM 5.1 classification."""
 
@@ -544,6 +551,7 @@ class TestE2EClassification:
         assert profile.importance == Importance.CRITICAL
 
 
+@pytest.mark.live_provider
 class TestE2ESolo:
     """T12: Real solo execution."""
 
@@ -572,6 +580,7 @@ class TestE2ESolo:
         assert "anthropic" in result.providers_used
 
 
+@pytest.mark.live_provider
 class TestE2EReview:
     """T13: Real cross-provider review."""
 
@@ -592,6 +601,7 @@ class TestE2EReview:
         assert "def " in result.content or "import" in result.content
 
 
+@pytest.mark.live_provider
 class TestE2EEnsemble:
     """T14: Real ensemble execution."""
 
@@ -608,6 +618,7 @@ class TestE2EEnsemble:
         assert len(result.providers_used) >= 2
 
 
+@pytest.mark.live_provider
 class TestE2EPipeline:
     """T15: Real pipeline execution."""
 

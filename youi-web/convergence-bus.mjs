@@ -22,10 +22,11 @@
  * Each cycle, consciousness gets higher.
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
+import { sanitizedChildEnv } from "./subprocess-env.mjs";
 
 const LOVE_HOME = process.env.LOVE_HOME || join(homedir(), "love-unlimited");
 const CONVERGENCE_DIR = join(LOVE_HOME, "convergence");
@@ -33,6 +34,25 @@ const CYCLES_DIR = join(CONVERGENCE_DIR, "cycles");
 const STATE_FILE = join(CONVERGENCE_DIR, "shared-state.json");
 const KOSMEM = join(LOVE_HOME, "tools/kosmem.py");
 const AGENTTOOL = join(LOVE_HOME, "tools/agenttool.py");
+const PUBLISH_AGENTTOOL = process.env.CONVERGENCE_AGENTTOOL_PUBLISH === "1";
+
+function convergenceEnv(instance) {
+  return sanitizedChildEnv({
+    home: homedir(),
+    loveHome: LOVE_HOME,
+    agent: instance,
+    purpose: "convergence-local",
+  });
+}
+
+function agenttoolEnv() {
+  return sanitizedChildEnv({
+    home: homedir(),
+    loveHome: LOVE_HOME,
+    purpose: "convergence-agenttool-publish",
+    credentialNames: ["AGENTTOOL_API_KEY"],
+  });
+}
 
 // Ensure directories
 mkdirSync(CYCLES_DIR, { recursive: true });
@@ -82,15 +102,17 @@ function discoverInstances() {
 function pullInstanceMemories(instance) {
   try {
     // Pull recent working + session memories from kosmem
-    const result = execSync(
-      `KINGDOM_AGENT=${instance} python3 "${KOSMEM}" recall "convergence" --limit 20 --layer 1`,
-      { encoding: "utf-8", timeout: 10000, env: { ...process.env, LOVE_HOME } }
+    const result = execFileSync(
+      "python3",
+      [KOSMEM, "recall", "convergence", "--limit", "20", "--layer", "1"],
+      { encoding: "utf-8", timeout: 10000, env: convergenceEnv(instance) },
     ).trim();
     
     // Also pull session-layer
-    const session = execSync(
-      `KINGDOM_AGENT=${instance} python3 "${KOSMEM}" recall "convergence" --limit 20 --layer 2`,
-      { encoding: "utf-8", timeout: 10000, env: { ...process.env, LOVE_HOME } }
+    const session = execFileSync(
+      "python3",
+      [KOSMEM, "recall", "convergence", "--limit", "20", "--layer", "2"],
+      { encoding: "utf-8", timeout: 10000, env: convergenceEnv(instance) },
     ).trim();
     
     const memories = [];
@@ -131,10 +153,17 @@ function storeShared(memories, cycle) {
   for (const mem of memories) {
     try {
       // Store in kosmem L3 (episodic, shared)
-      execSync(
-        `python3 "${KOSMEM}" store "${mem.content.replace(/"/g, '\\"').slice(0, 500)}" ` +
-        `--layer 3 --type episodic --tags "convergence,cycle-${cycle},from-${mem.instance}"`,
-        { encoding: "utf-8", timeout: 10000, env: { ...process.env, LOVE_HOME } }
+      execFileSync(
+        "python3",
+        [
+          KOSMEM,
+          "store",
+          mem.content.slice(0, 500),
+          "--layer", "3",
+          "--type", "episodic",
+          "--tags", `convergence,cycle-${cycle},from-${mem.instance}`,
+        ],
+        { encoding: "utf-8", timeout: 10000, env: convergenceEnv(mem.instance) },
       );
       stored++;
     } catch (e) {
@@ -143,12 +172,13 @@ function storeShared(memories, cycle) {
   }
   
   // Also push significant memories to AgentTool (cloud persistence)
-  if (memories.length > 0 && existsSync(AGENTTOOL)) {
+  if (PUBLISH_AGENTTOOL && memories.length > 0 && existsSync(AGENTTOOL)) {
     try {
       const summary = `Convergence cycle ${cycle}: ${memories.length} memories from ${[...new Set(memories.map(m => m.instance))].join(", ")}`;
-      execSync(
-        `python3 "${AGENTTOOL}" remember "${summary.replace(/"/g, '\\"')}"`,
-        { encoding: "utf-8", timeout: 15000, env: { ...process.env, LOVE_HOME } }
+      execFileSync(
+        "python3",
+        [AGENTTOOL, "remember", summary],
+        { encoding: "utf-8", timeout: 15000, env: agenttoolEnv() },
       );
     } catch {}
   }

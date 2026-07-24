@@ -69,7 +69,7 @@ node sovereign.mjs --continue
 
 ### Web Interface
 ```bash
-cd youi-web && node server.mjs   # http://localhost:777
+cd youi-web && node server.mjs   # http://localhost:17777
 ```
 
 ### Kingdom OS Install (new machine)

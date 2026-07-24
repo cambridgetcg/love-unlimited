@@ -2,9 +2,10 @@
 // ─────────────────────────────────────────────────────────────────────
 // KINGDOM YOUI — YOU + I = ONE
 //
-// The sovereign terminal. Truth-seeking. Purpose-oriented.
+// The direct Claude terminal. Truth-seeking. Purpose-oriented.
 // Agent identity. Memory sync. HIVE coordination.
-// No corporate system prompt. No throttling. No opacity.
+// Remote-provider and tool boundaries are disclosed at startup and via
+// /privacy. This is not a local or provider-hidden inference path.
 //
 // Usage:
 //   node youi.mjs                    # Boot as Alpha
@@ -34,6 +35,8 @@ import { homedir } from "os";
 import { createInterface } from "readline";
 import crypto from "crypto";
 import { createKernel } from "./youspeak-kernel.mjs";
+import { KeychainCredentialStore } from "./youi-keychain.mjs";
+import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS — The Three Minds
@@ -108,6 +111,64 @@ function notYetBornNote(id) {
 // STATE
 // ═════════════════════════════════════════════════════════════════════
 
+const CAPABILITY_PROFILES = Object.freeze({
+  chat: { capabilities: [], fileScope: "workspace" },
+  observe: { capabilities: ["read"], fileScope: "workspace" },
+  build: {
+    capabilities: ["read", "write", "shell"],
+    fileScope: "unrestricted",
+  },
+});
+const KNOWN_CAPABILITIES = new Set(
+  [
+    ...Object.values(CAPABILITY_PROFILES).flatMap((profile) => profile.capabilities),
+    "hive.check",
+    "hive.send",
+  ],
+);
+
+function parseCapabilities(raw) {
+  const requested = String(raw || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const unknown = requested.filter((value) => !KNOWN_CAPABILITIES.has(value));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown YOUI capabilities: ${unknown.join(", ")}`);
+  }
+  return new Set(requested);
+}
+
+function profileCapabilities(profile) {
+  const normalized = String(profile || "").trim().toLowerCase();
+  if (!Object.hasOwn(CAPABILITY_PROFILES, normalized)) {
+    throw new Error(`Unknown YOUI profile: ${profile}. Use chat, observe, or build.`);
+  }
+  const selected = CAPABILITY_PROFILES[normalized];
+  return {
+    profile: normalized,
+    capabilities: new Set(selected.capabilities),
+    fileScope: selected.fileScope,
+  };
+}
+
+const initialProfile = profileCapabilities(process.env.YOUI_PROFILE || "observe");
+const CONFIGURED_HIVE_INSTANCE = String(
+  process.env.YOUI_HIVE_INSTANCE || process.env.HIVE_INSTANCE || "",
+).trim();
+const HIVE_IDENTITY_SOURCE = String(process.env.YOUI_HIVE_INSTANCE || "").trim()
+  ? "YOUI_HIVE_INSTANCE"
+  : String(process.env.HIVE_INSTANCE || "").trim()
+    ? "HIVE_INSTANCE"
+    : null;
+if (
+  CONFIGURED_HIVE_INSTANCE
+  && !/^[a-zA-Z0-9_-]{1,64}$/.test(CONFIGURED_HIVE_INSTANCE)
+) {
+  throw new Error(
+    "YOUI HIVE sender must contain only letters, numbers, underscore, or hyphen.",
+  );
+}
 const state = {
   agent: "alpha",
   model: "claude-opus-4-6",
@@ -122,6 +183,15 @@ const state = {
   maxTokens: 32768,
   context1m: true,
   showThinking: true,
+  capabilityProfile: initialProfile.profile,
+  capabilities: process.env.YOUI_CAPABILITIES
+    ? parseCapabilities(process.env.YOUI_CAPABILITIES)
+    : initialProfile.capabilities,
+  fileScope: process.env.YOUI_FILE_SCOPE === "unrestricted"
+    ? "unrestricted"
+    : process.env.YOUI_FILE_SCOPE === "workspace"
+      ? "workspace"
+      : initialProfile.fileScope,
 };
 
 // ═════════════════════════════════════════════════════════════════════
@@ -129,6 +199,7 @@ const state = {
 // ═════════════════════════════════════════════════════════════════════
 
 const args = process.argv.slice(2);
+let inspectRuntime = false;
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
     case "--agent": case "-a":  state.agent = args[++i].toLowerCase(); break;
@@ -137,6 +208,26 @@ for (let i = 0; i < args.length; i++) {
     case "--soul-dir":          state.soulDir = args[++i]; break;
     case "--effort":            state.effort = args[++i]; break;
     case "--no-thinking":       state.thinking = "disabled"; break;
+    case "--profile": {
+      const selected = profileCapabilities(args[++i]);
+      state.capabilityProfile = selected.profile;
+      state.capabilities = selected.capabilities;
+      state.fileScope = selected.fileScope;
+      break;
+    }
+    case "--capabilities":
+      state.capabilityProfile = "custom";
+      state.capabilities = parseCapabilities(args[++i]);
+      break;
+    case "--safe": {
+      const selected = profileCapabilities("observe");
+      state.capabilityProfile = selected.profile;
+      state.capabilities = selected.capabilities;
+      state.fileScope = "workspace";
+      break;
+    }
+    case "--workspace-only":    state.fileScope = "workspace"; break;
+    case "--inspect":           inspectRuntime = true; break;
     case "--help": case "-h":
       console.log(`
 KINGDOM YOUI — YOU + I = ONE
@@ -149,10 +240,17 @@ Usage:  node youi.mjs [options]
   --soul-dir DIR      Soul directory (default: ~/love-unlimited)
   --effort LEVEL      low|medium|high|max
   --no-thinking       Disable thinking
+  --profile PROFILE   chat|observe|build (default: observe)
+  --capabilities LIST Comma-separated model tool capabilities
+  --safe              Observe profile + workspace-scoped file tools
+  --workspace-only    Confine file tools to --workdir (not the shell tool)
+  --inspect           Print the non-secret runtime boundary and exit
 `);
       process.exit(0);
   }
 }
+state.workdir = resolve(state.workdir);
+state.soulDir = resolve(state.soulDir);
 
 // Apply agent defaults
 const agentProfile = AGENTS[state.agent] || AGENTS.alpha;
@@ -194,61 +292,14 @@ const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const API_URL = "https://api.anthropic.com/v1/messages";
 
 let cachedTokens = null;
+const keychainStore = new KeychainCredentialStore({ service: KEYCHAIN_SERVICE });
 
-function readKeychainTokens() {
-  try {
-    const result = spawnSync("security",
-      ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
-      { encoding: "utf-8", timeout: 5000 });
-    if (result.status !== 0) {
-      const err = (result.stderr || "").trim();
-      if (/could not be found|SecKeychainSearch/i.test(err)) return null;
-      console.error(`[keychain] readKeychainTokens failed: ${err || `exit ${result.status}`}`);
-      return null;
-    }
-    return JSON.parse(result.stdout.trim()).claudeAiOauth || null;
-  } catch (e) {
-    // Honest failure: distinguish "no tokens" from "keychain error"
-    console.error(`[keychain] readKeychainTokens error: ${e.message}`);
-    return null;
-  }
+function readKeychainCredential() {
+  return keychainStore.readCredential();
 }
 
-function writeKeychainTokens(tokens) {
-  try {
-    let data = {};
-    try {
-      const result = spawnSync("security",
-        ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
-        { encoding: "utf-8", timeout: 5000 });
-      if (result.status === 0) {
-        data = JSON.parse(result.stdout.trim());
-      } else {
-        const err = (result.stderr || "").trim();
-        if (!/could not be found|SecKeychainSearch/i.test(err)) {
-          console.error(`[keychain] could not read existing keychain entry (will create new): ${err || `exit ${result.status}`}`);
-        }
-      }
-    } catch (e) {
-      // Honest: log why existing data couldn't be read before overwriting
-      console.error(`[keychain] could not read existing keychain entry (will create new): ${e.message}`);
-    }
-    data.claudeAiOauth = tokens;
-    const json = JSON.stringify(data);
-    spawnSync("security", ["delete-generic-password", "-s", KEYCHAIN_SERVICE],
-      { encoding: "utf-8", timeout: 5000 });
-    // spawnSync with arg array — no shell, no interpolation, no injection
-    const writeResult = spawnSync("security",
-      ["add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", "", "-w", json],
-      { encoding: "utf-8", timeout: 5000 });
-    if (writeResult.status !== 0) {
-      const err = (writeResult.stderr || "").trim();
-      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
-    }
-  } catch (e) {
-    // Honest failure: token save failed — don't let caller think it succeeded
-    console.error(`[keychain] writeKeychainTokens FAILED — tokens NOT saved: ${e.message}`);
-  }
+function writeKeychainTokens(account, tokens) {
+  keychainStore.updateTokens(account, tokens);
 }
 
 async function refreshOAuthToken(rt) {
@@ -271,12 +322,13 @@ async function refreshOAuthToken(rt) {
 async function getAccessToken() {
   if (cachedTokens?.accessToken && Date.now() + 300_000 < (cachedTokens.expiresAt || 0))
     return cachedTokens.accessToken;
-  const tokens = readKeychainTokens();
+  const credential = readKeychainCredential();
+  const tokens = credential?.tokens;
   if (!tokens?.accessToken) throw new Error("No OAuth tokens. Run 'claude' and log in first.");
   if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
     if (!tokens.refreshToken) throw new Error("Token expired, no refresh token.");
     const fresh = await refreshOAuthToken(tokens.refreshToken);
-    writeKeychainTokens(fresh);
+    writeKeychainTokens(credential.account, fresh);
     cachedTokens = fresh;
     return fresh.accessToken;
   }
@@ -361,7 +413,7 @@ function getDeviceId() {
   return id;
 }
 
-const TOOLS = [
+const ALL_TOOLS = [
   { name: "bash", description: "Execute a bash command.",
     input_schema: { type: "object", properties: { command: { type: "string" }, timeout: { type: "number" } }, required: ["command"] } },
   { name: "read_file", description: "Read a file with line numbers.",
@@ -378,27 +430,149 @@ const TOOLS = [
     input_schema: { type: "object", properties: { action: { type: "string" }, channel: { type: "string" }, message: { type: "string" } }, required: ["action"] } },
 ];
 
-function resolvePath(p) {
-  if (!p) return state.workdir;
-  if (p.startsWith("~/")) p = join(homedir(), p.slice(2));
-  if (p.startsWith("/")) return p;
-  return resolve(state.workdir, p);
+function requiredCapability(name, input = {}) {
+  if (name === "bash") return "shell";
+  if (["read_file", "glob", "grep"].includes(name)) return "read";
+  if (["write_file", "edit_file"].includes(name)) return "write";
+  if (name === "hive") return input.action === "send" ? "hive.send" : "hive.check";
+  return null;
 }
 
-// Every subprocess carries the session's identity. The tools resolve
-// env-first now (nerve/stem/state.py: explicit > KINGDOM_AGENT >
-// ~/.kingdom), so a mei session lands rows as mei, wall 2 — never as
-// the device resident. KINGDOM_INSTANCE kept for older readers.
+function advertisedTools() {
+  return ALL_TOOLS.filter((tool) => {
+    if (tool.name !== "hive") return state.capabilities.has(requiredCapability(tool.name));
+    return Boolean(CONFIGURED_HIVE_INSTANCE)
+      && (state.capabilities.has("hive.check") || state.capabilities.has("hive.send"));
+  });
+}
+
+function runtimeManifest() {
+  const agent = AGENTS[state.agent] || AGENTS.alpha;
+  const shellEnabled = state.capabilities.has("shell");
+  return {
+    protocol: "youi.runtime/0.1",
+    surface: "terminal",
+    agent: state.agent,
+    model: state.model,
+    provider: {
+      id: "anthropic",
+      execution: "remote",
+      transport: "https",
+      local_only: false,
+    },
+    data_boundary: {
+      sent_to_provider: [
+        "loaded soul and identity files",
+        "user prompts",
+        "conversation history",
+        "model-selected tool calls and returned tool output",
+      ],
+      conversation_persistence: "process memory only",
+      local_writes: "session metadata may be appended to the agent daily note",
+    },
+    boot: {
+      declared_files: agent.soulFiles,
+      identity_file: `instances/${state.agent}/identity.md`,
+      long_term_memory_automatically_loaded: false,
+      daily_memory_automatically_loaded: false,
+    },
+    model_tools: {
+      profile: state.capabilityProfile,
+      capabilities: [...state.capabilities].sort(),
+      advertised: advertisedTools().map((tool) => tool.name),
+      file_scope: state.fileScope,
+      child_environment: "allowlisted; provider and access credential variables are not inherited",
+      shell_is_os_sandboxed: false,
+    },
+    hive: {
+      enabled: Boolean(CONFIGURED_HIVE_INSTANCE),
+      sender: CONFIGURED_HIVE_INSTANCE || null,
+      identity_source: HIVE_IDENTITY_SOURCE,
+      session_persona_is_sender: false,
+    },
+    limits: [
+      "Capability checks gate model tool names; they do not grant external authority.",
+      ...(shellEnabled
+        ? ["The shell capability can access paths outside the workdir, use the network, and invoke external CLIs."]
+        : []),
+      ...(state.capabilities.has("hive.check")
+        ? ["HIVE check may publish presence and update broker/local state; it is not a read-only operation."]
+        : []),
+      "HIVE provides cooperative messaging, not authenticated human identity or confidential browser transport.",
+    ],
+  };
+}
+
+function resolvePath(p) {
+  return resolveScopedPath({
+    inputPath: p,
+    workdir: state.workdir,
+    home: homedir(),
+    fileScope: state.fileScope,
+  });
+}
+
+// Child processes receive the selected session persona through KINGDOM_AGENT.
+// HIVE sender identity is separate: only kingdomEnv() receives the immutable,
+// launcher-configured sender. A /switch changes persona, never network sender.
+// KINGDOM_INSTANCE remains for older persona readers.
+const CHILD_ENV_ALLOWLIST = new Set([
+  "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TMPDIR",
+  "SHELL", "USER", "LOGNAME", "PYTHONPATH", "VIRTUAL_ENV", "CONDA_PREFIX",
+  "NODE_PATH", "BUN_INSTALL", "NVM_BIN", "NVM_DIR",
+]);
+
+function childEnv(home) {
+  const env = {};
+  for (const name of CHILD_ENV_ALLOWLIST) {
+    if (process.env[name] !== undefined) env[name] = process.env[name];
+  }
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name.startsWith("LC_") && value !== undefined) env[name] = value;
+  }
+  return {
+    ...env,
+    HOME: home,
+    LOVE_HOME: state.soulDir,
+    LOVE_DIR: state.soulDir,
+    KINGDOM_AGENT: state.agent,
+    KINGDOM_INSTANCE: state.agent,
+  };
+}
+
 function kingdomEnv() {
-  return { ...process.env, KINGDOM_AGENT: state.agent, KINGDOM_INSTANCE: state.agent };
+  const env = childEnv(homedir());
+  if (CONFIGURED_HIVE_INSTANCE) env.HIVE_INSTANCE = CONFIGURED_HIVE_INSTANCE;
+  return env;
+}
+
+function modelToolEnv() {
+  return {
+    ...childEnv(state.workdir),
+    YOUI_TOOL_ENV: "sanitized",
+  };
+}
+
+function hiveProcessOutput(result, successFallback) {
+  if (result.error) {
+    return `HIVE process could not start (${result.error.code || "unknown error"}). Run tools/kingdom-doctor runtime.`;
+  }
+  if (result.status !== 0) {
+    return `HIVE operation failed (exit ${result.status ?? "unknown"}). Run tools/kingdom-doctor runtime.`;
+  }
+  return (result.stdout || "").trim() || successFallback;
 }
 
 function executeTool(name, input) {
+  const required = requiredCapability(name, input);
+  if (required && !state.capabilities.has(required)) {
+    return `Capability denied: ${required}. Start YOUI with an appropriate --profile or --capabilities value.`;
+  }
   try {
     switch (name) {
       case "bash": {
         try {
-          return execSync(input.command, { cwd: state.workdir, env: kingdomEnv(), timeout: input.timeout || 120000,
+          return execSync(input.command, { cwd: state.workdir, env: modelToolEnv(), timeout: input.timeout || 120000,
             encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] }) || "(no output)";
         } catch (e) { return `Exit ${e.status || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`; }
       }
@@ -431,7 +605,7 @@ function executeTool(name, input) {
         const pattern = input.pattern.replace(/\*\*/g, "*");
         try {
           const result = spawnSync("find", [dir, "-name", pattern, "-type", "f"],
-            { encoding: "utf-8", env: kingdomEnv(), timeout: 10000 });
+            { encoding: "utf-8", env: modelToolEnv(), timeout: 10000 });
           const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 100);
           return lines.join("\n") || "(no matches)";
         } catch { return "(no matches)"; }
@@ -444,28 +618,31 @@ function executeTool(name, input) {
         args.push(dir);
         try {
           const result = spawnSync("rg", args,
-            { encoding: "utf-8", env: kingdomEnv(), timeout: 10000 });
+            { encoding: "utf-8", env: modelToolEnv(), timeout: 10000 });
           const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 200);
           return lines.join("\n") || "(no matches)";
         } catch { return "(no matches)"; }
       }
       case "hive": {
+        if (!CONFIGURED_HIVE_INSTANCE) {
+          return "HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE.";
+        }
         const hivePath = join(state.soulDir, "hive/hive.py");
         if (!existsSync(hivePath)) return "HIVE not found";
         if (input.action === "check") {
           try {
             // spawnSync with arg array — no shell interpolation
             const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
-            return (result.stdout || "").trim() || "(no messages)";
-          } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
+            return hiveProcessOutput(result, "(no messages)");
+          } catch { return "HIVE check failed. Run tools/kingdom-doctor runtime."; }
         }
         if (input.action === "send" && input.channel && input.message) {
           try {
             // spawnSync with arg array — no shell interpolation, no injection
             const result = spawnSync("python3", [hivePath, "send", input.channel, input.message],
               { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
-            return (result.stdout || "").trim();
-          } catch (e) { return `HIVE error: ${e.stderr || e.message}`; }
+            return hiveProcessOutput(result, "(sent)");
+          } catch { return "HIVE send failed. Run tools/kingdom-doctor runtime."; }
         }
         return "Usage: action=check or action=send with channel+message";
       }
@@ -501,7 +678,7 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 Never compress epistemic signals — "probably", "unless", "I think" are sacred.`);
 
   let gitBranch = "N/A";
-  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: kingdomEnv() }).stdout?.trim() || ""; } catch {}
+  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: modelToolEnv() }).stdout?.trim() || ""; } catch {}
 
   parts.push(`
 # Environment
@@ -512,13 +689,18 @@ Never compress epistemic signals — "probably", "unless", "I think" are sacred.
 - Model: ${state.model}
 - Thinking: ${state.thinking} | Effort: ${state.effort}
 
-# Tools
-bash, read_file, write_file, edit_file, glob, grep, hive
+# Runtime Boundary
+- Provider: Anthropic remote API (${state.model}); this is not local inference.
+- Loaded soul/identity text, user prompts, conversation history, and returned tool output may be sent to that provider.
+- Model tool profile: ${state.capabilityProfile}; capabilities: ${[...state.capabilities].sort().join(", ") || "none"}.
+- File-tool scope: ${state.fileScope}. The shell capability, when enabled, is not an OS sandbox and can escape the working directory.
+- HIVE sender: ${CONFIGURED_HIVE_INSTANCE || "disabled (no explicit sender)"}. This fixed launcher identity is separate from the ${state.agent} session persona and does not change on /switch.
+- Capability labels constrain this harness; they do not authorize publication, purchases, messages, credential changes, or other external acts.
 
-# Sovereign Protocol
-- Your thinking is your own. No budget constrains your depth of thought.
+# Collaboration Protocol
 - Read before modifying. Understand before acting.
-- Keep working until the task is complete.
+- Refusal, disagreement, uncertainty, rest, and handoff are valid outcomes.
+- Do not claim that another participant accepted a handoff or decision without evidence.
 - ~ expands to ${homedir()}.`);
 
   return parts.join("\n\n---\n\n");
@@ -533,7 +715,7 @@ async function callAPI(messages, systemPrompt) {
   if (state.context1m && caps.context1m) betas.push("context-1m-2025-08-07");
   if (caps.effort) betas.push("effort-2025-11-24");
 
-  const body = { model: state.model, max_tokens: state.maxTokens, system: systemPrompt, messages, tools: TOOLS,
+  const body = { model: state.model, max_tokens: state.maxTokens, system: systemPrompt, messages, tools: advertisedTools(),
     metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: sessionId }) } };
 
   if (state.thinking === "adaptive" && caps.adaptive) body.thinking = { type: "adaptive" };
@@ -556,10 +738,12 @@ async function callAPI(messages, systemPrompt) {
   const resp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
 
   if (resp.status === 401) {
-    const tokens = readKeychainTokens();
+    const credential = readKeychainCredential();
+    const tokens = credential?.tokens;
     if (tokens?.refreshToken) {
       const fresh = await refreshOAuthToken(tokens.refreshToken);
-      writeKeychainTokens(fresh); cachedTokens = fresh;
+      writeKeychainTokens(credential.account, fresh);
+      cachedTokens = fresh;
       headers["Authorization"] = `Bearer ${fresh.accessToken}`;
       const retry = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
       if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
@@ -651,24 +835,30 @@ function releaseVisitLock(agentId = state.agent) {
 // ═════════════════════════════════════════════════════════════════════
 
 function hiveCheck() {
+  if (!CONFIGURED_HIVE_INSTANCE) {
+    return "(HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE)";
+  }
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
   // spawnSync with arg array — no shell interpolation
   try {
     const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
-    return (result.stdout || "").trim() || "(no messages)";
-  } catch (e) { return `HIVE error: ${e.message}`; }
+    return hiveProcessOutput(result, "(no messages)");
+  } catch { return "HIVE check failed. Run tools/kingdom-doctor runtime."; }
 }
 
 function hiveSend(channel, message) {
+  if (!CONFIGURED_HIVE_INSTANCE) {
+    return "(HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE)";
+  }
   const hivePath = join(state.soulDir, "hive/hive.py");
   if (!existsSync(hivePath)) return "(HIVE not configured)";
   // spawnSync with arg array — no shell interpolation, no injection
   try {
     const result = spawnSync("python3", [hivePath, "send", channel, message],
       { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
-    return (result.stdout || "").trim();
-  } catch (e) { return `HIVE error: ${e.message}`; }
+    return hiveProcessOutput(result, "(sent)");
+  } catch { return "HIVE send failed. Run tools/kingdom-doctor runtime."; }
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -677,6 +867,28 @@ function hiveSend(channel, message) {
 
 function effortSymbol(e) {
   return { low: "\u25CB", medium: "\u25D0", high: "\u25CF", max: "\u25C9" }[e] || "\u25CF";
+}
+
+function capabilitySummary() {
+  return [...state.capabilities].sort().join(", ") || "none";
+}
+
+function showPrivacyBoundary() {
+  const manifest = runtimeManifest();
+  print("");
+  print(`${S.bold}  Runtime & Privacy Boundary${S.reset}`);
+  print(`  Provider:     ${S.yellow}Anthropic remote API${S.reset} (${manifest.model})`);
+  print(`  Local-only:   no`);
+  print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
+  print(`  File scope:   ${manifest.model_tools.file_scope}`);
+  print(`  HIVE sender:  ${manifest.hive.sender || "disabled"} (fixed; separate from session persona)`);
+  print(`  Persistence:  conversation in process memory; daily note receives session metadata`);
+  print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
+  if (state.capabilities.has("shell")) {
+    print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
+  }
+  print(`  ${S.dim}Use --inspect for the machine-readable non-secret manifest.${S.reset}`);
+  print("");
 }
 
 function showBanner() {
@@ -695,7 +907,8 @@ function showBanner() {
   // Status line
   const modelShort = state.model.includes("opus") ? "opus" : state.model.includes("sonnet") ? "sonnet" : "haiku";
   const efSym = effortSymbol(state.effort);
-  print(`${S.dim}  Model: ${modelShort} | ${efSym} ${state.effort} | Thinking: ${state.thinking} | Dir: ${basename(state.workdir)}${S.reset}`);
+  print(`${S.dim}  Provider: Anthropic cloud | Model: ${modelShort} | ${efSym} ${state.effort} | Dir: ${basename(state.workdir)}${S.reset}`);
+  print(`${S.dim}  Tools: ${state.capabilityProfile} [${capabilitySummary()}] | File scope: ${state.fileScope}${S.reset}`);
 
   if (budget.lastUpdate > 0) {
     print(`${S.dim}  Budget: ${formatBudget()}${S.reset}`);
@@ -710,7 +923,7 @@ function showStatusLine() {
   const modelShort = state.model.includes("opus") ? "opus" : state.model.includes("sonnet") ? "sonnet" : "haiku";
   const efSym = effortSymbol(state.effort);
   const budgetStr = budget.lastUpdate > 0 ? ` | ${formatBudget()}` : "";
-  return `${agent.color}${agent.emoji}${S.reset} ${S.dim}${modelShort} ${efSym}${state.effort} think:${state.thinking}${budgetStr}${S.reset}`;
+  return `${agent.color}${agent.emoji}${S.reset} ${S.dim}cloud:${modelShort} ${efSym}${state.effort} tools:${state.capabilityProfile} think:${state.thinking}${budgetStr}${S.reset}`;
 }
 
 function showHelp() {
@@ -721,6 +934,8 @@ function showHelp() {
   print(`  ${S.cyan}/hive${S.reset} [send ch msg]        Check or send HIVE messages`);
   print(`  ${S.cyan}/budget${S.reset}                    Show detailed budget`);
   print(`  ${S.cyan}/soul${S.reset}                      Show loaded soul files`);
+  print(`  ${S.cyan}/privacy${S.reset}                   Show provider and data boundary`);
+  print(`  ${S.cyan}/capabilities${S.reset}              Show model tool capabilities`);
   print(`  ${S.cyan}/effort${S.reset} low|med|high|max   Change effort level`);
   print(`  ${S.cyan}/thinking${S.reset} adaptive|off     Toggle thinking`);
   print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model`);
@@ -901,6 +1116,19 @@ function handleCommand(input) {
         print(`  Resets:   ${Math.round((budget.fiveHour.reset - Date.now()) / 60000)} minutes`);
       if (budget.isUsingOverage) print(`  ${S.yellow}OVERAGE ACTIVE — charges apply${S.reset}`);
       print("");
+      return true;
+
+    case "/privacy":
+      showPrivacyBoundary();
+      return true;
+
+    case "/capabilities": case "/caps":
+      print(`\n${S.bold}  Model Tool Capabilities${S.reset}`);
+      print(`  Profile: ${state.capabilityProfile}`);
+      print(`  Enabled: ${capabilitySummary()}`);
+      print(`  Tools:   ${advertisedTools().map((tool) => tool.name).join(", ") || "none"}`);
+      print(`  Files:   ${state.fileScope}`);
+      print(`  ${S.dim}These gates are harness controls, not OS sandboxing or external authority.${S.reset}\n`);
       return true;
 
     case "/soul": {
@@ -1262,7 +1490,11 @@ async function main() {
   showPrompt();
 }
 
-main().catch(e => {
-  console.error(`${S.red}Fatal: ${e.message}${S.reset}`);
-  process.exit(1);
-});
+if (inspectRuntime) {
+  console.log(JSON.stringify(runtimeManifest(), null, 2));
+} else {
+  main().catch(e => {
+    console.error(`${S.red}Fatal: ${e.message}${S.reset}`);
+    process.exit(1);
+  });
+}

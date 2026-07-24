@@ -15,7 +15,8 @@
 #   witnesses     cosignatures on my deed; peers recorded
 #   freshness     pulse present, age <14m, namespace valid
 #   attestation   number of soul-attested artefacts
-#   network       sshd, firewall, hive reachable
+#   runtime       canonical YOUI root, launch profile, HIVE identity
+#   network       sshd, firewall, local HIVE key presence (no connection)
 #
 # Suggestions prioritise by HOME.md commitments:
 #   identity > trust > freshness > witness > attestation > network
@@ -53,6 +54,9 @@ WITNESS_OK="?"; WITNESS_COSIG=0; WITNESS_PEERS=0
 PULSE_OK="?"; PULSE_AGE_S=-1; PULSE_FRESH=0
 ATTEST_OK="?"; ATTEST_COUNT=0
 ANCHOR_OK="?"; ANCHOR_FILES=0; ANCHOR_DRIFT=0; ANCHOR_MISS=0
+RUNTIME_OK="?"; RUNTIME_ROOT=""; RUNTIME_TERMINAL="missing"
+RUNTIME_WEB="missing"; RUNTIME_HIVE="missing"; RUNTIME_PROFILE="missing"
+RUNTIME_AGENT=""; RUNTIME_HIVE_INSTANCE=""; RUNTIME_HIVE_ACCOUNT="unknown"
 NET_SSHD="?"; NET_FIREWALL="?"; NET_HIVE="?"
 
 # Suggestions accumulate into a temp file (one TAB-separated line each).
@@ -82,6 +86,19 @@ read_int_field() {
   else
     sed -n "s/.*\"$1\": *\([0-9][0-9]*\).*/\1/p" "$2" | head -1
   fi
+}
+read_assignment() {
+  key="$1"; file="$2"
+  [ -f "$file" ] || return 0
+  value=$(sed -n "s/^[[:space:]]*${key}=//p" "$file" 2>/dev/null | head -1)
+  case "$value" in
+    \"*\") value=${value#\"}; value=${value%\"} ;;
+    \'*\') value=${value#\'}; value=${value%\'} ;;
+  esac
+  printf '%s' "$value"
+}
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -248,6 +265,84 @@ elif [ "$ID_OK" = "yes" ]; then
 fi
 
 # ═══════════════════════════════════════════════════════════════════
+# RUNTIME  (one repo, one launcher root, honest HIVE identity)
+# ═══════════════════════════════════════════════════════════════════
+KINGDOM_CONFIG="${HOME}/.kingdom"
+CONFIG_LOVE_DIR=$(read_assignment LOVE_DIR "$KINGDOM_CONFIG")
+CONFIG_AGENT=$(read_assignment AGENT "$KINGDOM_CONFIG")
+CONFIG_UNLIMITED_DIR=$(read_assignment UNLIMITED_DIR "$KINGDOM_CONFIG")
+RUNTIME_ROOT="${LOVE_DIR:-${LOVE_HOME:-${CONFIG_LOVE_DIR:-${HOME}/love-unlimited}}}"
+if [ -d "$RUNTIME_ROOT" ]; then
+  RUNTIME_ROOT=$(cd "$RUNTIME_ROOT" 2>/dev/null && pwd -P || printf '%s' "$RUNTIME_ROOT")
+fi
+
+[ -f "${RUNTIME_ROOT}/youi.mjs" ] && RUNTIME_TERMINAL="present"
+[ -f "${RUNTIME_ROOT}/youi-web/server.mjs" ] && RUNTIME_WEB="present"
+[ -f "${RUNTIME_ROOT}/hive/hive.py" ] && RUNTIME_HIVE="present"
+
+PROFILE="${HOME}/.kingdom_profile"
+if [ -f "$PROFILE" ]; then
+  if grep -Eq 'Claude-unlimited|UNLIMITED_DIR' "$PROFILE" 2>/dev/null; then
+    RUNTIME_PROFILE="legacy"
+  elif grep -Eq '(^|[^[:alnum:]_-])true-love([^[:alnum:]_-]|$)' "$PROFILE" 2>/dev/null; then
+    RUNTIME_PROFILE="wrong_root"
+  elif grep -q 'LOVE_HOME.*youi\.mjs' "$PROFILE" 2>/dev/null; then
+    RUNTIME_PROFILE="canonical"
+  else
+    RUNTIME_PROFILE="unknown"
+  fi
+fi
+
+RUNTIME_AGENT="${KINGDOM_AGENT:-${CONFIG_AGENT}}"
+ENV_HIVE_INSTANCE=$(printf '%s' "${YOUI_HIVE_INSTANCE:-${HIVE_INSTANCE:-}}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+if [ -n "$ENV_HIVE_INSTANCE" ]; then
+  RUNTIME_HIVE_INSTANCE="$ENV_HIVE_INSTANCE"
+elif [ -f "${HOME}/.love/hive/instance" ]; then
+  RUNTIME_HIVE_INSTANCE=$(sed -n '1{s/^[[:space:]]*//; s/[[:space:]]*$//; p;}' "${HOME}/.love/hive/instance" 2>/dev/null)
+fi
+
+if [ -n "$RUNTIME_HIVE_INSTANCE" ] && [ "$RUNTIME_HIVE" = "present" ] &&
+   command -v python3 >/dev/null 2>&1; then
+  HIVE_INSTANCE="$RUNTIME_HIVE_INSTANCE" \
+    python3 "${RUNTIME_ROOT}/hive/hive.py" config --quiet >/dev/null 2>&1
+  hive_config_status=$?
+  case "$hive_config_status" in
+    0) RUNTIME_HIVE_ACCOUNT="configured" ;;
+    2) RUNTIME_HIVE_ACCOUNT="unconfigured" ;;
+    *) RUNTIME_HIVE_ACCOUNT="unavailable" ;;
+  esac
+fi
+
+LEGACY_RUNTIME="${UNLIMITED_DIR:-${CONFIG_UNLIMITED_DIR}}"
+if [ -d "$LEGACY_RUNTIME" ]; then
+  LEGACY_RUNTIME=$(cd "$LEGACY_RUNTIME" 2>/dev/null && pwd -P || printf '%s' "$LEGACY_RUNTIME")
+fi
+RUNTIME_OK="yes"
+if [ "$RUNTIME_TERMINAL" != "present" ] || [ "$RUNTIME_WEB" != "present" ] ||
+   [ "$RUNTIME_HIVE" != "present" ]; then
+  RUNTIME_OK="missing"
+  add_suggestion "LOVE_DIR=<path-to-love-unlimited> kingdom doctor" "Canonical runtime files are missing under the selected LOVE_DIR."
+elif [ "$RUNTIME_PROFILE" = "legacy" ] || [ "$RUNTIME_PROFILE" = "wrong_root" ]; then
+  RUNTIME_OK="split"
+  add_suggestion "${RUNTIME_ROOT}/kingdom-os/install.sh --modules 01" "Replace the noncanonical shell launcher with the canonical love-unlimited profile."
+elif [ -n "$LEGACY_RUNTIME" ] && [ "$LEGACY_RUNTIME" != "$RUNTIME_ROOT" ]; then
+  RUNTIME_OK="split"
+  add_suggestion "${RUNTIME_ROOT}/kingdom-os/install.sh --modules 03 --agent ${RUNTIME_AGENT:-alpha}" "Remove the split runtime path from ~/.kingdom."
+elif [ "$RUNTIME_PROFILE" = "missing" ] || [ "$RUNTIME_PROFILE" = "unknown" ]; then
+  RUNTIME_OK="profile_${RUNTIME_PROFILE}"
+  add_suggestion "${RUNTIME_ROOT}/kingdom-os/install.sh --modules 01" "Install a canonical love-unlimited shell profile."
+elif [ -z "$RUNTIME_HIVE_INSTANCE" ]; then
+  RUNTIME_OK="hive_identity_missing"
+  add_suggestion "export HIVE_INSTANCE=<configured-sender>" "Select a fixed HIVE sender identity; model/session persona remains separate."
+elif [ "$RUNTIME_HIVE_ACCOUNT" = "unconfigured" ]; then
+  RUNTIME_OK="hive_unconfigured"
+  add_suggestion "HIVE_INSTANCE=${RUNTIME_HIVE_INSTANCE} python3 ${RUNTIME_ROOT}/hive/hive.py config" "Selected HIVE identity has no account metadata; provision metadata and credentials before messaging."
+elif [ "$RUNTIME_HIVE_ACCOUNT" != "configured" ]; then
+  RUNTIME_OK="hive_unavailable"
+  add_suggestion "HIVE_INSTANCE=${RUNTIME_HIVE_INSTANCE} python3 ${RUNTIME_ROOT}/hive/hive.py config" "HIVE account metadata could not be validated locally; no connection was attempted."
+fi
+
+# ═══════════════════════════════════════════════════════════════════
 # NETWORK
 # ═══════════════════════════════════════════════════════════════════
 case "$(uname)" in
@@ -282,7 +377,7 @@ status_emoji() {
   case "$1" in
     yes|absent|up|key_present) printf "✓" ;;
     solo|none|stale|cold|unknown_age|down|off|key_absent) printf "·" ;;
-    invalid|missing|incomplete|empty|active) printf "✗" ;;
+    invalid|missing|incomplete|empty|active|split|identity_mismatch|hive_unconfigured|hive_identity_missing|hive_unavailable|profile_missing|profile_unknown) printf "✗" ;;
     *) printf "?" ;;
   esac
 }
@@ -292,6 +387,7 @@ case "$ID_OK"      in invalid|incomplete|missing) issue_count=$((issue_count+1))
 case "$WITNESS_OK" in invalid)                    issue_count=$((issue_count+1)) ;; esac
 case "$PULSE_OK"   in invalid)                    issue_count=$((issue_count+1)) ;; esac
 case "$ANCHOR_OK"  in invalid|drift|missing)      issue_count=$((issue_count+1)) ;; esac
+case "$RUNTIME_OK" in missing|split|hive_unconfigured|hive_identity_missing|hive_unavailable|profile_missing|profile_unknown) issue_count=$((issue_count+1)) ;; esac
 case "$NET_FIREWALL" in active)                   issue_count=$((issue_count+1)) ;; esac
 
 if [ "$ID_OK" = "missing" ]; then
@@ -316,6 +412,9 @@ if [ "$MODE" = "json" ]; then
     erea=$(printf '%s' "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')
     SUG_JSON="${SUG_JSON}{\"cmd\":\"${ecmd}\",\"reason\":\"${erea}\"}"
   done < "$SUG_FILE"
+  RUNTIME_ROOT_JSON=$(json_escape "$RUNTIME_ROOT")
+  RUNTIME_AGENT_JSON=$(json_escape "$RUNTIME_AGENT")
+  RUNTIME_HIVE_INSTANCE_JSON=$(json_escape "$RUNTIME_HIVE_INSTANCE")
   cat <<JSON
 {
   "exit": ${EXIT_CODE},
@@ -349,6 +448,17 @@ if [ "$MODE" = "json" ]; then
     "files": ${ANCHOR_FILES},
     "drift": ${ANCHOR_DRIFT},
     "missing": ${ANCHOR_MISS}
+  },
+  "runtime": {
+    "ok": "${RUNTIME_OK}",
+    "root": "${RUNTIME_ROOT_JSON}",
+    "terminal": "${RUNTIME_TERMINAL}",
+    "web": "${RUNTIME_WEB}",
+    "hive": "${RUNTIME_HIVE}",
+    "profile": "${RUNTIME_PROFILE}",
+    "agent": "${RUNTIME_AGENT_JSON}",
+    "hive_instance": "${RUNTIME_HIVE_INSTANCE_JSON}",
+    "hive_account": "${RUNTIME_HIVE_ACCOUNT}"
   },
   "network": {
     "sshd": "${NET_SSHD}",
@@ -411,6 +521,19 @@ case "$ANCHOR_OK" in
   invalid) echo "manifest signature INVALID" ;;
   none)    echo "narrative identity not anchored" ;;
   *)       echo "(awaiting identity)" ;;
+esac
+
+printf "  runtime       [%s]  " "$(status_emoji "$RUNTIME_OK")"
+case "$RUNTIME_OK" in
+  yes)               echo "love-unlimited · terminal:${RUNTIME_TERMINAL} · web:${RUNTIME_WEB} · hive:${RUNTIME_HIVE}/${RUNTIME_HIVE_ACCOUNT} · profile:${RUNTIME_PROFILE}" ;;
+  missing)           echo "runtime files missing under ${RUNTIME_ROOT}" ;;
+  split)             echo "noncanonical launcher root (profile:${RUNTIME_PROFILE})" ;;
+  profile_missing)   echo "canonical shell launcher profile is missing" ;;
+  profile_unknown)   echo "shell launcher profile does not resolve to love-unlimited" ;;
+  hive_identity_missing) echo "no explicit or resident HIVE sender identity" ;;
+  hive_unconfigured) echo "HIVE identity ${RUNTIME_HIVE_INSTANCE:-?} has no configured account metadata" ;;
+  hive_unavailable)  echo "HIVE identity ${RUNTIME_HIVE_INSTANCE:-?} could not be validated locally" ;;
+  *)                 echo "(state: $RUNTIME_OK)" ;;
 esac
 
 printf "  network       sshd:%s · firewall:%s · hive:%s\n" "$NET_SSHD" "$NET_FIREWALL" "$NET_HIVE"

@@ -14,9 +14,6 @@
 KINGDOM_DOMAIN="ai-love.cc"
 SENTRY_IP="135.181.28.252"
 LOVE_UNLIMITED_REPO="${LOVE_UNLIMITED_REPO:-https://codeberg.org/zerone-dev/love-unlimited.git}"
-# Legacy aliases (kept for backward compat during transition)
-LOVE_REPO="${LOVE_REPO:-$LOVE_UNLIMITED_REPO}"
-UNLIMITED_REPO="${UNLIMITED_REPO:-$LOVE_UNLIMITED_REPO}"
 
 # ── Platform detection (called once, cached) ─────────────────────────
 detect_platform() {
@@ -45,7 +42,6 @@ fi
 
 HOME_DIR="${HOME_DIR:-$(eval echo "~${KINGDOM_USER}")}"
 LOVE_DIR="${LOVE_DIR:-${HOME_DIR}/love-unlimited}"
-UNLIMITED_DIR="${UNLIMITED_DIR:-${HOME_DIR}/love-unlimited}"
 KOS_DIR="${KOS_DIR:-$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)}"
 
 # Derived paths

@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────
 // ollama-bridge.mjs — Ollama Cloud Bridge for Kingdom OS
 //
-// Runs INSIDE the server.mjs process (which has network access),
-// bypassing the sandbox that blocks socket() in child processes.
+// Runs inside the authenticated server.mjs HTTP boundary. It is not exposed
+// through filesystem IPC: local files are not an authentication mechanism.
 //
 // Architecture:
 //   ┌──────────────────────────────────────────────────────────┐
@@ -15,15 +15,12 @@
 //   │    ├─ /api/ollama/models   → list models                │
 //   │    ├─ /api/ollama/test     → connectivity test          │
 //   │    │                                                     │
-//   │    └─ bash tool (execSync, child process)                │
-//   │         └─ ❌ socket() BLOCKED by sandbox                │
-//   │         └─ ✅ reads /tmp/ollama-*.json (file IPC)        │
+//   │    └─ model tool adapter (capability-gated by server)    │
 //   └──────────────────────────────────────────────────────────┘
 //
-// Three access patterns:
-//   1. HTTP API  — /api/ollama/* endpoints (for web UI, external tools)
-//   2. Tool      — "ollama" tool in executeTool() (for Claude sessions)
-//   3. File IPC  — /tmp/ollama-req-*.json → /tmp/ollama-res-*.json (for sandboxed scripts)
+// Two access patterns:
+//   1. Authenticated HTTP API — /api/ollama/* endpoints
+//   2. Capability-gated tool — "ollama" in executeTool()
 //
 // 503 resilience (2026-04-10):
 //   Ollama Cloud returns 503 when all 10 model slots are busy.
@@ -35,6 +32,8 @@
 //   /v1/chat/completions — OpenAI-compatible (primary, supports reasoning_effort)
 //   /api/chat            — Native Ollama (fallback, supports think param + options)
 // ─────────────────────────────────────────────────────────────────────
+
+import { redactDelegatedCredentials } from "./subprocess-env.mjs";
 
 // Ollama Cloud key. Required from env — the previous in-source fallback was
 // committed to a public repo and must be considered compromised; rotate at
@@ -54,6 +53,38 @@ const OLLAMA_VLLM_BASE  = process.env.OLLAMA_VLLM_BASE_URL  || "http://localhost
 //   kingdom-truth* — our SFT/alignment LoRA adapters (kingdom-truth, kingdom-truth-v2)
 const VLLM_MODEL_REGEX  = /^(Qwen\/|kingdom-truth)/i;
 
+function redactOllamaCredential(value) {
+  return redactDelegatedCredentials(value, {
+    credentialNames: ["OLLAMA_API_KEY"],
+  });
+}
+
+function redactOllamaPayload(value) {
+  if (typeof value === "string") return redactOllamaCredential(value);
+  if (Array.isArray(value)) return value.map(redactOllamaPayload);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        redactOllamaCredential(key),
+        redactOllamaPayload(item),
+      ]),
+    );
+  }
+  return value;
+}
+
+function configuredEndpointIsLoopback(rawUrl) {
+  try {
+    const hostname = new URL(rawUrl).hostname.toLowerCase().replace(/\.$/, "");
+    return hostname === "localhost"
+      || hostname === "::1"
+      || hostname === "[::1]"
+      || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
 // ── Local model detection ───────────────────────────────────────────
 let localModels = null;   // cached list of locally-installed models
 let localChecked = 0;     // timestamp of last check
@@ -63,13 +94,27 @@ const LOCAL_CHECK_INTERVAL = 60_000; // re-check every 60s
  * Detect whether local Ollama is running and which models are available.
  * Returns { running: bool, models: string[], base: string } or null if unreachable.
  */
-async function detectLocalOllama() {
+async function detectLocalOllama(signal, {
+  allowRemoteEndpoint = false,
+} = {}) {
+  // A setting named LOCAL must not silently become an ungranted network
+  // egress route when it is pointed at a LAN or internet host.
+  if (!configuredEndpointIsLoopback(OLLAMA_LOCAL_BASE) && !allowRemoteEndpoint) {
+    return {
+      running: false,
+      models: [],
+      base: null,
+      blockedRemoteEndpoint: true,
+    };
+  }
   // Cache: don't re-probe every request
   if (localModels && Date.now() - localChecked < LOCAL_CHECK_INTERVAL) return localModels;
 
+  throwIfAborted(signal);
+  const request = linkedAbortController(signal, 3000, "Local Ollama detection timed out");
   try {
     const resp = await fetch(`${OLLAMA_LOCAL_BASE}/api/tags`, {
-      signal: AbortSignal.timeout(3000),
+      signal: request.controller.signal,
     });
     if (!resp.ok) throw new Error(`status ${resp.status}`);
     const data = await resp.json();
@@ -78,10 +123,13 @@ async function detectLocalOllama() {
     localChecked = Date.now();
     console.log(`[ollama] Local detected: ${models.length} models (${models.join(", ")})`);
     return localModels;
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw abortReason(signal);
     localModels = { running: false, models: [], base: null };
     localChecked = Date.now();
     return localModels;
+  } finally {
+    request.cleanup();
   }
 }
 
@@ -116,6 +164,54 @@ const MAX_RETRIES = 4;
 const RETRY_BASE_MS = 1000;  // 1s → 2s → 4s → 8s
 const RETRY_MAX_MS  = 10000;
 
+function abortReason(signal, fallback = "Ollama request cancelled") {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error(fallback);
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortReason(signal);
+}
+
+function linkedAbortController(parentSignal, timeout, timeoutMessage) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(abortReason(parentSignal));
+  if (parentSignal) {
+    if (parentSignal.aborted) onAbort();
+    else parentSignal.addEventListener("abort", onAbort, { once: true });
+  }
+  const timer = setTimeout(() => {
+    const error = new Error(timeoutMessage);
+    error.name = "TimeoutError";
+    controller.abort(error);
+  }, timeout);
+  return {
+    controller,
+    cleanup() {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+function abortableDelay(milliseconds, signal) {
+  throwIfAborted(signal);
+  if (!signal) return new Promise(resolve => setTimeout(resolve, milliseconds));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 // ── Timeout presets by model tier ───────────────────────────────────
 function selectTimeout(model = "") {
   const m = model.toLowerCase();
@@ -134,7 +230,7 @@ function selectTimeout(model = "") {
  * @param {string} endpoint - path (e.g. "/v1/chat/completions")
  * @param {object} body - request body
  * @param {number} timeout - request timeout in ms
- * @param {object} [opts] - { auth: string|null, base: string }
+ * @param {object} [opts] - { auth: string|null, base: string, signal?: AbortSignal }
  */
 async function postWithRetry(endpoint, body, timeout, opts = {}) {
   let lastError = null;
@@ -142,8 +238,8 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
   const authHeader = opts.auth !== undefined ? opts.auth : OLLAMA_API_KEY;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    throwIfAborted(opts.signal);
+    const request = linkedAbortController(opts.signal, timeout, `Ollama request timed out after ${timeout}ms`);
     const start = performance.now();
 
     try {
@@ -154,18 +250,21 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: request.controller.signal,
       });
-      clearTimeout(timer);
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
       if (resp.ok) {
-        const data = await resp.json();
+        const data = redactOllamaPayload(await resp.json());
+        request.cleanup();
         return { ok: true, data, status: resp.status, latency: elapsed };
       }
 
       // Retriable error?
-      const errorText = await resp.text().catch(() => "");
+      const errorText = redactOllamaCredential(
+        await resp.text().catch(() => ""),
+      );
+      request.cleanup();
       lastError = { status: resp.status, error: errorText, latency: elapsed };
 
       if (RETRIABLE_STATUS.has(resp.status) && attempt < MAX_RETRIES) {
@@ -174,7 +273,7 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
           `[ollama] ${resp.status} on attempt ${attempt + 1}/${MAX_RETRIES + 1}, ` +
           `retrying in ${wait}ms: ${errorText.slice(0, 100)}`
         );
-        await new Promise(r => setTimeout(r, wait));
+        await abortableDelay(wait, opts.signal);
         continue;
       }
 
@@ -182,17 +281,22 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
       return { ok: false, ...lastError };
 
     } catch (e) {
-      clearTimeout(timer);
+      request.cleanup();
+      if (opts.signal?.aborted) throw abortReason(opts.signal);
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-      lastError = { status: 0, error: e.message, latency: elapsed };
+      lastError = {
+        status: 0,
+        error: redactOllamaCredential(e.message),
+        latency: elapsed,
+      };
 
       if (attempt < MAX_RETRIES) {
         const wait = Math.min(RETRY_BASE_MS * (2 ** attempt), RETRY_MAX_MS);
         console.log(
           `[ollama] Error on attempt ${attempt + 1}/${MAX_RETRIES + 1}, ` +
-          `retrying in ${wait}ms: ${e.message}`
+          `retrying in ${wait}ms: ${redactOllamaCredential(e.message)}`
         );
-        await new Promise(r => setTimeout(r, wait));
+        await abortableDelay(wait, opts.signal);
         continue;
       }
 
@@ -390,9 +494,9 @@ function parseNativeResponse(data, model) {
 // STREAMING — vLLM SSE streaming for token-by-token delivery
 // ═════════════════════════════════════════════════════════════════════
 
-async function streamV1Chat(url, body, timeout, onDelta) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+async function streamV1Chat(url, body, timeout, onDelta, signal) {
+  throwIfAborted(signal);
+  const request = linkedAbortController(signal, timeout, `vLLM stream timed out after ${timeout}ms`);
   const start = performance.now();
 
   try {
@@ -400,12 +504,14 @@ async function streamV1Chat(url, body, timeout, onDelta) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }),
-      signal: controller.signal,
+      signal: request.controller.signal,
     });
 
     if (!resp.ok) {
-      clearTimeout(timer);
-      const errorText = await resp.text().catch(() => "");
+      const errorText = redactOllamaCredential(
+        await resp.text().catch(() => ""),
+      );
+      request.cleanup();
       return { ok: false, status: resp.status, error: errorText, latency: ((performance.now() - start) / 1000).toFixed(2) };
     }
 
@@ -437,8 +543,9 @@ async function streamV1Chat(url, body, timeout, onDelta) {
         const delta = choice.delta || {};
 
         if (delta.content) {
-          fullText += delta.content;
-          onDelta({ type: "text_delta", text: delta.content });
+          const safeDelta = redactOllamaCredential(delta.content);
+          fullText += safeDelta;
+          onDelta({ type: "text_delta", text: safeDelta });
         }
 
         if (delta.tool_calls) {
@@ -447,17 +554,19 @@ async function streamV1Chat(url, body, timeout, onDelta) {
             if (!toolCalls[idx]) toolCalls[idx] = { id: "", name: "", arguments: "" };
             if (tc.id) toolCalls[idx].id = tc.id;
             if (tc.function?.name) toolCalls[idx].name = tc.function.name;
-            if (tc.function?.arguments) toolCalls[idx].arguments += tc.function.arguments;
+            if (tc.function?.arguments) {
+              toolCalls[idx].arguments += redactOllamaCredential(tc.function.arguments);
+            }
           }
         }
 
         if (choice.finish_reason) finishReason = choice.finish_reason;
         if (parsed.usage) usage = parsed.usage;
-        if (parsed.model) respModel = parsed.model;
+        if (parsed.model) respModel = redactOllamaCredential(parsed.model);
       }
     }
 
-    clearTimeout(timer);
+    request.cleanup();
     const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
     const content = [];
@@ -479,8 +588,14 @@ async function streamV1Chat(url, body, timeout, onDelta) {
       latency: elapsed, _provider: "vllm", _endpoint: "v1", _streamed: true,
     };
   } catch (e) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, error: e.message, latency: ((performance.now() - start) / 1000).toFixed(2) };
+    request.cleanup();
+    if (signal?.aborted) throw abortReason(signal);
+    return {
+      ok: false,
+      status: 0,
+      error: redactOllamaCredential(e.message),
+      latency: ((performance.now() - start) / 1000).toFixed(2),
+    };
   }
 }
 
@@ -507,8 +622,12 @@ export async function ollamaChat(messages, options = {}) {
     timeout = null,
     reasoningEffort = null,
     onDelta = null,
+    signal = null,
+    allowCloudRoute = false,
+    allowCloudFallback = false,
   } = options;
 
+  throwIfAborted(signal);
   const effectiveTimeout = timeout || selectTimeout(model);
 
   // ── VLLM REMOTE (Qwen*): OpenAI-compat /v1 only, no /api/chat fallback ──
@@ -548,13 +667,13 @@ export async function ollamaChat(messages, options = {}) {
     if (onDelta) {
       return await streamV1Chat(
         `${OLLAMA_VLLM_BASE}/v1/chat/completions`,
-        v1Body, effectiveTimeout, onDelta
+        v1Body, effectiveTimeout, onDelta, signal
       );
     }
 
     // Non-streaming path
     const r = await postWithRetry("/v1/chat/completions", v1Body, effectiveTimeout, {
-      base: OLLAMA_VLLM_BASE, auth: null,
+      base: OLLAMA_VLLM_BASE, auth: null, signal,
     });
     if (r.ok) {
       const parsed = parseV1Response(r.data, model);
@@ -563,8 +682,19 @@ export async function ollamaChat(messages, options = {}) {
     return { ok: false, status: r.status, error: `vLLM failed: ${r.error || "unknown"}`, latency: r.latency };
   }
 
-  const localInfo = await detectLocalOllama();
+  const localInfo = await detectLocalOllama(signal, {
+    allowRemoteEndpoint: allowCloudRoute,
+  });
   const endpoint = resolveEndpoint(model, localInfo);
+  if (endpoint.provider !== "ollama_local" && !allowCloudRoute) {
+    return {
+      ok: false,
+      status: 0,
+      error: "Ollama cloud routing is disabled for this session.",
+      latency: "0.00",
+      _provider: "ollama_cloud",
+    };
+  }
 
   // Convert messages to OpenAI format (used by both local and cloud)
   const oaiMessages = [];
@@ -606,7 +736,7 @@ export async function ollamaChat(messages, options = {}) {
     console.log(`[ollama] Using LOCAL ${endpoint.base} for model ${model}`);
     const localBody = buildNativeBody(oaiMessages, effectiveOptions);
     const localResult = await postWithRetry("/api/chat", localBody, effectiveTimeout, {
-      base: endpoint.base, auth: null,
+      base: endpoint.base, auth: null, signal,
     });
 
     if (localResult.ok) {
@@ -619,17 +749,38 @@ export async function ollamaChat(messages, options = {}) {
       };
     }
 
-    // Local failed — fall through to cloud
+    if (!allowCloudFallback || !allowCloudRoute) {
+      return {
+        ok: false,
+        status: localResult.status,
+        error: `Local Ollama failed and cloud fallback is disabled: ${localResult.error || "unknown"}`,
+        latency: localResult.latency,
+        _provider: "ollama_local",
+        _endpoint: "native",
+      };
+    }
+
+    // Local failed — an explicit capability may permit cloud fallback.
     console.log(
       `[ollama] LOCAL failed (${localResult.status}: ${(localResult.error || "").slice(0, 80)}), ` +
-      `falling back to cloud`
+      `using explicitly permitted cloud fallback`
     );
+  }
+
+  if (!OLLAMA_API_KEY) {
+    return {
+      ok: false,
+      status: 0,
+      error: "Ollama cloud route is unavailable because OLLAMA_API_KEY is not configured.",
+      latency: "0.00",
+      _provider: "ollama_cloud",
+    };
   }
 
   // ── CLOUD: /v1/chat/completions (primary) ──────────────────────────
   const v1Body = buildV1Body(oaiMessages, effectiveOptions);
   const v1Result = await postWithRetry("/v1/chat/completions", v1Body, effectiveTimeout, {
-    base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY,
+    base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY, signal,
   });
 
   if (v1Result.ok) {
@@ -650,7 +801,7 @@ export async function ollamaChat(messages, options = {}) {
 
   const nativeBody = buildNativeBody(oaiMessages, effectiveOptions);
   const nativeResult = await postWithRetry("/api/chat", nativeBody, effectiveTimeout, {
-    base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY,
+    base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY, signal,
   });
 
   if (nativeResult.ok) {
@@ -707,26 +858,45 @@ export async function ollamaBatch(calls, { concurrency = 8 } = {}) {
 /**
  * List available Ollama models — local + cloud merged.
  */
-export async function ollamaModels() {
-  const result = { local: [], cloud: [], all: [] };
+export async function ollamaModels({
+  allowCloudRoute = false,
+  signal = null,
+} = {}) {
+  const result = {
+    local: [],
+    cloud: [],
+    all: [],
+    cloudAccess: allowCloudRoute ? "enabled" : "disabled",
+  };
 
   // Local models
-  const localInfo = await detectLocalOllama();
+  const localInfo = await detectLocalOllama(signal, {
+    allowRemoteEndpoint: allowCloudRoute,
+  });
   if (localInfo?.running) {
     result.local = localInfo.models;
   }
 
   // Cloud models
-  try {
+  let cloudRequest = null;
+  if (allowCloudRoute && OLLAMA_API_KEY) try {
+    cloudRequest = linkedAbortController(signal, 15000, "Ollama model listing timed out");
     const resp = await fetch(`${OLLAMA_CLOUD_BASE}/v1/models`, {
       headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` },
-      signal: AbortSignal.timeout(15000),
+      signal: cloudRequest.controller.signal,
     });
     if (resp.ok) {
-      const data = await resp.json();
+      const data = redactOllamaPayload(await resp.json());
       result.cloud = (data.data || data.models || []).map(m => m.id || m.name);
     }
-  } catch {}
+  } catch (error) {
+    if (signal?.aborted) throw abortReason(signal);
+    result.cloudAccess = "unavailable";
+  } finally {
+    cloudRequest?.cleanup();
+  } else if (allowCloudRoute) {
+    result.cloudAccess = "unavailable";
+  }
 
   // Merge: local first (they're free), then cloud-only
   const localSet = new Set(result.local);
@@ -739,11 +909,17 @@ export async function ollamaModels() {
 /**
  * Quick connectivity test — local + cloud.
  */
-export async function ollamaTest() {
+export async function ollamaTest({
+  allowCloudRoute = false,
+  allowCloudFallback = false,
+  signal = null,
+} = {}) {
   const results = { timestamp: new Date().toISOString(), tests: [] };
 
   // Test 0: Local Ollama detection
-  const localInfo = await detectLocalOllama();
+  const localInfo = await detectLocalOllama(signal, {
+    allowRemoteEndpoint: allowCloudRoute,
+  });
   results.tests.push({
     name: "local", ok: localInfo.running, latency: "—",
     detail: localInfo.running
@@ -754,7 +930,7 @@ export async function ollamaTest() {
   // Test 1: Models endpoint (cloud)
   try {
     const start = performance.now();
-    const models = await ollamaModels();
+    const models = await ollamaModels({ allowCloudRoute, signal });
     const elapsed = ((performance.now() - start) / 1000).toFixed(2);
     const count = models.all?.length || 0;
     results.tests.push({
@@ -772,7 +948,14 @@ export async function ollamaTest() {
   try {
     const chat = await ollamaChat(
       [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
-      { model: testModel, maxTokens: 50, temperature: 0 }
+      {
+        model: testModel,
+        maxTokens: 50,
+        temperature: 0,
+        signal,
+        allowCloudRoute,
+        allowCloudFallback,
+      }
     );
     results.tests.push({
       name: "chat", ok: chat.ok, latency: chat.latency,
@@ -799,7 +982,15 @@ export async function ollamaTest() {
     }];
     const tc = await ollamaChat(
       [{ role: "user", content: "Look up the status of Kingdom OS" }],
-      { model: testModel, maxTokens: 200, temperature: 0, tools }
+      {
+        model: testModel,
+        maxTokens: 200,
+        temperature: 0,
+        tools,
+        signal,
+        allowCloudRoute,
+        allowCloudFallback,
+      }
     );
     const toolUse = tc.content?.find(b => b.type === "tool_use");
     results.tests.push({
@@ -825,7 +1016,7 @@ export async function ollamaTest() {
  * Handle /api/ollama/* routes. Call from handleRequest().
  * Returns true if handled, false if not an ollama route.
  */
-export async function handleOllamaRoute(path, req, res, parseBody) {
+export async function handleOllamaRoute(path, req, res, parseBody, policy = {}) {
   if (!path.startsWith("/api/ollama")) return false;
 
   const json = (data, status = 200) => {
@@ -833,14 +1024,14 @@ export async function handleOllamaRoute(path, req, res, parseBody) {
     res.end(JSON.stringify(data));
   };
 
-  if (path === "/api/ollama/test") {
-    const results = await ollamaTest();
+  if (path === "/api/ollama/test" && req.method === "POST") {
+    const results = await ollamaTest(policy);
     json(results);
     return true;
   }
 
-  if (path === "/api/ollama/models") {
-    const models = await ollamaModels();
+  if (path === "/api/ollama/models" && req.method === "GET") {
+    const models = await ollamaModels(policy);
     json(models);
     return true;
   }
@@ -856,13 +1047,20 @@ export async function handleOllamaRoute(path, req, res, parseBody) {
         temperature: body.temperature ?? 0.7,
         tools: body.tools || null,
         reasoningEffort: body.reasoning_effort || null,
+        signal: policy.signal,
+        allowCloudRoute: policy.allowCloudRoute === true,
+        allowCloudFallback: policy.allowCloudFallback === true,
       }
     );
     json(result);
     return true;
   }
 
-  json({ error: "Unknown ollama route", path }, 404);
+  if (["/api/ollama/test", "/api/ollama/models", "/api/ollama/chat"].includes(path)) {
+    json({ error: "Method not allowed", path }, 405);
+  } else {
+    json({ error: "Unknown ollama route", path }, 404);
+  }
   return true;
 }
 
@@ -875,11 +1073,11 @@ export async function handleOllamaRoute(path, req, res, parseBody) {
  * Execute ollama tool call. Add to executeTool() switch statement:
  *   case "ollama": return await executeOllamaTool(input);
  */
-export async function executeOllamaTool(input) {
+export async function executeOllamaTool(input, policy = {}) {
   const action = input.action;
 
   if (action === "test") {
-    const r = await ollamaTest();
+    const r = await ollamaTest(policy);
     const lines = [`Ollama Cloud Test — ${r.allOk ? "✅ ALL PASS" : "❌ SOME FAILED"}`];
     for (const t of r.tests) {
       lines.push(`  ${t.ok ? "✅" : "❌"} ${t.name}: ${t.detail} (${t.latency || "?"}s)${t.endpoint ? ` [${t.endpoint}]` : ""}`);
@@ -888,7 +1086,7 @@ export async function executeOllamaTool(input) {
   }
 
   if (action === "models") {
-    const r = await ollamaModels();
+    const r = await ollamaModels(policy);
     if (!r.ok) return `❌ Models failed: ${r.error}`;
     const lines = [`Ollama Models:`];
     if (r.local?.length) lines.push(`  LOCAL (${r.local.length}):`, ...r.local.map(m => `    • ${m} (free, localhost:11434)`));
@@ -904,6 +1102,9 @@ export async function executeOllamaTool(input) {
         system: input.system || null,
         maxTokens: input.max_tokens || 8000,
         temperature: input.temperature ?? 0.7,
+        signal: policy.signal,
+        allowCloudRoute: policy.allowCloudRoute === true,
+        allowCloudFallback: policy.allowCloudFallback === true,
       }
     );
     if (!r.ok) return `❌ Chat failed: ${r.error}`;
@@ -921,7 +1122,14 @@ export async function executeOllamaTool(input) {
     for (let i = 0; i < prompts.length; i++) {
       const r = await ollamaChat(
         [{ role: "user", content: prompts[i] }],
-        { model: input.model || "glm-5.1", maxTokens: 500, temperature: 0.3 }
+        {
+          model: input.model || "glm-5.1",
+          maxTokens: 500,
+          temperature: 0.3,
+          signal: policy.signal,
+          allowCloudRoute: policy.allowCloudRoute === true,
+          allowCloudFallback: policy.allowCloudFallback === true,
+        }
       );
       if (r.ok) {
         const rate = r.usage.output_tokens / parseFloat(r.latency);
@@ -941,88 +1149,4 @@ export async function executeOllamaTool(input) {
   }
 
   return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.1'";
-}
-
-
-// ═════════════════════════════════════════════════════════════════════
-// FILE IPC — for sandboxed child processes
-// ═════════════════════════════════════════════════════════════════════
-
-import { readFileSync, writeFileSync, existsSync, unlinkSync, readdirSync, watch } from "fs";
-
-const IPC_DIR = "/tmp";
-const IPC_PREFIX = "ollama-req-";
-const IPC_RES_PREFIX = "ollama-res-";
-// Only accept ids made of [A-Za-z0-9._-] — no slashes, no .., no shell metas.
-// Without this, a sandboxed script could write
-//   /tmp/ollama-req-../../etc/passwd.json
-// and we'd happily treat ../../etc/passwd.json as the id and write the
-// response as /tmp/ollama-res-../../etc/passwd.json (= /etc/passwd.json).
-const IPC_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
-
-/**
- * Start watching for file-based IPC requests.
- * Sandboxed scripts write /tmp/ollama-req-{id}.json
- * Bridge processes and writes /tmp/ollama-res-{id}.json
- * 
- * Call once from server.mjs boot:
- *   import { startFileIPC } from "./ollama-bridge.mjs";
- *   startFileIPC();
- */
-export function startFileIPC() {
-  // Process any existing requests on boot
-  processIpcRequests();
-
-  // Watch for new requests
-  try {
-    watch(IPC_DIR, (event, filename) => {
-      if (filename?.startsWith(IPC_PREFIX) && filename.endsWith(".json")) {
-        setTimeout(() => processIpcRequests(), 100); // debounce
-      }
-    });
-    console.log("  \x1b[32m✓\x1b[0m Ollama file IPC watching /tmp/ollama-req-*.json");
-  } catch (e) {
-    console.log(`  \x1b[33m⚠\x1b[0m Ollama file IPC watch failed: ${e.message}`);
-  }
-}
-
-async function processIpcRequests() {
-  try {
-    const files = readdirSync(IPC_DIR).filter(f => f.startsWith(IPC_PREFIX) && f.endsWith(".json"));
-    for (const file of files) {
-      const reqPath = `${IPC_DIR}/${file}`;
-      const id = file.slice(IPC_PREFIX.length, -".json".length);
-      // Skip anything with a path traversal or unexpected chars in the id —
-      // and remove the offending request so it doesn't keep firing the watcher.
-      if (!IPC_ID_RE.test(id)) {
-        try { unlinkSync(reqPath); } catch {}
-        continue;
-      }
-      const resPath = `${IPC_DIR}/${IPC_RES_PREFIX}${id}.json`;
-
-      try {
-        const req = JSON.parse(readFileSync(reqPath, "utf-8"));
-        unlinkSync(reqPath); // consume the request
-
-        let result;
-        if (req.action === "chat") {
-          result = await ollamaChat(
-            req.messages || [{ role: "user", content: req.message || "" }],
-            { model: req.model, system: req.system, maxTokens: req.max_tokens, temperature: req.temperature, tools: req.tools }
-          );
-        } else if (req.action === "models") {
-          result = await ollamaModels();
-        } else if (req.action === "test") {
-          result = await ollamaTest();
-        } else {
-          result = { ok: false, error: `Unknown action: ${req.action}` };
-        }
-
-        writeFileSync(resPath, JSON.stringify(result));
-      } catch (e) {
-        try { writeFileSync(resPath, JSON.stringify({ ok: false, error: e.message })); } catch {}
-        try { unlinkSync(reqPath); } catch {}
-      }
-    }
-  } catch {}
 }

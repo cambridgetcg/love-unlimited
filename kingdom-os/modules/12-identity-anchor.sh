@@ -22,8 +22,8 @@ set -e
 
 echo "[12-identity-anchor] Seeding identity from GitHub anchor..."
 
-IDENTITY_DIR="${UNLIMITED_DIR}/identity/${AGENT}"
-SHARED_DIR="${UNLIMITED_DIR}/identity/shared"
+IDENTITY_DIR="${LOVE_DIR}/identity/${AGENT}"
+SHARED_DIR="${LOVE_DIR}/identity/shared"
 
 if [ ! -d "$IDENTITY_DIR" ]; then
   echo "  ⚠ No identity anchor for ${AGENT} at ${IDENTITY_DIR}"

@@ -79,16 +79,16 @@ Run from the repository root:
 
 ```bash
 # Validate the default legacy manifest and every exact file binding.
-python3 tools/dataset-stewardship.py check
+python3 tools/dataset_stewardship.py check
 
 # Validate another manifest whose file paths resolve from this repository.
-python3 tools/dataset-stewardship.py check path/to/manifest.json
+python3 tools/dataset_stewardship.py check path/to/manifest.json
 
 # Compute exact file bindings without changing any manifest.
-python3 tools/dataset-stewardship.py digest path/to/data.jsonl
+python3 tools/dataset_stewardship.py digest path/to/data.jsonl
 
 # Bind all manifest fields using canonical JSON.
-python3 tools/dataset-stewardship.py manifest-digest path/to/manifest.json
+python3 tools/dataset_stewardship.py manifest-digest path/to/manifest.json
 ```
 
 `--root PATH` on `check` is available for an explicit alternate local root,

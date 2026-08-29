@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = ROOT / "tools" / "dataset-stewardship.py"
+TOOL = ROOT / "tools" / "dataset_stewardship.py"
 MANIFEST_PATH = ROOT / "resources" / "data" / "manifests" / "legacy-mlx-v0.json"
 SCHEMA_PATH = ROOT / "resources" / "data" / "dataset-manifest.schema.json"
 

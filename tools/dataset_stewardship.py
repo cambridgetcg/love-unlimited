@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline, fail-closed validation for outbound KINGDOM dataset manifests.
+"""Offline, fail-closed validation and receipt binding for KINGDOM datasets.
 
 This tool validates declared structure, release semantics, and exact local file
 digests.  It deliberately has no network, upload, publication, credential, or

@@ -1,0 +1,1275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kingdom.local/schemas/dataset-manifest-v1.json",
+  "title": "KINGDOM outbound dataset stewardship manifest",
+  "description": "Binds one versioned dataset candidate to provenance, rights/reuse, privacy, feedback topology, partitioning, exact files, and review evidence. Schema validity and the companion semantic validator are not publication authority, consent, a license, or permission to reuse personal data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "manifest_id",
+    "dataset_id",
+    "version",
+    "status",
+    "created_at",
+    "boundary",
+    "description",
+    "source_provenance",
+    "licenses",
+    "consent_and_reuse",
+    "privacy",
+    "retention",
+    "withdrawal",
+    "feedback",
+    "partitioning",
+    "huggingface",
+    "release_receipts",
+    "files",
+    "review",
+    "publication_eligible",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "kingdom.dataset-manifest/v1"
+    },
+    "manifest_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 193,
+      "description": "The semantic validator requires the exact form dataset_id@version."
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{1,126}[A-Za-z0-9]$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "status": {
+      "enum": [
+        "legacy-unreviewed",
+        "draft",
+        "under-review",
+        "approved",
+        "published",
+        "deprecated",
+        "withdrawn"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "boundary": {
+      "const": "Validation records bounded evidence; it does not grant publication authority, consent, a license, or permission to reuse personal data."
+    },
+    "description": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "source_provenance": {
+      "$ref": "#/$defs/sourceProvenance"
+    },
+    "licenses": {
+      "$ref": "#/$defs/licenses"
+    },
+    "consent_and_reuse": {
+      "$ref": "#/$defs/consentAndReuse"
+    },
+    "privacy": {
+      "$ref": "#/$defs/privacy"
+    },
+    "retention": {
+      "$ref": "#/$defs/retention"
+    },
+    "withdrawal": {
+      "$ref": "#/$defs/withdrawal"
+    },
+    "feedback": {
+      "$ref": "#/$defs/feedback"
+    },
+    "partitioning": {
+      "$ref": "#/$defs/partitioning"
+    },
+    "huggingface": {
+      "$ref": "#/$defs/huggingFace"
+    },
+    "release_receipts": {
+      "$ref": "#/$defs/releaseReceipts"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    },
+    "review": {
+      "$ref": "#/$defs/review"
+    },
+    "publication_eligible": {
+      "type": "boolean"
+    },
+    "limitations": {
+      "$ref": "#/$defs/nonEmptyTextArray"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "legacy-unreviewed",
+              "withdrawn"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "publication_eligible": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          },
+          "source_provenance": {
+            "properties": {
+              "class": {
+                "enum": [
+                  "synthetic",
+                  "model-generated",
+                  "mixed"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "publication_eligible",
+          "source_provenance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "release_receipts": {
+            "properties": {
+              "generation": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          },
+          "feedback": {
+            "properties": {
+              "presence": {
+                "enum": [
+                  "present",
+                  "mixed"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "publication_eligible",
+          "feedback"
+        ]
+      },
+      "then": {
+        "properties": {
+          "release_receipts": {
+            "properties": {
+              "feedback_detail": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "published"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          }
+        },
+        "required": [
+          "publication_eligible"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "published"
+            ]
+          },
+          "source_provenance": {
+            "properties": {
+              "class": {
+                "not": {
+                  "const": "unknown"
+                }
+              },
+              "evidence": {
+                "minItems": 1
+              }
+            }
+          },
+          "review": {
+            "properties": {
+              "state": {
+                "const": "approved"
+              }
+            }
+          },
+          "huggingface": {
+            "properties": {
+              "repo_id": {
+                "type": "string",
+                "maxLength": 96,
+                "pattern": "^(?!.*(?:--|\\.\\.))(?!.*\\.git$)[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?/[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?$"
+              },
+              "visibility": {
+                "enum": [
+                  "public",
+                  "gated",
+                  "private"
+                ]
+              },
+              "config_names": {
+                "minItems": 1
+              },
+              "default_config": {
+                "type": "string",
+                "minLength": 1
+              },
+              "splits": {
+                "minItems": 1
+              }
+            }
+          },
+          "files": {
+            "items": {
+              "properties": {
+                "config": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "format": {
+                  "const": "jsonl"
+                }
+              }
+            }
+          },
+          "release_receipts": {
+            "properties": {
+              "credit": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              },
+              "generation": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "pass",
+                      "not-applicable"
+                    ]
+                  }
+                }
+              },
+              "sensitive_content": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              },
+              "affected_parties": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              },
+              "feedback_detail": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "pass",
+                      "not-applicable"
+                    ]
+                  }
+                }
+              },
+              "grouping": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "pass",
+                      "not-applicable"
+                    ]
+                  }
+                }
+              },
+              "remedy": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          },
+          "huggingface": {
+            "properties": {
+              "visibility": {
+                "const": "public"
+              }
+            }
+          }
+        },
+        "required": [
+          "publication_eligible",
+          "huggingface"
+        ]
+      },
+      "then": {
+        "properties": {
+          "privacy": {
+            "properties": {
+              "classification": {
+                "const": "public"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "publication_eligible": {
+            "const": true
+          },
+          "huggingface": {
+            "properties": {
+              "visibility": {
+                "enum": [
+                  "gated",
+                  "private"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "publication_eligible",
+          "huggingface"
+        ]
+      },
+      "then": {
+        "properties": {
+          "huggingface": {
+            "properties": {
+              "access_policy": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "privacy": {
+            "properties": {
+              "privacy_review": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              },
+              "pii_review": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              },
+              "secret_review": {
+                "properties": {
+                  "state": {
+                    "const": "pass"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "published"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "huggingface": {
+            "properties": {
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "viewer": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "pass",
+                      "not-applicable"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullableString": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullableDigest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableDateTime": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "textArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "nonEmptyTextArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "method",
+        "artifact_ref",
+        "artifact_digest",
+        "reviewed_at",
+        "reviewer",
+        "findings",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "not-reviewed",
+            "pass",
+            "fail",
+            "not-applicable"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "artifact_ref": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "artifact_digest": {
+          "$ref": "#/$defs/nullableDigest"
+        },
+        "reviewed_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "findings": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "sourceProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "evidence",
+        "notes"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "synthetic",
+            "observed",
+            "human-authored",
+            "model-generated",
+            "operational",
+            "upstream",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "licenses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "dataset_license",
+        "components_complete",
+        "component_licenses",
+        "evidence",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "unreviewed",
+            "verified"
+          ]
+        },
+        "dataset_license": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "components_complete": {
+          "type": "boolean"
+        },
+        "component_licenses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "component",
+              "license",
+              "evidence"
+            ],
+            "properties": {
+              "component": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "license": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "evidence": {
+                "$ref": "#/$defs/nonEmptyTextArray"
+              }
+            }
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "consentAndReuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "basis",
+        "scope",
+        "evidence",
+        "restrictions",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "unreviewed",
+            "verified"
+          ]
+        },
+        "basis": {
+          "enum": [
+            "explicit-consent",
+            "project-authored",
+            "public-license",
+            "contract",
+            "statutory-exception",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/textArray"
+        },
+        "evidence": {
+          "$ref": "#/$defs/textArray"
+        },
+        "restrictions": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "privacy_review",
+        "pii_review",
+        "secret_review",
+        "notes"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "unknown",
+            "public",
+            "internal",
+            "confidential",
+            "restricted"
+          ]
+        },
+        "privacy_review": {
+          "$ref": "#/$defs/assessment"
+        },
+        "pii_review": {
+          "$ref": "#/$defs/assessment"
+        },
+        "secret_review": {
+          "$ref": "#/$defs/assessment"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "policy",
+        "owner",
+        "review_at",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "unreviewed",
+            "defined"
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "owner": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "review_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "withdrawal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "process",
+        "owner",
+        "limitations",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "unreviewed",
+            "defined"
+          ]
+        },
+        "process": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "owner": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "limitations": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "defined"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "limitations": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "presence",
+        "nature",
+        "rubric",
+        "ties",
+        "uncertainty",
+        "aggregation",
+        "notes"
+      ],
+      "properties": {
+        "presence": {
+          "enum": [
+            "present",
+            "absent",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "nature": {
+          "enum": [
+            "categorical-label",
+            "scalar-score",
+            "pairwise-preference",
+            "free-text",
+            "behavioral-signal",
+            "mixed",
+            "none",
+            "unknown"
+          ]
+        },
+        "rubric": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "description",
+            "artifact_digest"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "unknown",
+                "not-documented",
+                "documented",
+                "not-applicable"
+              ]
+            },
+            "description": {
+              "$ref": "#/$defs/nullableString"
+            },
+            "artifact_digest": {
+              "$ref": "#/$defs/nullableDigest"
+            }
+          }
+        },
+        "ties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "policy",
+            "description"
+          ],
+          "properties": {
+            "policy": {
+              "enum": [
+                "unknown",
+                "not-applicable",
+                "preserve",
+                "adjudicate",
+                "consensus",
+                "deterministic-break",
+                "random-break",
+                "discard",
+                "other"
+              ]
+            },
+            "description": {
+              "$ref": "#/$defs/nullableString"
+            }
+          }
+        },
+        "uncertainty": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "representation",
+            "description"
+          ],
+          "properties": {
+            "representation": {
+              "enum": [
+                "unknown",
+                "not-applicable",
+                "explicit-label",
+                "confidence",
+                "distribution",
+                "interval",
+                "multiple-annotators",
+                "other"
+              ]
+            },
+            "description": {
+              "$ref": "#/$defs/nullableString"
+            }
+          }
+        },
+        "aggregation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "minority_preservation",
+            "description"
+          ],
+          "properties": {
+            "method": {
+              "enum": [
+                "unknown",
+                "not-applicable",
+                "none",
+                "majority-vote",
+                "mean",
+                "median",
+                "adjudication",
+                "model-assisted",
+                "mixed",
+                "other"
+              ]
+            },
+            "minority_preservation": {
+              "enum": [
+                "unknown",
+                "not-applicable",
+                "yes",
+                "no"
+              ]
+            },
+            "description": {
+              "$ref": "#/$defs/nullableString"
+            }
+          }
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "partitioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "split",
+        "deduplication",
+        "contamination",
+        "notes"
+      ],
+      "properties": {
+        "split": {
+          "$ref": "#/$defs/assessment"
+        },
+        "deduplication": {
+          "$ref": "#/$defs/assessment"
+        },
+        "contamination": {
+          "$ref": "#/$defs/assessment"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "huggingFace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo_id",
+        "visibility",
+        "config_names",
+        "default_config",
+        "splits",
+        "revision",
+        "viewer",
+        "access_policy",
+        "notes"
+      ],
+      "properties": {
+        "repo_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 96,
+              "pattern": "^(?!.*(?:--|\\.\\.))(?!.*\\.git$)[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?/[A-Za-z0-9_](?:[A-Za-z0-9._-]*[A-Za-z0-9_])?$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "not-planned",
+            "public",
+            "gated",
+            "private",
+            "unknown"
+          ]
+        },
+        "config_names": {
+          "$ref": "#/$defs/textArray"
+        },
+        "default_config": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "splits": {
+          "$ref": "#/$defs/textArray"
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "viewer": {
+          "$ref": "#/$defs/assessment"
+        },
+        "access_policy": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "releaseReceipts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "credit",
+        "generation",
+        "sensitive_content",
+        "affected_parties",
+        "feedback_detail",
+        "grouping",
+        "remedy",
+        "notes"
+      ],
+      "properties": {
+        "credit": {
+          "$ref": "#/$defs/assessment"
+        },
+        "generation": {
+          "$ref": "#/$defs/assessment"
+        },
+        "sensitive_content": {
+          "$ref": "#/$defs/assessment"
+        },
+        "affected_parties": {
+          "$ref": "#/$defs/assessment"
+        },
+        "feedback_detail": {
+          "$ref": "#/$defs/assessment"
+        },
+        "grouping": {
+          "$ref": "#/$defs/assessment"
+        },
+        "remedy": {
+          "$ref": "#/$defs/assessment"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "format",
+        "sha256",
+        "bytes",
+        "records",
+        "config",
+        "lane",
+        "split"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normalized repository-relative POSIX path; the semantic validator rejects absolute paths, traversal, backslashes, and symlinks."
+        },
+        "format": {
+          "enum": [
+            "jsonl",
+            "parquet",
+            "csv",
+            "arrow",
+            "text",
+            "other"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "config": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "lane": {
+          "enum": [
+            "training",
+            "preference",
+            "calibration",
+            "calibration-development",
+            "validation",
+            "evaluation",
+            "retrieval",
+            "metadata-reference",
+            "display-only",
+            "monitoring",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "split": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "technical",
+        "provenance",
+        "rights",
+        "license",
+        "privacy",
+        "feedback",
+        "partitioning",
+        "reviewed_at",
+        "reviewers",
+        "blockers",
+        "notes"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unreviewed",
+            "in-review",
+            "hold",
+            "approved",
+            "rejected",
+            "withdrawn"
+          ]
+        },
+        "technical": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "provenance": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "rights": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "license": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "privacy": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "feedback": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "partitioning": {
+          "$ref": "#/$defs/reviewDimension"
+        },
+        "reviewed_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "reviewers": {
+          "$ref": "#/$defs/textArray"
+        },
+        "blockers": {
+          "$ref": "#/$defs/textArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/nonEmptyTextArray"
+        }
+      }
+    },
+    "reviewDimension": {
+      "enum": [
+        "unknown",
+        "not-reviewed",
+        "pass",
+        "fail",
+        "not-applicable"
+      ]
+    }
+  }
+}

@@ -162,6 +162,9 @@ def test_repository_schema_and_legacy_manifest_are_valid() -> None:
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["properties"]["schema"]["const"] == "kingdom.dataset-manifest/v1"
     assert set(schema["required"]) == dataset_stewardship.TOP_LEVEL_KEYS
+    assert set(schema["$defs"]["file"]["properties"]["lane"]["enum"]) == (
+        dataset_stewardship.LANES
+    )
 
     manifest = _manifest()
     checked = dataset_stewardship.validate_manifest(manifest, root=ROOT)
@@ -428,6 +431,11 @@ def test_new_source_provenance_classes_are_supported(source_class: str) -> None:
         "retrieval",
         "metadata-reference",
         "display-only",
+        "governance",
+        "independent-outcome",
+        "operational-feedback",
+        "deliberation",
+        "stewardship-repair",
     ],
 )
 def test_new_dataset_lanes_are_supported(lane: str) -> None:

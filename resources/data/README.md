@@ -10,6 +10,12 @@ The canonical policy and discovery plan is
 This directory implements its outbound manifest gate; it does not replace the
 strategy or authorize its external actions.
 
+It also follows
+[`KINGDOM-LOVE-RETURN-PATH.md`](../../docs/KINGDOM-LOVE-RETURN-PATH.md): Love
+questions the ends and anticipates barriers; KINGDOM makes the means, evidence,
+and repair paths inspectable. Feedback can revise both, but Love is never a
+trainer label, composite score, identity claim, or consent inference.
+
 It follows the repository's `xenia.rights/0.1` baseline: provenance, credit,
 privacy, consent, withdrawal, disagreement, and repair remain separate from
 technical access. A public URL or a successful download is not consent, a
@@ -137,6 +143,9 @@ legacy HOLD into apparent approval by erasing its unknown history.
    Bind reviewed split,
    exact/near-deduplication, and training/evaluation contamination artifacts.
    A runtime random split is not an immutable held-out release partition.
+   Participant governance, independent outcomes, operational feedback,
+   deliberation, and stewardship/repair use distinct lanes rather than being
+   folded into training or preference labels.
 7. **Exact artifacts and receipts** — record repository-relative paths,
    formats, bytes, record counts, and SHA-256 for the release snapshot. Bind a
    stable locator and digest for credit, generation revisions, sensitive-content,

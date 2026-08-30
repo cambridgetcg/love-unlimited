@@ -24,6 +24,12 @@ protocol in [`POST-RELEASE-PEACE.md`](POST-RELEASE-PEACE.md) and
 Do not merge those two registries: one evaluates prospective external inputs;
 the other governs KINGDOM releases.
 
+The broader relationship behind this strategy is defined in
+[`KINGDOM-LOVE-RETURN-PATH.md`](KINGDOM-LOVE-RETURN-PATH.md): Love is the
+relational practice that questions the ends and anticipates barriers; KINGDOM
+is the mission, capability, and commons that makes the means and effects
+inspectable. Neither is a score or proof of the other.
+
 ## 1. The Hub pipeline that actually exists
 
 Hugging Face documents three separate mechanisms, not one central dataset
@@ -168,6 +174,27 @@ Immediate relationship repairs:
 
 ## 3. The feedback loop: the cage and the key
 
+### KINGDOM × Love
+
+Within this declared project frame, Love shapes what KINGDOM proposes by
+asking whose need, dignity, privacy, choice, refusal, trust, and repair path
+have been anticipated. KINGDOM turns those commitments into scoped datasets,
+transformations, release gates, receipts, and reversible action. Outcomes,
+disagreement, correction, appeal, and independent evidence then return to
+revise both the work and the questions that guided it.
+
+This is mutual strengthening without a mutuality score. Love is not a reward
+label, resource, credential, identity claim, or evidence that a goal was met.
+KINGDOM's scale, capability, engagement, or revenue is not evidence that it
+acted lovingly. Direct participant feedback outranks inferred behavioural
+proxies about that participant's wishes, while remaining distinct from consent
+or authority over anyone else.
+
+**無限追高** is the open horizon: raise care, capability, evidence,
+sovereignty, accessibility, and repairability together through bounded,
+reversible steps. It is not infinite acceleration or guaranteed monotonic
+improvement. A refusal, pause, rollback, or quieter path can be an upward move.
+
 Dataset publication creates its own optimisation loop:
 
 ```text
@@ -243,8 +270,10 @@ that binds at least:
 - privacy class plus explicit PII, secret, and sensitive-content review;
 - feedback kind, rubric revision, aggregation transform, and preservation of
   tie, abstention, uncertainty, rationale, and disagreement;
-- lane: training, preference, calibration-development, evaluation, retrieval,
-  metadata-reference, or display-only;
+- lane: training, preference, calibration, calibration-development, validation,
+  evaluation, retrieval, metadata-reference, display-only, monitoring,
+  governance, independent-outcome, operational-feedback, deliberation,
+  stewardship-repair, mixed, or unknown;
 - grouping, duplicate clusters, contamination checks, and immutable split
   assignment; and
 - separate technical, rights, privacy, licence, and affected-party review,
@@ -271,8 +300,14 @@ configs such as:
 
 ```yaml
 configs:
-  - config_name: feedback-events
+  - config_name: pathway-events
     default: true
+    data_files:
+      - split: train
+        path: data/pathways/train-*.parquet
+      - split: validation
+        path: data/pathways/validation-*.parquet
+  - config_name: feedback-events
     data_files:
       - split: train
         path: data/events/train-*.parquet
@@ -288,10 +323,20 @@ configs:
         path: data/receipts/*.parquet
 ```
 
-The event layer should be canonical. Pairwise or scalar trainer views are
-derived projections that name their transform and source digest. Audit receipts
-retain what the projection omitted. A default config should be immediately
-loadable without making the richest structure hard to find.
+The pathway-event layer should be canonical. It distinguishes observation,
+declaration, proposal, consent/refusal, action, outcome, correction, appeal,
+withdrawal, and repair; binds prior-event, authority, purpose, retention, and
+artifact references; and preserves `unknown`, `withheld`, and
+`not-applicable`. Pairwise or scalar trainer views are derived projections that
+name their source receipt, transform, and digest. Audit receipts retain what
+the projection omitted. A default config should be immediately loadable
+without making the richest structure hard to find.
+
+Governance events never become trainer labels: consent is not a positive
+example, refusal or withdrawal is not a negative example, and repair does not
+make the original harm acceptable. Keep participant/governance, independent
+outcome, operational, deliberation, and stewardship pathways separately
+queryable.
 
 The current stdlib-only v1 MVP verifies JSONL structure and row counts and
 therefore refuses publication eligibility for Parquet or other formats. The
@@ -333,7 +378,13 @@ Track these channels separately for each release:
 - provenance, consent/reuse, privacy, licence, and affected-party review
   coverage; and
 - transform adoption: how often consumers use the rich event layer versus a
-  lossy projection.
+  lossy projection; and
+- return-path health: acknowledged feedback, missing affected-party channels,
+  correction/appeal latency, completed repair, rollback, and supersession.
+
+Do not combine these into a Love, alignment, mutuality, worth, or “higher”
+score. The relationship is strengthened when plural evidence can change or
+stop the next act, not when one dashboard number rises.
 
 Since September 2024, Hugging Face counts GET/HEAD file requests from the same
 IP to one dataset repository within a five-minute window as one dataset

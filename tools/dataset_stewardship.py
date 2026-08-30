@@ -95,6 +95,11 @@ LANES = {
     "metadata-reference",
     "display-only",
     "monitoring",
+    "governance",
+    "independent-outcome",
+    "operational-feedback",
+    "deliberation",
+    "stewardship-repair",
     "mixed",
     "unknown",
 }

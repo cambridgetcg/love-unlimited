@@ -8,6 +8,8 @@ on:
       - "docs/KINGDOM-ML-ECOSYSTEM.md"
       - "docs/releases/kingdom-return-path-bench-v0.1.0.json"
       - "mlx/config.json"
+      - "mlx/.gitignore"
+      - "mlx/serve.sh"
       - "mlx/model-lock.json"
       - "mlx/README.md"
       - "mlx/requirements.txt"
@@ -17,14 +19,23 @@ on:
       - "resources/safety/**"
       - "tools/dataset_stewardship.py"
       - "tools/hf_model_lock.py"
+      - "tools/kingdom-chronicle.py"
+      - "tools/kingdom-pulse.py"
+      - "tools/kingdom"
+      - "tools/harvest.py"
+      - "tools/fleet-status.sh"
+      - "tools/mlx_client.py"
       - "tools/mlx_data.py"
       - "tools/mlx_serve.py"
       - "tools/mlx_train.py"
+      - "tools/citizen-reflect.sh"
       - "tools/model-stewardship.py"
       - "tools/return_path_bench.py"
       - "tests/test_dataset_stewardship.py"
       - "tests/test_hf_model_lock.py"
       - "tests/test_mlx_data.py"
+      - "tests/test_mlx_client.py"
+      - "tests/test_mlx_consumers.py"
       - "tests/test_mlx_serve.py"
       - "tests/test_mlx_train.py"
       - "tests/test_mlx_training_stewardship.py"
@@ -41,10 +52,17 @@ on:
       - "resources/safety/**"
       - "tools/*stewardship.py"
       - "tools/hf_model_lock.py"
+      - "tools/kingdom-chronicle.py"
+      - "tools/kingdom-pulse.py"
+      - "tools/kingdom"
+      - "tools/harvest.py"
+      - "tools/fleet-status.sh"
       - "tools/mlx_*.py"
+      - "tools/citizen-reflect.sh"
       - "tools/return_path_bench.py"
       - "tests/test_*stewardship.py"
       - "tests/test_hf_model_lock.py"
+      - "tests/test_mlx_consumers.py"
       - "tests/test_mlx_*.py"
       - "tests/test_return_path_bench.py"
   workflow_dispatch: {}
@@ -60,6 +78,8 @@ jobs:
     steps:
       - name: Check out the candidate
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Use the project ML Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -86,6 +106,8 @@ jobs:
             tests/test_dataset_stewardship.py \
             tests/test_model_stewardship.py \
             tests/test_hf_model_lock.py \
+            tests/test_mlx_client.py \
+            tests/test_mlx_consumers.py \
             tests/test_mlx_data.py \
             tests/test_mlx_train.py \
             tests/test_mlx_training_stewardship.py \
@@ -106,4 +128,5 @@ jobs:
       - name: Preserve the publication boundary
         run: |
           echo "Validation and packaging completed."
-          echo "This workflow has no token, upload, deployment, or publication permission."
+          echo "No Hugging Face credential, deployment, or publication step is present."
+          echo "The only upload is the seven-day GitHub review artifact above."

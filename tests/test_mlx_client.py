@@ -2,6 +2,7 @@
 import fcntl
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,7 +22,10 @@ class TestAskLocal(unittest.TestCase):
     def setUpClass(cls):
         """Start a tiny mock server on a random port."""
         class Handler(BaseHTTPRequestHandler):
+            post_count = 0
+
             def do_POST(self):
+                type(self).post_count += 1
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length))
                 response = {
@@ -49,6 +53,7 @@ class TestAskLocal(unittest.TestCase):
                 pass  # Suppress log output
 
         cls.server = HTTPServer(("127.0.0.1", 0), Handler)
+        cls.handler = Handler
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -57,10 +62,32 @@ class TestAskLocal(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
 
+    def setUp(self):
+        self.status = patch(
+            "mlx_client.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ).start()
+
+    def tearDown(self):
+        patch.stopall()
+
     def test_ask_local_returns_response(self):
         from mlx_client import ask_local
         result = ask_local("test prompt", system="test system", port=self.port)
         self.assertEqual(result, "idle")
+        self.status.assert_called_once_with(
+            [
+                "bash",
+                str(Path(__file__).resolve().parents[1] / "mlx" / "serve.sh"),
+                "status",
+                "--port",
+                str(self.port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5.0,
+            check=False,
+        )
 
     def test_ask_local_raw_returns_full_json(self):
         from mlx_client import ask_local
@@ -71,6 +98,7 @@ class TestAskLocal(unittest.TestCase):
 
     def test_ask_local_returns_none_on_bad_port(self):
         from mlx_client import ask_local
+        self.status.return_value = subprocess.CompletedProcess([], 2)
         result = ask_local("test", port=19999, timeout=0.5)
         self.assertIsNone(result)
 
@@ -80,7 +108,30 @@ class TestAskLocal(unittest.TestCase):
 
     def test_is_not_available_on_bad_port(self):
         from mlx_client import is_available
+        self.status.return_value = subprocess.CompletedProcess([], 2)
         self.assertFalse(is_available(port=19999, timeout=0.5))
+
+    def test_wrong_or_stale_listener_never_receives_a_prompt(self):
+        from mlx_client import ask_local, is_available
+
+        for status_code in (1, 2):
+            with self.subTest(status_code=status_code):
+                before = self.handler.post_count
+                self.status.return_value = subprocess.CompletedProcess(
+                    [], status_code
+                )
+                self.assertIsNone(ask_local("private fixture", port=self.port))
+                self.assertFalse(is_available(port=self.port))
+                self.assertEqual(self.handler.post_count, before)
+
+    def test_invalid_ports_fail_before_status_or_http(self):
+        from mlx_client import ask_local, is_available
+
+        for port in (True, 0, 65536, "8800"):
+            with self.subTest(port=port):
+                self.assertIsNone(ask_local("private fixture", port=port))
+                self.assertFalse(is_available(port=port))
+        self.status.assert_not_called()
 
 
 class TestShadowLog(unittest.TestCase):

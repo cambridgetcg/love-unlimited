@@ -178,9 +178,9 @@ Immediate relationship repairs:
 On 2026-09-02, KINGDOM applied this release path to the authored synthetic
 [`Return Path Bench v0`](../benchmarks/return-path-v0/README.md). The public
 dataset is pinned at
-[`bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc`](https://huggingface.co/datasets/Yu-and-Ai/kingdom-return-path-bench/tree/bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc),
+[`c3f3419b66d84e5d7b8b6c2b609b68810d6e07c3`](https://huggingface.co/datasets/Yu-and-Ai/kingdom-return-path-bench/tree/c3f3419b66d84e5d7b8b6c2b609b68810d6e07c3),
 and its static explanatory Space is pinned at
-[`0ecd4415186328ccb74efeadafad5cd60151f373`](https://huggingface.co/spaces/Yu-and-Ai/the-return-path/tree/0ecd4415186328ccb74efeadafad5cd60151f373).
+[`500500022f55aa87a1a0d406befff2272da9f669`](https://huggingface.co/spaces/Yu-and-Ai/the-return-path/tree/500500022f55aa87a1a0d406befff2272da9f669).
 The Space declares the exact dataset ID, and both artifacts are grouped in the
 project Collection. The machine-readable
 [`release receipt`](releases/kingdom-return-path-bench-v0.1.0.json) records the

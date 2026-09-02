@@ -28,6 +28,10 @@ BOUNDARY = (
     "authority, consent, a license, or permission to reuse personal data."
 )
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+# Evidence may be a few minutes ahead because of ordinary clock skew, but it
+# cannot be predated arbitrarily. Planned retention.review_at is prospective
+# and explicitly opts out of this evidence-time rule.
+MAX_FUTURE_CLOCK_SKEW = dt.timedelta(minutes=5)
 
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{1,126}[A-Za-z0-9]$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -224,7 +228,12 @@ def _nullable_digest(value: Any, path: str) -> str | None:
     return _digest(value, path)
 
 
-def _datetime(value: Any, path: str) -> str:
+def _utc_now() -> dt.datetime:
+    """Return the current UTC time through a replaceable test boundary."""
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def _datetime(value: Any, path: str, *, allow_future: bool = False) -> str:
     text = _string(value, path)
     try:
         parsed = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
@@ -232,6 +241,10 @@ def _datetime(value: Any, path: str) -> str:
         raise StewardshipError(f"{path} must be an ISO 8601 date-time") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise StewardshipError(f"{path} must include a UTC offset")
+    if not allow_future and parsed > _utc_now() + MAX_FUTURE_CLOCK_SKEW:
+        raise StewardshipError(
+            f"{path} must not be in the future beyond the five-minute clock-skew allowance"
+        )
     return text
 
 
@@ -423,7 +436,13 @@ def _validate_retention(value: Any) -> dict[str, Any]:
     )
     policy = _nullable_string(retention["policy"], "retention.policy")
     owner = _nullable_string(retention["owner"], "retention.owner")
-    review_at = _nullable_datetime(retention["review_at"], "retention.review_at")
+    review_at = (
+        None
+        if retention["review_at"] is None
+        else _datetime(
+            retention["review_at"], "retention.review_at", allow_future=True
+        )
+    )
     _text_array(retention["notes"], "retention.notes", minimum=1)
     if state == "unknown" and any(
         item is not None for item in (policy, owner, review_at)

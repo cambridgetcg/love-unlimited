@@ -233,6 +233,32 @@ def test_malformed_enum_returns_a_bounded_error() -> None:
         dataset_stewardship.validate_manifest(manifest, verify_files=False)
 
 
+@pytest.mark.parametrize(
+    "location",
+    [
+        ("created_at",),
+        ("privacy", "privacy_review", "reviewed_at"),
+        ("partitioning", "split", "reviewed_at"),
+        ("release_receipts", "credit", "reviewed_at"),
+        ("review", "reviewed_at"),
+    ],
+)
+def test_evidence_timestamps_cannot_claim_future_review(location: tuple[str, ...]) -> None:
+    manifest = _approved_manifest()
+    target = manifest
+    for component in location[:-1]:
+        target = target[component]
+    target[location[-1]] = "2999-01-01T00:00:00Z"
+    with pytest.raises(dataset_stewardship.StewardshipError, match="must not be in the future"):
+        dataset_stewardship.validate_manifest(manifest, verify_files=False)
+
+
+def test_retention_review_date_may_be_prospective() -> None:
+    manifest = _approved_manifest()
+    manifest["retention"]["review_at"] = "2999-01-01T00:00:00Z"
+    dataset_stewardship.validate_manifest(manifest, verify_files=False)
+
+
 def test_unknown_license_cannot_carry_an_invented_license() -> None:
     manifest = copy.deepcopy(_manifest())
     manifest["licenses"]["dataset_license"] = "mit"

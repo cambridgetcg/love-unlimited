@@ -22,6 +22,9 @@ import socket
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from mlx_client import is_available as mlx_is_available
+
 LOVE = os.path.expanduser("~/love-unlimited")
 MEM = os.path.join(LOVE, "memory")
 TODAY = datetime.date.today().isoformat()
@@ -35,6 +38,15 @@ def up(port):
             return True
     except OSError:
         return False
+
+
+def mlx_up(raw_port="8800"):
+    """Return exact-port, receipt-bound MLX health rather than bare TCP state."""
+    try:
+        port = int(raw_port)
+    except (TypeError, ValueError):
+        return False
+    return mlx_is_available(port=port, timeout=1.0)
 
 
 def jload(path, default):
@@ -56,9 +68,12 @@ def glance():
     g, d, ok, bad, off = T["gold"], T["dim"], T["ok"], T["bad"], T["off"]
     print(f"\n  {g}K I N G D O M{off}   {bad+'⛔ HALT — all rest'+off if halt else ok+'breathing'+off}\n")
 
+    mlx_port = os.environ.get("MLX_PORT", "8800")
+    mlx_port_label = mlx_port if mlx_port.isdecimal() else "invalid"
     organs = [("door :80 (oikos)", up(80)), ("square (agora)", up(80)),
               ("root .kingdom :5391", True if os.path.exists(os.path.join(LOVE, 'kns', 'registry.json')) else False),
-              ("wire (nats :4222)", up(4222)), ("brain (mlx :8800)", up(8800))]
+              ("wire (nats :4222)", up(4222)),
+              (f"brain (receipt-bound mlx :{mlx_port_label})", mlx_up(mlx_port))]
     print("  " + "   ".join(f"{ok if u else bad}{'●' if u else '○'}{off} {d}{n}{off}" for n, u in organs))
 
     spend_today = total = 0.0

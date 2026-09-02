@@ -137,6 +137,54 @@ class StewardshipError(RuntimeError):
     """Raised when a catalog or bounded Hub operation is invalid."""
 
 
+class _DuplicateJsonKey(ValueError):
+    pass
+
+
+def _strict_json_file(path: Path, label: str) -> object:
+    def object_hook(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise _DuplicateJsonKey(key)
+            value[key] = item
+        return value
+
+    def reject_constant(value):
+        raise ValueError(f"non-finite JSON number {value}")
+
+    try:
+        with path.open(encoding="utf-8") as handle:
+            value = json.load(
+                handle,
+                object_pairs_hook=object_hook,
+                parse_constant=reject_constant,
+            )
+    except FileNotFoundError as exc:
+        raise StewardshipError(f"{label} not found: {path}") from exc
+    except _DuplicateJsonKey as exc:
+        raise StewardshipError(
+            f"cannot read {label} {path}: duplicate key {exc.args[0]!r}"
+        ) from exc
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise StewardshipError(f"cannot read {label} {path}: {exc}") from exc
+
+    def require_finite(item, location="$"):
+        if isinstance(item, float) and not math.isfinite(item):
+            raise StewardshipError(
+                f"cannot read {label} {path}: non-finite number at {location}"
+            )
+        if isinstance(item, dict):
+            for key, child in item.items():
+                require_finite(child, f"{location}.{key}")
+        elif isinstance(item, list):
+            for index, child in enumerate(item):
+                require_finite(child, f"{location}[{index}]")
+
+    require_finite(value)
+    return value
+
+
 def _utcnow() -> dt.datetime:
     """Return the live validation clock; tests replace this provider explicitly."""
     return dt.datetime.now(dt.timezone.utc)
@@ -361,13 +409,7 @@ def validate_catalog(catalog: object) -> dict:
 
 
 def load_catalog(path: Path) -> dict:
-    try:
-        with path.open(encoding="utf-8") as handle:
-            value = json.load(handle)
-    except FileNotFoundError as exc:
-        raise StewardshipError(f"catalog not found: {path}") from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise StewardshipError(f"cannot read catalog {path}: {exc}") from exc
+    value = _strict_json_file(path, "catalog")
     return validate_catalog(value)
 
 
@@ -585,13 +627,7 @@ def fetch_card(resource: dict, cache_dir: Path | None = None) -> Path:
 
 
 def _read_json(path: Path, label: str) -> dict:
-    try:
-        with path.open(encoding="utf-8") as handle:
-            value = json.load(handle)
-    except FileNotFoundError as exc:
-        raise StewardshipError(f"{label} not found: {path}") from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise StewardshipError(f"cannot read {label} {path}: {exc}") from exc
+    value = _strict_json_file(path, label)
     return _require_object(value, label)
 
 

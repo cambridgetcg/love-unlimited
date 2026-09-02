@@ -14,6 +14,7 @@ size_categories:
   - n<1K
 configs:
   - config_name: model_behavior
+    default: true
     data_files:
       - split: test
         path: data/model_behavior.jsonl

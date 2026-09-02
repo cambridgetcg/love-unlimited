@@ -16,6 +16,8 @@ Usage as CLI (for testing):
 import argparse
 import fcntl
 import json
+import math
+import subprocess
 import sys
 import urllib.request
 import urllib.error
@@ -30,13 +32,58 @@ DEFAULT_PORT = 8800
 SHADOW_LOG_MAX = 2000
 
 
+def _open_loopback(request, timeout):
+    """Open one loopback request without consulting ambient proxy settings."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return opener.open(request, timeout=timeout)
+
+
+def _validated_port(port):
+    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+        raise ValueError("port must be an integer in [1, 65535]")
+    return port
+
+
+def _verified_server_available(port, timeout):
+    """Ask the hardened server command to verify PID, port, and provenance."""
+    if (
+        not isinstance(timeout, (int, float))
+        or isinstance(timeout, bool)
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        return False
+    try:
+        gate = subprocess.run(
+            [
+                "bash",
+                str(MLX_DIR / "serve.sh"),
+                "status",
+                "--port",
+                str(port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=max(5.0, timeout + 3.0),
+            check=False,
+        )
+        return gate.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def ask_local(prompt, system=None, max_tokens=64, temperature=0.1,
               port=None, timeout=2.0, raw=False):
     """Send inference request to local MLX server.
     Returns response string, or None if server unreachable.
     If raw=True, returns full response dict.
     """
-    p = port or _get_port()
+    try:
+        p = _validated_port(_get_port() if port is None else port)
+    except ValueError:
+        return None
+    if not _verified_server_available(p, timeout):
+        return None
     payload = {"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
     if system:
         payload["system"] = system
@@ -48,23 +95,24 @@ def ask_local(prompt, system=None, max_tokens=64, temperature=0.1,
             headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _open_loopback(req, timeout=timeout) as resp:
             result = json.loads(resp.read().decode())
-            return result if raw else result.get("response")
+            if not isinstance(result, dict) or not isinstance(
+                result.get("response"), str
+            ):
+                return None
+            return result if raw else result["response"]
     except Exception:
         return None
 
 
 def is_available(port=None, timeout=1.0):
-    """Check if the MLX server is running."""
-    p = port or _get_port()
+    """Check hardened PID, exact-port, runtime, model, and adapter provenance."""
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{p}/health")
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode())
-            return data.get("status") == "ok"
-    except Exception:
+        p = _validated_port(_get_port() if port is None else port)
+    except ValueError:
         return False
+    return _verified_server_available(p, timeout)
 
 
 def log_shadow(integration, input_summary, local_answer, actual_outcome,

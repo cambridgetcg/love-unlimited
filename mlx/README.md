@@ -21,8 +21,8 @@ immutable model lock:
 
 ```bash
 uv venv --python 3.12.12 mlx/.venv
-uv pip install --python mlx/.venv/bin/python -r mlx/requirements.lock
-mlx/.venv/bin/python -I tools/hf_model_lock.py resolve \
+uv pip install --python mlx/.venv/bin/python3 -r mlx/requirements.lock
+mlx/.venv/bin/python3 -I tools/hf_model_lock.py resolve \
   --config mlx/config.json --project-root . --cache-dir mlx/cache
 ```
 
@@ -69,11 +69,11 @@ a local training manifest. Its JSON Schema is
 ## Train, evaluate, and serve
 
 ```bash
-mlx/.venv/bin/python -I tools/mlx_train.py run \
+mlx/.venv/bin/python3 -I tools/mlx_train.py run \
   --manifest resources/data/manifests/<local-training-manifest>.json \
   --adapter kingdom-v2
 
-mlx/.venv/bin/python -I tools/mlx_train.py eval \
+mlx/.venv/bin/python3 -I tools/mlx_train.py eval \
   --adapter kingdom-v2 \
   --manifest resources/data/manifests/<local-training-manifest>.json \
   --split validation
@@ -90,14 +90,14 @@ MLX-generated adapter configuration. Training completion does not approve
 serving or release. To record the separate, reversible loopback-only decision:
 
 ```bash
-mlx/.venv/bin/python -I tools/mlx_train.py approve-serving \
+mlx/.venv/bin/python3 -I tools/mlx_train.py approve-serving \
   --adapter kingdom-v2 \
   --declared-by <local-operator-declaration> \
   --decision-ref <review-or-ticket-ref> \
   --acknowledge-loopback-only \
   I_APPROVE_THIS_ADAPTER_FOR_LOOPBACK_ONLY_LOCAL_SERVING
 
-mlx/.venv/bin/python -I tools/mlx_serve.py start --daemon
+mlx/.venv/bin/python3 -I tools/mlx_serve.py start --daemon
 ```
 
 The approval is a digest-bound local declaration, not authenticated identity

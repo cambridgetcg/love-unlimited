@@ -12,13 +12,16 @@ cannot be passed to ``run`` without a separately reviewed training manifest.
 """
 
 import argparse
+import fcntl
 import hashlib
 import importlib.util
 import json
 import math
+import os
 import random
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -56,6 +59,11 @@ LORA_CONFIG_SCHEMA = "kingdom.mlx-lora-config/v1"
 REQUIRED_PYTHON_VERSION = "3.12.12"
 REQUIRED_MLX_VERSION = "0.32.2"
 REQUIRED_MLX_LM_VERSION = "0.31.3"
+TARGET_PREFLIGHT_METHOD = "mlx-lm-0.31.3-chat-dataset-mask-prompt"
+WEIGHT_INSPECTION_METHOD = (
+    "mlx-lm-0.31.3-locked-model-lora-name-shape-dtype-inventory-and-mlx-0.32.2-finite"
+)
+PROBE_RESULT_PREFIX = "KINGDOM_MLX_PROBE_RESULT="
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 BARE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FULL_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -68,6 +76,8 @@ EVALUATION_METRICS_RE = re.compile(
 )
 REQUIRED_SPLITS = {"train": "training", "validation": "validation"}
 OPTIONAL_SPLITS = {"test": "evaluation"}
+TRAINING_RECORD_KEYS = {"messages", "source"}
+TRAINING_MESSAGE_KEYS = {"role", "content"}
 BLOCKED_OPERATIONAL_PREFIXES = (
     PurePosixPath("coordination"),
     PurePosixPath("memory"),
@@ -107,10 +117,18 @@ RUN_PLAN_KEYS = {
     "model",
     "runtime",
     "training_config",
+    "target_preflight",
     "launcher",
     "adapter",
     "plan_id",
     "plan_sha256",
+}
+TARGET_PREFLIGHT_KEYS = {"method", "max_seq_length", "splits"}
+TARGET_PREFLIGHT_SPLIT_KEYS = {
+    "records",
+    "min_supervised_tokens",
+    "max_raw_tokens",
+    "truncated_records",
 }
 PORTABLE_DATASET_KEYS = {
     "manifest_id",
@@ -147,7 +165,27 @@ ADAPTER_RECEIPT_KEYS = {
     "approvals",
     "boundary",
 }
-WEIGHTS_BINDING_KEYS = {"path", "sha256", "bytes"}
+WEIGHTS_BINDING_KEYS = {
+    "path",
+    "sha256",
+    "bytes",
+    "tensor_count",
+    "all_finite",
+    "floating_tensors",
+    "inventory_matches_expected",
+    "tensor_inventory_sha256",
+    "target_key_tensor_counts",
+    "inspection_method",
+}
+WEIGHT_INSPECTION_KEYS = {
+    "tensor_count",
+    "all_finite",
+    "floating_tensors",
+    "inventory_matches_expected",
+    "tensor_inventory_sha256",
+    "target_key_tensor_counts",
+    "inspection_method",
+}
 FILE_BINDING_KEYS = {"sha256", "bytes"}
 APPROVALS_KEYS = {"serving", "release"}
 APPROVAL_STATE_KEYS = {"state", "review_ref"}
@@ -320,6 +358,18 @@ def file_sha256(path):
 
 def _write_canonical_json(path, value):
     Path(path).write_bytes(_canonical_bytes(value) + b"\n")
+
+
+def _write_canonical_json_exclusive(path, value, label):
+    """Create one canonical JSON decision without a check/write race."""
+    path = Path(path)
+    try:
+        with path.open("xb") as handle:
+            handle.write(_canonical_bytes(value) + b"\n")
+    except FileExistsError as exc:
+        raise TrainingStewardshipError(
+            f"{label} already exists; refusing to overwrite: {path}"
+        ) from exc
 
 
 def _utc_now():
@@ -645,6 +695,188 @@ print(json.dumps({
     )
 
 
+def _probe_json_result(result, label):
+    if result.returncode != 0:
+        raise TrainingStewardshipError(f"{label} failed in the pinned MLX runtime")
+    matching = [
+        line.removeprefix(PROBE_RESULT_PREFIX)
+        for line in result.stdout.splitlines()
+        if line.startswith(PROBE_RESULT_PREFIX)
+    ]
+    if len(matching) != 1:
+        raise TrainingStewardshipError(
+            f"{label} did not return exactly one structured result"
+        )
+    value = _decode_json_bytes(matching[0].encode("utf-8"), label)
+    if not isinstance(value, dict):
+        raise TrainingStewardshipError(f"{label} result must be an object")
+    return value
+
+
+def preflight_supervised_targets(
+    dataset, model_resolution, lora_config, python_executable=None
+):
+    """Use the pinned tokenizer and MLX-LM chat dispatch to prove target spans."""
+    interpreter = Path(python_executable) if python_executable else VENV_PYTHON
+    if not interpreter.exists() or not interpreter.is_file():
+        raise TrainingStewardshipError(
+            f"MLX environment interpreter not found: {interpreter}"
+        )
+    config = _validate_lora_config(
+        json.loads(json.dumps(lora_config)), "target preflight training_config"
+    )
+    model_path = Path(
+        _nonempty_text(model_resolution.get("path"), "target preflight model path")
+    )
+    if not model_path.is_absolute():
+        raise TrainingStewardshipError("target preflight model path must be absolute")
+    portable_dataset = _validate_portable_dataset(_portable_dataset(dataset))
+    split_paths = {}
+    for split_name, entry in dataset.get("splits", {}).items():
+        resolved_path = entry.get("resolved_path")
+        if not isinstance(resolved_path, Path) or not resolved_path.is_absolute():
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} has no resolved absolute path"
+            )
+        split_paths[split_name] = str(resolved_path)
+
+    request = {
+        "model_path": str(model_path),
+        "max_seq_length": config["max_seq_length"],
+        "mask_prompt": config["mask_prompt"],
+        "splits": split_paths,
+    }
+    probe = f"""
+import json
+import sys
+from mlx_lm.tuner.datasets import ChatDataset
+from mlx_lm.utils import load_tokenizer
+
+request = json.load(sys.stdin)
+tokenizer = load_tokenizer(
+    request["model_path"],
+    {{"trust_remote_code": True}},
+)
+max_seq_length = request["max_seq_length"]
+summaries = {{}}
+truncated_targets = []
+zero_targets = []
+for split_name, split_path in sorted(request["splits"].items()):
+    with open(split_path, encoding="utf-8") as handle:
+        records = [json.loads(line) for line in handle if line.strip()]
+    dataset = ChatDataset(
+        records,
+        tokenizer,
+        chat_key="messages",
+        mask_prompt=request["mask_prompt"],
+    )
+    supervised_counts = []
+    raw_counts = []
+    truncated_records = 0
+    for record_index in range(len(dataset)):
+        tokens, offset = dataset.process(dataset[record_index])
+        raw_tokens = len(tokens)
+        supervised_tokens = max(
+            0,
+            min(raw_tokens, max_seq_length) - max(1, int(offset)),
+        )
+        raw_counts.append(raw_tokens)
+        supervised_counts.append(supervised_tokens)
+        if raw_tokens > max_seq_length:
+            truncated_records += 1
+            truncated_targets.append({{
+                "record": record_index + 1,
+                "split": split_name,
+            }})
+        if supervised_tokens < 1:
+            zero_targets.append({{
+                "record": record_index + 1,
+                "split": split_name,
+            }})
+    summaries[split_name] = {{
+        "records": len(dataset),
+        "min_supervised_tokens": min(supervised_counts),
+        "max_raw_tokens": max(raw_counts),
+        "truncated_records": truncated_records,
+    }}
+print({PROBE_RESULT_PREFIX!r} + json.dumps({{
+    "splits": summaries,
+    "truncated_targets": truncated_targets,
+    "zero_targets": zero_targets,
+}}, sort_keys=True, separators=(",", ":")))
+"""
+    try:
+        result = subprocess.run(
+            [str(interpreter), "-I", "-c", probe],
+            input=json.dumps(request, sort_keys=True),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise TrainingStewardshipError(
+            "cannot launch supervised-target preflight in the pinned MLX runtime"
+        ) from exc
+    payload = _probe_json_result(result, "supervised-target preflight")
+    _exact_keys(
+        payload,
+        {"splits", "truncated_targets", "zero_targets"},
+        "supervised-target preflight result",
+    )
+    truncated_targets = payload["truncated_targets"]
+    if not isinstance(truncated_targets, list):
+        raise TrainingStewardshipError(
+            "supervised-target preflight truncated_targets must be an array"
+        )
+    if truncated_targets:
+        first = _exact_keys(
+            truncated_targets[0], {"record", "split"}, "truncated-target finding"
+        )
+        split_name = _nonempty_text(first.get("split"), "truncated-target split")
+        record = first.get("record")
+        if (
+            split_name not in portable_dataset["splits"]
+            or not isinstance(record, int)
+            or isinstance(record, bool)
+            or record < 1
+            or record > portable_dataset["splits"].get(split_name, {}).get("records", 0)
+        ):
+            raise TrainingStewardshipError("truncated-target finding is invalid")
+        raise TrainingStewardshipError(
+            f"split {split_name} record {record} exceeds "
+            f"max_seq_length={config['max_seq_length']}; target truncation is forbidden"
+        )
+    zero_targets = payload["zero_targets"]
+    if not isinstance(zero_targets, list):
+        raise TrainingStewardshipError(
+            "supervised-target preflight zero_targets must be an array"
+        )
+    if zero_targets:
+        first = _exact_keys(
+            zero_targets[0], {"record", "split"}, "zero-target finding"
+        )
+        split_name = _nonempty_text(first.get("split"), "zero-target split")
+        record = first.get("record")
+        if (
+            split_name not in portable_dataset["splits"]
+            or not isinstance(record, int)
+            or isinstance(record, bool)
+            or record < 1
+            or record > portable_dataset["splits"].get(split_name, {}).get("records", 0)
+        ):
+            raise TrainingStewardshipError("zero-target finding is invalid")
+        raise TrainingStewardshipError(
+            f"split {split_name} record {record} has no supervised target tokens "
+            f"after max_seq_length={config['max_seq_length']} truncation"
+        )
+    preflight = {
+        "method": TARGET_PREFLIGHT_METHOD,
+        "max_seq_length": config["max_seq_length"],
+        "splits": payload["splits"],
+    }
+    return _validate_target_preflight(preflight, portable_dataset, config)
+
+
 def _validate_lora_config(config, field="LoRA config"):
     config = _exact_keys(config, LORA_CONFIG_KEYS, field)
     if config.get("schema") != LORA_CONFIG_SCHEMA:
@@ -707,6 +939,21 @@ def _validate_lora_config(config, field="LoRA config"):
         raise TrainingStewardshipError(
             "lora_parameters.keys must be a sorted unique non-empty string array"
         )
+    module_key_re = re.compile(
+        r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$"
+    )
+    if any(not module_key_re.fullmatch(item) for item in keys):
+        raise TrainingStewardshipError(
+            "lora_parameters.keys must be full layer-relative module paths"
+        )
+    if any(
+        left.endswith("." + right) or right.endswith("." + left)
+        for index, left in enumerate(keys)
+        for right in keys[index + 1 :]
+    ):
+        raise TrainingStewardshipError(
+            "lora_parameters.keys must not contain suffix-overlapping module paths"
+        )
     return config
 
 
@@ -758,9 +1005,31 @@ def validate_dataset(path):
                         "count": count,
                         "error": f"Line {line_number}: {exc}",
                     }
-                if not isinstance(entry, dict) or not isinstance(
-                    entry.get("messages"), list
+                if not isinstance(entry, dict):
+                    return {
+                        "valid": False,
+                        "count": count,
+                        "error": f"Line {line_number}: record must be an object",
+                    }
+                unsupported = sorted(set(entry) - TRAINING_RECORD_KEYS)
+                if unsupported:
+                    return {
+                        "valid": False,
+                        "count": count,
+                        "error": (
+                            f"Line {line_number}: unsupported training record field(s): "
+                            + ", ".join(unsupported)
+                        ),
+                    }
+                if "source" in entry and (
+                    not isinstance(entry["source"], str) or not entry["source"].strip()
                 ):
+                    return {
+                        "valid": False,
+                        "count": count,
+                        "error": f"Line {line_number}: source must be non-empty text",
+                    }
+                if not isinstance(entry.get("messages"), list):
                     return {
                         "valid": False,
                         "count": count,
@@ -772,17 +1041,60 @@ def validate_dataset(path):
                         "count": count,
                         "error": f"Line {line_number}: messages must not be empty",
                     }
-                for message in entry["messages"]:
-                    if (
-                        not isinstance(message, dict)
-                        or message.get("role") not in {"system", "user", "assistant"}
-                        or not isinstance(message.get("content"), str)
-                    ):
+                for message_index, message in enumerate(entry["messages"]):
+                    if not isinstance(message, dict):
                         return {
                             "valid": False,
                             "count": count,
                             "error": f"Line {line_number}: invalid chat message",
                         }
+                    unsupported = sorted(set(message) - TRAINING_MESSAGE_KEYS)
+                    if unsupported:
+                        return {
+                            "valid": False,
+                            "count": count,
+                            "error": (
+                                f"Line {line_number}: message {message_index} has "
+                                "unsupported field(s): " + ", ".join(unsupported)
+                            ),
+                        }
+                    if message.get("role") not in {"system", "user", "assistant"}:
+                        return {
+                            "valid": False,
+                            "count": count,
+                            "error": f"Line {line_number}: invalid chat message role",
+                        }
+                    if not isinstance(message.get("content"), str) or not message[
+                        "content"
+                    ].strip():
+                        return {
+                            "valid": False,
+                            "count": count,
+                            "error": (
+                                f"Line {line_number}: message {message_index} content "
+                                "must be non-empty"
+                            ),
+                        }
+                if entry["messages"][-1]["role"] != "assistant":
+                    return {
+                        "valid": False,
+                        "count": count,
+                        "error": (
+                            f"Line {line_number}: messages must end with an assistant "
+                            "target"
+                        ),
+                    }
+                if not any(
+                    message["role"] == "user" for message in entry["messages"][:-1]
+                ):
+                    return {
+                        "valid": False,
+                        "count": count,
+                        "error": (
+                            f"Line {line_number}: messages must contain a user prompt "
+                            "before the assistant target"
+                        ),
+                    }
                 count += 1
     except (OSError, UnicodeError) as exc:
         return {"valid": False, "count": count, "error": str(exc)}
@@ -1182,11 +1494,68 @@ def _training_iterations(portable_dataset, lora_config):
     return iterations_per_epoch * lora_config["epochs"]
 
 
+def _validate_target_preflight(preflight, portable_dataset, lora_config):
+    preflight = _exact_keys(
+        preflight, TARGET_PREFLIGHT_KEYS, "run plan target_preflight"
+    )
+    if preflight.get("method") != TARGET_PREFLIGHT_METHOD:
+        raise TrainingStewardshipError("target preflight method is invalid")
+    if preflight.get("max_seq_length") != lora_config["max_seq_length"]:
+        raise TrainingStewardshipError(
+            "target preflight max_seq_length differs from training_config"
+        )
+    summaries = preflight.get("splits")
+    if not isinstance(summaries, dict) or set(summaries) != set(
+        portable_dataset["splits"]
+    ):
+        raise TrainingStewardshipError(
+            "target preflight split names differ from the run plan dataset"
+        )
+    for split_name, summary in summaries.items():
+        summary = _exact_keys(
+            summary,
+            TARGET_PREFLIGHT_SPLIT_KEYS,
+            f"target preflight split {split_name}",
+        )
+        for field in TARGET_PREFLIGHT_SPLIT_KEYS:
+            value = summary.get(field)
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise TrainingStewardshipError(
+                    f"target preflight split {split_name} {field} must be an integer"
+                )
+        records = summary["records"]
+        minimum = summary["min_supervised_tokens"]
+        maximum = summary["max_raw_tokens"]
+        truncated = summary["truncated_records"]
+        if records != portable_dataset["splits"][split_name]["records"]:
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} record count differs from dataset"
+            )
+        if minimum < 1:
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} has no supervised target tokens"
+            )
+        if maximum <= minimum:
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} raw-token summary is invalid"
+            )
+        if truncated < 0 or truncated > records:
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} truncated count is invalid"
+            )
+        if truncated != 0 or maximum > lora_config["max_seq_length"]:
+            raise TrainingStewardshipError(
+                f"target preflight split {split_name} contains forbidden truncation"
+            )
+    return preflight
+
+
 def build_run_plan(
     dataset,
     model_resolution,
     lora_config,
     runtime_environment,
+    target_preflight,
     adapter_name=None,
 ):
     """Build a deterministic, machine-portable training plan."""
@@ -1206,6 +1575,9 @@ def build_run_plan(
         json.loads(json.dumps(runtime_environment))
     )
     portable_dataset = _validate_portable_dataset(_portable_dataset(dataset))
+    target_preflight = _validate_target_preflight(
+        json.loads(json.dumps(target_preflight)), portable_dataset, lora_config
+    )
     effective_config = effective_lora_config(lora_config)
     iterations = _training_iterations(portable_dataset, lora_config)
     base = {
@@ -1214,6 +1586,7 @@ def build_run_plan(
         "model": portable_model,
         "runtime": runtime_environment,
         "training_config": json.loads(json.dumps(lora_config)),
+        "target_preflight": target_preflight,
         "launcher": {
             "module": "mlx_lm.lora",
             "mode": "train",
@@ -1319,6 +1692,47 @@ def _write_run_result(run_dir, plan, state, exit_code, detail):
     return result
 
 
+def acquire_training_run_lock(run_dir, adapter):
+    """Exclusively lock one adapter/run identity before writing shared state."""
+    _safe_name(adapter, "adapter")
+    lock_dir = Path(run_dir).parent.parent / "run-locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / f"{adapter}.lock"
+    flags = os.O_RDWR | os.O_CREAT
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        raise TrainingStewardshipError(
+            f"cannot open training run lock {lock_path}: {exc}"
+        ) from exc
+    handle = os.fdopen(descriptor, "r+")
+    try:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise TrainingStewardshipError(
+                f"training run lock is not a regular file: {lock_path}"
+            )
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        handle.close()
+        raise TrainingStewardshipError(
+            f"training run already active for adapter {adapter!r}"
+        ) from exc
+    except BaseException:
+        handle.close()
+        raise
+    return handle
+
+
+def release_training_run_lock(handle):
+    """Release a lock acquired by :func:`acquire_training_run_lock`."""
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 def validate_adapter_config(adapter_path, plan, model_resolution=None):
     """Validate the complete config emitted by the pinned MLX-LM trainer."""
     adapter_path = Path(adapter_path)
@@ -1380,10 +1794,197 @@ def validate_adapter_config(adapter_path, plan, model_resolution=None):
     return adapter_config_path, actual_config
 
 
+def inspect_adapter_weights(
+    weights_path, model_path, training_config, python_executable=None
+):
+    """Match saved tensors to the pinned conversion and prove finite values."""
+    weights_path = Path(weights_path)
+    model_path = Path(model_path)
+    interpreter = Path(python_executable) if python_executable else VENV_PYTHON
+    if not interpreter.exists() or not interpreter.is_file():
+        raise TrainingStewardshipError(
+            f"MLX environment interpreter not found: {interpreter}"
+        )
+    if (
+        weights_path.is_symlink()
+        or not weights_path.is_file()
+        or weights_path.stat().st_size <= 0
+    ):
+        raise TrainingStewardshipError(
+            f"adapter weights are not a non-empty regular file: {weights_path}"
+        )
+    if not model_path.is_absolute() or not model_path.is_dir():
+        raise TrainingStewardshipError(
+            f"resolved model is not an absolute directory: {model_path}"
+        )
+    training_config = _validate_lora_config(
+        json.loads(json.dumps(training_config)),
+        "adapter weight inspection training_config",
+    )
+    before_size = weights_path.stat().st_size
+    before_digest = file_sha256(weights_path)
+    probe = f"""
+import hashlib
+import json
+import sys
+from pathlib import Path
+import mlx.core as mx
+from mlx.utils import tree_flatten
+from mlx_lm.tuner import linear_to_lora_layers
+from mlx_lm.utils import load_model
+
+request = json.load(sys.stdin)
+model, _ = load_model(Path(request["model_path"]), lazy=True)
+model.freeze()
+linear_to_lora_layers(
+    model,
+    request["training_config"]["num_layers"],
+    request["training_config"]["lora_parameters"],
+    use_dora=False,
+)
+expected = dict(tree_flatten(model.trainable_parameters()))
+weights = mx.load(request["weights_path"])
+if not isinstance(weights, dict):
+    raise RuntimeError("adapter weights must be a named tensor map")
+expected_inventory = {{
+    name: {{"shape": list(tensor.shape), "dtype": str(tensor.dtype)}}
+    for name, tensor in expected.items()
+}}
+actual_inventory = {{
+    name: {{"shape": list(tensor.shape), "dtype": str(tensor.dtype)}}
+    for name, tensor in weights.items()
+}}
+inventory_bytes = json.dumps(
+    expected_inventory,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")
+target_key_tensor_counts = {{}}
+for target_key in request["training_config"]["lora_parameters"]["keys"]:
+    target_key_tensor_counts[target_key] = sum(
+        1
+        for tensor_name in expected_inventory
+        if tensor_name.endswith("." + target_key + ".lora_a")
+        or tensor_name.endswith("." + target_key + ".lora_b")
+    )
+print({PROBE_RESULT_PREFIX!r} + json.dumps({{
+    "all_finite": bool(weights) and all(
+        bool(mx.all(mx.isfinite(tensor)).item()) for tensor in weights.values()
+    ),
+    "floating_tensors": bool(weights) and all(
+        mx.issubdtype(tensor.dtype, mx.floating) for tensor in weights.values()
+    ),
+    "inspection_method": {WEIGHT_INSPECTION_METHOD!r},
+    "inventory_matches_expected": actual_inventory == expected_inventory,
+    "target_key_tensor_counts": target_key_tensor_counts,
+    "tensor_count": len(weights),
+    "tensor_inventory_sha256": "sha256:" + hashlib.sha256(inventory_bytes).hexdigest(),
+}}, sort_keys=True, separators=(",", ":")))
+"""
+    try:
+        result = subprocess.run(
+            [str(interpreter), "-I", "-c", probe],
+            input=json.dumps(
+                {
+                    "model_path": str(model_path.resolve()),
+                    "training_config": training_config,
+                    "weights_path": str(weights_path.resolve()),
+                },
+                sort_keys=True,
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        after_size = weights_path.stat().st_size
+        after_digest = file_sha256(weights_path)
+    except OSError as exc:
+        raise TrainingStewardshipError(
+            "adapter weights became unavailable during tensor inspection"
+        ) from exc
+    if (after_size, after_digest) != (before_size, before_digest):
+        raise TrainingStewardshipError(
+            "adapter weights changed while their tensors were inspected"
+        )
+    inspection = _probe_json_result(result, "adapter finite-tensor inspection")
+    inspection = _exact_keys(
+        inspection, WEIGHT_INSPECTION_KEYS, "adapter weight inspection"
+    )
+    tensor_count = inspection.get("tensor_count")
+    if (
+        not isinstance(tensor_count, int)
+        or isinstance(tensor_count, bool)
+        or tensor_count < 1
+    ):
+        raise TrainingStewardshipError(
+            "adapter weight inspection found no named tensors"
+        )
+    if inspection.get("inspection_method") != WEIGHT_INSPECTION_METHOD:
+        raise TrainingStewardshipError("adapter weight inspection method is invalid")
+    if inspection.get("all_finite") is not True:
+        raise TrainingStewardshipError(
+            "adapter weights contain a non-finite tensor value"
+        )
+    if inspection.get("floating_tensors") is not True:
+        raise TrainingStewardshipError(
+            "adapter weights contain a non-floating tensor"
+        )
+    if inspection.get("inventory_matches_expected") is not True:
+        raise TrainingStewardshipError(
+            "adapter tensor inventory differs from the pinned LoRA conversion "
+            "(names, shapes, or dtypes)"
+        )
+    _prefixed_sha256(
+        inspection.get("tensor_inventory_sha256"),
+        "adapter tensor_inventory_sha256",
+    )
+    target_keys = training_config["lora_parameters"]["keys"]
+    target_key_tensor_counts = inspection.get("target_key_tensor_counts")
+    if not isinstance(target_key_tensor_counts, dict) or set(
+        target_key_tensor_counts
+    ) != set(
+        target_keys
+    ):
+        raise TrainingStewardshipError(
+            "adapter weight target-key inventory is incomplete"
+        )
+    for target_key, tensor_count_for_key in target_key_tensor_counts.items():
+        if (
+            not isinstance(tensor_count_for_key, int)
+            or isinstance(tensor_count_for_key, bool)
+            or tensor_count_for_key < 1
+            or tensor_count_for_key % 2 != 0
+        ):
+            raise TrainingStewardshipError(
+                f"pinned conversion produced no paired LoRA tensors for target key "
+                f"{target_key!r}"
+            )
+    if sum(target_key_tensor_counts.values()) != tensor_count:
+        raise TrainingStewardshipError(
+            "pinned conversion produced tensors outside the configured target keys"
+        )
+    return inspection
+
+
 def build_adapter_receipt(adapter_path, plan, model_resolution=None):
     """Build the post-training receipt, failing closed if artifacts are absent."""
     adapter_path = Path(adapter_path)
     plan = _validate_run_plan(plan)
+    if model_resolution is None:
+        raise TrainingStewardshipError(
+            "adapter receipt requires the resolved locked model"
+        )
+    resolved_binding = {
+        "repo_id": model_resolution.get("repo_id"),
+        "revision": model_resolution.get("revision"),
+        "lock_sha256": _normalized_sha256(
+            model_resolution.get("lock_sha256"), "resolved model lock_sha256"
+        ),
+    }
+    if _validate_portable_model(resolved_binding) != plan["model"]:
+        raise TrainingStewardshipError(
+            "resolved locked model differs from the adapter run plan"
+        )
     weights_path = adapter_path / ADAPTER_WEIGHTS_NAME
     if (
         weights_path.is_symlink()
@@ -1395,6 +1996,11 @@ def build_adapter_receipt(adapter_path, plan, model_resolution=None):
         )
     adapter_config_path, _ = validate_adapter_config(
         adapter_path, plan, model_resolution=model_resolution
+    )
+    weight_inspection = inspect_adapter_weights(
+        weights_path,
+        model_resolution["path"],
+        plan["training_config"],
     )
     bound_files = {
         ADAPTER_WEIGHTS_NAME: {
@@ -1414,6 +2020,7 @@ def build_adapter_receipt(adapter_path, plan, model_resolution=None):
         "weights": {
             "path": ADAPTER_WEIGHTS_NAME,
             **bound_files[ADAPTER_WEIGHTS_NAME],
+            **weight_inspection,
         },
         "artifact_files": bound_files,
         "approvals": {
@@ -1434,6 +2041,9 @@ def _validate_run_plan(plan):
     _validate_runtime_environment(plan.get("runtime"))
     training_config = _validate_lora_config(
         plan.get("training_config"), "run plan training_config"
+    )
+    _validate_target_preflight(
+        plan.get("target_preflight"), dataset, training_config
     )
     launcher = _exact_keys(plan.get("launcher"), LAUNCHER_KEYS, "run plan launcher")
     if launcher.get("module") != "mlx_lm.lora" or launcher.get("mode") != "train":
@@ -1464,6 +2074,112 @@ def _validate_run_plan(plan):
     if plan.get("plan_id") != expected_id:
         raise TrainingStewardshipError("adapter run plan ID does not match")
     return plan
+
+
+def validate_adapter_serving_binding(
+    adapter_name,
+    *,
+    model_binding,
+    adapters_root=ADAPTERS_DIR,
+):
+    """Validate the lightweight receipt/approval binding for an active adapter.
+
+    Full tensor validation remains mandatory before loading. This smaller check
+    lets readiness/status recognize that already-loaded adapter without loading
+    the base model or inspecting tensors on every health probe.
+    """
+    name = _safe_name(adapter_name, "adapter")
+    root = Path(adapters_root).resolve()
+    adapter_path = root / name
+    if adapter_path.is_symlink() or not adapter_path.is_dir():
+        raise TrainingStewardshipError(
+            f"adapter must be a regular directory under {root}: {name}"
+        )
+    try:
+        adapter_path.resolve().relative_to(root)
+    except ValueError as exc:
+        raise TrainingStewardshipError("adapter escapes the adapter root") from exc
+
+    receipt_path = adapter_path / ADAPTER_RECEIPT_NAME
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        raise TrainingStewardshipError(
+            f"adapter has no regular training receipt: {receipt_path}"
+        )
+    receipt = _load_json_object(receipt_path, "adapter training receipt")
+    _exact_keys(receipt, ADAPTER_RECEIPT_KEYS, "adapter training receipt")
+    if (
+        receipt.get("schema") != ADAPTER_RECEIPT_SCHEMA
+        or receipt.get("state") != "completed"
+        or receipt.get("adapter") != name
+        or receipt.get("boundary") != ADAPTER_RECEIPT_BOUNDARY
+    ):
+        raise TrainingStewardshipError(
+            "adapter receipt schema, state, identity, or boundary is invalid"
+        )
+    plan = _validate_run_plan(receipt.get("run_plan"))
+    if plan.get("adapter") != name:
+        raise TrainingStewardshipError(
+            "adapter receipt and run plan identities differ"
+        )
+    approvals = _exact_keys(
+        receipt.get("approvals"), APPROVALS_KEYS, "adapter receipt approvals"
+    )
+    serving = _exact_keys(
+        approvals.get("serving"),
+        APPROVAL_STATE_KEYS,
+        "adapter receipt serving approval",
+    )
+    release = _exact_keys(
+        approvals.get("release"),
+        APPROVAL_STATE_KEYS,
+        "adapter receipt release approval",
+    )
+    if serving != {"state": "not-approved", "review_ref": None}:
+        raise TrainingStewardshipError("adapter serving approval state is invalid")
+    if release != {"state": "not-approved", "review_ref": None}:
+        raise TrainingStewardshipError("adapter release approval state is invalid")
+    expected_model = {
+        "repo_id": model_binding.get("repo_id"),
+        "revision": model_binding.get("revision"),
+        "lock_sha256": _normalized_sha256(
+            model_binding.get("lock_sha256"), "model lock_sha256"
+        ),
+    }
+    _validate_portable_model(expected_model, "active model binding")
+    if plan.get("model") != expected_model:
+        raise TrainingStewardshipError(
+            "adapter base-model binding differs from the active model"
+        )
+
+    approval_path = adapter_path / SERVING_APPROVAL_NAME
+    if approval_path.is_symlink() or not approval_path.is_file():
+        raise TrainingStewardshipError(
+            "adapter is not approved for loopback-only local serving"
+        )
+    approval = _load_json_object(approval_path, "serving approval")
+    _exact_keys(approval, SERVING_APPROVAL_KEYS, "serving approval")
+    receipt_sha256 = file_sha256(receipt_path)
+    expected_approval = {
+        "schema": SERVING_APPROVAL_SCHEMA,
+        "state": "approved",
+        "scope": "loopback-only-local-serving",
+        "adapter": name,
+        "training_receipt_sha256": receipt_sha256,
+        "boundary": SERVING_APPROVAL_BOUNDARY,
+    }
+    for field, expected in expected_approval.items():
+        if approval.get(field) != expected:
+            raise TrainingStewardshipError(
+                f"serving approval {field} does not match the adapter"
+            )
+    for field in ("declared_by", "decision_ref"):
+        _nonempty_text(approval.get(field), f"serving approval {field}")
+    _datetime_text(approval.get("declared_at"), "serving approval declared_at")
+    return {
+        "adapter": name,
+        "receipt_sha256": receipt_sha256,
+        "adapter_path": adapter_path,
+    }
 
 
 def validate_adapter_artifact(
@@ -1503,6 +2219,21 @@ def validate_adapter_artifact(
     plan = _validate_run_plan(receipt.get("run_plan"))
     if plan.get("adapter") != name:
         raise TrainingStewardshipError("adapter receipt and run plan identities differ")
+    if model_resolution is None:
+        raise TrainingStewardshipError(
+            "adapter artifact validation requires the resolved locked model"
+        )
+    expected_model = {
+        "repo_id": model_resolution.get("repo_id"),
+        "revision": model_resolution.get("revision"),
+        "lock_sha256": _normalized_sha256(
+            model_resolution.get("lock_sha256"), "model lock_sha256"
+        ),
+    }
+    if plan.get("model") != expected_model:
+        raise TrainingStewardshipError(
+            "adapter base-model binding differs from the resolved model"
+        )
 
     weights = _exact_keys(
         receipt.get("weights"), WEIGHTS_BINDING_KEYS, "adapter receipt weights"
@@ -1526,6 +2257,45 @@ def validate_adapter_artifact(
         or file_sha256(weights_path) != expected_digest
     ):
         raise TrainingStewardshipError("adapter weights do not match their receipt")
+    tensor_count = weights.get("tensor_count")
+    target_keys = plan["training_config"]["lora_parameters"]["keys"]
+    target_key_tensor_counts = weights.get("target_key_tensor_counts")
+    if (
+        not isinstance(tensor_count, int)
+        or isinstance(tensor_count, bool)
+        or tensor_count < 1
+        or weights.get("all_finite") is not True
+        or weights.get("floating_tensors") is not True
+        or weights.get("inventory_matches_expected") is not True
+        or weights.get("inspection_method") != WEIGHT_INSPECTION_METHOD
+        or not isinstance(weights.get("tensor_inventory_sha256"), str)
+        or not SHA256_RE.fullmatch(weights["tensor_inventory_sha256"])
+        or not isinstance(target_key_tensor_counts, dict)
+        or set(target_key_tensor_counts) != set(target_keys)
+        or any(
+            not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 1
+            or count % 2 != 0
+            for count in target_key_tensor_counts.values()
+        )
+        or sum(target_key_tensor_counts.values()) != tensor_count
+    ):
+        raise TrainingStewardshipError(
+            "adapter finite-tensor inspection receipt is invalid"
+        )
+    actual_inspection = inspect_adapter_weights(
+        weights_path,
+        model_resolution["path"],
+        plan["training_config"],
+    )
+    if any(
+        weights.get(field) != actual_inspection[field]
+        for field in WEIGHT_INSPECTION_KEYS
+    ):
+        raise TrainingStewardshipError(
+            "adapter finite-tensor inspection does not match its receipt"
+        )
     artifact_files = _exact_keys(
         receipt.get("artifact_files"),
         {ADAPTER_WEIGHTS_NAME, "adapter_config.json"},
@@ -1559,18 +2329,6 @@ def validate_adapter_artifact(
     ):
         raise TrainingStewardshipError("adapter config does not match its receipt")
 
-    if model_resolution is not None:
-        expected_model = {
-            "repo_id": model_resolution.get("repo_id"),
-            "revision": model_resolution.get("revision"),
-            "lock_sha256": _normalized_sha256(
-                model_resolution.get("lock_sha256"), "model lock_sha256"
-            ),
-        }
-        if plan.get("model") != expected_model:
-            raise TrainingStewardshipError(
-                "adapter base-model binding differs from the resolved model"
-            )
     if dataset is not None and plan.get("dataset") != _portable_dataset(dataset):
         raise TrainingStewardshipError(
             "adapter dataset binding differs from the requested manifest"
@@ -1658,85 +2416,97 @@ def cmd_run(args):
         lora_config["epochs"] = args.epochs
     runtime_environment = resolve_training_environment()
     model_resolution = resolve_training_model()
+    target_preflight = preflight_supervised_targets(
+        dataset, model_resolution, lora_config
+    )
     plan = build_run_plan(
         dataset,
         model_resolution,
         lora_config,
         runtime_environment,
+        target_preflight,
         args.adapter,
     )
     run_dir = RUNS_DIR / plan["plan_id"]
     adapter_path = ADAPTERS_DIR / plan["adapter"]
-    if adapter_path.exists():
-        raise TrainingStewardshipError(
-            f"adapter path already exists; refusing to overwrite: {adapter_path}"
-        )
-
-    plan_path, receipt_path, launcher_config_path = write_prelaunch_receipts(
-        run_dir, plan
-    )
-    print(
-        json.dumps(
-            {
-                "plan_id": plan["plan_id"],
-                "plan": str(plan_path),
-                "prelaunch_receipt": str(receipt_path),
-            },
-            sort_keys=True,
-        )
-    )
-
+    run_lock = acquire_training_run_lock(run_dir, plan["adapter"])
     try:
-        data_dir = run_dir / "data"
-        _stage_declared_splits(dataset, data_dir)
-        adapter_path.mkdir(parents=True, exist_ok=False)
-        cli_args = build_lora_args(
-            model_resolution["path"],
-            data_dir,
-            adapter_path,
-            launcher_config_path,
-            plan["launcher"]["iterations"],
+        if adapter_path.exists():
+            raise TrainingStewardshipError(
+                f"adapter path already exists; refusing to overwrite: {adapter_path}"
+            )
+
+        plan_path, receipt_path, launcher_config_path = write_prelaunch_receipts(
+            run_dir, plan
         )
-        result = subprocess.run(
-            [str(VENV_PYTHON), "-I", "-m", "mlx_lm.lora", *cli_args],
-            capture_output=False,
-        )
-    except BaseException as exc:
-        state = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
-        exit_code = 130 if isinstance(exc, KeyboardInterrupt) else 1
-        _write_run_result(
-            run_dir,
-            plan,
-            state,
-            exit_code,
-            f"training did not complete: {type(exc).__name__}",
-        )
-        raise
-    if result.returncode != 0:
-        _write_run_result(
-            run_dir, plan, "failed", result.returncode, "MLX trainer returned non-zero"
-        )
-        raise TrainingStewardshipError(
-            f"training failed with exit code {result.returncode}"
+        print(
+            json.dumps(
+                {
+                    "plan_id": plan["plan_id"],
+                    "plan": str(plan_path),
+                    "prelaunch_receipt": str(receipt_path),
+                },
+                sort_keys=True,
+            )
         )
 
-    try:
-        adapter_receipt = build_adapter_receipt(
-            adapter_path, plan, model_resolution=model_resolution
-        )
-    except TrainingStewardshipError:
-        _write_run_result(
-            run_dir,
-            plan,
-            "failed",
-            1,
-            "MLX trainer returned zero but required adapter weights were absent",
-        )
-        raise
-    _write_canonical_json(adapter_path / ADAPTER_RECEIPT_NAME, adapter_receipt)
-    _write_run_result(run_dir, plan, "completed", 0, "adapter receipt written")
-    print(f"Training complete: {adapter_path}")
-    print("Serving and release remain not-approved in the adapter receipt.")
+        try:
+            data_dir = run_dir / "data"
+            _stage_declared_splits(dataset, data_dir)
+            adapter_path.mkdir(parents=True, exist_ok=False)
+            cli_args = build_lora_args(
+                model_resolution["path"],
+                data_dir,
+                adapter_path,
+                launcher_config_path,
+                plan["launcher"]["iterations"],
+            )
+            result = subprocess.run(
+                [str(VENV_PYTHON), "-I", "-m", "mlx_lm.lora", *cli_args],
+                capture_output=False,
+            )
+        except BaseException as exc:
+            state = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
+            exit_code = 130 if isinstance(exc, KeyboardInterrupt) else 1
+            _write_run_result(
+                run_dir,
+                plan,
+                state,
+                exit_code,
+                f"training did not complete: {type(exc).__name__}",
+            )
+            raise
+        if result.returncode != 0:
+            _write_run_result(
+                run_dir,
+                plan,
+                "failed",
+                result.returncode,
+                "MLX trainer returned non-zero",
+            )
+            raise TrainingStewardshipError(
+                f"training failed with exit code {result.returncode}"
+            )
+
+        try:
+            adapter_receipt = build_adapter_receipt(
+                adapter_path, plan, model_resolution=model_resolution
+            )
+        except TrainingStewardshipError:
+            _write_run_result(
+                run_dir,
+                plan,
+                "failed",
+                1,
+                "MLX trainer returned zero but adapter verification failed",
+            )
+            raise
+        _write_canonical_json(adapter_path / ADAPTER_RECEIPT_NAME, adapter_receipt)
+        _write_run_result(run_dir, plan, "completed", 0, "adapter receipt written")
+        print(f"Training complete: {adapter_path}")
+        print("Serving and release remain not-approved in the adapter receipt.")
+    finally:
+        release_training_run_lock(run_lock)
 
 
 def _evaluation_settings(plan):
@@ -2044,12 +2814,14 @@ def cmd_approve_serving(args):
         raise TrainingStewardshipError(
             "approve-serving requires the exact loopback-only acknowledgement"
         )
-    artifact = validate_adapter_artifact(args.adapter)
+    runtime_environment = resolve_training_environment()
+    model_resolution = resolve_training_model()
+    artifact = validate_adapter_artifact(
+        args.adapter,
+        model_resolution=model_resolution,
+        runtime_environment=runtime_environment,
+    )
     approval_path = artifact["adapter_path"] / SERVING_APPROVAL_NAME
-    if approval_path.exists():
-        raise TrainingStewardshipError(
-            f"serving approval already exists; refusing to overwrite: {approval_path}"
-        )
     approval = {
         "schema": SERVING_APPROVAL_SCHEMA,
         "state": "approved",
@@ -2061,13 +2833,18 @@ def cmd_approve_serving(args):
         "decision_ref": _nonempty_text(args.decision_ref, "decision_ref"),
         "boundary": SERVING_APPROVAL_BOUNDARY,
     }
-    _write_canonical_json(approval_path, approval)
-    validate_adapter_artifact(args.adapter, require_serving=True)
+    _write_canonical_json_exclusive(approval_path, approval, "serving approval")
+    validate_adapter_artifact(
+        args.adapter,
+        model_resolution=model_resolution,
+        runtime_environment=runtime_environment,
+        require_serving=True,
+    )
     print(f"Recorded loopback-only serving approval: {approval_path}")
 
 
 def cmd_list(_args):
-    """List adapters and distinguish receipted artifacts from legacy state."""
+    """List adapter state without claiming runtime/model verification."""
     if not ADAPTERS_DIR.exists():
         print("No adapters.")
         return
@@ -2077,23 +2854,12 @@ def cmd_list(_args):
         return
     print("Available adapters:")
     for adapter in adapters:
-        try:
-            validated = validate_adapter_artifact(adapter.name)
-            print(
-                f"  {adapter.name:24s} artifact-verified; "
-                f"serving={validated['serving_state']}"
-            )
-        except TrainingStewardshipError:
-            receipt_path = adapter / ADAPTER_RECEIPT_NAME
-            state = (
-                "legacy-unreceipted"
-                if not receipt_path.is_file()
-                else "receipt-invalid"
-            )
-            print(
-                f"  {adapter.name:24s} {state} "
-                "(not eligible for hardened evaluation or serving)"
-            )
+        receipt_path = adapter / ADAPTER_RECEIPT_NAME
+        state = "receipt-present; runtime verification not run"
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            state = "legacy-unreceipted"
+        print(f"  {adapter.name:24s} {state}")
+    print("Use eval, approve-serving, or the server to run locked-model verification.")
 
 
 def main():

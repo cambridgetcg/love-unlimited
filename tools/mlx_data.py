@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -29,6 +30,26 @@ REVIEWED_IMPORT_RECEIPT_SCHEMA = "kingdom.reviewed-training-import-receipt/v1"
 REVIEW_PURPOSE = "local-training-data"
 SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+REVIEWED_OUTBOUND_KEYS = {
+    "schema",
+    "artifact_id",
+    "task",
+    "source",
+    "review",
+    "records_sha256",
+    "records",
+    "limitations",
+}
+REVIEWED_SOURCE_KEYS = {"kind", "live_source", "export_ref"}
+REVIEWED_REVIEW_KEYS = {
+    "state",
+    "purpose",
+    "reviewed_by",
+    "reviewed_at",
+    "review_ref",
+}
+CHAT_RECORD_KEYS = {"messages", "source"}
+CHAT_MESSAGE_KEYS = {"role", "content"}
 
 TASK_LABELS = {
     "heartbeat-triage": ("urgent", "active", "idle", "skip"),
@@ -115,6 +136,37 @@ def _nonempty_text(value, field):
     return value
 
 
+def _exact_keys(value, expected, field):
+    if not isinstance(value, dict):
+        raise DataStewardshipError(f"{field} must be an object")
+    unknown = sorted(set(value) - expected)
+    missing = sorted(expected - set(value))
+    if unknown:
+        raise DataStewardshipError(
+            f"{field} has unknown field(s): {', '.join(unknown)}"
+        )
+    if missing:
+        raise DataStewardshipError(
+            f"{field} is missing field(s): {', '.join(missing)}"
+        )
+    return value
+
+
+def _timezone_timestamp(value, field):
+    value = _nonempty_text(value, field)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise DataStewardshipError(
+            f"{field} must be a timezone-bearing ISO-8601 timestamp"
+        ) from exc
+    if "T" not in value or parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise DataStewardshipError(
+            f"{field} must be a timezone-bearing ISO-8601 timestamp"
+        )
+    return value
+
+
 def _safe_name(value, field):
     value = _nonempty_text(value, field)
     if not SAFE_NAME_RE.fullmatch(value):
@@ -139,16 +191,30 @@ def _is_live_operational_path(path):
 def _validate_chat_record(record, field="record"):
     if not isinstance(record, dict):
         raise DataStewardshipError(f"{field} must be an object")
+    unknown = sorted(set(record) - CHAT_RECORD_KEYS)
+    if unknown:
+        raise DataStewardshipError(
+            f"{field} has unknown field(s): {', '.join(unknown)}"
+        )
+    if "source" in record:
+        _nonempty_text(record["source"], f"{field}.source")
     messages = record.get("messages")
     if not isinstance(messages, list) or not messages:
         raise DataStewardshipError(f"{field}.messages must be a non-empty list")
     for index, message in enumerate(messages):
-        if (
-            not isinstance(message, dict)
-            or message.get("role") not in {"system", "user", "assistant"}
-            or not isinstance(message.get("content"), str)
-        ):
+        if not isinstance(message, dict):
             raise DataStewardshipError(f"{field}.messages[{index}] is invalid")
+        unknown = sorted(set(message) - CHAT_MESSAGE_KEYS)
+        if unknown:
+            raise DataStewardshipError(
+                f"{field}.messages[{index}] has unknown field(s): "
+                + ", ".join(unknown)
+            )
+        if message.get("role") not in {"system", "user", "assistant"}:
+            raise DataStewardshipError(f"{field}.messages[{index}] has invalid role")
+        _nonempty_text(message.get("content"), f"{field}.messages[{index}].content")
+    if not any(message["role"] == "user" for message in messages[:-1]):
+        raise DataStewardshipError(f"{field} must contain a user prompt before its target")
     if messages[-1].get("role") != "assistant":
         raise DataStewardshipError(f"{field} must end with an assistant target")
     return record
@@ -235,6 +301,7 @@ def load_reviewed_outbound_artifact(path):
         ) from exc
     if not isinstance(artifact, dict):
         raise DataStewardshipError("reviewed artifact must be a JSON object")
+    _exact_keys(artifact, REVIEWED_OUTBOUND_KEYS, "reviewed artifact")
     if artifact.get("schema") != REVIEWED_OUTBOUND_SCHEMA:
         raise DataStewardshipError(
             f"unsupported reviewed artifact schema: {artifact.get('schema')!r}"
@@ -245,20 +312,21 @@ def load_reviewed_outbound_artifact(path):
         raise DataStewardshipError(f"unsupported classification task: {task!r}")
 
     source = artifact.get("source")
-    if not isinstance(source, dict):
-        raise DataStewardshipError("source must be an object")
+    _exact_keys(source, REVIEWED_SOURCE_KEYS, "source")
     _nonempty_text(source.get("kind"), "source.kind")
     if source.get("live_source") is not False:
         raise DataStewardshipError("source.live_source must be exactly false")
     _nonempty_text(source.get("export_ref"), "source.export_ref")
 
     review = artifact.get("review")
-    if not isinstance(review, dict) or review.get("state") != "approved":
+    _exact_keys(review, REVIEWED_REVIEW_KEYS, "review")
+    if review.get("state") != "approved":
         raise DataStewardshipError("outbound artifact review is not approved")
     if review.get("purpose") != REVIEW_PURPOSE:
         raise DataStewardshipError(f"review.purpose must be {REVIEW_PURPOSE!r}")
-    for field in ("reviewed_by", "reviewed_at", "review_ref"):
+    for field in ("reviewed_by", "review_ref"):
         _nonempty_text(review.get(field), f"review.{field}")
+    _timezone_timestamp(review.get("reviewed_at"), "review.reviewed_at")
 
     limitations = artifact.get("limitations")
     if not isinstance(limitations, list) or not limitations or any(
@@ -524,18 +592,15 @@ def cmd_import_reviewed(args):
     artifact = loaded["artifact"]
     REVIEWED_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = REVIEWED_DATASETS_DIR / f"{artifact['artifact_id']}.jsonl"
-    if output_path.exists() and output_path.read_bytes() != loaded["records_bytes"]:
-        raise DataStewardshipError(
-            f"refusing to overwrite different reviewed data: {output_path}"
-        )
-    output_path.write_bytes(loaded["records_bytes"])
+    receipt_path = output_path.with_suffix(".import-receipt.json")
     receipt = {
         "schema": REVIEWED_IMPORT_RECEIPT_SCHEMA,
         "artifact_id": artifact["artifact_id"],
         "artifact_sha256": loaded["artifact_sha256"],
         "task": artifact["task"],
         "output": str(output_path.relative_to(LOVE_ROOT)),
-        "output_sha256": file_sha256(output_path),
+        "output_sha256": "sha256:"
+        + hashlib.sha256(loaded["records_bytes"]).hexdigest(),
         "records": len(artifact["records"]),
         "training_authorized": False,
         "boundary": (
@@ -543,8 +608,41 @@ def cmd_import_reviewed(args):
             "A separate immutable local-training manifest is required."
         ),
     }
-    receipt_path = output_path.with_suffix(".import-receipt.json")
-    receipt_path.write_bytes(_canonical_bytes(receipt) + b"\n")
+    expected_receipt_bytes = _canonical_bytes(receipt) + b"\n"
+    output_present = output_path.exists() or output_path.is_symlink()
+    receipt_present = receipt_path.exists() or receipt_path.is_symlink()
+    if output_present != receipt_present:
+        raise DataStewardshipError(
+            "reviewed import has an orphan output or receipt; refusing to rewrite "
+            f"provenance for {artifact['artifact_id']}"
+        )
+    if output_present:
+        if output_path.is_symlink() or receipt_path.is_symlink():
+            raise DataStewardshipError("reviewed import paths must be regular files")
+        try:
+            output_matches = output_path.read_bytes() == loaded["records_bytes"]
+            receipt_matches = receipt_path.read_bytes() == expected_receipt_bytes
+        except OSError as exc:
+            raise DataStewardshipError(
+                "cannot verify existing reviewed import"
+            ) from exc
+        if not output_matches or not receipt_matches:
+            raise DataStewardshipError(
+                "existing reviewed import differs in data or provenance; "
+                f"refusing to overwrite: {output_path}"
+            )
+        print(f"Reviewed import already identical -> {output_path}")
+        print(f"Import receipt already identical -> {receipt_path}")
+        return
+    try:
+        with output_path.open("xb") as handle:
+            handle.write(loaded["records_bytes"])
+        with receipt_path.open("xb") as handle:
+            handle.write(expected_receipt_bytes)
+    except FileExistsError as exc:
+        raise DataStewardshipError(
+            "reviewed import path appeared concurrently; refusing to overwrite"
+        ) from exc
     print(f"Imported reviewed artifact -> {output_path}")
     print(f"Import receipt -> {receipt_path}")
 

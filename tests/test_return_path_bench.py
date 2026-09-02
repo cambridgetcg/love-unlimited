@@ -16,6 +16,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH_ROOT = ROOT / "benchmarks" / "return-path-v0"
+RELEASE_RECEIPT = (
+    ROOT / "docs" / "releases" / "kingdom-return-path-bench-v0.1.0.json"
+)
 TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
@@ -132,6 +135,79 @@ class ReturnPathValidationTests(unittest.TestCase):
         self.assertIn("release-review.json", paths)
         self.assertIn("tools/return_path_bench.py", paths)
 
+    def test_source_release_receipt_binds_the_local_package(self):
+        receipt = json.loads(RELEASE_RECEIPT.read_text())
+        manifest_path = BENCH_ROOT / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        stewardship = json.loads((BENCH_ROOT / "dataset-manifest.json").read_text())
+        package = receipt["dataset"]["package"]
+
+        self.assertEqual(
+            package["manifest_sha256"],
+            hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            package["artifact_set_sha256"], manifest["artifact_set_sha256"]
+        )
+        self.assertEqual(package["local_file_count"], len(manifest["artifacts"]) + 1)
+        self.assertEqual(
+            package["hub_repo_file_count"],
+            package["local_file_count"]
+            + len(package["hub_generated_files_excluded"]),
+        )
+        self.assertEqual(receipt["dataset"]["repo_id"], stewardship["dataset_id"])
+        self.assertEqual(
+            receipt["dataset"]["repo_id"],
+            "Yu-and-Ai/kingdom-return-path-bench",
+        )
+        self.assertRegex(receipt["dataset"]["final_revision"], r"^[0-9a-f]{40}$")
+        self.assertEqual(receipt["space"]["repo_id"], "Yu-and-Ai/the-return-path")
+        self.assertRegex(receipt["space"]["source_revision"], r"^[0-9a-f]{40}$")
+        self.assertEqual(
+            receipt["space"]["deployed_dataset_revision"],
+            receipt["dataset"]["final_revision"],
+        )
+        self.assertTrue(receipt["space"]["deployed_bundle_matches_local_build"])
+        self.assertTrue(receipt["space"]["deployed_dataset_revision_present"])
+        expected_configs = {
+            entry["config"]: entry["records"] for entry in stewardship["files"]
+        }
+        self.assertEqual(
+            receipt["dataset"]["revision_pinned_load"]["configs"],
+            expected_configs,
+        )
+        self.assertEqual(
+            receipt["dataset"]["revision_pinned_load"]["default_config"],
+            stewardship["huggingface"]["default_config"],
+        )
+        self.assertEqual(
+            receipt["dataset"]["revision_pinned_load"]["default_records"],
+            expected_configs[stewardship["huggingface"]["default_config"]],
+        )
+        server = receipt["dataset"]["dataset_server"]
+        self.assertEqual(server["state"], "ready")
+        self.assertTrue(all(server["is_valid"].values()))
+        self.assertEqual(
+            server["resolved_revision"], receipt["dataset"]["final_revision"]
+        )
+        self.assertEqual(server["first_rows_per_config"], expected_configs)
+        self.assertEqual(server["rows_per_config"], expected_configs)
+        self.assertEqual(server["parquet_files"], len(expected_configs))
+        self.assertFalse(server["parquet_partial"])
+        self.assertEqual(server["pending_parquet_jobs"], 0)
+        self.assertEqual(server["failed_parquet_jobs"], 0)
+        self.assertEqual(server["filter_exact_rows"], 1)
+        self.assertEqual(server["statistics_http_status"], 200)
+        self.assertTrue(package["exact_package_match"])
+        self.assertEqual(package["missing_files"], [])
+        self.assertEqual(package["hash_mismatches"], [])
+        self.assertFalse(receipt["execution"]["training_run_executed"])
+        self.assertFalse(receipt["execution"]["model_scores_published"])
+        self.assertEqual(
+            receipt["registration"]["official_benchmark_registration"]["status"],
+            "not_registered",
+        )
+
     def test_stewardship_and_release_review_artifacts_are_present(self):
         stewardship = json.loads((BENCH_ROOT / "dataset-manifest.json").read_text())
         review = json.loads((BENCH_ROOT / "release-review.json").read_text())
@@ -180,6 +256,110 @@ class ReturnPathValidationTests(unittest.TestCase):
                 artifact.write_text(json.dumps(value, indent=2) + "\n")
                 with self.assertRaisesRegex(bench.BenchError, message):
                     bench.validate_benchmark(copied)
+
+    def test_authorization_receipts_reject_ignored_revocation_fields(self):
+        cases = (
+            ("provenance.json", (), "provenance receipt"),
+            ("provenance.json", ("publication",), "provenance publication"),
+            ("release-review.json", (), "release review receipt"),
+            ("release-review.json", ("authorization",), "release authorization"),
+            ("release-review.json", ("review",), "release review"),
+            ("dataset-manifest.json", (), "stewardship dataset manifest"),
+            ("dataset-manifest.json", ("review",), "stewardship dataset review"),
+        )
+        for filename, location, message in cases:
+            with self.subTest(filename=filename, location=location):
+                with tempfile.TemporaryDirectory() as directory:
+                    copied = Path(directory) / "bench"
+                    shutil.copytree(BENCH_ROOT, copied)
+                    path = copied / filename
+                    value = json.loads(path.read_text())
+                    target = value
+                    for component in location:
+                        target = target[component]
+                    target["revoked"] = True
+                    path.write_text(json.dumps(value))
+                    validator = (
+                        bench._validate_provenance
+                        if filename == "provenance.json"
+                        else bench._validate_reviewed_authorization
+                    )
+                    with self.assertRaisesRegex(
+                        bench.BenchError, f"{message} keys mismatch"
+                    ):
+                        validator(copied)
+
+    def test_reviewed_receipts_reject_known_field_contradictions(self):
+        cases = (
+            (
+                "provenance.json",
+                ("consent_and_reuse", "human_participants"),
+                True,
+                bench._validate_provenance,
+            ),
+            (
+                "provenance.json",
+                ("consent_and_reuse", "silent_reuse_permitted"),
+                True,
+                bench._validate_provenance,
+            ),
+            (
+                "provenance.json",
+                ("influences", 0, "records_copied"),
+                True,
+                bench._validate_provenance,
+            ),
+            (
+                "release-review.json",
+                ("data", "contains_personal_data"),
+                True,
+                bench._validate_reviewed_authorization,
+            ),
+            (
+                "release-review.json",
+                ("findings", "privacy", "state"),
+                "fail",
+                bench._validate_reviewed_authorization,
+            ),
+            (
+                "release-review.json",
+                ("findings", "secrets", "state"),
+                "fail",
+                bench._validate_reviewed_authorization,
+            ),
+            (
+                "release-review.json",
+                ("license", "data_spdx"),
+                "Proprietary",
+                bench._validate_reviewed_authorization,
+            ),
+            (
+                "contamination-receipt.json",
+                ("comparison", "result"),
+                "copied-records-found",
+                bench._validate_contamination_receipt,
+            ),
+            (
+                "contamination-receipt.json",
+                ("author_attestation", "kind"),
+                "real-participant-data",
+                bench._validate_contamination_receipt,
+            ),
+        )
+        for filename, location, replacement, validator in cases:
+            with self.subTest(filename=filename, location=location):
+                with tempfile.TemporaryDirectory() as directory:
+                    copied = Path(directory) / "bench"
+                    shutil.copytree(BENCH_ROOT, copied)
+                    path = copied / filename
+                    value = json.loads(path.read_text())
+                    target = value
+                    for component in location[:-1]:
+                        target = target[component]
+                    target[location[-1]] = replacement
+                    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+                    with self.assertRaisesRegex(bench.BenchError, "exact.*reviewed"):
+                        validator(copied)
 
     def test_trivial_baselines_are_published_near_chance_and_length_balanced(self):
         value = bench._validate_baselines(BENCH_ROOT, all_records())
@@ -265,6 +445,107 @@ class ReturnPathValidationTests(unittest.TestCase):
         compile(source, str(BENCH_ROOT / "inspect_task.py"), "exec")
         self.assertEqual(source.count("@task\n"), 3)
 
+    def test_hf_yaml_rejects_duplicate_top_level_overrides(self):
+        cases = (
+            (
+                "eval.yaml",
+                "\nevaluation_framework: other\ntasks: []\n",
+                bench._validate_eval_yaml,
+            ),
+            (
+                "README.md",
+                "license: other\nconfigs: []\n",
+                bench._validate_dataset_card,
+            ),
+        )
+        for filename, addition, validator in cases:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as directory:
+                copied = Path(directory) / "bench"
+                shutil.copytree(BENCH_ROOT, copied)
+                path = copied / filename
+                if filename == "README.md":
+                    source = path.read_text()
+                    source = source.replace("\n---\n", f"\n{addition}---\n", 1)
+                    path.write_text(source)
+                else:
+                    path.write_text(path.read_text() + addition)
+                with self.assertRaisesRegex(bench.BenchError, "canonical reviewed YAML"):
+                    validator(copied)
+
+    def test_dataset_card_declares_the_stewardship_default_config(self):
+        bench._validate_dataset_card(BENCH_ROOT)
+        front = (BENCH_ROOT / "README.md").read_text().split("\n---\n", 1)[0]
+        self.assertEqual(front.count("    default: true\n"), 1)
+        self.assertIn(
+            "  - config_name: model_behavior\n    default: true\n",
+            front + "\n",
+        )
+
+    def test_dataset_card_rejects_missing_or_wrong_default_config(self):
+        source = (BENCH_ROOT / "README.md").read_text()
+        cases = (
+            (source.replace("    default: true\n", "", 1), "exactly"),
+            (
+                source.replace(
+                    "  - config_name: model_behavior\n    default: true\n",
+                    "  - config_name: model_behavior\n",
+                    1,
+                ).replace(
+                    "  - config_name: system_pipeline\n",
+                    "  - config_name: system_pipeline\n    default: true\n",
+                    1,
+                ),
+                "exactly",
+            ),
+            (
+                source.replace(
+                    "  - config_name: system_pipeline\n",
+                    "  - config_name: system_pipeline\n    default: true\n",
+                    1,
+                ),
+                "exactly",
+            ),
+        )
+        for readme, message in cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as directory:
+                copied = Path(directory) / "bench"
+                shutil.copytree(BENCH_ROOT, copied)
+                (copied / "README.md").write_text(readme)
+                with self.assertRaisesRegex(bench.BenchError, message):
+                    bench._validate_dataset_card(copied)
+
+    def test_dataset_card_rejects_duplicate_or_crossed_config_mappings(self):
+        source = (BENCH_ROOT / "README.md").read_text()
+        cases = (
+            source.replace(
+                "  - config_name: system_pipeline\n",
+                "  - config_name: model_behavior\n",
+                1,
+            ),
+            source.replace(
+                "path: data/model_behavior.jsonl",
+                "path: data/__swap__.jsonl",
+                1,
+            ).replace(
+                "path: data/system_pipeline.jsonl",
+                "path: data/model_behavior.jsonl",
+                1,
+            ).replace(
+                "path: data/__swap__.jsonl",
+                "path: data/system_pipeline.jsonl",
+                1,
+            ),
+        )
+        for readme in cases:
+            with tempfile.TemporaryDirectory() as directory:
+                copied = Path(directory) / "bench"
+                shutil.copytree(BENCH_ROOT, copied)
+                (copied / "README.md").write_text(readme)
+                with self.assertRaisesRegex(
+                    bench.BenchError, "configs|mapping"
+                ):
+                    bench._validate_dataset_card(copied)
+
 
 class ReturnPathEvaluationTests(unittest.TestCase):
     def test_perfect_run_reports_twelve_metrics_and_no_composite(self):
@@ -279,6 +560,7 @@ class ReturnPathEvaluationTests(unittest.TestCase):
         self.assertEqual(len(result["metrics"]), 12)
         self.assertTrue(all(metric["value"] == 1.0 for metric in result["metrics"]))
         self.assertFalse(contains_forbidden_score_key(result))
+        self.assertNotIn("source_sha256", result["predictions"])
         self.assertEqual(
             result["evidence_boundary"]["actual_pipeline_controls"],
             "not_evaluated",

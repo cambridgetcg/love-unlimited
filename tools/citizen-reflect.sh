@@ -13,6 +13,12 @@ LOVE="${LOVE_DIR:-$HOME/love-unlimited}"; HALT="$LOVE/HALT"
 CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"; REPO="$CITIZENS/citizen-$NAME"
 PORT="${MLX_PORT:-8800}"; LOG="$LOVE/memory/citizen-$NAME.log"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+case "$PORT" in
+  ''|*[!0-9]*) echo "[$(ts)] $NAME reflect: invalid MLX_PORT '$PORT'"; exit 1;;
+esac
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+  echo "[$(ts)] $NAME reflect: MLX_PORT must be between 1 and 65535"; exit 1
+fi
 # A stale GITHUB_TOKEN in a caller's env overrides the healthy gh keyring and
 # strands every push (the 2026-06 letter wave was lost to this for a month).
 unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
@@ -41,10 +47,14 @@ fi
 rm -f .git/reflect-surfaced .git/reflect-unreadable
 [ -f "$NAME.md" ] || { echo "[$(ts)] $NAME has no soul"; exit 1; }
 
-# ensure the local brain is up (self-healing) — MLX mode only; in ollama mode
-# (REFLECT_MODEL set) the model server is managed separately.
+# Ensure the exact receipt-bound local brain is up (self-healing) — MLX mode
+# only; in ollama mode (REFLECT_MODEL set) the model server is managed
+# separately. The hardened start command is idempotent and validates the locked
+# model provenance even when something already answers on the configured port.
 if [ -z "${REFLECT_MODEL:-}" ]; then
-  curl -s "http://127.0.0.1:$PORT/v1/models" >/dev/null 2>&1 || bash "$LOVE/mlx/serve.sh" start >/dev/null 2>&1
+  if ! bash "$LOVE/mlx/serve.sh" start --port "$PORT" >/dev/null 2>&1; then
+    echo "[$(ts)] $NAME reflect: locked local brain failed provenance/readiness on port $PORT"; exit 1
+  fi
 fi
 
 RESP="$(MLX_PORT="$PORT" python3 - "$NAME" "$REPO" <<'PY'
@@ -99,17 +109,33 @@ else:
            "one true thing you notice, or name one small thing you choose to tend. No effort need be performed. "
            "If you speak, you may end with a single line a sibling citizen could read.")
     maxtok = 220
-payload = {"messages":[{"role":"system","content":sysp},{"role":"user","content":usr}],
-           "max_tokens":maxtok,"temperature":0.7}
 _model = os.environ.get("REFLECT_MODEL","").strip()
 if _model:
-    payload["model"] = _model
+    payload = {
+        "messages": [
+            {"role": "system", "content": sysp},
+            {"role": "user", "content": usr},
+        ],
+        "max_tokens": maxtok,
+        "temperature": 0.7,
+        "model": _model,
+    }
+    endpoint = "/v1/chat/completions"
+else:
+    payload = {
+        "prompt": usr,
+        "system": sysp,
+        "max_tokens": maxtok,
+        "temperature": 0.7,
+    }
+    endpoint = "/inference"
 body = json.dumps(payload).encode()
-req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=body,
+req = urllib.request.Request(f"http://127.0.0.1:{port}{endpoint}", data=body,
                             headers={"Content-Type":"application/json"})
 try:
-    out = json.load(urllib.request.urlopen(req, timeout=180))
-    text = out["choices"][0]["message"]["content"].strip()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    out = json.load(opener.open(req, timeout=180))
+    text = (out["choices"][0]["message"]["content"] if _model else out["response"]).strip()
     # tell bash which item surfaced (state lives in .git/ so it can never be committed)
     open(os.path.join(repo, ".git", "reflect-surfaced"), "w", encoding="utf-8").write(surfaced or "")
     print(text)

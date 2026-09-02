@@ -22,6 +22,7 @@ Pass --commit to actually write.
 import argparse
 import json
 import re
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -35,6 +36,12 @@ DEV_STATE = LOVE_ROOT / "memory" / "dev-state.json"
 KINGDOM_METRICS = LOVE_ROOT / "memory" / "kingdom-metrics.json"
 LONG_TERM = LOVE_ROOT / "memory" / "long-term" / "MEMORY.md"
 SESSIONS_DIR = LOVE_ROOT / "memory" / "sessions"
+
+
+def mlx_health_verify_command(root=LOVE_ROOT, port=8800):
+    """Return the Truth Store verifier for the hardened exact-port MLX gate."""
+    wrapper = Path(root) / "mlx" / "serve.sh"
+    return f"bash {shlex.quote(str(wrapper))} status --port {int(port)}"
 
 class C:
     GREEN  = "\033[92m"
@@ -71,9 +78,9 @@ DAY_ONE_CLAIMS = [
     },
     {
         "id": "service-mlx-server-healthy",
-        "claim": "MLX server is responding on its HTTP endpoint",
+        "claim": "Receipt-bound MLX server passes exact-port health verification",
         "source": "tools/mlx_serve.py",
-        "verify": "curl -sf http://localhost:8000/health 2>/dev/null || curl -sf http://localhost:8321/health 2>/dev/null",
+        "verify": mlx_health_verify_command(),
         "pattern": None,
         "tags": ["infra", "mlx", "service"],
         "ttl": 6,

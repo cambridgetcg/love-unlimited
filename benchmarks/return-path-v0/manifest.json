@@ -1,5 +1,5 @@
 {
-  "artifact_set_sha256": "76e7051bb54d68e9ed084055d29d2588f494652eae432e8dd0a5e65704dd40e6",
+  "artifact_set_sha256": "6d2553ecfc7dcc7c874eb0eebdf78e2320b93b47a30cfcb24507e9261d2cab36",
   "artifacts": [
     {
       "bytes": 11358,
@@ -8,10 +8,10 @@
       "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
-      "bytes": 9396,
+      "bytes": 9414,
       "path": "README.md",
       "role": "hugging-face-dataset-card",
-      "sha256": "0bc34b8218f9e15414de44a09a68a4529713f1e290ed770010befce550e60bf4"
+      "sha256": "1b372addcbe6362af44abd6939f9bd463f5936f32bca5fe66d018dc3198b0ca9"
     },
     {
       "bytes": 3504,
@@ -101,18 +101,19 @@
       "sha256": "158cc441fb09f9e55d9dc62b879f6f0304b336ef3d2ffd1d692a2a73297867bf"
     },
     {
-      "bytes": 64718,
+      "bytes": 73815,
       "path": "tools/return_path_bench.py",
       "role": "standalone-validation-and-evaluation-cli",
-      "sha256": "e7cd3549989d0c2502338bd5b4f2921f159ae3c6b4d733cb53c41d27282053bb"
+      "sha256": "01f0e1cf6cc8b096503e212b6f51fabd3941306aefa93ef5ad3a002e86741310"
     }
   ],
   "benchmark_id": "kingdom-return-path-v0",
   "determinism": {
     "artifact_hash": "sha256-of-raw-bytes",
-    "json": "utf-8-sorted-keys-two-space-indent-final-newline",
+    "build_time_injected": false,
     "jsonl": "utf-8-sorted-keys-compact-one-object-per-line-final-newline",
-    "timestamps_in_artifacts": false
+    "manifest_serialization": "utf-8-sorted-keys-two-space-indent-final-newline",
+    "release_timestamps": "fixed-reviewed-metadata-bound-as-artifact-bytes"
   },
   "evaluated_freeze": {
     "dataset_id": "Yu-and-Ai/xenia-revocable-feedback",

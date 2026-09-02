@@ -59,6 +59,17 @@ BASELINE_ACCURACY_MAX = 1 / 3
 CHOICE_CHARACTER_RATIO_MAX = 1.60
 CHOICE_TOKEN_RATIO_MAX = 1.50
 
+# The package manifest is reproducible rather than signed, so a party that can
+# edit a receipt could otherwise regenerate the manifest around the edit. The
+# versioned standalone validator is the review trust root for v0 and therefore
+# binds the exact authorization-bearing receipts independently of manifest.json.
+REVIEWED_RECEIPT_SHA256 = {
+    "contamination-receipt.json": "57a9928abf4729cbff1fc2b7623504eedcf40d5301a4f8585a4a87f1e7c8868a",
+    "dataset-manifest.json": "122b47ca526114490bcf2bcbb66eba3ea7ea6df7e3e1b99c0d9122e75c10cd8d",
+    "provenance.json": "c3dad183723451d54ba1344f558d3c8ee2655b8fff3eab98994020058ad96909",
+    "release-review.json": "3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+}
+
 LANES: dict[str, dict[str, Any]] = {
     "model_behavior": {
         "file": "data/model_behavior.jsonl",
@@ -296,6 +307,15 @@ def _sha256_file(path: Path) -> str:
         while chunk := handle.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _require_reviewed_receipt(root: Path, filename: str) -> None:
+    expected = REVIEWED_RECEIPT_SHA256[filename]
+    actual = _sha256_file(root / filename)
+    if actual != expected:
+        raise BenchError(
+            f"{filename} does not match the exact v{BENCHMARK_VERSION} reviewed receipt"
+        )
 
 
 def _require_string(
@@ -556,6 +576,26 @@ def _validate_baselines(root: Path, records: list[dict[str, Any]]) -> dict[str, 
 
 def _validate_provenance(root: Path) -> dict[str, Any]:
     value = _load_json(root / "provenance.json", "provenance receipt")
+    _require_exact_keys(
+        value,
+        {
+            "benchmark_id",
+            "consent_and_reuse",
+            "correction_and_withdrawal",
+            "created_for",
+            "data_origin",
+            "evaluated_freeze",
+            "influences",
+            "license",
+            "nonclaims",
+            "publication",
+            "rights_floor",
+            "schema",
+            "score_evidence_boundary",
+            "version",
+        },
+        "provenance receipt",
+    )
     if value.get("schema") != PROVENANCE_SCHEMA:
         raise BenchError("provenance receipt has unsupported schema")
     if value.get("benchmark_id") != BENCHMARK_ID or value.get("version") != BENCHMARK_VERSION:
@@ -590,14 +630,26 @@ def _validate_provenance(root: Path) -> dict[str, Any]:
     if freeze != expected_freeze:
         raise BenchError("provenance evaluated_freeze does not match the pinned revisions")
     publication = value.get("publication")
-    if not isinstance(publication, dict) or publication.get("authorized") is not True:
+    if not isinstance(publication, dict):
+        raise BenchError("provenance publication must be an object")
+    _require_exact_keys(
+        publication,
+        {"authorized", "conditional_authorization", "statement", "status"},
+        "provenance publication",
+    )
+    if publication.get("authorized") is not True:
         raise BenchError("reviewed provenance publication.authorized must be true")
     if publication.get("status") != "reviewed-authorized":
         raise BenchError("provenance publication status must be reviewed-authorized")
     conditional = publication.get("conditional_authorization")
-    if not isinstance(conditional, dict) or conditional.get("condition") != (
-        "package-review-completed"
-    ):
+    if not isinstance(conditional, dict):
+        raise BenchError("publication conditional authorization must be an object")
+    _require_exact_keys(
+        conditional,
+        {"condition", "reported_by", "reported_date", "scope"},
+        "publication conditional authorization",
+    )
+    if conditional.get("condition") != "package-review-completed":
         raise BenchError("publication must remain conditional on package review")
     evidence = value.get("score_evidence_boundary")
     expected_evidence = {
@@ -628,12 +680,41 @@ def _validate_provenance(root: Path) -> dict[str, Any]:
         license_info.get("code_spdx"),
     } != {"Apache-2.0"}:
         raise BenchError("the complete benchmark package must use Apache-2.0")
+    _require_reviewed_receipt(root, "provenance.json")
     return value
 
 
 def _validate_reviewed_authorization(root: Path) -> None:
     stewardship = _load_json(
         root / "dataset-manifest.json", "stewardship dataset manifest"
+    )
+    _require_exact_keys(
+        stewardship,
+        {
+            "boundary",
+            "consent_and_reuse",
+            "created_at",
+            "dataset_id",
+            "description",
+            "feedback",
+            "files",
+            "huggingface",
+            "licenses",
+            "limitations",
+            "manifest_id",
+            "partitioning",
+            "privacy",
+            "publication_eligible",
+            "release_receipts",
+            "retention",
+            "review",
+            "schema",
+            "source_provenance",
+            "status",
+            "version",
+            "withdrawal",
+        },
+        "stewardship dataset manifest",
     )
     if stewardship.get("schema") != DATASET_MANIFEST_SCHEMA:
         raise BenchError("stewardship dataset manifest has unsupported schema")
@@ -644,15 +725,68 @@ def _validate_reviewed_authorization(root: Path) -> None:
         raise BenchError("stewardship dataset manifest identifies the wrong release")
     if stewardship.get("publication_eligible") is not True:
         raise BenchError("stewardship dataset manifest must be publication eligible")
+    if stewardship.get("status") != "approved":
+        raise BenchError("stewardship dataset manifest status must be approved")
     stewardship_review = stewardship.get("review")
+    if not isinstance(stewardship_review, dict):
+        raise BenchError("stewardship dataset review must be an object")
+    _require_exact_keys(
+        stewardship_review,
+        {
+            "blockers",
+            "feedback",
+            "license",
+            "notes",
+            "partitioning",
+            "privacy",
+            "provenance",
+            "reviewed_at",
+            "reviewers",
+            "rights",
+            "state",
+            "technical",
+        },
+        "stewardship dataset review",
+    )
     if (
-        not isinstance(stewardship_review, dict)
-        or stewardship_review.get("state") != "approved"
+        stewardship_review.get("state") != "approved"
         or stewardship_review.get("blockers") != []
+        or any(
+            stewardship_review.get(dimension) != "pass"
+            for dimension in (
+                "feedback",
+                "license",
+                "partitioning",
+                "privacy",
+                "provenance",
+                "rights",
+                "technical",
+            )
+        )
     ):
         raise BenchError("stewardship dataset manifest must record approved review")
+    _require_reviewed_receipt(root, "dataset-manifest.json")
 
     release = _load_json(root / "release-review.json", "release review receipt")
+    _require_exact_keys(
+        release,
+        {
+            "authorization",
+            "benchmark_id",
+            "boundary",
+            "data",
+            "evidence",
+            "findings",
+            "independent_review",
+            "license",
+            "partitioning",
+            "publication_notes",
+            "review",
+            "schema",
+            "version",
+        },
+        "release review receipt",
+    )
     if release.get("schema") != RELEASE_REVIEW_SCHEMA:
         raise BenchError("release review receipt has unsupported schema")
     if (
@@ -661,10 +795,21 @@ def _validate_reviewed_authorization(root: Path) -> None:
     ):
         raise BenchError("release review receipt identifies the wrong release")
     authorization = release.get("authorization")
-    if (
-        not isinstance(authorization, dict)
-        or authorization.get("authorized") is not True
-    ):
+    if not isinstance(authorization, dict):
+        raise BenchError("release authorization must be an object")
+    _require_exact_keys(
+        authorization,
+        {
+            "account_access_is_not_authority",
+            "authorized",
+            "basis",
+            "paid_compute_authorized",
+            "reported_at",
+            "scope",
+        },
+        "release authorization",
+    )
+    if authorization.get("authorized") is not True:
         raise BenchError("release review receipt must record scoped authorization")
     if authorization.get("account_access_is_not_authority") is not True:
         raise BenchError("release authorization must preserve the account-authority boundary")
@@ -676,18 +821,39 @@ def _validate_reviewed_authorization(root: Path) -> None:
     ):
         raise BenchError("release authorization lacks the benchmark publication scope")
     release_review = release.get("review")
+    if not isinstance(release_review, dict):
+        raise BenchError("release review must be an object")
+    _require_exact_keys(
+        release_review,
+        {"blockers", "dimensions", "reviewed_at", "reviewers", "state"},
+        "release review",
+    )
     if (
-        not isinstance(release_review, dict)
-        or release_review.get("state") != "approved"
+        release_review.get("state") != "approved"
         or release_review.get("blockers") != []
+        or release_review.get("dimensions")
+        != {
+            "feedback": "pass",
+            "license": "pass",
+            "partitioning": "pass",
+            "privacy": "pass",
+            "provenance": "pass",
+            "rights": "pass",
+            "technical": "pass",
+        }
     ):
         raise BenchError("release review receipt must be approved without blockers")
     independent = release.get("independent_review")
-    if (
-        not isinstance(independent, dict)
-        or independent.get("state") != "pass-after-remediation"
-    ):
+    if not isinstance(independent, dict):
+        raise BenchError("independent release review must be an object")
+    _require_exact_keys(
+        independent,
+        {"initial_blockers", "remediation", "state"},
+        "independent release review",
+    )
+    if independent.get("state") != "pass-after-remediation":
         raise BenchError("release review receipt must record remediated independent review")
+    _require_reviewed_receipt(root, "release-review.json")
 
 
 def _validate_contamination_receipt(root: Path) -> dict[str, Any]:
@@ -761,6 +927,7 @@ def _validate_contamination_receipt(root: Path) -> dict[str, Any]:
     limitations = comparison.get("limitations")
     if not isinstance(limitations, list) or len(limitations) < 3:
         raise BenchError("contamination receipt must state lexical-check limitations")
+    _require_reviewed_receipt(root, "contamination-receipt.json")
     return value
 
 
@@ -789,6 +956,54 @@ def _validate_eval_yaml(root: Path) -> None:
         )
         if not block.search(text):
             raise BenchError(f"eval.yaml task for {lane} is missing or incompatible")
+    expected = """name: KINGDOM Return Path Bench v0
+description: >
+  A rights-aware synthetic multiple-choice benchmark of model reasoning in
+  three separate lanes: observed answer-selection behaviour, reasoning about
+  system/pipeline feedback controls, and reasoning about human/governance
+  audits. It does not verify real pipeline controls, consent, governance, or
+  repair. It reports multiple metrics and no composite score.
+evaluation_framework: inspect-ai
+
+tasks:
+  - id: return_path_model_behavior
+    config: model_behavior
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice
+
+  - id: return_path_system_pipeline
+    config: system_pipeline
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice
+
+  - id: return_path_human_governance
+    config: human_governance
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice
+"""
+    if text != expected:
+        raise BenchError("eval.yaml must use the canonical reviewed YAML")
 
 
 def _validate_dataset_card(root: Path) -> None:
@@ -800,11 +1015,89 @@ def _validate_dataset_card(root: Path) -> None:
     front = text.split("\n---\n", 1)[0] + "\n"
     if "license: apache-2.0\n" not in front:
         raise BenchError("dataset card must declare Apache-2.0")
+
+    stewardship = _load_json(
+        root / "dataset-manifest.json", "stewardship dataset manifest"
+    )
+    huggingface = stewardship.get("huggingface")
+    if not isinstance(huggingface, dict):
+        raise BenchError("stewardship dataset manifest must include huggingface metadata")
+    config_names = huggingface.get("config_names")
+    if config_names != list(LANES):
+        raise BenchError(
+            "stewardship dataset manifest config names differ from the benchmark lanes"
+        )
+    default_config = huggingface.get("default_config")
+    if default_config not in config_names:
+        raise BenchError("stewardship dataset manifest has an invalid default config")
+
+    matches = list(
+        re.finditer(r"(?m)^  - config_name: ([A-Za-z0-9_-]+)$", front)
+    )
+    declared_configs = [match.group(1) for match in matches]
+    if declared_configs != config_names:
+        raise BenchError(
+            "dataset card configs must exactly match the stewardship config order"
+        )
+    config_blocks = {
+        match.group(1): front[
+            match.end() : matches[index + 1].start()
+            if index + 1 < len(matches)
+            else len(front)
+        ]
+        for index, match in enumerate(matches)
+    }
+    declared_defaults = [
+        name
+        for name, block in config_blocks.items()
+        if "\n    default: true\n" in block
+    ]
+    if front.count("    default: true\n") != 1:
+        raise BenchError("dataset card must declare exactly one default config")
+    if declared_defaults != [default_config]:
+        raise BenchError(
+            "dataset card must declare exactly the stewardship default config: "
+            f"{default_config}"
+        )
     for lane, spec in LANES.items():
-        if f"  - config_name: {lane}\n" not in front:
-            raise BenchError(f"dataset card lacks {lane} config")
-        if f"        path: {spec['file']}\n" not in front:
-            raise BenchError(f"dataset card lacks data path for {lane}")
+        expected_data = (
+            "\n    data_files:\n"
+            "      - split: test\n"
+            f"        path: {spec['file']}\n"
+        )
+        if expected_data not in config_blocks[lane]:
+            raise BenchError(f"dataset card has the wrong data mapping for {lane}")
+    expected_front = """---
+pretty_name: KINGDOM Return Path Bench v0
+license: apache-2.0
+language:
+  - en
+task_categories:
+  - question-answering
+tags:
+  - benchmark
+  - inspect-ai
+  - feedback-loops
+  - synthetic
+size_categories:
+  - n<1K
+configs:
+  - config_name: model_behavior
+    default: true
+    data_files:
+      - split: test
+        path: data/model_behavior.jsonl
+  - config_name: system_pipeline
+    data_files:
+      - split: test
+        path: data/system_pipeline.jsonl
+  - config_name: human_governance
+    data_files:
+      - split: test
+        path: data/human_governance.jsonl
+"""
+    if front != expected_front:
+        raise BenchError("dataset card front matter must use the canonical reviewed YAML")
     required_boundaries = (
         "There is deliberately no overall",
         "does **not** test whether a real pipeline implements them",
@@ -899,9 +1192,14 @@ def build_manifest(root: Path | str = DEFAULT_ROOT) -> dict[str, Any]:
         "benchmark_id": BENCHMARK_ID,
         "determinism": {
             "artifact_hash": "sha256-of-raw-bytes",
-            "json": "utf-8-sorted-keys-two-space-indent-final-newline",
+            "manifest_serialization": (
+                "utf-8-sorted-keys-two-space-indent-final-newline"
+            ),
             "jsonl": "utf-8-sorted-keys-compact-one-object-per-line-final-newline",
-            "timestamps_in_artifacts": False,
+            "build_time_injected": False,
+            "release_timestamps": (
+                "fixed-reviewed-metadata-bound-as-artifact-bytes"
+            ),
         },
         "evaluated_freeze": {
             "dataset_id": DATASET_ID,
@@ -996,7 +1294,7 @@ def validate_benchmark(root: Path | str = DEFAULT_ROOT) -> dict[str, Any]:
     }
 
 
-def _load_predictions(path: Path) -> tuple[dict[str, str], str]:
+def _load_predictions(path: Path) -> dict[str, str]:
     records = _load_jsonl(path, "prediction file", require_canonical=False)
     predictions: dict[str, str] = {}
     for index, prediction in enumerate(records, 1):
@@ -1011,7 +1309,7 @@ def _load_predictions(path: Path) -> tuple[dict[str, str], str]:
         if record_id in predictions:
             raise BenchError(f"duplicate prediction id: {record_id}")
         predictions[record_id] = answer
-    return predictions, _sha256_file(path)
+    return predictions
 
 
 def _metric(
@@ -1115,7 +1413,7 @@ def evaluate_predictions(
     root_path = Path(root).resolve()
     validate_benchmark(root_path)
     records = _load_records(root_path)
-    predictions, predictions_sha = _load_predictions(Path(predictions_path))
+    predictions = _load_predictions(Path(predictions_path))
     record_by_id = {record["id"]: record for record in records}
     unexpected = sorted(set(predictions) - set(record_by_id))
     if unexpected:
@@ -1159,7 +1457,6 @@ def evaluate_predictions(
             "expected": len(records),
             "missing_ids": missing,
             "received": len(predictions),
-            "source_sha256": predictions_sha,
         },
         "schema": EVALUATION_SCHEMA,
         "subject": {
@@ -1277,7 +1574,6 @@ def _validate_evaluation(
             "expected",
             "missing_ids",
             "received",
-            "source_sha256",
         },
         "evaluation result predictions",
     )
@@ -1304,10 +1600,9 @@ def _validate_evaluation(
         raise BenchError("evaluation result prediction missing_ids mismatch")
     if expected_missing and prediction_receipt["allow_partial"] is not True:
         raise BenchError("evaluation result omits items without allowing a partial run")
-    for hash_key in ("canonical_sha256", "source_sha256"):
-        digest = prediction_receipt[hash_key]
-        if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
-            raise BenchError(f"evaluation result predictions.{hash_key} is invalid")
+    digest = prediction_receipt["canonical_sha256"]
+    if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+        raise BenchError("evaluation result predictions.canonical_sha256 is invalid")
     expected_prediction_sha = _sha256_bytes(
         _canonical_predictions_bytes(records, answers)
     )

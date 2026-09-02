@@ -156,6 +156,75 @@ def test_repository_catalog_is_valid_and_pinned() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "replacement", "message"),
+    [
+        (
+            "model-release.example.json",
+            ('"stage": "draft"', '"stage": "production", "stage": "draft"'),
+            "duplicate key 'stage'",
+        ),
+        (
+            "model-release.example.json",
+            ('"result": "hold"', '"result": "pass", "result": "hold"'),
+            "duplicate key 'result'",
+        ),
+    ],
+)
+def test_release_loader_rejects_duplicate_keys(
+    tmp_path: Path, source: str, replacement: tuple[str, str], message: str
+) -> None:
+    raw = (ROOT / "resources" / "safety" / source).read_text()
+    target = tmp_path / source
+    target.write_text(raw.replace(*replacement, 1))
+    with pytest.raises(model_stewardship.StewardshipError, match=message):
+        model_stewardship.load_release(target, _catalog())
+
+
+def test_catalog_loader_rejects_duplicate_revision(tmp_path: Path) -> None:
+    raw = (ROOT / "resources" / "safety" / "huggingface-resources.json").read_text()
+    target = tmp_path / "catalog.json"
+    target.write_text(
+        raw.replace(
+            '"revision": "f1d713187c61b6ae64e602d74f0b3d812cc2e8e8"',
+            '"revision": "0000000000000000000000000000000000000000", '
+            '"revision": "f1d713187c61b6ae64e602d74f0b3d812cc2e8e8"',
+            1,
+        )
+    )
+    with pytest.raises(
+        model_stewardship.StewardshipError, match="duplicate key 'revision'"
+    ):
+        model_stewardship.load_catalog(target)
+
+
+def test_catalog_loader_rejects_nonfinite_number(tmp_path: Path) -> None:
+    raw = (ROOT / "resources" / "safety" / "huggingface-resources.json").read_text()
+    target = tmp_path / "catalog.json"
+    target.write_text(raw.replace('"gated": false', '"gated": NaN', 1))
+    with pytest.raises(model_stewardship.StewardshipError, match="non-finite"):
+        model_stewardship.load_catalog(target)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "1e999"])
+def test_release_loader_rejects_nonfinite_numbers(
+    tmp_path: Path, constant: str
+) -> None:
+    raw = (
+        ROOT / "resources" / "safety" / "model-release.example.json"
+    ).read_text()
+    target = tmp_path / "release.json"
+    target.write_text(
+        raw.replace(
+            '"maximum": 0',
+            f'"maximum": {constant}',
+            1,
+        )
+    )
+    with pytest.raises(model_stewardship.StewardshipError, match="non-finite"):
+        model_stewardship.load_release(target, _catalog())
+
+
+@pytest.mark.parametrize(
     ("mutate", "message"),
     [
         (lambda value: value["resources"][0].update(revision="main"), "full commit SHA"),

@@ -4,7 +4,7 @@
   "dataset": {
     "repo_id": "Yu-and-Ai/kingdom-return-path-bench",
     "first_public_revision": "b2575c107bb3ddb7a456cd3ef0e8540d21bdaff9",
-    "final_revision": "bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc",
+    "final_revision": "c3f3419b66d84e5d7b8b6c2b609b68810d6e07c3",
     "private": false,
     "gated": false,
     "package": {
@@ -16,8 +16,8 @@
       "missing_files": [],
       "hash_mismatches": [],
       "exact_package_match": true,
-      "manifest_sha256": "a9a2692e196b37364d01a154cd6902b4420353fe550753fcd59377e923a1622a",
-      "artifact_set_sha256": "76e7051bb54d68e9ed084055d29d2588f494652eae432e8dd0a5e65704dd40e6"
+      "manifest_sha256": "d7a24b654334b56075e6afb7274da314ba399633a32ddd67f5258e60c47d3331",
+      "artifact_set_sha256": "6d2553ecfc7dcc7c874eb0eebdf78e2320b93b47a30cfcb24507e9261d2cab36"
     },
     "revision_pinned_load": {
       "library": "datasets==5.0.1",
@@ -26,36 +26,50 @@
         "human_governance": 6,
         "model_behavior": 6,
         "system_pipeline": 6
-      }
+      },
+      "default_config": "model_behavior",
+      "default_records": 6
     },
     "dataset_server": {
-      "checked_at_utc": "2026-09-02T21:34:13Z",
-      "state": "processing",
+      "checked_at_utc": "2026-09-02T23:54:45Z",
+      "resolved_revision": "c3f3419b66d84e5d7b8b6c2b609b68810d6e07c3",
+      "state": "ready",
       "is_valid": {
-        "filter": false,
-        "preview": false,
-        "search": false,
-        "statistics": false,
-        "viewer": false
+        "filter": true,
+        "preview": true,
+        "search": true,
+        "statistics": true,
+        "viewer": true
       },
       "splits": 3,
-      "parquet_files": 0,
-      "pending_parquet_jobs": 3,
+      "parquet_files": 3,
+      "parquet_partial": false,
+      "pending_parquet_jobs": 0,
       "failed_parquet_jobs": 0,
-      "first_rows_per_config": null,
-      "rows_per_config": null,
-      "search_feedback_rows": null,
-      "filter_exact_rows": null,
-      "statistics_http_status": null
+      "first_rows_per_config": {
+        "human_governance": 6,
+        "model_behavior": 6,
+        "system_pipeline": 6
+      },
+      "rows_per_config": {
+        "human_governance": 6,
+        "model_behavior": 6,
+        "system_pipeline": 6
+      },
+      "search_feedback_rows": 6,
+      "filter_exact_rows": 1,
+      "statistics_http_status": 200
     }
   },
   "space": {
     "repo_id": "Yu-and-Ai/the-return-path",
-    "source_revision": "0ecd4415186328ccb74efeadafad5cd60151f373",
+    "source_revision": "500500022f55aa87a1a0d406befff2272da9f669",
     "sdk": "static",
     "runtime_stage": "RUNNING",
-    "deployed_dataset_revision": "bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc",
-    "deployed_bundle_sha256": "e6ae451264c88f376265d06d8ea1ef5c96bf7f9722712b6535b4017354fec48d",
+    "deployed_dataset_revision": "c3f3419b66d84e5d7b8b6c2b609b68810d6e07c3",
+    "deployed_bundle_sha256": "2325e0ec2c7d460cc6d2e45c3cb40df85d185f878c9b300dfa241294e0c05a97",
+    "deployed_bundle_matches_local_build": true,
+    "deployed_dataset_revision_present": true,
     "application_telemetry": false
   },
   "collection": {
@@ -71,7 +85,10 @@
   },
   "registration": {
     "hub_eval_metadata_present": true,
-    "official_benchmark_registration": "provisional-wip-allowlisted"
+    "official_benchmark_registration": {
+      "status": "not_registered",
+      "platform_mechanism": "work-in-progress-and-allowlisted"
+    }
   },
   "authority": {
     "basis": "explicit operator authorization in the 2026-09-02 release conversation",

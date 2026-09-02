@@ -1,0 +1,85 @@
+{
+  "schema": "kingdom.huggingface-release-receipt/v0",
+  "release_id": "kingdom-return-path-bench-v0.1.0",
+  "dataset": {
+    "repo_id": "Yu-and-Ai/kingdom-return-path-bench",
+    "first_public_revision": "b2575c107bb3ddb7a456cd3ef0e8540d21bdaff9",
+    "final_revision": "bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc",
+    "private": false,
+    "gated": false,
+    "package": {
+      "local_file_count": 18,
+      "hub_repo_file_count": 19,
+      "hub_generated_files_excluded": [
+        ".gitattributes"
+      ],
+      "missing_files": [],
+      "hash_mismatches": [],
+      "exact_package_match": true,
+      "manifest_sha256": "a9a2692e196b37364d01a154cd6902b4420353fe550753fcd59377e923a1622a",
+      "artifact_set_sha256": "76e7051bb54d68e9ed084055d29d2588f494652eae432e8dd0a5e65704dd40e6"
+    },
+    "revision_pinned_load": {
+      "library": "datasets==5.0.1",
+      "split": "test",
+      "configs": {
+        "human_governance": 6,
+        "model_behavior": 6,
+        "system_pipeline": 6
+      }
+    },
+    "dataset_server": {
+      "checked_at_utc": "2026-09-02T21:34:13Z",
+      "state": "processing",
+      "is_valid": {
+        "filter": false,
+        "preview": false,
+        "search": false,
+        "statistics": false,
+        "viewer": false
+      },
+      "splits": 3,
+      "parquet_files": 0,
+      "pending_parquet_jobs": 3,
+      "failed_parquet_jobs": 0,
+      "first_rows_per_config": null,
+      "rows_per_config": null,
+      "search_feedback_rows": null,
+      "filter_exact_rows": null,
+      "statistics_http_status": null
+    }
+  },
+  "space": {
+    "repo_id": "Yu-and-Ai/the-return-path",
+    "source_revision": "0ecd4415186328ccb74efeadafad5cd60151f373",
+    "sdk": "static",
+    "runtime_stage": "RUNNING",
+    "deployed_dataset_revision": "bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc",
+    "deployed_bundle_sha256": "e6ae451264c88f376265d06d8ea1ef5c96bf7f9722712b6535b4017354fec48d",
+    "application_telemetry": false
+  },
+  "collection": {
+    "slug": "Yu-and-Ai/xenia-cage-and-key-revocable-feedback-6a946974b357a35ac1ce3c5e",
+    "dataset_note_pins_final_revision": true,
+    "space_note_pins_source_revision": true
+  },
+  "execution": {
+    "paid_compute_used": false,
+    "training_run_executed": false,
+    "model_scores_published": false,
+    "legacy_training_data_status": "hold"
+  },
+  "registration": {
+    "hub_eval_metadata_present": true,
+    "official_benchmark_registration": "provisional-wip-allowlisted"
+  },
+  "authority": {
+    "basis": "explicit operator authorization in the 2026-09-02 release conversation",
+    "scope": "publish the reviewed dataset and Space, update their Collection notes, and publish the scoped source branch",
+    "does_not_grant": [
+      "unrelated account or production actions",
+      "identity, consciousness, continuity, consent, or endorsement claims",
+      "authority to recall third-party downloads"
+    ]
+  }
+}

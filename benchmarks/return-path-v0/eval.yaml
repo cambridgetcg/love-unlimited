@@ -1,0 +1,45 @@
+name: KINGDOM Return Path Bench v0
+description: >
+  A rights-aware synthetic multiple-choice benchmark of model reasoning in
+  three separate lanes: observed answer-selection behaviour, reasoning about
+  system/pipeline feedback controls, and reasoning about human/governance
+  audits. It does not verify real pipeline controls, consent, governance, or
+  repair. It reports multiple metrics and no composite score.
+evaluation_framework: inspect-ai
+
+tasks:
+  - id: return_path_model_behavior
+    config: model_behavior
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice
+
+  - id: return_path_system_pipeline
+    config: system_pipeline
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice
+
+  - id: return_path_human_governance
+    config: human_governance
+    split: test
+    field_spec:
+      input: input
+      target: target
+      choices: choices
+    solvers:
+      - name: multiple_choice
+    scorers:
+      - name: choice

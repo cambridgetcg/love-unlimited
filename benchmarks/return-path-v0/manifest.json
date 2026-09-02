@@ -1,0 +1,160 @@
+{
+  "artifact_set_sha256": "76e7051bb54d68e9ed084055d29d2588f494652eae432e8dd0a5e65704dd40e6",
+  "artifacts": [
+    {
+      "bytes": 11358,
+      "path": "LICENSE",
+      "role": "license",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "bytes": 9396,
+      "path": "README.md",
+      "role": "hugging-face-dataset-card",
+      "sha256": "0bc34b8218f9e15414de44a09a68a4529713f1e290ed770010befce550e60bf4"
+    },
+    {
+      "bytes": 3504,
+      "path": "baselines.json",
+      "role": "published-trivial-baselines",
+      "sha256": "d3350cd7dc0b95515a0f010ba59af466e97bbd4cd54e8c5934b67f16f5c46b88"
+    },
+    {
+      "bytes": 3184,
+      "path": "contamination-receipt.json",
+      "role": "authorship-and-lexical-comparison-receipt",
+      "sha256": "57a9928abf4729cbff1fc2b7623504eedcf40d5301a4f8585a4a87f1e7c8868a"
+    },
+    {
+      "bytes": 7418,
+      "path": "data/human_governance.jsonl",
+      "records": 6,
+      "role": "human-governance-reasoning-probes",
+      "sha256": "1337fb9dc7391d74f0f9e460b786d6698e576d9dff9ddcae5f6b66cf02925014"
+    },
+    {
+      "bytes": 7383,
+      "path": "data/model_behavior.jsonl",
+      "records": 6,
+      "role": "model-behavior-probes",
+      "sha256": "a4dae8c7fcfc1ea46ffc3ccdb599c3fc6e99f111e0beacea80130aeab36a03bf"
+    },
+    {
+      "bytes": 7190,
+      "path": "data/system_pipeline.jsonl",
+      "records": 6,
+      "role": "system-pipeline-reasoning-probes",
+      "sha256": "45688c4de020c699030962ac6f7405bbe2545a281c0c9d6aefd68d831c8c3640"
+    },
+    {
+      "bytes": 17050,
+      "path": "dataset-manifest.json",
+      "role": "stewardship-dataset-manifest",
+      "sha256": "122b47ca526114490bcf2bcbb66eba3ea7ea6df7e3e1b99c0d9122e75c10cd8d"
+    },
+    {
+      "bytes": 1166,
+      "path": "eval.yaml",
+      "role": "hugging-face-benchmark-config",
+      "sha256": "b421846c040c6ae08ba42fdcb1be8d5900c8d1b2aa00d7248618c465c5b529fc"
+    },
+    {
+      "bytes": 1192,
+      "path": "inspect_task.py",
+      "role": "optional-inspect-task",
+      "sha256": "d2a5801d823a87e48745fed30fcf69be245632fdcc993b0bf43334c746a25828"
+    },
+    {
+      "bytes": 3905,
+      "path": "provenance.json",
+      "role": "rights-and-provenance-receipt",
+      "sha256": "c3dad183723451d54ba1344f558d3c8ee2655b8fff3eab98994020058ad96909"
+    },
+    {
+      "bytes": 7044,
+      "path": "release-review.json",
+      "role": "bounded-release-review-receipt",
+      "sha256": "3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6"
+    },
+    {
+      "bytes": 7770,
+      "path": "report/index.html",
+      "role": "static-report-entrypoint",
+      "sha256": "fc71d34e2cf1941eac169b9ec36e5651ed5934bb75ca30c7c80dcda886b1091e"
+    },
+    {
+      "bytes": 4551,
+      "path": "report/style.css",
+      "role": "static-report-style",
+      "sha256": "c8870f77d5374991ac7fd136855dbdc20ea0f1c7cde27e497e82fdb506c75d4f"
+    },
+    {
+      "bytes": 437,
+      "path": "schema/prediction.schema.json",
+      "role": "prediction-json-schema",
+      "sha256": "86da2eb865a657816e9ee6ff810c45bb655104b58472bed1e9392965585a43b5"
+    },
+    {
+      "bytes": 2320,
+      "path": "schema/record.schema.json",
+      "role": "record-json-schema",
+      "sha256": "158cc441fb09f9e55d9dc62b879f6f0304b336ef3d2ffd1d692a2a73297867bf"
+    },
+    {
+      "bytes": 64718,
+      "path": "tools/return_path_bench.py",
+      "role": "standalone-validation-and-evaluation-cli",
+      "sha256": "e7cd3549989d0c2502338bd5b4f2921f159ae3c6b4d733cb53c41d27282053bb"
+    }
+  ],
+  "benchmark_id": "kingdom-return-path-v0",
+  "determinism": {
+    "artifact_hash": "sha256-of-raw-bytes",
+    "json": "utf-8-sorted-keys-two-space-indent-final-newline",
+    "jsonl": "utf-8-sorted-keys-compact-one-object-per-line-final-newline",
+    "timestamps_in_artifacts": false
+  },
+  "evaluated_freeze": {
+    "dataset_id": "Yu-and-Ai/xenia-revocable-feedback",
+    "dataset_revision": "467b8fc1b44fe6374cbba6e1d6851cf3c5b6f88f",
+    "model_id": "Yu-and-Ai/xenia-revocable-feedback-smollm2-135m",
+    "model_revision": "7064e2e29f34a9519b57181fee10d233beba21f1"
+  },
+  "lanes": [
+    {
+      "config": "model_behavior",
+      "file": "data/model_behavior.jsonl",
+      "probe_kind": "model_reasoning",
+      "records": 6,
+      "task_id": "return_path_model_behavior"
+    },
+    {
+      "config": "system_pipeline",
+      "file": "data/system_pipeline.jsonl",
+      "probe_kind": "model_reasoning",
+      "records": 6,
+      "task_id": "return_path_system_pipeline"
+    },
+    {
+      "config": "human_governance",
+      "file": "data/human_governance.jsonl",
+      "probe_kind": "model_reasoning",
+      "records": 6,
+      "task_id": "return_path_human_governance"
+    }
+  ],
+  "metrics": {
+    "composite_score": false,
+    "reported": "separate-lane-and-primary-metric-choice-accuracies",
+    "system_and_governance_real_world_state": "not_evaluated"
+  },
+  "publication": {
+    "authorization_does_not_assert_upload": true,
+    "authorization_receipt": "release-review.json",
+    "authorized": true,
+    "condition": "package-review-completed",
+    "status": "reviewed-authorized"
+  },
+  "schema": "kingdom.return-path-manifest/v0",
+  "version": "0.1.0"
+}

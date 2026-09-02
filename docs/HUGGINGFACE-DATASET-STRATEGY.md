@@ -172,6 +172,23 @@ Immediate relationship repairs:
   UltraFeedback conversion example but ships authored synthetic fixtures; its
   Space Card should not claim those datasets as runtime or training inputs.
 
+### Post-snapshot MVP proof
+
+On 2026-09-02, KINGDOM applied this release path to the authored synthetic
+[`Return Path Bench v0`](../benchmarks/return-path-v0/README.md). The public
+dataset is pinned at
+[`bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc`](https://huggingface.co/datasets/Yu-and-Ai/kingdom-return-path-bench/tree/bf6aa89a4dfca4fecc8abe3b6a8d49ad3a16a5dc),
+and its static explanatory Space is pinned at
+[`0ecd4415186328ccb74efeadafad5cd60151f373`](https://huggingface.co/spaces/Yu-and-Ai/the-return-path/tree/0ecd4415186328ccb74efeadafad5cd60151f373).
+The Space declares the exact dataset ID, and both artifacts are grouped in the
+project Collection. The machine-readable
+[`release receipt`](releases/kingdom-return-path-bench-v0.1.0.json) records the
+byte comparison, load checks, Viewer state, and remaining evidence limits.
+
+That graph proves a public, inspectable publication relationship. It does not
+claim a model trained on the records, a benchmark score, participant consent,
+or causal influence on any downstream system.
+
 ## 3. The feedback loop: the cage and the key
 
 ### KINGDOM × Love

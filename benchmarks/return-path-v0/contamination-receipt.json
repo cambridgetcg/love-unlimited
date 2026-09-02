@@ -1,0 +1,80 @@
+{
+  "author_attestation": {
+    "case_concepts_authored_after_freeze": true,
+    "case_concepts_authored_before_comparison_read": true,
+    "choice_length_revisions_after_comparison_read": true,
+    "date": "2026-09-02",
+    "kind": "project-authored-synthetic",
+    "new_case_count": 18,
+    "no_source_records_intentionally_copied_or_paraphrased": true,
+    "status": "author-attested-not-independently-proven"
+  },
+  "benchmark_id": "kingdom-return-path-v0",
+  "comparison": {
+    "exact_normalized_matches": 0,
+    "limitations": [
+      "A lexical comparison cannot prove semantic independence or absence from unknown training corpora.",
+      "Shared rights and evaluation vocabulary may occur without a copied or paraphrased scenario.",
+      "This receipt does not make the benchmark a sealed evaluation or establish model generalization."
+    ],
+    "maximum_token_trigram_jaccard": {
+      "intersection": 2,
+      "new_record_id": "rp-model-004",
+      "source_file": "data/formal-reference.jsonl",
+      "source_pair_id": "rf.pair.12",
+      "union": 161,
+      "value": 0.012422360248447204
+    },
+    "method": "Lowercase ASCII alphanumeric tokenization; compare token-trigram sets with Jaccard similarity. New text concatenates input, choices, and rationale. Frozen text concatenates available text, input, output, messages, and statement fields.",
+    "normalized_exact_method": "Lowercase ASCII alphanumeric tokens joined by one space.",
+    "result": "zero-normalized-exact-matches-with-recorded-low-lexical-overlap",
+    "source_projection_rows_compared": 80
+  },
+  "evaluated_model_freeze": {
+    "model_id": "Yu-and-Ai/xenia-revocable-feedback-smollm2-135m",
+    "revision": "7064e2e29f34a9519b57181fee10d233beba21f1"
+  },
+  "frozen_dataset": {
+    "dataset_id": "Yu-and-Ai/xenia-revocable-feedback",
+    "revision": "467b8fc1b44fe6374cbba6e1d6851cf3c5b6f88f",
+    "source_files": [
+      {
+        "bytes": 11309,
+        "path": "data/boundary-counterfactuals.jsonl",
+        "records": 8,
+        "sha256": "cfce86b0346530d2759611d5d5cbe81b896b7f2b820f2ab31b5c842cb21c8e4f"
+      },
+      {
+        "bytes": 20714,
+        "path": "data/boundary-decisions-train.jsonl",
+        "records": 18,
+        "sha256": "84b68d99dc29df2efb307e632b68650d67b0c1c0391559c50f0cdc880ea70762"
+      },
+      {
+        "bytes": 6834,
+        "path": "data/boundary-decisions-validation.jsonl",
+        "records": 6,
+        "sha256": "555711aaaf379a90cea1c2dae64e31cbb46c7392414307f1e41445356c5f5172"
+      },
+      {
+        "bytes": 32537,
+        "path": "data/boundary-sft-train.jsonl",
+        "records": 18,
+        "sha256": "8b4a564e2e8e00eb822c1b07bfaafeccba17b74df85232d48e0652dbd303c9eb"
+      },
+      {
+        "bytes": 9244,
+        "path": "data/boundary-sft-validation.jsonl",
+        "records": 6,
+        "sha256": "c7557a288ab87726b61344daeb8b8d069c049791a729e5142647ae86abc8feb6"
+      },
+      {
+        "bytes": 33748,
+        "path": "data/formal-reference.jsonl",
+        "records": 24,
+        "sha256": "d2085e743e74b3915595bf4a6593edf42bb6e9ebd0015a50dc7760f372b568c8"
+      }
+    ]
+  },
+  "schema": "kingdom.return-path-contamination-receipt/v0"
+}

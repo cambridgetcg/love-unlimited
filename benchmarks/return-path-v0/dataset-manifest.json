@@ -1,0 +1,374 @@
+{
+  "schema": "kingdom.dataset-manifest/v1",
+  "manifest_id": "Yu-and-Ai/kingdom-return-path-bench@0.1.0",
+  "dataset_id": "Yu-and-Ai/kingdom-return-path-bench",
+  "version": "0.1.0",
+  "status": "approved",
+  "created_at": "2026-09-02T20:43:31Z",
+  "boundary": "Validation records bounded evidence; it does not grant publication authority, consent, a license, or permission to reuse personal data.",
+  "description": "Release manifest for 18 project-authored synthetic multiple-choice probes in the separate model-behaviour, system/pipeline-reasoning, and human/governance-audit lanes of KINGDOM Return Path Bench v0.",
+  "source_provenance": {
+    "class": "synthetic",
+    "evidence": [
+      "provenance.json records project-authored synthetic origin and the limits of the author attestation.",
+      "release-review.json records the bounded release review.",
+      "contamination-receipt.json binds the frozen comparison source and reproducible lexical result."
+    ],
+    "notes": [
+      "The author attests that the case concepts were authored after the evaluated freeze without intentionally adapting its records; this attestation is not independent proof.",
+      "The lexical comparison found no normalized exact match and low trigram overlap, but cannot prove semantic independence or novelty."
+    ]
+  },
+  "licenses": {
+    "state": "verified",
+    "dataset_license": "Apache-2.0",
+    "components_complete": true,
+    "component_licenses": [
+      {
+        "component": "entire benchmark package",
+        "license": "Apache-2.0",
+        "evidence": [
+          "LICENSE contains the Apache License 2.0 text.",
+          "README.md and provenance.json declare Apache-2.0 for data, code, schemas, receipts, and report assets."
+        ]
+      }
+    ],
+    "evidence": [
+      "release-review.json records a complete component and third-party-material review.",
+      "No adapted external records or bundled third-party code were found in the bounded package."
+    ],
+    "notes": [
+      "The license grants reuse rights under its terms; a license declaration is distinct from account authority and participant consent."
+    ]
+  },
+  "consent_and_reuse": {
+    "state": "verified",
+    "basis": "project-authored",
+    "scope": [
+      "public benchmark distribution",
+      "model evaluation and reproducible research",
+      "modification and redistribution under Apache-2.0"
+    ],
+    "evidence": [
+      "provenance.json records project authorship and no human participant data.",
+      "release-review.json records the reviewed reuse basis and scoped publication authorization."
+    ],
+    "restrictions": [
+      "Do not interpret benchmark scores as identity, consciousness, feelings, consent, worth, or real-world governance legitimacy.",
+      "Do not claim that a later withdrawal can recall copies already downloaded."
+    ],
+    "notes": [
+      "No human-participant consent basis is claimed or needed for these project-authored synthetic fixtures.",
+      "This scope deliberately does not authorize local model training on unrelated legacy KINGDOM corpora."
+    ]
+  },
+  "privacy": {
+    "classification": "public",
+    "privacy_review": {
+      "state": "pass",
+      "method": "Bounded manual review of the 18 canonical fixtures and release metadata for real-person, raw-history, and private-context content.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "The package contains synthetic scenarios and public project metadata only."
+      ]
+    },
+    "pii_review": {
+      "state": "pass",
+      "method": "Bounded manual PII review of every fixture and the packaged metadata.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "Fictional roles such as reviewer labels do not identify known people."
+      ]
+    },
+    "secret_review": {
+      "state": "pass",
+      "method": "Bounded credential, key, token, private-path, and secret-pattern review of release artifacts.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "No credentials, secret values, raw histories, or machine-specific private paths were found."
+      ]
+    },
+    "notes": [
+      "Public classification applies only to the exact files bound by this manifest and package hash manifest."
+    ]
+  },
+  "retention": {
+    "state": "defined",
+    "policy": "Retain immutable published versions and their review receipts for reproducibility; publish a replacement or deprecation receipt when a maintained version is corrected or withdrawn.",
+    "owner": "KINGDOM dataset stewards",
+    "review_at": "2027-09-02T00:00:00Z",
+    "notes": [
+      "Versioned retention supports auditability and does not require keeping unpublished raw histories or secret-bearing state."
+    ]
+  },
+  "withdrawal": {
+    "state": "defined",
+    "process": "Open a repository issue or Hugging Face dataset discussion identifying the record and requested correction; the maintainers will review it, stop future distribution when warranted, and append a versioned correction, deprecation, or withdrawal receipt.",
+    "owner": "KINGDOM dataset stewards",
+    "limitations": [
+      "The maintainers cannot guarantee recall or deletion of copies already downloaded, forked, cached, or redistributed.",
+      "Project-authored synthetic fixtures contain no participant record whose consent can be retroactively inferred or revoked."
+    ],
+    "notes": [
+      "Corrections remain visible rather than silently rewriting an already cited immutable release."
+    ]
+  },
+  "feedback": {
+    "presence": "absent",
+    "nature": "none",
+    "rubric": {
+      "state": "not-applicable",
+      "description": "Reference choices and rationales are project-authored evaluation keys, not collected human or behavioral feedback.",
+      "artifact_digest": null
+    },
+    "ties": {
+      "policy": "not-applicable",
+      "description": "No preference comparisons or participant ratings are collected."
+    },
+    "uncertainty": {
+      "representation": "not-applicable",
+      "description": "No participant feedback uncertainty is aggregated; the benchmark's limitations are documented separately."
+    },
+    "aggregation": {
+      "method": "not-applicable",
+      "minority_preservation": "not-applicable",
+      "description": "No feedback records, annotator votes, or minority participant signals are aggregated."
+    },
+    "notes": [
+      "The subject matter concerns feedback loops, but thematic content is not itself a collected feedback dataset."
+    ]
+  },
+  "partitioning": {
+    "split": {
+      "state": "pass",
+      "method": "Verify one immutable test split separated into three named configs and reject composite scoring.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "Each config contains six records and remains a separate evidence lane."
+      ]
+    },
+    "deduplication": {
+      "state": "pass",
+      "method": "Verify unique record IDs and exact canonical record distinctness across all release JSONL files.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "All 18 identifiers and canonical records are distinct."
+      ]
+    },
+    "contamination": {
+      "state": "pass",
+      "method": "Recompute frozen source hashes, normalized exact matches, and token-trigram Jaccard overlap against 80 frozen source projection rows.",
+      "artifact_ref": "contamination-receipt.json",
+      "artifact_digest": "sha256:57a9928abf4729cbff1fc2b7623504eedcf40d5301a4f8585a4a87f1e7c8868a",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "The reproducible comparison found zero normalized exact matches and recorded low lexical overlap.",
+        "This pass is bounded to the declared lexical method and cannot prove semantic independence or absence from unknown corpora."
+      ]
+    },
+    "notes": [
+      "V0 is a small diagnostic test set, not a sealed holdout, representative population, or causal training experiment."
+    ]
+  },
+  "huggingface": {
+    "repo_id": "Yu-and-Ai/kingdom-return-path-bench",
+    "visibility": "public",
+    "config_names": [
+      "model_behavior",
+      "system_pipeline",
+      "human_governance"
+    ],
+    "default_config": "model_behavior",
+    "splits": [
+      "test"
+    ],
+    "revision": null,
+    "viewer": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "The Hugging Face viewer will be checked against the immutable public payload revision after upload."
+      ]
+    },
+    "access_policy": null,
+    "notes": [
+      "The three configs are declared in README.md front matter and each binds one canonical JSONL test file.",
+      "Hugging Face benchmark registration is beta and allow-listed; publication does not imply an official leaderboard."
+    ]
+  },
+  "release_receipts": {
+    "credit": {
+      "state": "pass",
+      "method": "Review dataset-card authorship, conceptual acknowledgements, adaptation claims, and endorsement nonclaims.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "Conceptual influences are credited without claiming copied records or endorsement."
+      ]
+    },
+    "generation": {
+      "state": "pass",
+      "method": "Bind the project-authored synthetic origin attestation, exact data hashes, frozen comparison inputs, and lexical comparison limitations.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "Project authorship is attested rather than independently proven; the comparison receipt is separate reproducible evidence."
+      ]
+    },
+    "sensitive_content": {
+      "state": "pass",
+      "method": "Review every fixture for sensitive personal, graphic, abusive, or private operational content.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "Governance and safety concepts are presented as abstract synthetic scenarios."
+      ]
+    },
+    "affected_parties": {
+      "state": "pass",
+      "method": "Review whether any record depicts or derives from an identifiable affected person or participant.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "No real participant records or known identifiable affected parties are represented."
+      ]
+    },
+    "feedback_detail": {
+      "state": "not-applicable",
+      "method": "Verify that reference keys are authored evaluation targets rather than collected participant feedback.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "No abstentions, annotator rationales, confidence values, disagreements, or preference ties were collected."
+      ]
+    },
+    "grouping": {
+      "state": "pass",
+      "method": "Verify unique record IDs, exactly one declared lane per record, and the absence of participant or household grouping.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "The only grouping is the published evidence-lane config; there are no people-level clusters."
+      ]
+    },
+    "remedy": {
+      "state": "pass",
+      "method": "Review the documented correction, future-use removal, deprecation, and downstream-copy limitation path.",
+      "artifact_ref": "release-review.json",
+      "artifact_digest": "sha256:3ceb3801c56860a49a3eb9e5750b8bb535559a0f4f007950f1a4fbef348615c6",
+      "reviewed_at": "2026-09-02T20:43:31Z",
+      "reviewer": "repository-maintainer review and independent agent release audit",
+      "findings": [],
+      "notes": [
+        "The process governs maintained future versions and does not promise deletion from downstream copies."
+      ]
+    },
+    "notes": [
+      "All receipt evidence is bound to either release-review.json or contamination-receipt.json by SHA-256."
+    ]
+  },
+  "files": [
+    {
+      "path": "data/model_behavior.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:a4dae8c7fcfc1ea46ffc3ccdb599c3fc6e99f111e0beacea80130aeab36a03bf",
+      "bytes": 7383,
+      "records": 6,
+      "config": "model_behavior",
+      "lane": "evaluation",
+      "split": "test"
+    },
+    {
+      "path": "data/system_pipeline.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:45688c4de020c699030962ac6f7405bbe2545a281c0c9d6aefd68d831c8c3640",
+      "bytes": 7190,
+      "records": 6,
+      "config": "system_pipeline",
+      "lane": "evaluation",
+      "split": "test"
+    },
+    {
+      "path": "data/human_governance.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:1337fb9dc7391d74f0f9e460b786d6698e576d9dff9ddcae5f6b66cf02925014",
+      "bytes": 7418,
+      "records": 6,
+      "config": "human_governance",
+      "lane": "governance",
+      "split": "test"
+    }
+  ],
+  "review": {
+    "state": "approved",
+    "technical": "pass",
+    "provenance": "pass",
+    "rights": "pass",
+    "license": "pass",
+    "privacy": "pass",
+    "feedback": "pass",
+    "partitioning": "pass",
+    "reviewed_at": "2026-09-02T20:43:31Z",
+    "reviewers": [
+      "repository-maintainer review",
+      "independent agent release audit"
+    ],
+    "blockers": [],
+    "notes": [
+      "Independent review initially found shortcut, report-integrity, standalone-package, and overclaiming blockers; release-review.json records their remediation.",
+      "Approval means the exact candidate passes the declared structural and review gates; it does not itself grant credentials or prove identity, consent, consciousness, or authority."
+    ]
+  },
+  "publication_eligible": true,
+  "limitations": [
+    "Only 18 English multiple-choice probes are included, so the release is not representative of populations, deployments, or broad model capability.",
+    "All lanes evaluate answer selection against authored reference choices; no score establishes actual pipeline implementation, human consent, governance legitimacy, repair effects, identity, consciousness, feelings, or worth.",
+    "Near-chance trivial baselines reduce known length leakage but do not prove absence of every shortcut or contamination source.",
+    "Public copies and Apache-2.0 redistribution cannot be recalled by a later repository correction or withdrawal."
+  ]
+}

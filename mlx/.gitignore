@@ -2,3 +2,7 @@ cache/
 .venv/
 serve.pid
 serve.log
+adapters/
+training/candidates/
+training/reviewed/
+training/runs/

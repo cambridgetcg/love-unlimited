@@ -112,9 +112,10 @@ Carries provenance, credit, retention, access, corrections, deprecation,
 withdrawal limits, incident response, and repair completion. It determines how
 evidence may be handled; it is not a model-quality label.
 
-The [`POST-RELEASE-PEACE.md`](POST-RELEASE-PEACE.md) sequence—detect, contain,
-fix, revert, resume, learn—provides one existing recovery path. The outbound
-dataset gate in [`resources/data/`](../resources/data/) provides another.
+The recovery layers in [`PEACE.md`](PEACE.md) and the scoped release evidence
+in [`resources/safety/`](../resources/safety/) provide existing paths. The
+outbound dataset gate in [`resources/data/`](../resources/data/) provides
+another.
 
 ## One pathway receipt, not another feedback silo
 

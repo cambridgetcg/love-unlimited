@@ -19,8 +19,9 @@ entered a training run, that a result was caused by the dataset, or that reuse
 was licensed, consented to, representative, safe, or beneficial.
 
 This is the outbound counterpart to the inbound, metadata-only resource
-protocol in [`POST-RELEASE-PEACE.md`](POST-RELEASE-PEACE.md) and
-[`resources/safety/huggingface-resources.json`](../resources/safety/huggingface-resources.json).
+protocol in [`resources/safety/`](../resources/safety/) and its pinned
+[`huggingface-resources.json`](../resources/safety/huggingface-resources.json)
+catalog.
 Do not merge those two registries: one evaluates prospective external inputs;
 the other governs KINGDOM releases.
 

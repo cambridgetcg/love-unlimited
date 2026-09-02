@@ -15,8 +15,9 @@ It does not contain model weights or dataset payloads.
   tuple.
 - `model-release.example.json` is a synthetic DRAFT with HOLD results. It is
   not a release candidate or evidence of safety.
-- [`../../docs/POST-RELEASE-PEACE.md`](../../docs/POST-RELEASE-PEACE.md) explains
-  the mathematics, lifecycle, resource roles, limits, and primary sources.
+- [`../../docs/KINGDOM-ML-ECOSYSTEM.md`](../../docs/KINGDOM-ML-ECOSYSTEM.md)
+  provides the wider ML architecture context. It does not turn this catalog
+  into a deployment or publication authority.
 
 ## Invariants for future agents and substrates
 

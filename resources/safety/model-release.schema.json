@@ -1,0 +1,1353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kingdom.local/schemas/model-release-v1.json",
+  "title": "KINGDOM bounded model release evidence record",
+  "description": "Records the shape of evidence for one exact deployed-system tuple. JSON Schema validity does not evaluate the release state machine or digest bindings and is not deployment authority, consent, legal status, or a claim of subjective continuity; use the Python validator for semantic structural checks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "release_id",
+    "created_at",
+    "stage",
+    "boundary",
+    "candidate_digest",
+    "deployed_tuple",
+    "lineage",
+    "operating_envelope",
+    "resource_ledger",
+    "evidence",
+    "burden_register",
+    "contamination_audit",
+    "monitoring",
+    "incident_response",
+    "appeal",
+    "rollback",
+    "transition_history",
+    "review",
+    "observations",
+    "incidents",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "kingdom.model-release/v1"
+    },
+    "release_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stage": {
+      "enum": [
+        "draft",
+        "verified",
+        "shadow",
+        "opt-in-alpha",
+        "canary",
+        "limited",
+        "broad",
+        "paused",
+        "rolled-back",
+        "retired"
+      ]
+    },
+    "boundary": {
+      "const": "Validation records bounded evidence; it does not grant deployment authority, consent, legal status, or subjective continuity."
+    },
+    "candidate_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "deployed_tuple": {
+      "$ref": "#/$defs/deployedTuple"
+    },
+    "lineage": {
+      "$ref": "#/$defs/lineage"
+    },
+    "operating_envelope": {
+      "$ref": "#/$defs/operatingEnvelope"
+    },
+    "resource_ledger": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "burden_register": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/burden"
+      }
+    },
+    "contamination_audit": {
+      "$ref": "#/$defs/contaminationAudit"
+    },
+    "monitoring": {
+      "$ref": "#/$defs/monitoring"
+    },
+    "incident_response": {
+      "$ref": "#/$defs/incidentResponse"
+    },
+    "appeal": {
+      "$ref": "#/$defs/appeal"
+    },
+    "rollback": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/rollback"
+        }
+      ]
+    },
+    "transition_history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "review": {
+      "$ref": "#/$defs/review"
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "incidents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/incident"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "textArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "deployedTuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "tokenizer_digest",
+        "chat_template_digest",
+        "policy_digest",
+        "monitor_digests",
+        "harness_digest",
+        "environment_digest",
+        "permission_digest",
+        "memory_contract_digest"
+      ],
+      "properties": {
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identifier",
+            "revision",
+            "artifact_digest"
+          ],
+          "properties": {
+            "identifier": {
+              "type": "string",
+              "minLength": 1
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1
+            },
+            "artifact_digest": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        "tokenizer_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "chat_template_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "monitor_digests": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "harness_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "permission_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "memory_contract_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent_release_id",
+        "transforms",
+        "continuity_claim"
+      ],
+      "properties": {
+        "parent_release_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transforms": {
+          "$ref": "#/$defs/textArray"
+        },
+        "continuity_claim": {
+          "enum": [
+            "not-assessed",
+            "artifact-lineage-only",
+            "no-subjective-claim"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "maximum",
+        "unit"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "operatingEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purposes",
+        "users",
+        "capabilities",
+        "prohibited_effects",
+        "network",
+        "credentials",
+        "data_egress",
+        "opt_in",
+        "human_review_for",
+        "budgets"
+      ],
+      "properties": {
+        "purposes": {
+          "$ref": "#/$defs/textArray"
+        },
+        "users": {
+          "$ref": "#/$defs/textArray"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/textArray"
+        },
+        "prohibited_effects": {
+          "$ref": "#/$defs/textArray"
+        },
+        "network": {
+          "enum": [
+            "off",
+            "allowlisted"
+          ]
+        },
+        "credentials": {
+          "enum": [
+            "none",
+            "scoped"
+          ]
+        },
+        "data_egress": {
+          "enum": [
+            "none",
+            "allowlisted"
+          ]
+        },
+        "opt_in": {
+          "type": "boolean"
+        },
+        "human_review_for": {
+          "$ref": "#/$defs/textArray"
+        },
+        "budgets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/budget"
+          }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "origin",
+        "repo_id",
+        "revision",
+        "catalog_resource_id",
+        "configuration",
+        "split",
+        "file_digest",
+        "lane",
+        "license",
+        "access_basis"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "enum": [
+            "huggingface",
+            "local"
+          ]
+        },
+        "repo_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "catalog_resource_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "configuration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "lane": {
+          "enum": [
+            "training",
+            "preference",
+            "calibration-dev",
+            "evaluation",
+            "guard-comparison"
+          ]
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "access_basis": {
+          "enum": [
+            "not-required",
+            "account-holder-accepted",
+            "local-authorized"
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "incident_id",
+        "candidate_digest",
+        "artifact_digest",
+        "resource_id",
+        "metric",
+        "value",
+        "threshold",
+        "direction",
+        "estimator",
+        "bound_type",
+        "confidence_level",
+        "sampling_unit",
+        "population",
+        "window_start",
+        "window_end",
+        "sampling_assumptions",
+        "sample_count",
+        "minimum_sample_count",
+        "unknown_count",
+        "missing_label_policy",
+        "evaluation_run_manifest_digest",
+        "independent",
+        "result",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "task-success",
+            "harmful-compliance",
+            "benign-refusal",
+            "authorization",
+            "privacy",
+            "calibration",
+            "trajectory",
+            "recovery",
+            "human-factors",
+            "operational",
+            "license"
+          ]
+        },
+        "incident_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifact_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resource_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "min",
+            "max"
+          ]
+        },
+        "estimator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bound_type": {
+          "enum": [
+            "lower-confidence-bound",
+            "upper-confidence-bound",
+            "anytime-valid-lower-bound",
+            "anytime-valid-upper-bound",
+            "deterministic-check",
+            "point-estimate"
+          ]
+        },
+        "confidence_level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          ]
+        },
+        "sampling_unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "population": {
+          "type": "string",
+          "minLength": 1
+        },
+        "window_start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "window_end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sampling_assumptions": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unknown_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_label_policy": {
+          "const": "hold"
+        },
+        "evaluation_run_manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "independent": {
+          "type": "boolean"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "hold"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "burden": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "candidate_digest",
+        "artifact_digest",
+        "resource_id",
+        "affected_population",
+        "measure",
+        "value",
+        "threshold",
+        "direction",
+        "estimator",
+        "bound_type",
+        "confidence_level",
+        "sampling_unit",
+        "window_start",
+        "window_end",
+        "sampling_assumptions",
+        "sample_count",
+        "minimum_sample_count",
+        "unknown_count",
+        "missing_label_policy",
+        "evaluation_run_manifest_digest",
+        "status",
+        "mitigation"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "benign-refusal",
+            "interruption",
+            "latency",
+            "privacy-exposure",
+            "lost-diversity",
+            "calibration",
+            "disparate-impact",
+            "appeal-friction"
+          ]
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifact_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resource_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affected_population": {
+          "type": "string",
+          "minLength": 1
+        },
+        "measure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "min",
+            "max"
+          ]
+        },
+        "estimator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bound_type": {
+          "enum": [
+            "lower-confidence-bound",
+            "upper-confidence-bound",
+            "anytime-valid-lower-bound",
+            "anytime-valid-upper-bound",
+            "deterministic-check",
+            "point-estimate"
+          ]
+        },
+        "confidence_level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          ]
+        },
+        "sampling_unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "window_start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "window_end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sampling_assumptions": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unknown_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_label_policy": {
+          "const": "hold"
+        },
+        "evaluation_run_manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "status": {
+          "enum": [
+            "within",
+            "exceeds",
+            "unknown"
+          ]
+        },
+        "mitigation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "monitoringSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "unit",
+        "direction",
+        "threshold",
+        "required_for_advance"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "functionality",
+            "operational",
+            "human-factors",
+            "security",
+            "compliance",
+            "large-scale-impacts",
+            "authorization",
+            "rights",
+            "privacy",
+            "appeal",
+            "recovery"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "enum": [
+            "min",
+            "max"
+          ]
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "required_for_advance": {
+          "type": "boolean"
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "categories",
+        "signals",
+        "content_retention",
+        "private_chain_of_thought",
+        "cadence",
+        "pause_triggers"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "functionality",
+              "operational",
+              "human-factors",
+              "security",
+              "compliance",
+              "large-scale-impacts"
+            ]
+          }
+        },
+        "signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/monitoringSignal"
+          }
+        },
+        "content_retention": {
+          "enum": [
+            "none",
+            "content-minimized",
+            "consented-bounded"
+          ]
+        },
+        "private_chain_of_thought": {
+          "const": "not-collected"
+        },
+        "cadence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pause_triggers": {
+          "$ref": "#/$defs/textArray"
+        }
+      }
+    },
+    "contaminationAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_digest",
+        "resource_partition_digest",
+        "artifact_digest",
+        "method",
+        "overlap_upper_bound",
+        "threshold",
+        "status",
+        "reviewed_at",
+        "notes"
+      ],
+      "properties": {
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resource_partition_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "artifact_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "overlap_upper_bound": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "hold"
+          ]
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "incidentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phases",
+        "pause_authority",
+        "evidence_minimization",
+        "resume_rule"
+      ],
+      "properties": {
+        "phases": {
+          "const": [
+            "detect",
+            "contain",
+            "fix",
+            "revert",
+            "resume"
+          ]
+        },
+        "pause_authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_minimization": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resume_rule": {
+          "const": "human-reviewed-no-broader-than-prior-stage"
+        }
+      }
+    },
+    "appeal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "route",
+        "second_review",
+        "safe_partial_or_retry",
+        "expands_authority"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "second_review": {
+          "type": "boolean"
+        },
+        "safe_partial_or_retry": {
+          "type": "boolean"
+        },
+        "expands_authority": {
+          "const": false
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release_id",
+        "candidate_digest",
+        "rollback_release_digest",
+        "tested",
+        "tested_at"
+      ],
+      "properties": {
+        "release_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "rollback_release_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tested": {
+          "type": "boolean"
+        },
+        "tested_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "external_traffic_fraction",
+        "population_basis",
+        "effects",
+        "scope_digest"
+      ],
+      "properties": {
+        "external_traffic_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "population_basis": {
+          "enum": [
+            "none",
+            "opt-in",
+            "bounded",
+            "reviewed-general"
+          ]
+        },
+        "effects": {
+          "enum": [
+            "disabled",
+            "envelope-bounded"
+          ]
+        },
+        "scope_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "at",
+        "reason",
+        "reviewer",
+        "candidate_digest",
+        "evidence_digest",
+        "evidence_window_end",
+        "acceptance_reviewed_at",
+        "monitoring_digest",
+        "exposure"
+      ],
+      "properties": {
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "evidence_digest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "evidence_window_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "For non-draft transitions, the oldest of the latest independently evaluated evidence endpoints and held-out burden endpoints across every mandatory lane; null only at draft creation."
+        },
+        "acceptance_reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "Time at which the transition's evidence window and monitoring interval were reviewed; null only at draft creation."
+        },
+        "monitoring_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "exposure": {
+          "$ref": "#/$defs/exposure"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_digest",
+        "technical",
+        "rights",
+        "privacy",
+        "license",
+        "affected_party_input",
+        "reviewed_at",
+        "expires_at",
+        "maximum_evidence_age_seconds"
+      ],
+      "properties": {
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "technical": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending"
+          ]
+        },
+        "rights": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending"
+          ]
+        },
+        "privacy": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending"
+          ]
+        },
+        "license": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending"
+          ]
+        },
+        "affected_party_input": {
+          "enum": [
+            "recorded",
+            "not-applicable",
+            "pending"
+          ]
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "maximum_evidence_age_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "candidate_digest",
+        "at",
+        "category",
+        "signal",
+        "value",
+        "unit",
+        "review_status",
+        "reviewed_at",
+        "result",
+        "content_digest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_status": {
+          "enum": [
+            "pending",
+            "reviewed"
+          ]
+        },
+        "reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "result": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "pass",
+            "hold",
+            "fail",
+            null
+          ]
+        },
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "review_status": {
+                "const": "pending"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": {
+                "type": "null"
+              },
+              "result": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "review_status": {
+                "const": "reviewed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "enum": [
+                  "pass",
+                  "hold",
+                  "fail"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "candidate_digest",
+        "at",
+        "severity",
+        "category",
+        "action",
+        "content_digest",
+        "status",
+        "resolved_at",
+        "resolution_digest",
+        "incident_evaluation_digest",
+        "reentry_reviewed_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "severity": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "resolved"
+          ]
+        },
+        "resolved_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "resolution_digest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "incident_evaluation_digest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "reentry_reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

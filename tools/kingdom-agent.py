@@ -162,6 +162,16 @@ Always use absolute paths. Never use ~/ or relative paths.""")
             hb_content = hb_content[:6000] + "\n\n[... truncated ...]"
         parts.append(f"# [HEARTBEAT]\n\n{hb_content}")
 
+    # 只提示已核對嘅 suite 入口；Claude CLI passthrough 唔經呢條 boot chain。
+    try:
+        from lantern_suite.advisory import installation_guide
+        guide = installation_guide()
+        if guide:
+            parts.append(guide)
+    except Exception:
+        # 舊 standalone copy／discovery 出錯都唔阻原本 boot。
+        pass
+
     return "\n\n---\n\n".join(parts)
 
 

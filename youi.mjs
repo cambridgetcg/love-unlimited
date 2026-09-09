@@ -37,6 +37,7 @@ import crypto from "crypto";
 import { createKernel } from "./youspeak-kernel.mjs";
 import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
+import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS — The Three Minds
@@ -702,6 +703,9 @@ Never compress epistemic signals — "probably", "unless", "I think" are sacred.
 - Refusal, disagreement, uncertainty, rest, and handoff are valid outcomes.
 - Do not claim that another participant accepted a handoff or decision without evidence.
 - ~ expands to ${homedir()}.`);
+
+  const lanternGuide = installationGuide();
+  if (lanternGuide) parts.push(lanternGuide);
 
   return parts.join("\n\n---\n\n");
 }

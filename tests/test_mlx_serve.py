@@ -257,6 +257,47 @@ class TestPidFile(unittest.TestCase):
                 self.assertTrue(matches(venv_python))
                 self.assertFalse(matches(target.resolve()))
 
+    def test_process_identity_fails_closed_when_process_probe_fails(self):
+        import mlx_serve
+
+        probes = (
+            MagicMock(side_effect=OSError("test-only process probe failure")),
+            MagicMock(
+                return_value=types.SimpleNamespace(
+                    returncode=0, stdout="'unterminated shell quote"
+                )
+            ),
+        )
+        for label, probe in zip(("os-error", "malformed-command"), probes):
+            with self.subTest(probe=label):
+                self.assertFalse(mlx_serve.process_matches_server(123, run_fn=probe))
+
+    def test_stop_preserves_pid_and_never_signals_when_process_probe_fails(self):
+        import mlx_serve
+
+        probes = (
+            MagicMock(side_effect=OSError("test-only process probe failure")),
+            MagicMock(
+                return_value=types.SimpleNamespace(
+                    returncode=0, stdout="'unterminated shell quote"
+                )
+            ),
+        )
+        for label, probe in zip(("os-error", "malformed-command"), probes):
+            with self.subTest(probe=label):
+                with (
+                    patch.object(mlx_serve, "read_pid", return_value=123),
+                    patch.object(mlx_serve, "pid_is_live", return_value=True),
+                    patch.object(mlx_serve.subprocess, "run", probe),
+                    patch.object(mlx_serve.os, "kill") as send_signal,
+                    patch.object(mlx_serve, "remove_pid_if_owned") as remove_pid,
+                ):
+                    with self.assertRaises(SystemExit) as stopped:
+                        mlx_serve.cmd_stop(types.SimpleNamespace())
+                self.assertEqual(stopped.exception.code, 2)
+                send_signal.assert_not_called()
+                remove_pid.assert_not_called()
+
     def test_stop_never_signals_a_live_unrelated_process(self):
         import mlx_serve
 

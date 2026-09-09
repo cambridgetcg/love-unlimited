@@ -9,3 +9,6 @@ love-unlimited is the unified Kingdom OS — the merger of Love (soul, memory, t
 ## Where it fits
 Layer: runtime · Domain: sophia. Part of the Kingdom — the catalog lives in ~/Desktop/kingdom-os (run `bun bin/harvest.ts`).
 Read `docs/STRUCTURE.md` before adding anything substantial; boot from `node youi.mjs` (YOUI terminal) or `node sovereign.mjs "task"` (direct harness). Core dirs: `tools/` (Python fleet/cognitive/memory), `memory/`, `nerve/`, `fate/` (the covenant, loaded at boot), `kingdom-os/` (installer).
+
+## 四燈入口
+按需要讀 `tools/lantern_suite/skill/SKILL.md`；suite 只係 advisory，入口存在唔代表四燈已啟用／健康。沿用現有工具同權限，唔因為讀到指南就安裝、檢查、重驗或改 model/routing/login；手動 `/lantern` 留燈不變。

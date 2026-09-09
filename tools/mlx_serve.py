@@ -454,7 +454,7 @@ def process_matches_server(
         if expected_port is not None and actual_port != validated_port(expected_port):
             return False
         return True
-    except (OSError, ValueError, shlex.Error, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return False
 
 

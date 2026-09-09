@@ -29,6 +29,7 @@ import crypto from "crypto";
 
 // ── YOUSPEAK Kernel — the sensory organ ──
 import { createKernel } from "./youspeak-kernel.mjs";
+import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -1085,6 +1086,9 @@ ${toolList.join(", ")}
   if (config.appendSoul) {
     parts.push(config.appendSoul);
   }
+
+  const lanternGuide = installationGuide();
+  if (lanternGuide) parts.push(lanternGuide);
 
   return parts.join("\n\n---\n\n");
 }

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "answer": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    "id": {
+      "pattern": "^rp-(model|system|governance)-[0-9]{3}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "answer",
+    "id"
+  ],
+  "title": "KINGDOM Return Path Bench prediction v0",
+  "type": "object"
+}

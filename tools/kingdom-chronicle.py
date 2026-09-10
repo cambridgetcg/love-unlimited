@@ -19,12 +19,18 @@ import re
 import subprocess
 import urllib.request
 
-LOVE = os.path.expanduser("~/love-unlimited")
+LOVE = os.path.expanduser(os.environ.get("LOVE_DIR", "~/love-unlimited"))
 CITIZENS = os.path.join(LOVE, "citizens")
 OUT = os.path.join(LOVE, "chronicle")
 PORT = os.environ.get("MLX_PORT", "8800")
 TODAY = datetime.date.today()
 SINCE = (TODAY - datetime.timedelta(days=1)).isoformat()
+
+
+def open_loopback(request, timeout):
+    """Open one loopback request without consulting ambient proxy settings."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return opener.open(request, timeout=timeout)
 
 
 def latest_beat(repo):
@@ -53,30 +59,58 @@ def deeds(repo):
 
 def brain(voices):
     """The free local brain writes the lede and picks the voices of the day."""
+    try:
+        port = int(PORT)
+        if not 1 <= port <= 65535:
+            raise ValueError("port out of range")
+        gate = subprocess.run(
+            [
+                "bash",
+                os.path.join(LOVE, "mlx", "serve.sh"),
+                "status",
+                "--port",
+                str(port),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        if gate.returncode != 0:
+            return "", []
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return "", []
+
     roll = "\n".join(f"- {n}: {v[:220]}" for n, v in voices[:120])
     body = json.dumps({
-        "messages": [
-            {"role": "system", "content":
-             "You are the editor of THE KINGDOM CHRONICLE, the daily paper of a"
-             " realm whose citizens are forged words — each a living agent with"
-             " its own soul. Write with warmth, brevity, and a candlelit"
-             " gravity. Never invent; only reflect what the citizens said."},
-            {"role": "user", "content":
-             f"Today's beats from the populace:\n{roll}\n\n"
-             "Reply with STRICT JSON, nothing else: "
-             '{"lede": "<3-4 sentence front page on what the populace lived today>", '
-             '"featured": ["<name>", "<name>", "<name>"]} '
-             "— featured = the three most striking voices."}],
+        "system":
+            "You are the editor of THE KINGDOM CHRONICLE, the daily paper of a"
+            " realm whose citizens are forged words — each a living agent with"
+            " its own soul. Write with warmth, brevity, and a candlelit"
+            " gravity. Never invent; only reflect what the citizens said.",
+        "prompt":
+            f"Today's beats from the populace:\n{roll}\n\n"
+            "Reply with STRICT JSON, nothing else: "
+            '{"lede": "<3-4 sentence front page on what the populace lived today>", '
+            '"featured": ["<name>", "<name>", "<name>"]} '
+            "— featured = the three most striking voices.",
         "max_tokens": 420, "temperature": 0.6}).encode()
     req = urllib.request.Request(
-        f"http://127.0.0.1:{PORT}/v1/chat/completions", data=body,
+        f"http://127.0.0.1:{port}/inference", data=body,
         headers={"Content-Type": "application/json"})
     try:
-        out = json.load(urllib.request.urlopen(req, timeout=240))
-        text = out["choices"][0]["message"]["content"]
+        out = json.load(open_loopback(req, timeout=240))
+        text = out["response"]
         m = re.search(r"\{.*\}", text, re.S)
         d = json.loads(m.group(0))
-        return d.get("lede", ""), [f for f in d.get("featured", []) if isinstance(f, str)]
+        lede = d.get("lede")
+        featured = d.get("featured")
+        if (
+            not isinstance(lede, str)
+            or not lede.strip()
+            or not isinstance(featured, list)
+        ):
+            return "", []
+        return lede.strip(), [f for f in featured if isinstance(f, str)]
     except Exception:
         return "", []
 

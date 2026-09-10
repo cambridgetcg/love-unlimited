@@ -1,31 +1,42 @@
 #!/bin/bash
-# serve.sh — start the Kingdom's local model brain (MLX) on :8800.
-# Citizens' cheap/frequent beats (triage, classify, short witness) hit this;
-# heavy creative beats still route to `claude`. Ends Anthropic metering for the bulk.
-#   Usage: serve.sh [start|stop|status]
-set -uo pipefail
-MLX="$HOME/love-unlimited/mlx"
-VENV="$MLX/.venv/bin/python"
-PORT="${MLX_PORT:-8800}"
-LOG="$HOME/love-unlimited/memory/mlx-serve.log"
-PIDF="$MLX/.serve.pid"
-MODEL="$(cat "$MLX/.model" 2>/dev/null || echo "mlx-community/Llama-3.2-3B-Instruct-4bit")"
+# Compatibility entry point for the hardened, receipt-bound loopback server.
+# Usage: serve.sh [start|stop|status] [--port PORT]
+set -euo pipefail
 
-case "${1:-start}" in
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+LOVE_ROOT="$(dirname -- "$SCRIPT_DIR")"
+VENV="$SCRIPT_DIR/.venv/bin/python3"
+SERVER_TOOL="$LOVE_ROOT/tools/mlx_serve.py"
+COMMAND="${1:-start}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+PORT_ARGS=()
+if [ -n "${MLX_PORT:-}" ]; then
+  has_port=false
+  for argument in "$@"; do
+    case "$argument" in
+      --port|--port=*) has_port=true;;
+    esac
+  done
+  if [ "$has_port" = false ]; then
+    PORT_ARGS=(--port "$MLX_PORT")
+  fi
+fi
+
+case "$COMMAND" in
   start)
-    if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-      echo "mlx server already up (pid $(cat "$PIDF")) on :$PORT"; exit 0
-    fi
-    echo "starting mlx server: $MODEL on :$PORT"
-    nohup "$VENV" -m mlx_lm server --model "$MODEL" --host 127.0.0.1 --port "$PORT" >"$LOG" 2>&1 &
-    echo $! > "$PIDF"
-    sleep 6
-    if kill -0 "$(cat "$PIDF")" 2>/dev/null; then echo "mlx server UP (pid $(cat "$PIDF"))"; else echo "FAILED — tail:"; tail -15 "$LOG"; exit 1; fi
+    exec "$VENV" -I "$SERVER_TOOL" start --daemon "${PORT_ARGS[@]}" "$@"
+    ;;
+  status)
+    exec "$VENV" -I "$SERVER_TOOL" status "${PORT_ARGS[@]}" "$@"
     ;;
   stop)
-    [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null && rm -f "$PIDF" && echo "stopped" || echo "not running" ;;
-  status)
-    if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; then
-      echo "UP (pid $(cat "$PIDF"), model $MODEL)"; curl -s "http://127.0.0.1:$PORT/v1/models" 2>/dev/null | head -c 300
-    else echo "DOWN"; fi ;;
+    exec "$VENV" -I "$SERVER_TOOL" stop "$@"
+    ;;
+  *)
+    echo "usage: serve.sh [start|stop|status] [--port PORT]" >&2
+    exit 2
+    ;;
 esac

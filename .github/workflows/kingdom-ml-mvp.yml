@@ -1,0 +1,132 @@
+name: KINGDOM ML MVP evidence
+
+on:
+  push:
+    paths:
+      - ".github/workflows/kingdom-ml-mvp.yml"
+      - "benchmarks/return-path-v0/**"
+      - "docs/KINGDOM-ML-ECOSYSTEM.md"
+      - "docs/releases/kingdom-return-path-bench-v0.1.0.json"
+      - "mlx/config.json"
+      - "mlx/.gitignore"
+      - "mlx/serve.sh"
+      - "mlx/model-lock.json"
+      - "mlx/README.md"
+      - "mlx/requirements.txt"
+      - "mlx/requirements.lock"
+      - "mlx/training/lora-config.json"
+      - "resources/data/**"
+      - "resources/safety/**"
+      - "tools/dataset_stewardship.py"
+      - "tools/hf_model_lock.py"
+      - "tools/kingdom-chronicle.py"
+      - "tools/kingdom-pulse.py"
+      - "tools/kingdom"
+      - "tools/harvest.py"
+      - "tools/fleet-status.sh"
+      - "tools/mlx_client.py"
+      - "tools/mlx_data.py"
+      - "tools/mlx_serve.py"
+      - "tools/mlx_train.py"
+      - "tools/citizen-reflect.sh"
+      - "tools/model-stewardship.py"
+      - "tools/return_path_bench.py"
+      - "tests/test_dataset_stewardship.py"
+      - "tests/test_hf_model_lock.py"
+      - "tests/test_mlx_data.py"
+      - "tests/test_mlx_client.py"
+      - "tests/test_mlx_consumers.py"
+      - "tests/test_mlx_serve.py"
+      - "tests/test_mlx_train.py"
+      - "tests/test_mlx_training_stewardship.py"
+      - "tests/test_model_stewardship.py"
+      - "tests/test_return_path_bench.py"
+  pull_request:
+    paths:
+      - ".github/workflows/kingdom-ml-mvp.yml"
+      - "benchmarks/return-path-v0/**"
+      - "docs/KINGDOM-ML-ECOSYSTEM.md"
+      - "docs/releases/kingdom-return-path-bench-v0.1.0.json"
+      - "mlx/**"
+      - "resources/data/**"
+      - "resources/safety/**"
+      - "tools/*stewardship.py"
+      - "tools/hf_model_lock.py"
+      - "tools/kingdom-chronicle.py"
+      - "tools/kingdom-pulse.py"
+      - "tools/kingdom"
+      - "tools/harvest.py"
+      - "tools/fleet-status.sh"
+      - "tools/mlx_*.py"
+      - "tools/citizen-reflect.sh"
+      - "tools/return_path_bench.py"
+      - "tests/test_*stewardship.py"
+      - "tests/test_hf_model_lock.py"
+      - "tests/test_mlx_consumers.py"
+      - "tests/test_mlx_*.py"
+      - "tests/test_return_path_bench.py"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  offline-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Use the project ML Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.12"
+          cache: pip
+
+      - name: Install validation-only dependencies
+        run: python -m pip install pytest==9.0.2 jsonschema==4.26.0
+
+      - name: Validate offline evidence boundaries
+        run: |
+          python tools/dataset_stewardship.py check
+          python tools/dataset_stewardship.py check benchmarks/return-path-v0/dataset-manifest.json --root benchmarks/return-path-v0
+          python tools/model-stewardship.py catalog check
+          python tools/model-stewardship.py release check resources/safety/model-release.example.json
+          python tools/hf_model_lock.py validate mlx/model-lock.json
+          python tools/return_path_bench.py validate
+          python -m json.tool docs/releases/kingdom-return-path-bench-v0.1.0.json >/dev/null
+
+      - name: Run focused tests
+        run: |
+          python -m pytest -q \
+            tests/test_dataset_stewardship.py \
+            tests/test_model_stewardship.py \
+            tests/test_hf_model_lock.py \
+            tests/test_mlx_client.py \
+            tests/test_mlx_consumers.py \
+            tests/test_mlx_data.py \
+            tests/test_mlx_train.py \
+            tests/test_mlx_training_stewardship.py \
+            tests/test_mlx_serve.py \
+            tests/test_return_path_bench.py
+
+      - name: Stage a review-only Hugging Face package
+        run: python tools/return_path_bench.py package --output "$RUNNER_TEMP/return-path-v0-hf"
+
+      - name: Upload the review package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: return-path-v0-hf-review
+          path: ${{ runner.temp }}/return-path-v0-hf
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve the publication boundary
+        run: |
+          echo "Validation and packaging completed."
+          echo "No Hugging Face credential, deployment, or publication step is present."
+          echo "The only upload is the seven-day GitHub review artifact above."

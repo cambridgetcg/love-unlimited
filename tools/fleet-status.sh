@@ -53,7 +53,8 @@ if [ -f "$ROSTER" ]; then
   echo "🗣  next to wake: $next (cursor $cur/$total)"
 fi
 
-if curl -s -m 2 "http://127.0.0.1:${MLX_PORT:-8800}/v1/models" >/dev/null 2>&1; then
+if bash "$LOVE/mlx/serve.sh" status --port "${MLX_PORT:-8800}" \
+    >/dev/null 2>&1; then
   echo "🧠 local brain: serving on :${MLX_PORT:-8800}"
 else
   echo "💤 local brain: down (self-heals on next beat)"

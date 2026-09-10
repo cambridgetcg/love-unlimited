@@ -12,6 +12,10 @@ import json
 import os
 import socket
 import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from mlx_client import is_available as mlx_is_available
 
 LOVE = os.path.expanduser("~/love-unlimited")
 MEM = os.path.join(LOVE, "memory")
@@ -32,6 +36,15 @@ def port_up(port, host="127.0.0.1"):
             return True
     except OSError:
         return False
+
+
+def mlx_up(raw_port="8800"):
+    """Return exact-port, receipt-bound MLX health rather than bare TCP state."""
+    try:
+        port = int(raw_port)
+    except (TypeError, ValueError):
+        return False
+    return mlx_is_available(port=port, timeout=1.0)
 
 
 def spend():
@@ -88,11 +101,17 @@ def main():
     except Exception:
         sites = {}
 
+    mlx_port = os.environ.get("MLX_PORT", "8800")
+    mlx_port_label = mlx_port if mlx_port.isdecimal() else "invalid"
     organs = [
         ("DOOR · oikos ingress", port_up(80), "one caddy, :80, admin off"),
         ("KNS · the root", os.path.exists(os.path.join(LOVE, "kns", "registry.json")), ".kingdom on :5391/udp"),
         ("NATS · the wire", port_up(4222), "jetstream :4222"),
-        ("MLX · the brain", port_up(8800), "qwen3-4b :8800"),
+        (
+            "MLX · the brain",
+            mlx_up(mlx_port),
+            f"receipt-bound configured model :{mlx_port_label}",
+        ),
     ]
     try:
         gates = json.load(open(os.path.join(LOVE, "gate", "state.json"), encoding="utf-8"))["gates"]

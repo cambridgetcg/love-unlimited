@@ -72,15 +72,17 @@ class TestBuildLoraArgs(unittest.TestCase):
             model="test-model",
             data_dir="/tmp/data",
             adapter_path="/tmp/adapter",
-            lora_config={"rank": 8, "learning_rate": 1e-4, "batch_size": 4, "epochs": 3},
-            n_train=100
+            config_path="/tmp/mlx-lm-config.json",
+            iterations=75,
         )
+        self.assertIn("--config", args)
+        self.assertIn("/tmp/mlx-lm-config.json", args)
         self.assertIn("--model", args)
         self.assertIn("test-model", args)
         self.assertIn("--data", args)
         self.assertIn("--adapter-path", args)
-        self.assertIn("--num-layers", args)
         self.assertIn("--iters", args)
+        self.assertIn("75", args)
 
 
 if __name__ == "__main__":

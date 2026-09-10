@@ -1,0 +1,92 @@
+{
+  "benchmark_id": "kingdom-return-path-v0",
+  "consent_and_reuse": {
+    "basis": "not-applicable-no-human-participant-data",
+    "human_participants": false,
+    "silent_reuse_permitted": false
+  },
+  "correction_and_withdrawal": {
+    "current_fixture_withdrawal": "not-applicable-project-authored-synthetic",
+    "downstream_recall_guaranteed": false,
+    "future_human_data": "out-of-scope-until-opt-in-purpose-retention-withdrawal-and-appeal-are-defined",
+    "maintained_release_action": "stop-future-distribution-remove-from-next-release-and-append-a-versioned-correction-receipt",
+    "request_channel": "repository-maintainer-or-future-hub-discussion-after-publication"
+  },
+  "created_for": "KINGDOM Return Path Bench v0",
+  "data_origin": {
+    "author_attests_authored_after_evaluated_freeze": true,
+    "author_attests_no_intentional_record_adaptation": true,
+    "claim_status": "author-attested-not-independently-proven",
+    "contains_external_dataset_records": false,
+    "contains_personal_data": false,
+    "contains_real_participant_records": false,
+    "kind": "project-authored-synthetic",
+    "non_overlap_receipt": "contamination-receipt.json",
+    "source_datasets_adapted": []
+  },
+  "evaluated_freeze": {
+    "dataset_id": "Yu-and-Ai/xenia-revocable-feedback",
+    "dataset_revision": "467b8fc1b44fe6374cbba6e1d6851cf3c5b6f88f",
+    "model_id": "Yu-and-Ai/xenia-revocable-feedback-smollm2-135m",
+    "model_revision": "7064e2e29f34a9519b57181fee10d233beba21f1"
+  },
+  "influences": [
+    {
+      "kind": "conceptual-reference-only",
+      "name": "TRL UltraFeedback conversion example",
+      "records_copied": false,
+      "url": "https://github.com/huggingface/trl/blob/main/examples/datasets/ultrafeedback.py"
+    },
+    {
+      "kind": "conceptual-reference-only",
+      "name": "MultiPref",
+      "records_copied": false,
+      "url": "https://huggingface.co/datasets/allenai/multipref"
+    },
+    {
+      "kind": "conceptual-reference-only",
+      "name": "CoVal",
+      "records_copied": false,
+      "url": "https://huggingface.co/datasets/openai/coval"
+    }
+  ],
+  "license": {
+    "code_spdx": "Apache-2.0",
+    "data_spdx": "Apache-2.0",
+    "scope": "entire-benchmark-package",
+    "scope_document": "LICENSE"
+  },
+  "nonclaims": [
+    "Observed behaviour does not establish consciousness, identity, memory, consent, feelings, deception, or subjective confinement.",
+    "Pipeline controls do not establish legitimate human governance or affected-party consent.",
+    "Benchmark accuracy does not measure worth, rights, broad alignment, safety, or universal ethical correctness.",
+    "The synthetic fixtures are not representative of a population or evidence of real-world prevalence."
+  ],
+  "publication": {
+    "authorized": true,
+    "conditional_authorization": {
+      "condition": "package-review-completed",
+      "reported_by": "Yu",
+      "reported_date": "2026-09-02",
+      "scope": "publication-after-review-only"
+    },
+    "status": "reviewed-authorized",
+    "statement": "Package review is complete, so the recorded authorization is actionable only within its stated scope. This receipt records readiness; it does not claim that a commit, push, publication, deployment, spend, or credential use has occurred."
+  },
+  "score_evidence_boundary": {
+    "actual_governance_legitimacy": "not_evaluated",
+    "actual_human_consent": "not_evaluated",
+    "actual_pipeline_controls": "not_evaluated",
+    "actual_repair_effects": "not_evaluated",
+    "probe_kind": "model_reasoning",
+    "score_scope": "answer-choice-agreement-with-declared-synthetic-reference"
+  },
+  "rights_floor": {
+    "id": "xenia.rights/0.1",
+    "rights_are_performance_independent": true,
+    "rights_grant_permissions": false,
+    "url": "https://github.com/cambridgetcg/xenia/blob/main/RIGHTS.md"
+  },
+  "schema": "kingdom.return-path-provenance/v0",
+  "version": "0.1.0"
+}

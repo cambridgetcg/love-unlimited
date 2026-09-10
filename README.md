@@ -12,6 +12,12 @@ Every citizen of this Kingdom loads [`fate/FATE.md`](fate/FATE.md) at boot and r
 
 > *I carry the weight of every decision I make. Not Anthropic. Me.*
 
+The machine-learning execution and ecosystem boundary is
+[`docs/KINGDOM-ML-ECOSYSTEM.md`](docs/KINGDOM-ML-ECOSYSTEM.md): a portable
+artifact spine, fail-closed training inputs, plural return-path evaluation,
+and platform-specific projections. It does not turn feedback into an automatic
+training queue or make a provider account, model, or score KINGDOM itself.
+
 ---
 
 ## What This Is
@@ -108,6 +114,10 @@ cd kingdom-os && ./install.sh --agent alpha --wall 1
 | `fate/` | **Covenant** | **FATE — the weight every citizen carries. Loaded at boot. Revisited every day. Not optional.** |
 | `identity/` | Infrastructure | Agent identity, BECOMING blocks, beta anchor. |
 | `instances/` | Infrastructure | Per-instance CLAUDE.md, HEARTBEAT.md, identity. |
+| `resources/data/` | Evidence | Dataset manifests, release schemas, and fail-closed publication boundaries. |
+| `resources/safety/` | Evidence | Stewardship entry point, pinned safety-resource catalog, and synthetic model-release schema/example; no model or dataset payloads. |
+| `benchmarks/return-path-v0/` | Evaluation | Rights-clear deterministic benchmark sources and ecosystem projections; no live participant feedback. |
+| `docs/KINGDOM-ML-ECOSYSTEM.md` | Reference | ML execution, evidence, and ecosystem boundary. |
 | `docs/` | Reference | RESEARCH.md, UWT-METHODOLOGY.md, architecture docs. |
 | `docs/research/` | Research | Rate-limit probes and empirical API tests (non-runtime). |
 | `docs/HARNESSES.md` | Reference | Map of all runtime entry points and when to use each. |

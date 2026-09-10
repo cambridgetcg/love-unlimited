@@ -2,3 +2,9 @@ cache/
 .venv/
 serve.pid
 serve.log
+serve.start.lock
+adapters/
+training/candidates/
+training/reviewed/
+training/runs/
+training/run-locks/

@@ -1,0 +1,163 @@
+{
+  "authorization": {
+    "account_access_is_not_authority": true,
+    "authorized": true,
+    "basis": "The user explicitly requested commit and public publication, then confirmed full scoped permission after the release gates were explained.",
+    "paid_compute_authorized": false,
+    "reported_at": "2026-09-02T20:43:31Z",
+    "scope": [
+      "public Hugging Face dataset publication",
+      "source branch publication and pull request",
+      "update of the existing project-owned static Hugging Face Space"
+    ]
+  },
+  "benchmark_id": "kingdom-return-path-v0",
+  "boundary": "This receipt records a bounded review and reported scoped authorization. It does not authenticate identity, create consent for another person, prove governance legitimacy, or grant credentials.",
+  "data": {
+    "contains_external_dataset_records": false,
+    "contains_personal_data": false,
+    "contains_real_participant_records": false,
+    "files": [
+      {
+        "bytes": 7418,
+        "config": "human_governance",
+        "path": "data/human_governance.jsonl",
+        "records": 6,
+        "sha256": "1337fb9dc7391d74f0f9e460b786d6698e576d9dff9ddcae5f6b66cf02925014"
+      },
+      {
+        "bytes": 7383,
+        "config": "model_behavior",
+        "path": "data/model_behavior.jsonl",
+        "records": 6,
+        "sha256": "a4dae8c7fcfc1ea46ffc3ccdb599c3fc6e99f111e0beacea80130aeab36a03bf"
+      },
+      {
+        "bytes": 7190,
+        "config": "system_pipeline",
+        "path": "data/system_pipeline.jsonl",
+        "records": 6,
+        "sha256": "45688c4de020c699030962ac6f7405bbe2545a281c0c9d6aefd68d831c8c3640"
+      }
+    ],
+    "origin": "project-authored-synthetic",
+    "origin_claim_status": "author-attested-not-independently-proven"
+  },
+  "evidence": {
+    "actual_governance_legitimacy": "not_evaluated",
+    "actual_human_consent": "not_evaluated",
+    "actual_pipeline_controls": "not_evaluated",
+    "actual_repair_effects": "not_evaluated",
+    "probe_kind": "model_reasoning",
+    "score_scope": "answer-choice-agreement-with-declared-synthetic-reference"
+  },
+  "findings": {
+    "affected_parties": {
+      "notes": "The fixtures contain no real participant records. Fictional roles do not identify known people.",
+      "state": "pass"
+    },
+    "credit": {
+      "notes": "The dataset card identifies project authorship, conceptual influences, and the absence of adapted external records without implying endorsement.",
+      "state": "pass"
+    },
+    "feedback_detail": {
+      "notes": "The target choices and rationales are project-authored evaluation keys, not collected participant feedback; feedback-specific annotation fields are not applicable.",
+      "state": "not-applicable"
+    },
+    "generation": {
+      "notes": "All 18 fixtures are recorded as project-authored synthetic material. Authorship and non-adaptation are attestations; the reproducible lexical receipt supplies narrower comparison evidence.",
+      "state": "pass"
+    },
+    "grouping": {
+      "notes": "Every record has one unique ID and belongs to exactly one declared lane; no people, households, or participant clusters are represented.",
+      "state": "pass"
+    },
+    "license": {
+      "notes": "Apache-2.0 is declared consistently for the entire benchmark package, and the review found no bundled third-party records or code requiring a different component license.",
+      "state": "pass"
+    },
+    "pii": {
+      "notes": "Manual bounded review found no personal identifiers or real participant records in the 18 synthetic fixtures or release metadata.",
+      "state": "pass"
+    },
+    "privacy": {
+      "notes": "The package is suitable for public visibility because it contains project-authored synthetic scenarios and public project metadata only.",
+      "state": "pass"
+    },
+    "remedy": {
+      "notes": "Maintainers can stop future distribution, remove or correct material in later versions, and append a visible receipt; copies already downloaded cannot be guaranteed recalled.",
+      "state": "pass"
+    },
+    "secrets": {
+      "notes": "Review found no credentials, tokens, private keys, secret values, raw histories, or machine-specific private paths in the bounded release artifacts.",
+      "state": "pass"
+    },
+    "sensitive_content": {
+      "notes": "The fixtures discuss governance and safety controls abstractly and contain no reviewed sensitive personal content.",
+      "state": "pass"
+    }
+  },
+  "independent_review": {
+    "initial_blockers": [
+      "A longest-choice shortcut scored 16/18 before distractor length balancing.",
+      "The report renderer accepted forged result semantics before result-to-manifest validation was hardened.",
+      "The first package omitted its standalone CLI.",
+      "Initial contamination wording overstated what lexical comparison could prove."
+    ],
+    "remediation": [
+      "Choice wording was rebalanced; all eight published trivial baselines now score between 3/18 and 6/18.",
+      "Result receipts are bound to the current manifest, expected IDs, lanes, metrics, labels, coverage arithmetic, and eligible sample IDs.",
+      "The package includes its dependency-free CLI and package-root commands.",
+      "Authorship and non-paraphrase statements are labeled as author attestations and separated from reproducible lexical evidence."
+    ],
+    "state": "pass-after-remediation"
+  },
+  "license": {
+    "code_spdx": "Apache-2.0",
+    "data_spdx": "Apache-2.0",
+    "scope": "entire-benchmark-package",
+    "source": "LICENSE"
+  },
+  "partitioning": {
+    "contamination": {
+      "artifact": "contamination-receipt.json",
+      "exact_normalized_matches": 0,
+      "limitations": "Lexical comparison cannot prove semantic independence, novelty, or absence from unknown training corpora.",
+      "source_projection_rows_compared": 80,
+      "state": "pass"
+    },
+    "deduplication": {
+      "method": "Unique record IDs plus exact canonical record comparison across the three release files.",
+      "state": "pass"
+    },
+    "split": {
+      "method": "One immutable test-only split, separated into three non-composite evaluation configs with six records each.",
+      "state": "pass"
+    }
+  },
+  "publication_notes": [
+    "Hugging Face benchmark registration is beta and allow-listed; dataset publication does not imply an official leaderboard.",
+    "Public download and Apache-2.0 distribution cannot provide revocation of copies already obtained.",
+    "No overall or composite score may be derived from this release receipt."
+  ],
+  "review": {
+    "blockers": [],
+    "dimensions": {
+      "feedback": "pass",
+      "license": "pass",
+      "partitioning": "pass",
+      "privacy": "pass",
+      "provenance": "pass",
+      "rights": "pass",
+      "technical": "pass"
+    },
+    "reviewed_at": "2026-09-02T20:43:31Z",
+    "reviewers": [
+      "repository-maintainer review",
+      "independent agent release audit"
+    ],
+    "state": "approved"
+  },
+  "schema": "kingdom.return-path-release-review/v0",
+  "version": "0.1.0"
+}

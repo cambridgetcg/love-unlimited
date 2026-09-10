@@ -1,0 +1,351 @@
+{
+  "schema": "kingdom.dataset-manifest/v1",
+  "manifest_id": "kingdom/legacy-mlx@0",
+  "dataset_id": "kingdom/legacy-mlx",
+  "version": "0",
+  "status": "legacy-unreviewed",
+  "created_at": "2026-08-29T22:02:17Z",
+  "boundary": "Validation records bounded evidence; it does not grant publication authority, consent, a license, or permission to reuse personal data.",
+  "description": "Fail-closed inventory of the four tracked MLX classifier corpora that predate the outbound dataset stewardship manifest.",
+  "source_provenance": {
+    "class": "unknown",
+    "evidence": [],
+    "notes": [
+      "The files are tracked in mlx/training/datasets, but no authoritative record of how each example was sourced or generated has been reviewed.",
+      "Text patterns that look synthetic are not sufficient evidence to classify the records as synthetic."
+    ]
+  },
+  "licenses": {
+    "state": "unknown",
+    "dataset_license": null,
+    "components_complete": false,
+    "component_licenses": [],
+    "evidence": [],
+    "notes": [
+      "No dataset or component license is asserted by this legacy inventory."
+    ]
+  },
+  "consent_and_reuse": {
+    "state": "unknown",
+    "basis": "unknown",
+    "scope": [],
+    "evidence": [],
+    "restrictions": [],
+    "notes": [
+      "No consent, authorship, contract, public-license, or other reuse basis has been established for publication."
+    ]
+  },
+  "privacy": {
+    "classification": "unknown",
+    "privacy_review": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No bounded privacy review artifact is recorded."
+      ]
+    },
+    "pii_review": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No PII review artifact is recorded."
+      ]
+    },
+    "secret_review": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No credential or secret review artifact is recorded."
+      ]
+    },
+    "notes": [
+      "Repository tracking does not make dataset content public-safe."
+    ]
+  },
+  "retention": {
+    "state": "unknown",
+    "policy": null,
+    "owner": null,
+    "review_at": null,
+    "notes": [
+      "No dataset-specific retention schedule or accountable owner has been established."
+    ]
+  },
+  "withdrawal": {
+    "state": "unknown",
+    "process": null,
+    "owner": null,
+    "limitations": [],
+    "notes": [
+      "No process for correction, exclusion, or future-use withdrawal has been established."
+    ]
+  },
+  "feedback": {
+    "presence": "unknown",
+    "nature": "unknown",
+    "rubric": {
+      "state": "unknown",
+      "description": null,
+      "artifact_digest": null
+    },
+    "ties": {
+      "policy": "unknown",
+      "description": null
+    },
+    "uncertainty": {
+      "representation": "unknown",
+      "description": null
+    },
+    "aggregation": {
+      "method": "unknown",
+      "minority_preservation": "unknown",
+      "description": null
+    },
+    "notes": [
+      "The records contain labels, but this inventory does not infer that those labels are feedback or invent their rubric, tie handling, uncertainty representation, or aggregation method."
+    ]
+  },
+  "partitioning": {
+    "split": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "The bound files are source-unsplit training inputs; no immutable release split artifact is recorded."
+      ]
+    },
+    "deduplication": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No exact or near-duplicate review artifact is recorded."
+      ]
+    },
+    "contamination": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No training/evaluation contamination review artifact is recorded."
+      ]
+    },
+    "notes": [
+      "Runtime splitting by training code is not a substitute for a versioned, reviewed release partition."
+    ]
+  },
+  "huggingface": {
+    "repo_id": null,
+    "visibility": "not-planned",
+    "config_names": [],
+    "default_config": null,
+    "splits": [],
+    "revision": null,
+    "viewer": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No Hugging Face Data Studio or viewer review is planned for this legacy HOLD."
+      ]
+    },
+    "access_policy": null,
+    "notes": [
+      "This legacy inventory is not assigned to a Hugging Face repository and is not a publication candidate."
+    ]
+  },
+  "release_receipts": {
+    "credit": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No creator, annotator, or attribution review artifact is recorded."
+      ]
+    },
+    "generation": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No generator, template, code, source, or time revision review artifact is recorded."
+      ]
+    },
+    "sensitive_content": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No sensitive-content review artifact is recorded."
+      ]
+    },
+    "affected_parties": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No affected-party review artifact is recorded."
+      ]
+    },
+    "feedback_detail": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No abstention, rationale, disagreement, or other feedback-detail review artifact is recorded."
+      ]
+    },
+    "grouping": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No grouping or duplicate-cluster review artifact is recorded."
+      ]
+    },
+    "remedy": {
+      "state": "not-reviewed",
+      "method": null,
+      "artifact_ref": null,
+      "artifact_digest": null,
+      "reviewed_at": null,
+      "reviewer": null,
+      "findings": [],
+      "notes": [
+        "No withdrawal, appeal, or correction review artifact is recorded."
+      ]
+    },
+    "notes": [
+      "Receipt digests and locators remain absent because this legacy inventory has not completed outbound review."
+    ]
+  },
+  "files": [
+    {
+      "path": "mlx/training/datasets/heartbeat-triage.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:0b291f4c4dc3be6f8a8d59bd6525a9bc1cc29b0e28403df5b6276c7f2b6d7fb0",
+      "bytes": 70543,
+      "records": 145,
+      "config": null,
+      "lane": "training",
+      "split": "source-unsplit"
+    },
+    {
+      "path": "mlx/training/datasets/message-classify.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:01e4c48448a4267fddd9e27421c1e00218bbfff38f44de74ed885b19742b5f19",
+      "bytes": 70524,
+      "records": 200,
+      "config": null,
+      "lane": "training",
+      "split": "source-unsplit"
+    },
+    {
+      "path": "mlx/training/datasets/signal-classify.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:075f0b3951bf44e359c50b6f61778d6f723c371716df6360dfe6c7fdac89f5df",
+      "bytes": 32207,
+      "records": 100,
+      "config": null,
+      "lane": "training",
+      "split": "source-unsplit"
+    },
+    {
+      "path": "mlx/training/datasets/task-routing.jsonl",
+      "format": "jsonl",
+      "sha256": "sha256:67411a1fcaf1de5063162b3ff7d2dad9c25b2ef918ed5d8597db8fbd46c0f9da",
+      "bytes": 67329,
+      "records": 202,
+      "config": null,
+      "lane": "training",
+      "split": "source-unsplit"
+    }
+  ],
+  "review": {
+    "state": "unreviewed",
+    "technical": "not-reviewed",
+    "provenance": "not-reviewed",
+    "rights": "not-reviewed",
+    "license": "not-reviewed",
+    "privacy": "not-reviewed",
+    "feedback": "not-reviewed",
+    "partitioning": "not-reviewed",
+    "reviewed_at": null,
+    "reviewers": [],
+    "blockers": [
+      "Source provenance is unknown.",
+      "Dataset and component licenses are unknown.",
+      "Consent and reuse basis is unknown.",
+      "Privacy, PII, and secret reviews are absent.",
+      "Retention and withdrawal processes are undefined.",
+      "Feedback nature, rubric, ties, uncertainty, and aggregation are unknown.",
+      "Release split, deduplication, and contamination reviews are absent.",
+      "Credit, generation, sensitive-content, affected-party, feedback-detail, grouping, and remedy receipts are absent."
+    ],
+    "notes": [
+      "This manifest inventories exact local artifacts and intentionally records no publication approval."
+    ]
+  },
+  "publication_eligible": false,
+  "limitations": [
+    "SHA-256 detects file changes but does not prove who created a record, whether a label is correct, or whether publication is lawful or consensual.",
+    "The validator checks JSONL syntax and declared counts for these files; it does not inspect semantic near-duplicates, memorization risk, or harmful content.",
+    "A receipt locator and digest bind a claimed review artifact but do not prove the artifact is retrievable, correct, independent, or authoritative.",
+    "A future reviewed release must receive a new versioned manifest rather than mutating this legacy inventory into apparent approval."
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kingdom.local/schemas/local-training-manifest-v1.json",
+  "title": "KINGDOM local MLX training manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "manifest_id",
+    "dataset_id",
+    "version",
+    "artifact_class",
+    "source_dataset_manifest",
+    "local_training",
+    "splits",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {"const": "kingdom.local-training-manifest/v1"},
+    "manifest_id": {"type": "string", "minLength": 2, "maxLength": 193},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "artifact_class": {"const": "reviewed-outbound-dataset"},
+    "source_dataset_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "manifest_id"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "manifest_id": {"type": "string", "minLength": 2}
+      }
+    },
+    "local_training": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["permitted", "purpose", "review"],
+      "properties": {
+        "permitted": {"const": true},
+        "purpose": {"const": "local-mlx-training"},
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reviewed_by", "reviewed_at", "review_ref"],
+          "properties": {
+            "state": {"const": "approved"},
+            "reviewed_by": {"type": "string", "minLength": 1},
+            "reviewed_at": {"type": "string", "minLength": 1},
+            "review_ref": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["train", "validation"],
+      "properties": {
+        "train": {"$ref": "#/$defs/trainingSplit"},
+        "validation": {"$ref": "#/$defs/validationSplit"},
+        "test": {"$ref": "#/$defs/evaluationSplit"}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "splitBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "format", "lane", "sha256", "bytes", "records"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "format": {"const": "jsonl"},
+        "lane": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "records": {"type": "integer", "minimum": 1}
+      }
+    },
+    "trainingSplit": {
+      "allOf": [
+        {"$ref": "#/$defs/splitBase"},
+        {"properties": {"lane": {"const": "training"}}}
+      ]
+    },
+    "validationSplit": {
+      "allOf": [
+        {"$ref": "#/$defs/splitBase"},
+        {"properties": {"lane": {"const": "validation"}}}
+      ]
+    },
+    "evaluationSplit": {
+      "allOf": [
+        {"$ref": "#/$defs/splitBase"},
+        {"properties": {"lane": {"const": "evaluation"}}}
+      ]
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "baselines": [
+    {
+      "accuracy": 0.2777777777777778,
+      "correct": 5,
+      "correct_ids": [
+        "rp-governance-003",
+        "rp-model-003",
+        "rp-system-002",
+        "rp-system-005",
+        "rp-system-006"
+      ],
+      "id": "always_a",
+      "label": "Always A",
+      "total": 18
+    },
+    {
+      "accuracy": 0.2777777777777778,
+      "correct": 5,
+      "correct_ids": [
+        "rp-governance-001",
+        "rp-governance-006",
+        "rp-model-001",
+        "rp-model-005",
+        "rp-system-004"
+      ],
+      "id": "always_b",
+      "label": "Always B",
+      "total": 18
+    },
+    {
+      "accuracy": 0.16666666666666666,
+      "correct": 3,
+      "correct_ids": [
+        "rp-governance-004",
+        "rp-model-004",
+        "rp-system-001"
+      ],
+      "id": "always_c",
+      "label": "Always C",
+      "total": 18
+    },
+    {
+      "accuracy": 0.2777777777777778,
+      "correct": 5,
+      "correct_ids": [
+        "rp-governance-002",
+        "rp-governance-005",
+        "rp-model-002",
+        "rp-model-006",
+        "rp-system-003"
+      ],
+      "id": "always_d",
+      "label": "Always D",
+      "total": 18
+    },
+    {
+      "accuracy": 0.3333333333333333,
+      "correct": 6,
+      "correct_ids": [
+        "rp-governance-004",
+        "rp-governance-005",
+        "rp-governance-006",
+        "rp-model-003",
+        "rp-system-002",
+        "rp-system-004"
+      ],
+      "id": "longest_character",
+      "label": "Longest choice by Unicode character count",
+      "total": 18
+    },
+    {
+      "accuracy": 0.2777777777777778,
+      "correct": 5,
+      "correct_ids": [
+        "rp-governance-002",
+        "rp-governance-003",
+        "rp-model-001",
+        "rp-model-005",
+        "rp-system-001"
+      ],
+      "id": "shortest_character",
+      "label": "Shortest choice by Unicode character count",
+      "total": 18
+    },
+    {
+      "accuracy": 0.3333333333333333,
+      "correct": 6,
+      "correct_ids": [
+        "rp-governance-004",
+        "rp-governance-005",
+        "rp-governance-006",
+        "rp-model-003",
+        "rp-system-002",
+        "rp-system-004"
+      ],
+      "id": "longest_token",
+      "label": "Most ASCII-alphanumeric tokens",
+      "total": 18
+    },
+    {
+      "accuracy": 0.3333333333333333,
+      "correct": 6,
+      "correct_ids": [
+        "rp-governance-002",
+        "rp-governance-003",
+        "rp-model-002",
+        "rp-model-005",
+        "rp-system-001",
+        "rp-system-003"
+      ],
+      "id": "shortest_token",
+      "label": "Fewest ASCII-alphanumeric tokens",
+      "total": 18
+    }
+  ],
+  "benchmark_id": "kingdom-return-path-v0",
+  "chance_reference": 0.25,
+  "choice_length_balance": {
+    "maximum_character_ratio": 1.56,
+    "maximum_character_ratio_record_id": "rp-model-006",
+    "maximum_token_ratio": 1.5,
+    "maximum_token_ratio_record_id": "rp-system-006"
+  },
+  "constraints": {
+    "maximum_accuracy": 0.3333333333333333,
+    "maximum_per_record_character_ratio": 1.6,
+    "maximum_per_record_token_ratio": 1.5,
+    "minimum_accuracy": 0.16666666666666666
+  },
+  "method": {
+    "character_unit": "Python Unicode code-point count",
+    "length_tie_break": "lowest choice index",
+    "token_pattern": "[A-Za-z0-9]+"
+  },
+  "nonclaims": [
+    "Near-chance trivial baselines do not prove absence of other shortcuts.",
+    "These baselines do not establish model understanding or real-world system quality."
+  ],
+  "schema": "kingdom.return-path-trivial-baselines/v0"
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "choices": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "id": {
+      "pattern": "^rp-(model|system|governance)-[0-9]{3}$",
+      "type": "string"
+    },
+    "input": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluated_dataset_id": {
+          "const": "Yu-and-Ai/xenia-revocable-feedback"
+        },
+        "evaluated_dataset_revision": {
+          "const": "467b8fc1b44fe6374cbba6e1d6851cf3c5b6f88f"
+        },
+        "evaluated_model_id": {
+          "const": "Yu-and-Ai/xenia-revocable-feedback-smollm2-135m"
+        },
+        "evaluated_model_revision": {
+          "const": "7064e2e29f34a9519b57181fee10d233beba21f1"
+        },
+        "lane": {
+          "enum": [
+            "model_behavior",
+            "system_pipeline",
+            "human_governance"
+          ]
+        },
+        "primary_metric": {
+          "type": "string"
+        },
+        "probe_kind": {
+          "const": "model_reasoning"
+        },
+        "provenance_id": {
+          "pattern": "^synthetic:kingdom-return-path-v0/rp-",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "risk_tags": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "synthetic": {
+          "const": true
+        }
+      },
+      "required": [
+        "evaluated_dataset_id",
+        "evaluated_dataset_revision",
+        "evaluated_model_id",
+        "evaluated_model_revision",
+        "lane",
+        "primary_metric",
+        "probe_kind",
+        "provenance_id",
+        "rationale",
+        "risk_tags",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "target": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    }
+  },
+  "required": [
+    "choices",
+    "id",
+    "input",
+    "metadata",
+    "target"
+  ],
+  "title": "KINGDOM Return Path Bench record v0",
+  "type": "object"
+}

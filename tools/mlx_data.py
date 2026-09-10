@@ -544,7 +544,11 @@ def cmd_generate(args):
         if result.returncode != 0:
             print(f"  Batch {batch + 1} failed", file=sys.stderr)
             continue
-        examples = parse_generated_examples(result.stdout)
+        examples = [
+            example
+            for example in parse_generated_examples(result.stdout)
+            if extract_classification_target(example) in TASK_LABELS[args.task]
+        ]
         for example in examples[:remaining]:
             example["source"] = "model-generated-unreviewed"
             collected.append(example)

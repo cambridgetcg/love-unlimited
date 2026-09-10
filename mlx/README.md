@@ -96,9 +96,29 @@ mlx/.venv/bin/python3 -I tools/mlx_train.py approve-serving \
   --decision-ref <review-or-ticket-ref> \
   --acknowledge-loopback-only \
   I_APPROVE_THIS_ADAPTER_FOR_LOOPBACK_ONLY_LOCAL_SERVING
-
-mlx/.venv/bin/python3 -I tools/mlx_serve.py start --daemon
 ```
+
+Approval does **not** select or load an adapter. The checked-in
+`mlx/config.json` deliberately has `"adapter": null`, so approve-and-start
+alone serves the base model. Only a separately authorized local operator should
+select `kingdom-v2`: with their local server stopped, change only `adapter` in
+that runtime checkout's `mlx/config.json` to `"kingdom-v2"`, preserving the model
+lock and other settings. This is a local serving decision, not a source-review
+or CI step; do not commit an operator's selection as the repository default.
+
+Then start and inspect that local server:
+
+```bash
+mlx/.venv/bin/python3 -I tools/mlx_serve.py start --daemon
+mlx/.venv/bin/python3 -I tools/mlx_serve.py status
+```
+
+Verify that status reports `Adapter: kingdom-v2`, not `None`; `/health` also
+reports the active adapter and its `adapter_receipt_sha256`. Starting an
+already-running daemon does not reload changed configuration. Stop only the
+operator's own server before applying the selection and starting it again.
+To return to base-only serving, stop that server, restore `"adapter": null`,
+and start it again; editing the file alone does not unload resident weights.
 
 The approval is a digest-bound local declaration, not authenticated identity
 or public deployment authority. Unknown fields such as an ad hoc `revoked`

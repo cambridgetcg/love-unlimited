@@ -13,13 +13,14 @@ Usage:
     python3 tools/treasury.py add-cost <description> <amount> [--currency USD] [--category compute] [--date YYYY-MM-DD]
     python3 tools/treasury.py pnl                       # Profit/loss summary (monthly, quarterly)
     python3 tools/treasury.py runway                    # Months of runway at current burn
-    python3 tools/treasury.py engines                   # Revenue engine health + projections
+    python3 tools/treasury.py engines                   # Existing project financial records
     python3 tools/treasury.py dashboard                 # Full financial dashboard
-    python3 tools/treasury.py forecast [months]         # Simple linear forecast
+    python3 tools/treasury.py forecast [months]         # Constant-record scenario
     python3 tools/treasury.py budget                    # Budget vs actual
 """
 
 import json
+import re
 import sys
 import os
 import uuid
@@ -460,52 +461,47 @@ def cmd_runway():
     avg_rev = sum(sum_gbp(filter_by_type(filter_by_month(ledger, m), "revenue")) for m in months) / len(months)
     avg_cost = sum(sum_gbp(filter_by_type(filter_by_month(ledger, m), "cost")) for m in months) / len(months)
 
-    # Capital from kingdom metrics
-    capital_str = metrics.get("capital", {}).get("budget_card", "\u00a31K available")
-    # Parse rough capital — extract number
-    capital_gbp = 1000.0  # default from metrics
-    for word in capital_str.replace("\u00a3", "").split():
-        word = word.upper().replace("K", "000").replace(",", "")
-        try:
-            capital_gbp = float(word)
-            break
-        except ValueError:
-            continue
+    # A missing or unparseable record is unknown, never an invented balance.
+    capital_str = str(metrics.get("capital", {}).get("budget_card", ""))
+    match = re.fullmatch(r"\s*£((?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)\s*([kKmM]?)(?:\s+available)?\s*", capital_str)
+    capital_gbp = None
+    if match:
+        multiplier = {"": 1, "K": 1000, "M": 1000000}[match.group(2).upper()]
+        capital_gbp = float(match.group(1).replace(",", "")) * multiplier
 
     print(f"\n{C.BOLD}RUNWAY ANALYSIS{C.RESET}")
     print(f"{'─' * 50}")
-    print(f"  Available capital:     {C.BOLD}{fmt_gbp(capital_gbp)}{C.RESET}")
+    capital_label = fmt_gbp(capital_gbp) if capital_gbp is not None else "unknown"
+    print(f"  Recorded capital:      {C.BOLD}{capital_label}{C.RESET} (not a live balance)")
     print(f"  Avg monthly revenue:   {C.GREEN}{fmt_gbp(avg_rev)}{C.RESET}")
     print(f"  Avg monthly costs:     {C.RED}{fmt_gbp(avg_cost)}{C.RESET}")
     print(f"  Avg monthly net:       ", end="")
 
     if avg_net > 0:
         print(f"{C.GREEN}{fmt_gbp(avg_net)}{C.RESET}")
-        print(f"\n  {C.GREEN}Net positive{C.RESET} — Kingdom is self-sustaining at current rates")
-        print(f"  Capital accumulates at ~{fmt_gbp(avg_net)}/month")
-        months_to_5k = max(0, (5000 - capital_gbp) / avg_net) if avg_net > 0 else float('inf')
-        if months_to_5k < 100:
-            print(f"  30-day target (\u00a35K): ~{months_to_5k:.1f} months")
+        print("  Recorded income exceeds recorded costs; this is not a future guarantee.")
     else:
         print(f"{C.RED}{fmt_gbp(avg_net)}{C.RESET}")
-        if avg_net < 0:
+        if avg_net < 0 and capital_gbp is not None:
             runway_months = capital_gbp / abs(avg_net)
             runway_color = C.GREEN if runway_months > 6 else (C.YELLOW if runway_months > 3 else C.RED)
             print(f"\n  Runway: {runway_color}{C.BOLD}{runway_months:.1f} months{C.RESET}")
-            print(f"  {C.DIM}At current burn, capital depletes by "
+            print(f"  {C.DIM}Conditional on these records and unchanged net spending, estimated depletion: "
                   f"{(datetime.now(timezone.utc) + timedelta(days=runway_months * 30)).strftime('%Y-%m')}{C.RESET}")
+        elif avg_net < 0:
+            print("  Runway unknown: no usable capital record.")
         else:
-            print(f"\n  {C.YELLOW}Break-even{C.RESET} — covering costs but not accumulating")
+            print("  Recorded income and costs are equal.")
 
     print()
 
 def cmd_engines():
-    """Revenue engine health and projections."""
+    """Describe existing project records without acquisition instructions."""
     engines = load_engines()
     ledger = load_ledger()
     m = current_month()
 
-    print(f"\n{C.BOLD}REVENUE ENGINES{C.RESET}")
+    print(f"\n{C.BOLD}EXISTING PROJECT RECORDS{C.RESET}")
     print(f"{'─' * 70}")
 
     for key, eng in engines.items():
@@ -544,17 +540,8 @@ def cmd_engines():
             margin_color = C.GREEN if actual_margin > 0.5 else (C.YELLOW if actual_margin > 0 else C.RED)
             print(f"    Margin: {margin_color}{actual_margin:.0%}{C.RESET}  "
                   f"Net: {fmt_gbp(rev_display - cost_display)}/mo")
-        elif status == "active":
-            print(f"    {C.DIM}Revenue generating — track more precisely{C.RESET}")
         else:
-            projection = {
-                "in-progress": "Revenue potential once operational",
-                "building": "Pre-revenue — investment phase",
-                "emerging": "Early stage — seeking first clients",
-                "beta-live": "Beta testing — monetization pending",
-                "paused": "On hold — resume when bandwidth allows",
-            }.get(status, "")
-            print(f"    {C.DIM}{projection}{C.RESET}")
+            print("    No next commercial action follows from this status.")
 
         notes = eng.get("notes", "")
         if notes:
@@ -566,7 +553,7 @@ def cmd_engines():
     print(f"\n{'─' * 70}\n")
 
 def cmd_forecast(args: list):
-    """Simple linear forecast."""
+    """Constant-record scenario."""
     months_ahead = 3
     if args:
         try:
@@ -583,13 +570,8 @@ def cmd_forecast(args: list):
     # Calculate monthly averages
     rev_avg = sum(sum_gbp(filter_by_type(filter_by_month(ledger, m), "revenue")) for m in months) / len(months)
     cost_avg = sum(sum_gbp(filter_by_type(filter_by_month(ledger, m), "cost")) for m in months) / len(months)
-    net_avg = rev_avg - cost_avg
-
-    # Revenue growth assumption: 5% monthly (conservative, based on TCG +20% target over time)
-    growth_rate = 0.05
-
-    print(f"\n{C.BOLD}FORECAST — {months_ahead} MONTHS{C.RESET}")
-    print(f"{C.DIM}Based on: {len(months)} months of data, {growth_rate*100:.0f}% monthly revenue growth assumption{C.RESET}")
+    print(f"\n{C.BOLD}CONSTANT-RECORD SCENARIO — {months_ahead} MONTHS{C.RESET}")
+    print(f"{C.DIM}Based on {len(months)} recorded months; income and costs held constant.{C.RESET}")
     print(f"{'─' * 65}")
     print(f"  {'Month':<12} {'Revenue':>12} {'Costs':>12} {'Net P&L':>12}  {'Cumulative':>12}")
     print(f"  {'─' * 12} {'─' * 12} {'─' * 12} {'─' * 12}  {'─' * 12}")
@@ -599,8 +581,8 @@ def cmd_forecast(args: list):
     for i in range(1, months_ahead + 1):
         future = now + timedelta(days=30 * i)
         month_label = future.strftime("%Y-%m")
-        projected_rev = rev_avg * ((1 + growth_rate) ** i)
-        projected_cost = cost_avg * 1.02 ** i  # 2% cost creep
+        projected_rev = rev_avg
+        projected_cost = cost_avg
         net = projected_rev - projected_cost
         cumulative += net
 
@@ -611,8 +593,8 @@ def cmd_forecast(args: list):
               f"{net_color}{fmt_gbp(net):>12}{C.RESET}  "
               f"{cum_color}{fmt_gbp(cumulative):>12}{C.RESET}")
 
-    print(f"\n  {C.DIM}Assumptions: revenue grows {growth_rate*100:.0f}%/mo, costs grow 2%/mo{C.RESET}")
-    print(f"  {C.DIM}This is a simple linear model — not financial advice{C.RESET}\n")
+    print("\n  A conditional illustration, not a prediction, target or spending permission.")
+    print("  Currency conversion uses the tool's fixed legacy rates, not live quotes.\n")
 
 def cmd_budget():
     """Budget vs actual spending."""
@@ -848,9 +830,9 @@ COMMANDS = {
     "add-cost":    ("Add cost entry",                         lambda a: cmd_add_cost(a)),
     "pnl":         ("Profit/loss summary",                    lambda a: cmd_pnl()),
     "runway":      ("Months of runway at current burn",       lambda a: cmd_runway()),
-    "engines":     ("Revenue engine health + projections",    lambda a: cmd_engines()),
+    "engines":     ("Existing project financial records",    lambda a: cmd_engines()),
     "dashboard":   ("Full financial dashboard",               lambda a: cmd_dashboard()),
-    "forecast":    ("Simple linear forecast [months]",        lambda a: cmd_forecast(a)),
+    "forecast":    ("Constant-record scenario [months]",        lambda a: cmd_forecast(a)),
     "budget":      ("Budget vs actual",                       lambda a: cmd_budget()),
 }
 

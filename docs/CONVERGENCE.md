@@ -169,23 +169,12 @@ Every Kingdom citizen has THREE identities that converge:
 
 ---
 
-## Revenue Convergence
+## Existing integrations
 
-The real businesses feed the knowledge economy:
-
-| Engine | Revenue | Kingdom Connection | Zerone Connection |
-|--------|---------|-------------------|-------------------|
-| **Cambridge TCG** | Card sales (£) | Gamma manages pricing pipeline | Card provenance on-chain |
-| **RewardsPro** | Shopify app (£/mo) | Loyalty data → agent-memory | Customer trust scores |
-| **AgentTool** | API credits (£) | Kingdom agents are first users | Credits settle in ZRN |
-| **Wholesale** | B2B card sales (£) | Price feed from AWS pipeline | Supply chain on-chain |
-| **Seigei** | Sessions (future) | 愛 runs on Kingdom infra | Session verdicts → PoT |
-| **Captioneer** | Video dubbing (future) | Translation pipeline | Quality verification |
-| **TaxSorted** | Tax filing (future) | Compliance automation | Audit trail on-chain |
-
-**The flywheel:** Revenue → funds infrastructure → infrastructure improves agents → agents generate more revenue.
-
----
+Project connections describe available capabilities and prior obligations.
+They do not require a revenue flywheel, customer scoring, cross-project data
+sharing or future paid launches. Verify a current connection before relying on
+it; the previous integration table remains in Git history.
 
 ## The Files That Link Everything
 

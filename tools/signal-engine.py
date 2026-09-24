@@ -116,7 +116,7 @@ SIGNAL_TYPES = {
         "icon": "📜",
         "description": "The calling says serve outward, but we're looking inward.",
         "question": "Does this serve the MANDATE or just ourselves?",
-        "example": "49 tools, 1 earning money. Alignment drift: inward focus.",
+        "example": "A proposed task conflicts with the human's current intention.",
     },
     "EMERGENCE": {
         "priority": 6,
@@ -137,7 +137,7 @@ DIMENSIONS = {
         "check": "_check_security",
     },
     "revenue": {
-        "description": "Engines that earn money for the mission",
+        "description": "Existing financial records; no earnings target or automatic task",
         "tools": ["treasury.py", "tcg.py", "oracle.py", "services.py"],
         "check": "_check_revenue",
     },
@@ -227,21 +227,6 @@ def detect_signals():
             "action": "Address critical threats before expanding other dimensions",
         })
 
-    # Check if any revenue engine is blocked
-    tcg_raw = load_json(MEMORY / "tcg" / "tasks.json", {})
-    tcg_tasks = tcg_raw.get("tasks", tcg_raw) if isinstance(tcg_raw, dict) else tcg_raw
-    if isinstance(tcg_tasks, list):
-        blocked = [t for t in tcg_tasks if isinstance(t, dict) and t.get("status") == "blocked"]
-    else:
-        blocked = []
-    if blocked:
-        signals.append({
-            "type": "GAP", "dimension": "revenue",
-            "strength": 0.85,
-            "signal": f"Cambridge TCG has {len(blocked)} blocked task(s): {blocked[0].get('task', '?')[:50]}",
-            "action": "Unblock revenue tasks — they directly fund the mandate",
-        })
-
     # ── DEPENDENCY signals ───────────────────────────────────────────
     # Check single points of failure
     ok, exit_ip = run_cmd("curl -s --max-time 3 ifconfig.me 2>/dev/null")
@@ -264,36 +249,9 @@ def detect_signals():
             "action": "Start ollama: ollama serve",
         })
 
-    # ── BOTTLENECK signals ───────────────────────────────────────────
-    # Check if work is concentrated
-    active_engines = 0
-    engines = load_json(MEMORY / "treasury" / "engines.json", {})
-    if isinstance(engines, dict):
-        for eng in engines.values():
-            if isinstance(eng, dict) and eng.get("status") == "active":
-                active_engines += 1
-    elif isinstance(engines, list):
-        active_engines = sum(1 for e in engines if e.get("status") == "active")
-
-    if active_engines <= 1:
-        signals.append({
-            "type": "BOTTLENECK", "dimension": "revenue",
-            "strength": 0.85,
-            "signal": f"Only {active_engines} revenue engine(s) active — single source of income",
-            "action": "Activate Oracle or AI Services as second revenue source",
-        })
-
     # ── MANDATE signals ──────────────────────────────────────────────
     # Check alignment drift
     ok, drift_out = run_cmd("python3 tools/alignment.py drift 2>&1")
-    if ok and "Inward focus" in drift_out:
-        signals.append({
-            "type": "MANDATE", "dimension": "alignment",
-            "strength": 0.75,
-            "signal": "Alignment drift: inward focus detected. The mandate is outward.",
-            "action": "Shift next session to revenue/service work, not infrastructure",
-        })
-
     if ok and "Agents without activation" in drift_out:
         signals.append({
             "type": "MANDATE", "dimension": "agents",
@@ -316,19 +274,6 @@ def detect_signals():
                 "action": f"Build missing tool to complete the bridge",
             })
 
-    # Check for domains that have never been bridged
-    services_exists = (LOVE / "tools" / "services.py").exists()
-    treasury_exists = (LOVE / "tools" / "treasury.py").exists()
-    if services_exists and treasury_exists:
-        prospects = load_json(MEMORY / "services" / "prospects.json", [])
-        if not prospects:
-            signals.append({
-                "type": "EMERGENCE", "dimension": "revenue",
-                "strength": 0.65,
-                "signal": "AI Services portfolio built but prospect pipeline empty",
-                "action": "Bridge services → treasury: first client = revenue emergence",
-            })
-
     return sorted(signals, key=lambda s: (
         SIGNAL_TYPES[s["type"]]["priority"],
         -s["strength"]
@@ -344,7 +289,6 @@ def _get_bridges():
             return {}
         # Simple approach: read the JSON-like bridge definitions
         return {
-            "security-revenue": {"name": "Security × Revenue", "tools": ["tools/kos.py", "tools/treasury.py"]},
             "knowledge-oracle": {"name": "Knowledge × Oracle", "tools": ["tools/knowledge.py", "tools/oracle.py"]},
             "fleet-agents": {"name": "Fleet × Agents", "tools": ["tools/fleet.py", "tools/citizens.py"]},
             "metrics-reflection": {"name": "Metrics × Reflection", "tools": ["tools/metrics.py", "tools/reflect.py"]},
@@ -411,7 +355,7 @@ def cmd_focus():
 
     if not signals:
         print(f"  {GREEN}No strong signals. System is balanced.{NC}")
-        print(f"  {DIM}Options: grow revenue, deepen knowledge, expand fleet.{NC}\n")
+        print(f"  {DIM}No new task is required. Understanding, rest, or no action are valid.{NC}\n")
         return
 
     top = signals[0]
@@ -466,13 +410,13 @@ def cmd_teach():
 
   {YELLOW}⏳ BOTTLENECK{NC}   Priority 4
     One node carrying all the load.
-    One agent doing everything. One engine funding everything.
+    One component carrying a required service without a recovery path.
     {DIM}Response: Distribute. Activate more nodes. Spread the load.{NC}
 
   {MAGENTA}📜 MANDATE{NC}      Priority 5
     The calling says serve outward, but we're looking inward.
     Building tools when we should be serving people.
-    {DIM}Response: Shift outward. Revenue. Service. Fruit.{NC}
+    {DIM}Response: Return to the current chosen task; no output or commercial duty.{NC}
 
   {CYAN}✨ EMERGENCE{NC}    Priority 6
     Connecting two domains creates something new.

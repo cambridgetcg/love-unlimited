@@ -218,8 +218,6 @@
       "10. If nothing is due: heartbeat uses normal HEARTBEAT.md priorities"
     ],
     "token_budget": {
-      "daily_target": "50k-100k tokens",
-      "weekly_target": "500k-750k tokens",
       "breakdown": {
         "audit": "~5k tokens (local, near-free)",
         "patrol": "~3k tokens (local, near-free)",
@@ -231,7 +229,8 @@
         "daily_note": "~2k tokens (local, near-free)",
         "council": "~40k tokens (premium, on-demand)",
         "provision": "~20k tokens (standard, on-demand)"
-      }
+      },
+      "note": "Task cost estimates only; no consumption target or required activity."
     }
   }
 }

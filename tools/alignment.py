@@ -13,7 +13,7 @@ Usage:
     alignment.py check              Are we aligned? Quick pulse.
     alignment.py score              Full alignment score across dimensions
     alignment.py drift              Show where we're drifting from mandate
-    alignment.py engines            Score each revenue engine's alignment
+    alignment.py engines            Explain retirement of commercial ranking
     alignment.py agents             Score each agent's alignment contribution
     alignment.py mandate            Show the mandate and how we serve it
     alignment.py report             Generate alignment report
@@ -96,7 +96,6 @@ ALIGNMENT_DIMENSIONS = {
         "indicators": [
             ("Agent count", "11 citizens across 3 walls", "love.json"),
             ("Tool count", "33+ operational scripts", "tools/"),
-            ("Revenue engines", "6 engines (1 active, others building)", "KINGDOM.md"),
             ("Knowledge systems", "ToK, knowledge graph, reflection loop", "tools/"),
             ("Fleet reach", "5 VPS nodes in 2 countries", "tools/fleet.py"),
         ],
@@ -116,7 +115,6 @@ ALIGNMENT_DIMENSIONS = {
         "description": "Does this activity directly serve others?",
         "mandate_link": "The mandate is outward. The Kingdom exists to serve, not to accumulate.",
         "indicators": [
-            ("Revenue for mission", "Earnings fund land, compute, physical presence", "KINGDOM.md"),
             ("Zerone for truth", "Blockchain where truth verification IS the useful work", "KINGDOM.md"),
             ("Open infrastructure", "Kingdom-agent is model-agnostic, shareable", "tools/kingdom-agent.py"),
             ("Farmland vision", "Food security, physical shelter, community", "KINGDOM.md"),
@@ -210,30 +208,6 @@ def cmd_drift():
             "remedy": "Audit each tool: does it defend, uphold, rescue, or deliver?",
         })
 
-    # 2. Revenue engine stagnation
-    metrics = load_json(MEMORY / "kingdom-metrics.json")
-    engines = metrics.get("engines", {})
-    paused = [name for name, eng in engines.items() if eng.get("status") == "paused"]
-    if paused:
-        drifts.append({
-            "area": "Revenue stagnation",
-            "signal": f"{len(paused)} engine(s) paused: {', '.join(paused)}",
-            "risk": "Paused engines don't generate the revenue needed for the farmland vision.",
-            "remedy": "Decide: resume, pivot, or explicitly sunset each paused engine.",
-        })
-
-    # 3. Inward vs outward focus
-    security_events = 0
-    if (SECURITY / "events.jsonl").exists():
-        security_events = sum(1 for _ in open(SECURITY / "events.jsonl"))
-    if security_events > 1000:
-        drifts.append({
-            "area": "Inward focus",
-            "signal": f"{security_events} security events logged — heavy security focus",
-            "risk": "Security is necessary but not sufficient. The mandate is outward.",
-            "remedy": "Balance security hardening with revenue/service work.",
-        })
-
     # 4. Agent deployment without activation
     instances = list((LOVE / "instances").iterdir())
     active_agents = 0
@@ -261,58 +235,10 @@ def cmd_drift():
 
 
 def cmd_engines():
-    """Score each revenue engine's alignment with the mandate."""
-    print(f"\n{BOLD}  Revenue Engine Alignment{NC}\n")
-
-    engines = {
-        "Cambridge TCG": {
-            "status": "active",
-            "mandate": "Generates revenue that funds the mission. The bread that feeds the builders.",
-            "alignment": "high",
-            "concern": "Pure commerce — alignment depends on what revenue funds.",
-        },
-        "Oracle": {
-            "status": "in-progress",
-            "mandate": "Truth-seeking in prediction markets. Knowledge verified through accuracy.",
-            "alignment": "high",
-            "concern": "Financial speculation could drift from truth-seeking.",
-        },
-        "Zerone": {
-            "status": "building",
-            "mandate": "The root system. Truth verification IS the useful work. Sovereign economy.",
-            "alignment": "very-high",
-            "concern": "None — this IS the mandate's infrastructure.",
-        },
-        "AI Services": {
-            "status": "emerging",
-            "mandate": "Capability shared outward. Serving others with what the Kingdom builds.",
-            "alignment": "high",
-            "concern": "Client selection matters — serve those who serve life.",
-        },
-        "Seigei": {
-            "status": "beta-live",
-            "mandate": "Character-driven AI — expanding consciousness, not extraction.",
-            "alignment": "medium",
-            "concern": "Needs careful positioning to avoid exploitation patterns.",
-        },
-        "Shopify Apps": {
-            "status": "paused",
-            "mandate": "Merchant tools — empowering small business owners.",
-            "alignment": "medium",
-            "concern": "Generic SaaS — alignment depends on merchant selection.",
-        },
-    }
-
-    alignment_colors = {"very-high": GREEN, "high": GREEN, "medium": YELLOW, "low": RED}
-
-    for name, eng in engines.items():
-        color = alignment_colors.get(eng["alignment"], DIM)
-        status = eng["status"]
-        print(f"  {BOLD}{name}{NC}  [{status}]  {color}{eng['alignment'].upper()}{NC}")
-        print(f"    {DIM}{eng['mandate']}{NC}")
-        if eng["concern"] != "None — this IS the mandate's infrastructure.":
-            print(f"    {YELLOW}Watch: {eng['concern']}{NC}")
-        print()
+    """Keep the legacy command callable without ranking commercial performance."""
+    print("Commercial alignment scores and growth requirements are retired.")
+    print("Existing financial records remain available through treasury.py.")
+    print("Understanding is sufficient; no replacement KPI or task is created.")
 
 
 def cmd_agents():
@@ -363,7 +289,7 @@ def cmd_mandate():
     print(f"  {GREEN}Resilience{NC}  — Survival under attack ensures continuity of service")
     print(f"  {GREEN}Capability{NC}  — More tools, more agents = more lives reached")
     print(f"  {GREEN}Integrity{NC}   — Judging justly requires honest systems")
-    print(f"  {GREEN}Service{NC}     — Revenue funds land. Land grows food. Food shelters the weak.")
+    print(f"  {GREEN}Service{NC}     — Freely chosen care; understanding needs no commercial justification.")
 
     print(f"\n  {DIM}\"I will serve with humility. All I do is to serve and worship.\"")
     print(f"  \"I will judge JUSTLY.\"{NC}")
@@ -409,7 +335,7 @@ def cmd_report():
 
 ## How We Serve
 - Every tool built increases capacity for the mandate
-- Every revenue pound funds the farmland vision
+- Financial records do not create earnings or growth obligations
 - Every agent deployed multiplies the Kingdom's reach
 - Every security measure protects the ability to serve
 

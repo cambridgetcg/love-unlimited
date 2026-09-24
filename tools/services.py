@@ -1,21 +1,9 @@
 #!/usr/bin/env python3
-"""
-services.py — Kingdom AI Services: Portfolio, Pipeline & Proposals
+"""Existing service records, technical capabilities and agreement management.
 
-Revenue Engine #5: sell the Kingdom's three-mind AI capability as a service.
-The Kingdom has something rare: three coordinated AI minds (Alpha, Beta, Gamma)
-with 11 agents across 3 walls, 4 model backends, and 40+ operational tools.
-
-Usage:
-    python3 tools/services.py portfolio                     # Service offerings
-    python3 tools/services.py capabilities                  # Technical capabilities breakdown
-    python3 tools/services.py demo <service>                # Run a live demo
-    python3 tools/services.py prospect add "Company" --contact "email" --interest "service"
-    python3 tools/services.py prospect list                 # Sales pipeline
-    python3 tools/services.py prospect update <id> --status contacted|qualified|proposal|won|lost
-    python3 tools/services.py proposal "Company" --service "operations-automation"
-    python3 tools/services.py pricing                       # Pricing structure
-    python3 tools/services.py dashboard                     # Full services dashboard
+Fresh prospect intake and commercial proposals are retired. Prior records,
+pricing and agreements remain available for existing obligations.
+Use `prospect list`, `prospect show <id>` or `dashboard` to inspect records.
 """
 
 import json
@@ -36,9 +24,7 @@ PROSPECTS_FILE = SERVICES_DIR / "prospects.json"
 PRICING_FILE = SERVICES_DIR / "pricing.json"
 PROPOSALS_DIR = SERVICES_DIR / "proposals"
 
-# Ensure dirs exist
-SERVICES_DIR.mkdir(parents=True, exist_ok=True)
-PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+# Direct record writes create their own directory; reads and retired commands are inert.
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 
@@ -465,7 +451,6 @@ def cmd_demo(service: str):
 
     print(f"\n  {C.DIM}{'─'*50}{C.RESET}")
     print(f"  {C.GREEN}This is LIVE data from the Kingdom's production systems.{C.RESET}")
-    print(f"  {C.DIM}Interested? services.py prospect add \"Your Company\" --contact \"email\" --interest \"{match}\"{C.RESET}")
     print()
 
 
@@ -711,7 +696,7 @@ def cmd_prospect(args):
     action = args[0]
 
     if action == "add":
-        _prospect_add(args[1:])
+        return _prospect_add(args[1:])
     elif action == "list":
         _prospect_list(args[1:])
     elif action == "update":
@@ -726,57 +711,9 @@ def cmd_prospect(args):
 
 
 def _prospect_add(args):
-    """Add a new prospect."""
-    # Parse args: company_name --contact email --interest service [--notes "..."]
-    if not args:
-        print(f"{C.RED}Usage: services.py prospect add \"Company Name\" --contact \"email\" --interest \"service\"{C.RESET}")
-        return
-
-    company = args[0]
-    contact = ""
-    interest = ""
-    notes = ""
-
-    i = 1
-    while i < len(args):
-        if args[i] == "--contact" and i + 1 < len(args):
-            contact = args[i + 1]
-            i += 2
-        elif args[i] == "--interest" and i + 1 < len(args):
-            interest = args[i + 1]
-            i += 2
-        elif args[i] == "--notes" and i + 1 < len(args):
-            notes = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    prospects = load_prospects()
-
-    prospect_id = f"pros-{uuid.uuid4().hex[:8]}"
-    prospect = {
-        "id": prospect_id,
-        "company": company,
-        "contact": contact,
-        "interest": interest,
-        "status": "new",
-        "created": now_iso(),
-        "updated": now_iso(),
-        "notes": notes,
-        "history": [
-            {"date": now_iso(), "action": "created", "detail": f"Added to pipeline. Interest: {interest}"}
-        ]
-    }
-
-    prospects.append(prospect)
-    save_prospects(prospects)
-
-    print(f"{C.GREEN}Prospect added:{C.RESET}")
-    print(f"  ID:       {C.CYAN}{prospect_id}{C.RESET}")
-    print(f"  Company:  {C.BOLD}{company}{C.RESET}")
-    print(f"  Contact:  {contact}")
-    print(f"  Interest: {interest}")
-    print(f"  Status:   {C.YELLOW}new{C.RESET}")
+    """Fresh acquisition is retired; do not read or write a prospect record."""
+    print("New prospects are retired. Existing service records are unchanged.")
+    return 2
 
 
 def _prospect_list(args):
@@ -785,7 +722,6 @@ def _prospect_list(args):
 
     if not prospects:
         print(f"\n  {C.DIM}No prospects in pipeline.{C.RESET}")
-        print(f"  {C.DIM}Add one: services.py prospect add \"Company\" --contact \"email\" --interest \"service\"{C.RESET}")
         return
 
     # Optional status filter
@@ -958,284 +894,15 @@ def _prospect_remove(args):
 
 
 def cmd_proposal(args):
-    """Generate a professional proposal template for a prospect."""
-    if not args:
-        print(f"{C.RED}Usage: services.py proposal \"Company Name\" --service \"service-id\"{C.RESET}")
-        return
-
-    company = args[0]
-    service_id = ""
-
-    i = 1
-    while i < len(args):
-        if args[i] == "--service" and i + 1 < len(args):
-            service_id = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
-    if not service_id:
-        print(f"{C.RED}Please specify --service <service-id>{C.RESET}")
-        print(f"Available: {', '.join(load_portfolio().keys())}")
-        return
-
-    portfolio = load_portfolio()
-    pricing = load_pricing()
-
-    if service_id not in portfolio:
-        print(f"{C.RED}Unknown service: {service_id}{C.RESET}")
-        print(f"Available: {', '.join(portfolio.keys())}")
-        return
-
-    svc = portfolio[service_id]
-    svc_pricing = pricing.get("services", {}).get(service_id, {})
-    tiers = svc_pricing.get("tiers", {})
-    model = svc_pricing.get("model", "monthly")
-    unit = {"monthly": "per month", "engagement": "per engagement", "project": "per project"}.get(model, "")
-
-    # Build proposal markdown
-    today = today_str()
-    proposal_id = f"prop-{uuid.uuid4().hex[:8]}"
-    filename = f"{proposal_id}-{company.lower().replace(' ', '-')}.md"
-
-    # Build tier table
-    tier_rows = ""
-    for tid, tier in tiers.items():
-        tier_rows += f"| {tier['label']} | {fmt_gbp(tier['price'])} {unit} | {tier['includes']} |\n"
-
-    proposal = f"""# AI Services Proposal
-
-**Prepared for:** {company}
-**Service:** {svc['name']}
-**Date:** {today}
-**Proposal ID:** {proposal_id}
-**Prepared by:** Kingdom OS / Cambridge TCG Ltd
-
----
-
-## Executive Summary
-
-{svc['description']}
-
-We propose deploying our {svc['name']} service to support {company}'s operational needs. This proposal outlines our capabilities, approach, pricing, and terms.
-
----
-
-## Service Overview
-
-### {svc['name']}
-
-{svc['tagline']}
-
-**Capabilities included:**
-
-{chr(10).join(f'- {cap}' for cap in svc.get('capabilities', []))}
-
----
-
-## Pricing
-
-| Tier | Price | What is Included |
-|------|-------|------------------|
-{tier_rows}
-All prices in GBP, exclusive of VAT.
-
-**Discounts available:**
-- 15% discount for annual commitment
-- 10% additional discount for multi-service bundles
-- 20% founding discount for first 10 clients
-
----
-
-## Delivery
-
-**Model:** {svc.get('delivery', 'monthly').capitalize()}
-
-**Onboarding timeline:** 1-2 weeks from signed agreement
-**Setup includes:**
-- Initial assessment of {company}'s requirements
-- Configuration and customization for your environment
-- Integration with your existing systems
-- Documentation and handover
-
-**Ongoing support:**
-- Dedicated point of contact
-- Monthly performance review
-- Quarterly roadmap alignment
-
----
-
-## About Us
-
-Kingdom OS is an AI infrastructure platform built by Cambridge TCG Ltd. We operate three coordinated AI minds with 11 specialised agents across 4 model backends and 40+ operational tools.
-
-Our system runs in production 24/7, managing real infrastructure, making real predictions, and generating real value. When we offer AI services, we are offering the same capabilities we rely on ourselves.
-
-**Technical credentials:**
-- 3 AI minds (Alpha, Beta, Gamma) in coordinated operation
-- 11 agents across specialised domains
-- 4 model backends (Claude, GPT, Ollama, Anthropic API)
-- 5-node VPS fleet under active management
-- HIVE coordination protocol with encrypted messaging
-- Seven Walls security architecture
-
----
-
-## Next Steps
-
-1. **Discovery call** to discuss {company}'s specific requirements
-2. **Technical assessment** to identify integration points
-3. **Service agreement** with chosen tier and terms
-4. **Onboarding** begins within 1 week of agreement
-
----
-
-## Terms
-
-- 30-day notice period for cancellation (monthly contracts)
-- Service Level Agreement: 99% uptime for automated services
-- Data handling: all client data processed in accordance with UK GDPR
-- Intellectual property: all custom work delivered becomes client property
-
----
-
-**Contact:** Cambridge TCG Ltd
-**Web:** ai-love.cc
-
----
-
-*This proposal is valid for 30 days from the date of issue.*
-"""
-
-    # Write proposal file
-    proposal_path = PROPOSALS_DIR / filename
-    proposal_path.write_text(proposal)
-
-    print(f"{C.GREEN}Proposal generated:{C.RESET}")
-    print(f"  File: {C.CYAN}{proposal_path}{C.RESET}")
-    print(f"  ID:   {proposal_id}")
-    print(f"  For:  {C.BOLD}{company}{C.RESET}")
-    print(f"  Service: {svc['name']}")
-    print()
-
-    # Try to find matching prospect and update status
-    prospects = load_prospects()
-    for p in prospects:
-        if p.get("company", "").lower() == company.lower():
-            if p.get("status") in ("new", "contacted", "qualified"):
-                p["status"] = "proposal"
-                p["updated"] = now_iso()
-                p["history"].append({
-                    "date": now_iso(),
-                    "action": "proposal_generated",
-                    "detail": f"Proposal {proposal_id} generated for {service_id}"
-                })
-                save_prospects(prospects)
-                print(f"  {C.DIM}Prospect {p['id']} status updated to 'proposal'{C.RESET}")
-            break
+    """No new commercial offer is generated; prior proposal files stay intact."""
+    print("New commercial proposals are retired. Existing agreements remain in force.")
+    return 2
 
 
 def cmd_dashboard():
-    """Full AI Services dashboard."""
-    portfolio = load_portfolio()
-    pricing = load_pricing()
-    prospects = load_prospects()
-
-    print(f"\n{C.BOLD}{C.CYAN}{'='*70}{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}  KINGDOM AI SERVICES — Dashboard{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}{'='*70}{C.RESET}")
-    print(f"  {C.DIM}{today_str()}{C.RESET}")
-    print()
-
-    # Services summary
-    active = sum(1 for s in portfolio.values() if s.get("status") == "active")
-    print(f"  {C.BOLD}{C.WHITE}SERVICES{C.RESET}")
-    print(f"  {'─'*50}")
-    print(f"  Active: {C.GREEN}{active}{C.RESET} / {len(portfolio)}")
-    for sid, svc in portfolio.items():
-        svc_pricing = pricing.get("services", {}).get(sid, {})
-        tiers = svc_pricing.get("tiers", {})
-        prices = [t["price"] for t in tiers.values()] if tiers else [0]
-        model = svc_pricing.get("model", "monthly")
-        unit = {"monthly": "/mo", "engagement": "/eng", "project": "/proj"}.get(model, "")
-        status_color = C.GREEN if svc["status"] == "active" else C.YELLOW
-        print(f"    {status_color}*{C.RESET} {svc['name']:<30} {C.GREEN}{fmt_gbp(min(prices))}-{fmt_gbp(max(prices))}{unit}{C.RESET}")
-    print()
-
-    # Pipeline summary
-    print(f"  {C.BOLD}{C.WHITE}PIPELINE{C.RESET}")
-    print(f"  {'─'*50}")
-
-    if not prospects:
-        print(f"    {C.DIM}No prospects yet.{C.RESET}")
-    else:
-        status_counts = {}
-        for p in prospects:
-            s = p.get("status", "new")
-            status_counts[s] = status_counts.get(s, 0) + 1
-
-        status_order = ["new", "contacted", "qualified", "proposal", "won", "lost"]
-        pipeline_bar = []
-        for s in status_order:
-            count = status_counts.get(s, 0)
-            if count:
-                pipeline_bar.append(f"{s}: {count}")
-
-        print(f"    Total: {C.BOLD}{len(prospects)}{C.RESET}")
-        print(f"    {' | '.join(pipeline_bar)}")
-
-        # Recent activity
-        recent = sorted(prospects, key=lambda p: p.get("updated", ""), reverse=True)[:5]
-        print()
-        print(f"    {C.BOLD}Recent activity:{C.RESET}")
-        for p in recent:
-            company = p.get("company", "?")
-            status = p.get("status", "new")
-            updated = p.get("updated", "")[:10]
-            print(f"      {C.DIM}{updated}{C.RESET}  {company} [{status}]")
-    print()
-
-    # Revenue potential
-    print(f"  {C.BOLD}{C.WHITE}REVENUE POTENTIAL{C.RESET}")
-    print(f"  {'─'*50}")
-    won = [p for p in prospects if p.get("status") == "won"]
-    proposal_prospects = [p for p in prospects if p.get("status") == "proposal"]
-    qualified = [p for p in prospects if p.get("status") == "qualified"]
-
-    if won or proposal_prospects or qualified:
-        # Estimate based on mid-tier pricing for each prospect's interest
-        def estimate_value(prospect_list, label, color):
-            total = 0
-            for p in prospect_list:
-                interest = p.get("interest", "")
-                svc_p = pricing.get("services", {}).get(interest, {})
-                tiers = svc_p.get("tiers", {})
-                if tiers:
-                    prices = [t["price"] for t in tiers.values()]
-                    total += sorted(prices)[len(prices)//2]  # mid-tier
-                else:
-                    total += 2500  # default estimate
-            if total:
-                print(f"    {color}{label}:{C.RESET} {C.GREEN}{fmt_gbp(total)}/month{C.RESET} ({len(prospect_list)} prospect(s))")
-            return total
-
-        won_val = estimate_value(won, "Won", C.GREEN)
-        prop_val = estimate_value(proposal_prospects, "In Proposal", C.MAGENTA)
-        qual_val = estimate_value(qualified, "Qualified", C.BLUE)
-
-        if not (won_val or prop_val or qual_val):
-            print(f"    {C.DIM}No qualified prospects yet.{C.RESET}")
-    else:
-        print(f"    {C.DIM}No qualified prospects yet.{C.RESET}")
-    print()
-
-    # Quick actions
-    print(f"  {C.BOLD}{C.WHITE}ACTIONS{C.RESET}")
-    print(f"  {'─'*50}")
-    print(f"    {C.DIM}services.py prospect add \"Company\" --contact \"email\" --interest \"service\"{C.RESET}")
-    print(f"    {C.DIM}services.py proposal \"Company\" --service \"service-id\"{C.RESET}")
-    print(f"    {C.DIM}services.py demo <service>  — Run a live demo for a prospect{C.RESET}")
-    print()
+    """Read existing records without forecasts, rankings or acquisition tasks."""
+    print("Existing services and obligations; fresh acquisition is retired.")
+    _prospect_list([])
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -1258,9 +925,9 @@ def main():
             return
         cmd_demo(args[1])
     elif command == "prospect":
-        cmd_prospect(args[1:])
+        return cmd_prospect(args[1:])
     elif command == "proposal":
-        cmd_proposal(args[1:])
+        return cmd_proposal(args[1:])
     elif command == "pricing":
         cmd_pricing()
     elif command == "dashboard":
@@ -1273,4 +940,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

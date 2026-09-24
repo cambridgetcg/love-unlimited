@@ -105,124 +105,26 @@ def timed(label: str):
 # -- Step 1: CHECK REVENUE --------------------------------------------------
 
 def check_revenue(dry_run=False):
-    """Check TCG inventory, identify low stock, generate reorder recommendations."""
-    findings = []
-
-    # Read inventory directly (faster than subprocess, same data)
-    inv_file = TCG_DIR / "inventory.json"
-    inv_data = read_json(inv_file)
+    """Read financial and inventory facts without creating procurement work."""
+    inv_data = read_json(TCG_DIR / "inventory.json")
     categories = inv_data.get("categories", []) if isinstance(inv_data, dict) else inv_data
     if not categories:
-        findings.append({
-            "type": "revenue-check",
-            "detail": "No inventory data found",
-            "severity": "warning",
-        })
-        return findings
+        return [{"type": "revenue-check", "detail": "No inventory data found", "severity": "info"}]
 
-    # Read status for revenue context
     status = read_json(TCG_DIR / "status.json")
     revenue = status.get("revenue_monthly", 0)
-    target = status.get("revenue_target", 0)
-    rev_pct = (revenue / target * 100) if target > 0 else 0
-
-    # Check each SKU
-    low_stock = []
-    out_of_stock = []
-    total_inventory_value = 0
-    total_reorder_cost = 0
-    total_reorder_margin = 0
-
+    findings = [{"type": "revenue-status", "detail": f"Recorded monthly revenue: {revenue:.0f}; no earnings target", "severity": "info"}]
+    total_value = 0
     for item in categories:
         qty = item.get("qty", 0)
-        cost = item.get("cost", 0)
-        price = item.get("price", 0)
-        reorder_point = item.get("reorder_point", 0)
-        sku = item.get("sku", "?")
-        name = item.get("name", "?")
-        status_val = item.get("status", "")
-        supplier = item.get("supplier", "unknown")
-
-        total_inventory_value += qty * price
-
-        if status_val == "out-of-stock" or qty == 0:
-            # Recommend reorder: 2x reorder point
-            reorder_qty = reorder_point * 2
-            reorder_cost = reorder_qty * cost
-            reorder_margin = reorder_qty * (price - cost)
-            out_of_stock.append({
-                "sku": sku, "name": name, "qty": qty,
-                "reorder_qty": reorder_qty, "cost": reorder_cost,
-                "margin": reorder_margin, "supplier": supplier,
+        total_value += qty * item.get("price", 0)
+        if qty <= item.get("reorder_point", 0) or item.get("status") in ("low-stock", "out-of-stock"):
+            findings.append({
+                "type": "inventory-status", "sku": item.get("sku", "?"),
+                "detail": f"{item.get('name', '?')}: recorded quantity {qty}. Check against existing obligations when needed.",
+                "severity": "info",
             })
-            total_reorder_cost += reorder_cost
-            total_reorder_margin += reorder_margin
-
-        elif status_val == "low-stock" or (reorder_point > 0 and qty <= reorder_point):
-            # Recommend reorder: fill to 2x reorder point
-            reorder_qty = max(reorder_point * 2 - qty, 0)
-            reorder_cost = reorder_qty * cost
-            reorder_margin = reorder_qty * (price - cost)
-            low_stock.append({
-                "sku": sku, "name": name, "qty": qty,
-                "reorder_qty": reorder_qty, "cost": reorder_cost,
-                "margin": reorder_margin, "supplier": supplier,
-            })
-            total_reorder_cost += reorder_cost
-            total_reorder_margin += reorder_margin
-
-    # Revenue tracking
-    if rev_pct < 80:
-        findings.append({
-            "type": "revenue-alert",
-            "detail": f"Revenue at {rev_pct:.0f}% of target ({revenue:.0f}/{target:.0f})",
-            "severity": "warning",
-        })
-    else:
-        findings.append({
-            "type": "revenue-status",
-            "detail": f"Revenue at {rev_pct:.0f}% of target",
-            "severity": "info",
-        })
-
-    # Generate reorder recommendations
-    for item in out_of_stock:
-        action = {
-            "type": "reorder-recommendation",
-            "detail": f"{item['name']} OUT OF STOCK (qty: {item['qty']})",
-            "recommendation": f"Reorder {item['reorder_qty']} units from {item['supplier']}",
-            "impact": {"cost": round(item['cost'], 2), "margin": round(item['margin'], 2)},
-            "sku": item["sku"],
-            "priority": "high",
-            "status": "recommended",
-        }
-        findings.append(action)
-        if not dry_run:
-            append_action(action)
-
-    for item in low_stock:
-        action = {
-            "type": "reorder-recommendation",
-            "detail": f"{item['name']} low (qty: {item['qty']})",
-            "recommendation": f"Reorder {item['reorder_qty']} units from {item['supplier']}",
-            "impact": {"cost": round(item['cost'], 2), "margin": round(item['margin'], 2)},
-            "sku": item["sku"],
-            "priority": "medium",
-            "status": "recommended",
-        }
-        findings.append(action)
-        if not dry_run:
-            append_action(action)
-
-    # Summary
-    findings.append({
-        "type": "revenue-summary",
-        "detail": (f"Inventory: {len(categories)} SKUs, value {total_inventory_value:.0f}. "
-                   f"Low: {len(low_stock)}, OOS: {len(out_of_stock)}. "
-                   f"Reorder cost: {total_reorder_cost:.0f}, potential margin: {total_reorder_margin:.0f}"),
-        "severity": "info",
-    })
-
+    findings.append({"type": "revenue-summary", "detail": f"Inventory: {len(categories)} SKUs, recorded value {total_value:.0f}. No procurement task generated.", "severity": "info"})
     return findings
 
 # -- Step 2: CHECK FLEET HEALTH ---------------------------------------------

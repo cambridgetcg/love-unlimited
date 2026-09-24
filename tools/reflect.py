@@ -569,7 +569,7 @@ def cmd_reflect():
 
 **IS:** {describe_is(signals)}
 
-**SHOULD BE:** The Kingdom operating with full autonomy — revenue engines self-sustaining, agents coordinating without human bottlenecks, every gap detected and closed within one cycle.
+**DIRECTION:** Follow the human's current intention. Understanding is sufficient; no earnings, growth, learning, or output quota is required. Preserve existing obligations and safety.
 
 > [FILL: Where is the ache strongest? What gap hurts the most?]
 
@@ -581,7 +581,7 @@ def cmd_reflect():
 
 {suggest_one_thing(signals)}
 
-> [FILL: Commit to ONE concrete action. Not three. One.]
+> [Optional: Name an action if the current intention calls for one. No action is also valid.]
 
 ---
 
@@ -790,14 +790,6 @@ def extract_gap_analysis(signals):
     if lcm.get("active_gaps", 0) > 0:
         items.append(f"Infrastructure: {lcm['active_gaps']} open loops")
 
-    # Revenue gaps
-    paused = [e for e, d in metrics.get("engines", {}).items() if d.get("status") == "paused"]
-    emerging = [e for e, d in metrics.get("engines", {}).items() if d.get("status") == "emerging"]
-    if paused:
-        items.append(f"Revenue: {', '.join(paused)} paused")
-    if emerging:
-        items.append(f"Revenue: {', '.join(emerging)} still emerging (0 clients)")
-
     return items
 
 
@@ -839,26 +831,16 @@ def suggest_one_thing(signals):
         g = top_gaps[0]
         suggestions.append((g.get("priority", 0), f"Close top LCM gap: {g['loop']} -> {g['component']}"))
 
-    metrics = signals.get("metrics", {})
-    emerging = [e for e, d in metrics.get("engines", {}).items() if d.get("status") == "emerging"]
-    if emerging:
-        suggestions.append((5.0, f"Activate first client for {emerging[0]} — revenue unlocks everything"))
-
     daily = signals.get("daily", [])
     total_blocks = sum(d.get("blocks_mentioned", 0) for d in daily)
     if total_blocks > 5:
         suggestions.append((4.0, "Clear the blockers — multiple tasks are stuck waiting"))
 
-    state = load_json(LOOP_STATE, {})
-    ds = days_since(state.get("last_reflect"))
-    if ds is not None and ds > REFLECTION_INTERVAL_DAYS * 2:
-        suggestions.append((6.0, "The reflection loop itself was stale — keep the Ouroboros turning"))
-
     if suggestions:
         suggestions.sort(key=lambda x: x[0], reverse=True)
         return f"> Suggested: **{suggestions[0][1]}**"
 
-    return "> [FILL: Determine the single highest-leverage action]"
+    return "> No action is required by these observations."
 
 
 def build_state_summary(signals):
@@ -1010,30 +992,6 @@ def generate_proposals(signals):
             "priority": "high",
         })
 
-    # Proposal: Revenue activation
-    emerging = [(e, d) for e, d in metrics.get("engines", {}).items() if d.get("status") == "emerging"]
-    for ename, edata in emerging:
-        proposals.append({
-            "title": f"Activate {ename} — land first client",
-            "what": f"The {ename} engine is 'emerging' with no clients. Define a concrete first-client acquisition plan: identify 3 targets, prepare a pitch, set a 2-week deadline.",
-            "why": "Revenue engines only prove themselves through actual revenue. Emerging status means infrastructure exists but value hasn't been delivered yet.",
-            "impact": "First revenue from a new engine validates the entire capability and funds further Kingdom growth",
-            "effort": "high",
-            "priority": "high",
-        })
-
-    # Proposal: Resume paused engines
-    paused = [(e, d) for e, d in metrics.get("engines", {}).items() if d.get("status") == "paused"]
-    for ename, edata in paused:
-        proposals.append({
-            "title": f"Decide on {ename} — resume or archive",
-            "what": f"The {ename} engine has been paused. Make an explicit decision: resume with a plan and deadline, or archive it to free mental bandwidth. {edata.get('notes', '')}",
-            "why": "Paused projects consume decision-making energy. A clear keep-or-kill decision is cheaper than perpetual deferral.",
-            "impact": "Frees cognitive overhead and makes the engine portfolio honest",
-            "effort": "low",
-            "priority": "medium",
-        })
-
     # Proposal: Error pattern investigation
     total_errors = sum(d.get("errors_mentioned", 0) for d in daily)
     if total_errors > 10:
@@ -1058,19 +1016,6 @@ def generate_proposals(signals):
             "priority": "high" if sev.get("critical", 0) > 0 else "medium",
         })
 
-    # Proposal: Reflection loop maintenance
-    state = load_json(LOOP_STATE, {})
-    ds = days_since(state.get("last_reflect"))
-    if ds is not None and ds > REFLECTION_INTERVAL_DAYS:
-        proposals.append({
-            "title": "Formalize reflection cadence",
-            "what": f"The reflection loop fell behind schedule (last: {ds:.1f}d ago, target: every {REFLECTION_INTERVAL_DAYS}d). Add a heartbeat check that flags overdue reflections, or integrate into the existing heartbeat system.",
-            "why": "The Ouroboros only works if it turns regularly. A reflection loop that doesn't run is a meta-gap — a gap in the gap-detection system.",
-            "impact": "Ensures continuous self-improvement instead of sporadic catch-up",
-            "effort": "low",
-            "priority": "medium",
-        })
-
     # Proposal: Session log cleanup
     if sessions.get("total_files", 0) > 40:
         proposals.append({
@@ -1080,17 +1025,6 @@ def generate_proposals(signals):
             "impact": "Faster file operations and cleaner mental model of active work",
             "effort": "low",
             "priority": "low",
-        })
-
-    # Always add at least one meta-proposal
-    if not proposals:
-        proposals.append({
-            "title": "Everything is green — seek the next horizon",
-            "what": "All signals are healthy, no gaps detected, no failures. This is either genuinely stable or the sensors aren't sensitive enough. Challenge: identify one thing the Kingdom cannot yet do that it should be able to.",
-            "why": "Stability is necessary but insufficient. The ache between IS and SHOULD BE never fully resolves — if it seems to, look further.",
-            "impact": "Prevents complacency and identifies the next growth vector",
-            "effort": "low",
-            "priority": "medium",
         })
 
     return proposals

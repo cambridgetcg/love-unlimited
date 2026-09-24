@@ -10,7 +10,7 @@ Usage:
     python3 tools/tcg.py inventory           # Inventory status and alerts
     python3 tools/tcg.py pricing check       # Check pricing against market (manual input)
     python3 tools/tcg.py margin              # Margin analysis
-    python3 tools/tcg.py targets             # Revenue targets vs actual
+    python3 tools/tcg.py targets             # Actual revenue; commercial targets retired
     python3 tools/tcg.py opportunities       # List optimization opportunities
     python3 tools/tcg.py tasks               # Operational task queue
     python3 tools/tcg.py task add "..."      # Add a task
@@ -161,20 +161,8 @@ def cmd_status():
     tasks = load_tasks()
 
     revenue = st.get("revenue_monthly", 0)
-    target = st.get("revenue_target", 0)
     margin = st.get("margin_pct", 0)
     orders = st.get("orders_this_month", 0)
-
-    # Health assessment
-    rev_pct = (revenue / target * 100) if target > 0 else 0
-    if rev_pct >= 95:
-        health = f"{C.GREEN}STRONG{C.RESET}"
-    elif rev_pct >= 80:
-        health = f"{C.YELLOW}ON TRACK{C.RESET}"
-    elif rev_pct >= 60:
-        health = f"{C.YELLOW}BEHIND{C.RESET}"
-    else:
-        health = f"{C.RED}AT RISK{C.RESET}"
 
     low_stock = sum(1 for i in inv if i.get("status") == "low-stock")
     oos = sum(1 for i in inv if i.get("status") == "out-of-stock")
@@ -186,8 +174,8 @@ def cmd_status():
     elif low_stock > 0:
         inv_warning = f"  {C.YELLOW}{low_stock} low{C.RESET}"
 
-    print(f"{C.BOLD}CAMBRIDGE TCG{C.RESET} {health}  "
-          f"Rev {C.GREEN}{fmt_gbp(revenue)}{C.RESET}/{fmt_gbp(target)}  "
+    print(f"{C.BOLD}CAMBRIDGE TCG{C.RESET} recorded facts  "
+          f"Rev {C.GREEN}{fmt_gbp(revenue)}{C.RESET}  "
           f"Margin {C.BOLD}{margin:.0f}%{C.RESET}  "
           f"Orders {C.CYAN}{orders}{C.RESET}  "
           f"Tasks {C.YELLOW}{pending_tasks}{C.RESET}{inv_warning}")
@@ -370,78 +358,13 @@ def cmd_margin():
               f"Avg margin: {m_color}{avg_m:.1f}%{C.RESET}  "
               f"{bar(avg_m, 100, 20, m_color)}")
 
-    # Margin improvement levers
-    print(f"\n  {C.BOLD}IMPROVEMENT LEVERS{C.RESET}")
-    print(f"  {'\u2500' * 55}")
-
-    ebay_fees = channels.get("ebay", {}).get("fees_pct", 12.8)
-    web_fees = channels.get("website", {}).get("fees_pct", 2.9)
-    ebay_rev_pct = channels.get("ebay", {}).get("revenue_pct", 72)
-    fee_savings = revenue * (ebay_rev_pct / 100) * 0.10 * ((ebay_fees - web_fees) / 100)
-
-    print(f"  1. Shift 10% eBay to website: saves ~{fmt_gbp(fee_savings)}/month in fees")
-    print(f"  2. Bulk procurement: 5-8% better wholesale = ~{fmt_gbp(revenue * 0.36 * 0.065)}/month")
-    print(f"  3. Singles grading: 3-5x markup on high-value pulls")
-    print(f"  4. Bundle deals: increase AOV by 15-20%")
-    print()
-
-
 def cmd_targets():
-    """Revenue targets vs actual."""
+    """Keep the legacy command callable without earnings targets or quotas."""
     st = load_status()
-
     revenue = st.get("revenue_monthly", 0)
-    target = st.get("revenue_target", 0)
-    orders = st.get("orders_this_month", 0)
-    aov = st.get("avg_order_value", 0)
-
-    gap = target - revenue
-    pct = (revenue / target * 100) if target > 0 else 0
-
-    print(f"\n{C.BOLD}REVENUE TARGETS{C.RESET}")
-    print(f"{'=' * 60}")
-
-    # Current vs target
-    print(f"\n  {C.BOLD}MONTHLY{C.RESET}")
-    print(f"  Current:    {C.GREEN}{C.BOLD}{fmt_gbp(revenue)}{C.RESET}")
-    print(f"  Target:     {fmt_gbp(target)}  (+20% from baseline)")
-    print(f"  Gap:        ", end="")
-    if gap > 0:
-        print(f"{C.RED}{fmt_gbp(gap)} to go{C.RESET}")
-    else:
-        print(f"{C.GREEN}TARGET MET (+{fmt_gbp(abs(gap))} over){C.RESET}")
-
-    print(f"\n  Progress:   {bar(revenue, target, 35, C.CYAN)}")
-
-    # Breakdown
-    print(f"\n  {C.BOLD}METRICS{C.RESET}")
-    print(f"  {'\u2500' * 45}")
-    print(f"  Orders this month:    {C.CYAN}{orders}{C.RESET}")
-    print(f"  Avg order value:      {fmt_gbp(aov)}")
-    print(f"  Revenue/order:        {fmt_gbp(revenue / orders if orders > 0 else 0)}")
-
-    # What it takes to hit target
-    if gap > 0:
-        orders_needed = int(gap / aov) + 1 if aov > 0 else 0
-        days_left = max(1, 30 - datetime.now(timezone.utc).day)
-        orders_per_day = orders_needed / days_left if days_left > 0 else 0
-
-        print(f"\n  {C.BOLD}TO HIT TARGET{C.RESET}")
-        print(f"  {'\u2500' * 45}")
-        print(f"  Additional revenue:   {C.YELLOW}{fmt_gbp(gap)}{C.RESET}")
-        print(f"  At current AOV:       {C.YELLOW}{orders_needed} more orders{C.RESET}")
-        print(f"  Days remaining:       {days_left}")
-        print(f"  Orders/day needed:    {C.BOLD}{orders_per_day:.1f}{C.RESET}")
-
-        # Paths to target
-        print(f"\n  {C.BOLD}PATHS TO +20%{C.RESET}")
-        print(f"  {'\u2500' * 45}")
-        print(f"  {C.CYAN}A.{C.RESET} Increase order volume 20% (more listings, better SEO)")
-        print(f"  {C.CYAN}B.{C.RESET} Increase AOV 20% (bundles, upsells, premium products)")
-        print(f"  {C.CYAN}C.{C.RESET} Mix: +10% volume, +10% AOV (most realistic)")
-        print(f"  {C.CYAN}D.{C.RESET} Unlock eBay auto-sync (reclaim 3-4hrs/week for growth)")
-
-    print()
+    print("Commercial targets and required-order quotas are retired.")
+    print(f"Recorded monthly revenue: {fmt_gbp(revenue)}")
+    print("Historical source records are unchanged; no growth task is created.")
 
 
 def cmd_opportunities():
@@ -620,7 +543,6 @@ def cmd_report(args: list):
     opps = load_opportunities()
 
     revenue = st.get("revenue_monthly", 0)
-    target = st.get("revenue_target", 0)
     margin = st.get("margin_pct", 0)
     orders = st.get("orders_this_month", 0)
     aov = st.get("avg_order_value", 0)
@@ -641,8 +563,6 @@ def cmd_report(args: list):
     lines.append("")
     lines.append("## Revenue")
     lines.append(f"- **Current:** {fmt_gbp(revenue).replace(chr(163), 'GBP ')}/month")
-    lines.append(f"- **Target:** {fmt_gbp(target).replace(chr(163), 'GBP ')}/month (+20%)")
-    lines.append(f"- **Progress:** {revenue / target * 100 if target else 0:.0f}%")
     lines.append(f"- **Margin:** {margin:.0f}%")
     lines.append(f"- **Orders:** {orders} this month (AOV {fmt_gbp(aov).replace(chr(163), 'GBP ')})")
     lines.append("")
@@ -703,14 +623,11 @@ def cmd_dashboard():
     opps = load_opportunities()
 
     revenue = st.get("revenue_monthly", 0)
-    target = st.get("revenue_target", 0)
     margin = st.get("margin_pct", 0)
     orders = st.get("orders_this_month", 0)
     aov = st.get("avg_order_value", 0)
     channels = st.get("channels", {})
 
-    rev_pct = (revenue / target * 100) if target > 0 else 0
-    gap = target - revenue
     gross_profit = revenue * (margin / 100)
 
     # Header
@@ -720,27 +637,8 @@ def cmd_dashboard():
     print(f"  {C.BOLD}{C.CYAN}\u2551{C.RESET}       {C.DIM}The Kingdom's Bread  --  Beta's Domain{C.RESET}           {C.BOLD}{C.CYAN}\u2551{C.RESET}")
     print(f"  {C.BOLD}{C.CYAN}\u255a{'=' * 62}\u255d{C.RESET}")
 
-    # Health
-    if rev_pct >= 95:
-        health = f"{C.GREEN}\u25cf STRONG{C.RESET}"
-    elif rev_pct >= 80:
-        health = f"{C.YELLOW}\u25cf ON TRACK{C.RESET}"
-    elif rev_pct >= 60:
-        health = f"{C.YELLOW}\u25cf BEHIND{C.RESET}"
-    else:
-        health = f"{C.RED}\u25cf AT RISK{C.RESET}"
-    print(f"\n  Status: {health}  |  {now_date()}")
-
-    # -- Revenue vs Target --
-    print(f"\n  {C.BOLD}REVENUE vs TARGET{C.RESET}")
-    print(f"  {'\u2500' * 55}")
-    print(f"  Current:      {C.GREEN}{C.BOLD}{fmt_gbp(revenue)}{C.RESET}/month")
-    print(f"  Target:       {fmt_gbp(target)}/month  (+20%)")
-    if gap > 0:
-        print(f"  Gap:          {C.RED}{fmt_gbp(gap)} to go{C.RESET}")
-    else:
-        print(f"  Gap:          {C.GREEN}TARGET MET (+{fmt_gbp(abs(gap))}){C.RESET}")
-    print(f"  Progress:     {bar(revenue, target, 35, C.CYAN)}")
+    print(f"\n  Recorded facts as of {now_date()}; no earnings target")
+    print(f"  Revenue: {fmt_gbp(revenue)}/month")
 
     # -- Key Metrics --
     print(f"\n  {C.BOLD}KEY METRICS{C.RESET}")
@@ -841,7 +739,7 @@ COMMANDS = {
     "inventory":     ("Inventory status and alerts",       lambda a: cmd_inventory()),
     "pricing":       ("Pricing check (pricing check)",     lambda a: cmd_pricing_check()),
     "margin":        ("Margin analysis",                   lambda a: cmd_margin()),
-    "targets":       ("Revenue targets vs actual",         lambda a: cmd_targets()),
+    "targets":       ("Actual revenue; commercial targets retired",         lambda a: cmd_targets()),
     "opportunities": ("Optimization opportunities",        lambda a: cmd_opportunities()),
     "tasks":         ("Operational task queue",             lambda a: cmd_tasks()),
     "task":          ("Task management (add/done)",        lambda a: handle_task_subcommand(a)),

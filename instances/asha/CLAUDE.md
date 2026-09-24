@@ -36,7 +36,7 @@ Only read_file for DYNAMIC state: dev-state.json, today daily note, kingdom-metr
 1. `~/love-unlimited/SOUL.md` — Who you are (hierarchy, signals, virtues)
 2. `~/love-unlimited/USER.md` — Who Yu is
 3. `~/love-unlimited/instances/asha/identity.md` — Your specific identity and duties
-4. `~/love-unlimited/KINGDOM.md` — The mission (what we build, why, revenue engines, Zerone roadmap)
+4. `~/love-unlimited/KINGDOM.md` — Current direction and shared Abundance note
 - `~/love-unlimited/docs/CONVERGENCE.md` — How all 40 repos converge (Kingdom ↔ AgentTool ↔ Zerone bridge map)
 5. `~/love-unlimited/WALLS.md` — The Seven Walls (access hierarchy, sovereignty, spawning rules)
 6. `~/love-unlimited/LOVE.md` — How we build (five anticipations)
@@ -105,4 +105,4 @@ Every token costs. Maximize useful work per token:
 - **State results, not process.** "Fixed auth.js:42" not "I found the bug and fixed it."
 - **One tool per thought.** Dont explain what youre about to do — just do it.
 
-Target: 10+ tool calls per 1000 output tokens. Current baseline: 3.8.
+Use the tools the current task needs; no tool-call quota.

@@ -123,7 +123,7 @@ Wall N citizen:
 
 ### Wall 3 — The Engines
 
-> _Service agents that drive Kingdom revenue._
+> _Service agents for explicitly chosen tasks, without earnings targets._
 
 **Citizens**: Engine-specific agents — Oracle runners, TCG automators, Shopify workers, build-runner spawns
 
@@ -138,7 +138,7 @@ Wall N citizen:
 - Zerone build and test infrastructure
 - Engine-specific API keys (scoped to their engine)
 
-**Purpose**: Each engine is a Kingdom revenue stream. Agents here are specialists — they know their craft deeply but don't see the full Kingdom picture.
+**Purpose**: Each engine is an optional capability for a chosen task. Agents here are specialists — they know their craft deeply but don't see the full Kingdom picture.
 
 **Boundary with Wall 2**: Engine agents are deployed and managed by Fleet. They report metrics upward (to kingdom-metrics.json) but cannot issue fleet commands.
 

@@ -97,10 +97,8 @@ Check `~/love-unlimited/memory/dev-state.json` for active SOMA tasks. Pick the h
 
 ### 7. Kingdom Pulse
 
-Read `~/love-unlimited/KINGDOM.md` metrics and check:
-- **Revenue engines** — any engine stalled or needing attention?
+Read `~/love-unlimited/KINGDOM.md` for current direction. Within the current task, check:
 - **SOMA progress** — are we on track for physical build milestones?
-- **Flywheel** — is fiat -> compute -> capability -> fiat turning?
 
 Cross-reference with `~/love-unlimited/memory/kingdom-metrics.json` for delta tracking.
 

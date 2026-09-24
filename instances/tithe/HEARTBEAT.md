@@ -96,7 +96,7 @@ For each active engine, estimate:
 
 Flag if any of these conditions are true:
 - Daily spend exceeds projected budget by >20%
-- Revenue from any engine drops >20% vs. trailing average
+- An existing payment obligation appears at risk, based on actual records; lower income alone is not an alert
 - A cost category has doubled vs. prior period
 - An unexpected charge or billing item appeared
 - Token burn rate suggests budget exhaustion before period end

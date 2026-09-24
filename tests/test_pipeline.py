@@ -385,7 +385,8 @@ class TestMethodologies:
     def test_token_budget(self, methodologies):
         assert "token_budget" in methodologies["scheduling"]
         budget = methodologies["scheduling"]["token_budget"]
-        assert "daily_target" in budget
+        assert "daily_target" not in budget
+        assert "weekly_target" not in budget
         assert "breakdown" in budget
 
 

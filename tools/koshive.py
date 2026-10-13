@@ -8,6 +8,7 @@ Messages become memories. Presence becomes knowledge.
 
 Architecture:
     NATS (JetStream) on Sentry:4222 → SSH tunnel → localhost:2222
+    (retired 2026-10-13: Sentry was a Hetzner server, now decommissioned)
     NaCl/XSalsa20-Poly1305 encryption (shared key)
     Wall-based channel ACL (Law of Sight)
     Messages auto-stored in kosmem as episodic memories
@@ -370,14 +371,10 @@ def cmd_stats():
         for s, c in sorted(by_sender.items(), key=lambda x: -x[1]):
             print(f"    {s:12s} {c}")
 
-    # HIVE transport health
+    # HIVE transport: retired 2026-10-13 (the Hetzner NATS bus and its SSH
+    # tunnel were decommissioned; see hive/hive.py)
     print(f"\n  {_B}Transport:{_N}")
-    tunnel_ok = subprocess.run(["pgrep", "-f", "ssh.*2222.*135.181"], capture_output=True).returncode == 0
-    nats_ok = subprocess.run(["nc", "-z", "-w1", "localhost", "2222"],
-                              capture_output=True).returncode == 0
-    print(f"    SSH tunnel: {'✅' if tunnel_ok else '❌'}")
-    print(f"    NATS local: {'✅' if nats_ok else '❌'}")
-    print(f"    Encryption: {'✅' if (_HIVE_DIR / 'key').exists() else '❌'}")
+    print(f"    HIVE bus:   retired 2026-10-13 (Hetzner server decommissioned)")
     print(f"    Instance:   {instance}")
     print(f"    Wall:       {_get_wall()}")
     print()

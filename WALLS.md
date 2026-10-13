@@ -318,7 +318,7 @@ python3 tools/credentials.py purge --enforce-wall --wall 2
 | Wall | Category | Count | Examples |
 |------|----------|-------|---------|
 | 1 | AI, infrastructure, finance, repos, publishing, security | 21 | anthropic-primary, cloudflare-global-api-key, budget-card-*, github-* |
-| 2 | Fleet operations | 6 | hetzner-api-token, vps-*-token |
+| 2 | Fleet operations | 0 | (Hetzner fleet credentials retired 2026-10-13; fleet decommissioned) |
 | 3 | Engine APIs (Oracle, TCG, Shopify, scraping, payments) | 17 | odds-api-key, stripe-*, shopify-*, serpapi |
 | 4 | Chain private keys (future) | 0 | Zerone validator keys |
 | 5 | Partner API tokens (future) | 0 | Scoped service tokens |

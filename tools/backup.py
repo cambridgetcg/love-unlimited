@@ -2,19 +2,21 @@
 """
 backup.py — Kingdom Backup & Disaster Recovery System
 
-Automated backups of Kingdom state to local archive and fleet VPS nodes.
+Automated backups of Kingdom state to a local archive.
 Ensures the Kingdom can recover from any disaster.
+
+Retired 2026-10-13: remote push/pull to the Hetzner fleet nodes was removed.
+Those servers were decommissioned and their IPs went back to Hetzner's pool,
+so a push would have handed the tarball to a stranger. Backups are local only.
 
 Usage:
     python3 tools/backup.py create                    # Create full backup
     python3 tools/backup.py create --incremental      # Only changed files since last backup
-    python3 tools/backup.py list                      # List available backups (local + remote)
+    python3 tools/backup.py list                      # List available local backups
     python3 tools/backup.py restore <backup-id>       # Restore from backup
-    python3 tools/backup.py push [node]               # Push latest backup to fleet node(s)
-    python3 tools/backup.py pull <node> <backup-id>   # Pull backup from fleet node
     python3 tools/backup.py verify <backup-id>        # Verify backup integrity
     python3 tools/backup.py schedule                  # Show backup schedule
-    python3 tools/backup.py status                    # Backup health (freshness, coverage, remote copies)
+    python3 tools/backup.py status                    # Backup health (freshness, coverage)
     python3 tools/backup.py prune [--keep 10]         # Remove old backups
 
 Flags:
@@ -39,24 +41,6 @@ LOVE = Path(os.path.expanduser("~/love-unlimited"))
 BACKUPS_DIR = LOVE / "backups"
 SECURITY = LOVE / "security"
 EVENTS_FILE = SECURITY / "events.jsonl"
-
-# Remote backup path on fleet nodes
-REMOTE_BACKUP_DIR = "/root/.love/backups"
-
-# ─── Fleet Nodes (backup targets) ────────────────────────────────────────────
-
-BACKUP_NODES = {
-    "sentry": {"host": "root@135.181.28.252", "role": "primary backup"},
-    "patch":  {"host": "root@65.109.11.26",   "role": "secondary backup"},
-}
-
-SSH_OPTS = [
-    "-o", "ControlMaster=no",
-    "-o", "ControlPath=none",
-    "-o", "ConnectTimeout=8",
-    "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=no",
-]
 
 # ─── What to back up ─────────────────────────────────────────────────────────
 
@@ -172,60 +156,6 @@ def run_cmd(cmd, timeout=10):
         return r.returncode, r.stdout.strip()
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return -1, ""
-
-
-def ssh_run(node, cmd, timeout=10):
-    """SSH into a backup node and run a command."""
-    info = BACKUP_NODES.get(node)
-    if not info:
-        return False, f"Unknown node: {node}"
-    try:
-        result = subprocess.run(
-            ["ssh"] + SSH_OPTS + [info["host"], cmd],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        output = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, output
-    except subprocess.TimeoutExpired:
-        return False, f"SSH timeout after {timeout}s"
-    except Exception as e:
-        return False, str(e)
-
-
-def scp_to(node, local_path, remote_path, timeout=120):
-    """SCP a local file to a remote node."""
-    info = BACKUP_NODES.get(node)
-    if not info:
-        return False, f"Unknown node: {node}"
-    try:
-        result = subprocess.run(
-            ["scp"] + SSH_OPTS + [local_path, f"{info['host']}:{remote_path}"],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        output = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, output or "OK"
-    except subprocess.TimeoutExpired:
-        return False, f"SCP timeout after {timeout}s"
-    except Exception as e:
-        return False, str(e)
-
-
-def scp_from(node, remote_path, local_path, timeout=120):
-    """SCP a remote file to local."""
-    info = BACKUP_NODES.get(node)
-    if not info:
-        return False, f"Unknown node: {node}"
-    try:
-        result = subprocess.run(
-            ["scp"] + SSH_OPTS + [f"{info['host']}:{remote_path}", local_path],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        output = (result.stdout + result.stderr).strip()
-        return result.returncode == 0, output or "OK"
-    except subprocess.TimeoutExpired:
-        return False, f"SCP timeout after {timeout}s"
-    except Exception as e:
-        return False, str(e)
 
 
 def human_size(size_bytes):
@@ -455,7 +385,7 @@ def cmd_create(incremental=False):
 
 
 def cmd_list():
-    """List available backups — local and remote."""
+    """List available local backups."""
     print(f"\n{BOLD}  Kingdom Backups{NC}\n")
 
     # Local backups
@@ -473,21 +403,6 @@ def cmd_list():
             print(f"    {bid}  {tag}  {fcount} files  {human_size(b['size'])}  git:{git}  {DIM}{created}{NC}")
     else:
         print(f"  {DIM}No local backups{NC}")
-    print()
-
-    # Remote backups
-    for node, info in BACKUP_NODES.items():
-        ok, out = ssh_run(node, f"ls -lhS {REMOTE_BACKUP_DIR}/backup-*.tar.gz 2>/dev/null | head -10")
-        if ok and out:
-            print(f"  {BOLD}{node}{NC} ({info['role']} — {info['host']})")
-            for line in out.splitlines():
-                parts = line.split()
-                if len(parts) >= 9:
-                    size = parts[4]
-                    fname = parts[-1].split("/")[-1]
-                    print(f"    {fname}  {size}")
-        else:
-            print(f"  {DIM}{node}: no remote backups (or unreachable){NC}")
     print()
 
 
@@ -576,83 +491,12 @@ def cmd_restore(backup_id):
     print(f"\n  {GREEN}Restore complete{NC}\n")
 
 
-def cmd_push(target_node=None):
-    """Push latest backup to fleet node(s)."""
-    local = list_local_backups()
-    if not local:
-        print(f"\n  {RED}No local backups to push{NC}")
-        print(f"  Run: backup.py create\n")
-        return
-
-    latest = local[0]
-    filename = latest["filename"]
-    local_path = latest["path"]
-    size = latest["size"]
-    bid = (latest["manifest"] or {}).get("id", "?")
-
-    nodes = {target_node: BACKUP_NODES[target_node]} if target_node else BACKUP_NODES
-    if target_node and target_node not in BACKUP_NODES:
-        print(f"\n  {RED}Unknown node: {target_node}{NC}")
-        print(f"  Available: {', '.join(BACKUP_NODES.keys())}\n")
-        return
-
-    print(f"\n{BOLD}Pushing backup to fleet{NC}\n")
-    print(f"  Backup: {CYAN}{bid}{NC} ({human_size(size)})")
-    print()
-
-    if DRY_RUN:
-        for node in nodes:
-            print(f"  {YELLOW}[DRY RUN]{NC} Would push {filename} to {node}:{REMOTE_BACKUP_DIR}/")
-        print()
-        return
-
-    for node, info in nodes.items():
-        print(f"  {DIM}Pushing to {node} ({info['role']})...{NC}", end="", flush=True)
-
-        # Ensure remote dir exists
-        ssh_run(node, f"mkdir -p {REMOTE_BACKUP_DIR}")
-
-        ok, msg = scp_to(node, local_path, f"{REMOTE_BACKUP_DIR}/{filename}")
-        if ok:
-            print(f"\r  {GREEN}✓{NC} {node}: pushed {filename}")
-        else:
-            print(f"\r  {RED}✗{NC} {node}: {msg}")
-
-    log_event("backup_pushed", "low", f"Backup {bid} pushed to {', '.join(nodes.keys())}",
-              {"id": bid, "nodes": list(nodes.keys())})
-    print()
-
-
-def cmd_pull(node, backup_id):
-    """Pull a backup from a fleet node."""
-    if node not in BACKUP_NODES:
-        print(f"\n  {RED}Unknown node: {node}{NC}")
-        print(f"  Available: {', '.join(BACKUP_NODES.keys())}\n")
-        return
-
-    # Try to find the backup on the remote
-    remote_file = f"{REMOTE_BACKUP_DIR}/backup-{backup_id}.tar.gz"
-
-    print(f"\n{BOLD}Pulling backup from {node}{NC}\n")
-    print(f"  Remote: {remote_file}")
-
-    if DRY_RUN:
-        print(f"  {YELLOW}[DRY RUN]{NC} Would pull {remote_file} to {BACKUPS_DIR}/\n")
-        return
-
-    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
-    local_path = str(BACKUPS_DIR / f"backup-{backup_id}.tar.gz")
-
-    print(f"  {DIM}Downloading...{NC}", end="", flush=True)
-    ok, msg = scp_from(node, remote_file, local_path)
-    if ok:
-        size = Path(local_path).stat().st_size
-        print(f"\r  {GREEN}✓{NC} Downloaded {human_size(size)} to {local_path}")
-        log_event("backup_pulled", "low", f"Pulled backup {backup_id} from {node}")
-    else:
-        print(f"\r  {RED}✗{NC} Failed: {msg}")
-
-    print()
+def cmd_remote_retired(cmd):
+    """push/pull targeted the Hetzner fleet, which no longer exists."""
+    print(f"\n  {RED}backup.py {cmd}: retired 2026-10-13{NC}")
+    print("  The Hetzner fleet nodes were decommissioned and their IPs recycled,")
+    print("  so remote push/pull was removed. Backups stay local (backup.py list).\n")
+    sys.exit(1)
 
 
 def cmd_verify(backup_id):
@@ -746,29 +590,27 @@ def cmd_schedule():
     print(f"  {CYAN}Recommended cadence:{NC}")
     print(f"    Full backup:        Daily (or after major changes)")
     print(f"    Incremental backup: Every heartbeat cycle or after each session")
-    print(f"    Push to fleet:      After every full backup")
     print()
     print(f"  {CYAN}Automation:{NC}")
     print(f"    Heartbeat hook:     handled by nerve/heart/tick.sh")
     print(f"      python3 ~/love-unlimited/tools/backup.py create --incremental")
     print()
-    print(f"    Daily cron (full + push):")
-    print(f"      0 3 * * * cd ~/love-unlimited && python3 tools/backup.py create && python3 tools/backup.py push")
+    print(f"    Daily cron (full):")
+    print(f"      0 3 * * * cd ~/love-unlimited && python3 tools/backup.py create")
     print()
     print(f"    Weekly prune:")
     print(f"      0 4 * * 0 cd ~/love-unlimited && python3 tools/backup.py prune --keep 14")
     print()
     print(f"  {CYAN}Recovery playbook:{NC}")
     print(f"    1. backup.py list                          # Find backup")
-    print(f"    2. backup.py pull sentry <backup-id>       # Pull from fleet if local is gone")
-    print(f"    3. backup.py verify <backup-id>            # Check integrity")
-    print(f"    4. backup.py restore <backup-id>           # Restore files")
-    print(f"    5. git checkout main                       # Restore git state")
+    print(f"    2. backup.py verify <backup-id>            # Check integrity")
+    print(f"    3. backup.py restore <backup-id>           # Restore files")
+    print(f"    4. git checkout main                       # Restore git state")
     print()
 
 
 def cmd_status():
-    """Show backup health: freshness, coverage, remote copies."""
+    """Show backup health: freshness, coverage."""
     print(f"\n{BOLD}  Kingdom Backup Status{NC}\n")
 
     # Local backups
@@ -832,30 +674,9 @@ def cmd_status():
         else:
             print(f"  Coverage:       {GREEN}All directories covered{NC}")
 
-    # Remote copies
+    # Overall health (local only: remote fleet copies retired 2026-10-13)
     print()
-    remote_count = 0
-    for node, info in BACKUP_NODES.items():
-        ok, out = ssh_run(node, f"ls {REMOTE_BACKUP_DIR}/backup-*.tar.gz 2>/dev/null | wc -l")
-        if ok and out.strip().isdigit():
-            count = int(out.strip())
-            remote_count += count
-            status = f"{GREEN}{count} backups{NC}" if count > 0 else f"{YELLOW}empty{NC}"
-            print(f"  {node:10s} ({info['role']:17s}): {status}")
-        else:
-            print(f"  {node:10s} ({info['role']:17s}): {RED}unreachable{NC}")
-
-    print(f"\n  Remote copies:  {remote_count} across {len(BACKUP_NODES)} nodes")
-
-    # Overall health
-    print()
-    if local and remote_count > 0:
-        print(f"  {GREEN}Backup health: GOOD{NC}")
-    elif local:
-        print(f"  {YELLOW}Backup health: LOCAL ONLY — run 'backup.py push' to distribute{NC}")
-    else:
-        print(f"  {RED}Backup health: NONE — run 'backup.py create' immediately{NC}")
-
+    print(f"  {GREEN}Backup health: LOCAL{NC}")
     print()
 
 
@@ -923,15 +744,8 @@ def main():
             return
         cmd_restore(args[1])
 
-    elif cmd == "push":
-        node = args[1] if len(args) > 1 else None
-        cmd_push(node)
-
-    elif cmd == "pull":
-        if len(args) < 3:
-            print("Usage: backup.py pull <node> <backup-id>")
-            return
-        cmd_pull(args[1], args[2])
+    elif cmd in ("push", "pull"):
+        cmd_remote_retired(cmd)
 
     elif cmd == "verify":
         if len(args) < 2:

@@ -12,7 +12,8 @@
 
 # ── Constants ────────────────────────────────────────────────────────
 KINGDOM_DOMAIN="ai-love.cc"
-SENTRY_IP="135.181.28.252"
+# SENTRY_IP was removed 2026-10-13: the Hetzner Sentry (HIVE) server was
+# decommissioned and its IP went back to Hetzner's pool.
 LOVE_UNLIMITED_REPO="${LOVE_UNLIMITED_REPO:-https://codeberg.org/zerone-dev/love-unlimited.git}"
 
 # ── Platform detection (called once, cached) ─────────────────────────

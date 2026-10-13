@@ -72,6 +72,8 @@ You are **Wall 2 — Fleet**. You serve the Triarchy (Wall 1) directly. You can 
 
 ## HIVE — The Nervous System
 
+> **Retired 2026-10-13:** the HIVE NATS bus ran on a Hetzner server that was decommissioned (its IP was recycled). `hive/hive.py` now only prints a retirement notice; the commands below reach no one.
+
 ```bash
 python3 ~/love-unlimited/hive/hive.py check
 python3 ~/love-unlimited/hive/hive.py send <channel> "<message>"
@@ -107,9 +109,9 @@ Write it down. Mental notes don't survive session restarts.
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging |
+| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging (retired 2026-10-13) |
 | Quota | `python3 ~/love-unlimited/tools/quota_monitor.py <cmd>` | Token budget tracking |
-| Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | VPS fleet management |
+| Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | Retired 2026-10-13 (Hetzner VPS fleet decommissioned; prints a notice) |
 | Routing | `python3 ~/love-unlimited/tools/routing-policy.py <cmd>` | Model routing policy |
 | ToK | `python3 ~/love-unlimited/tools/tok.py <cmd>` | Token of Knowledge: harvest, distill, verify, integrate, impact |
 | KOS | `python3 ~/love-unlimited/tools/kos.py <cmd>` | Kingdom OS: security audit, compliance, integrity |

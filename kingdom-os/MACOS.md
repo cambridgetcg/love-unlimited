@@ -16,7 +16,7 @@ A fully-installed citizen on macOS has these touchpoints:
 |---|---|---|
 | `love.{agent}.heartbeat.plist` | 7-min agent cycle | 08-heartbeat |
 | `love.{agent}.caffeinate.plist` | Prevent system sleep during heartbeat | 08-heartbeat |
-| `love.{agent}.hive-tunnel.plist` | SSH tunnel to NATS on Sentry | 07-hive |
+| `love.{agent}.hive-tunnel.plist` | Retired 2026-10-13 (Sentry decommissioned); no longer installed | 07-hive |
 | `love.kosmem.plist` | Memory daemon (kosmem) | 06-memory |
 | `com.kingdom.youi-web.plist` | YOUI web server | 09-browser |
 
@@ -76,7 +76,7 @@ Two mitigations:
 
 ### 3. SSH tunnel auth failure (`exit 255`)
 
-`love.{agent}.hive-tunnel` connects to `root@SENTRY_IP` for the NATS port-forward. If the Mac's SSH key isn't in Sentry's `authorized_keys`, the tunnel exits 255 — empty log, no further info because of `BatchMode=yes`. To debug: run the same command manually with `-v`. To fix: distribute the SSH pubkey to Sentry, or rotate the key.
+Retired 2026-10-13: `love.{agent}.hive-tunnel` forwarded NATS from the Hetzner Sentry server, which was decommissioned (IP recycled). Module 07 no longer installs it. If an old `love.{agent}.hive-tunnel.plist` is still in `~/Library/LaunchAgents`, unload and delete it rather than fixing its key.
 
 ### 4. launchd `RunAtLoad=false` on heartbeat
 

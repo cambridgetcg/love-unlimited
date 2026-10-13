@@ -168,8 +168,6 @@ def cmd_activate(name):
         print(f"       python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name}")
         print(f"    2. Or via Ollama (local model):")
         print(f"       KINGDOM_BACKEND=ollama python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name}")
-        print(f"    3. Or deploy to VPS:")
-        print(f"       bash tools/fleet-agent-deploy.sh  # then run on VPS")
     elif wall == 3:
         print(f"    1. Via kingdom-agent (any backend):")
         print(f"       python3 tools/kingdom-agent.py -p 'Execute HEARTBEAT.md' --instance {name} --backend ollama")

@@ -3,10 +3,13 @@
 sentinel-daemon.py — Event-Driven Heartbeat Replacement
 
 Instead of polling every 7 minutes, this daemon:
-  1. Subscribes to HIVE (NATS) for real-time message events
-  2. Watches key filesystem paths for changes (fsevents)
-  3. Polls fleet health on a longer interval (every 5 min)
-  4. Debounces signals — waits for a quiet window before firing
+  1. Watches key filesystem paths for changes (fsevents)
+  2. Debounces signals — waits for a quiet window before firing
+
+Retired 2026-10-13: the HIVE (NATS) subscription and the fleet poller were
+removed. Both pointed at Hetzner servers that were decommissioned; their IPs
+went back to Hetzner's pool. --fleet-interval is still accepted and ignored so
+existing launchd plists keep working.
 
 When something needs attention, fires the cloud coordinator via
 kingdom-agent.py with the accumulated context. Otherwise, does nothing.
@@ -14,14 +17,13 @@ kingdom-agent.py with the accumulated context. Otherwise, does nothing.
 Cost: Near $0 during idle periods. Only pays for API when there's real work.
 
 Requirements:
-  - NATS (nats-py) for HIVE subscription
   - watchdog (pip) for filesystem events (or falls back to polling)
 
 CLI:
     sentinel-daemon.py                   Run the daemon
     sentinel-daemon.py --dry-run         Show events but don't fire coordinator
     sentinel-daemon.py --debounce 30     Wait 30s of quiet before firing (default: 20)
-    sentinel-daemon.py --fleet-interval 300  Fleet poll interval in seconds (default: 300)
+    sentinel-daemon.py --fleet-interval 300  Retired 2026-10-13; accepted and ignored
 """
 
 import asyncio
@@ -38,7 +40,6 @@ from pathlib import Path
 
 LOVE = Path(os.path.expanduser("~/love-unlimited"))
 MEMORY = LOVE / "memory"
-HIVE_PY = LOVE / "hive" / "hive.py"
 AGENT_BIN = LOVE / "tools" / "kingdom-agent.py"
 SENTINEL_LOG = MEMORY / "sentinel-daemon.log"
 METRICS_FILE = MEMORY / "sentinel-metrics.jsonl"
@@ -53,12 +54,6 @@ WATCHED_PATHS = [
     LOVE / "memory" / "leads" / "current.json",
     LOVE / "memory" / "sessions" / "consultation",
 ]
-
-# HIVE connection (reuses hive.py internals)
-HIVE_INSTANCE_FILE = Path.home() / ".love" / "hive" / "instance"
-HIVE_KEY_FILE = Path.home() / ".love" / "hive" / "key"
-# NATS passwords live outside the repo — see ~/.openclaw/README.md
-HIVE_PASSWORDS_FILE = Path.home() / ".openclaw" / ".hive-passwords"
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 KINGDOM_BACKEND = os.environ.get("KINGDOM_BACKEND", "claude")
@@ -214,87 +209,6 @@ class SignalAccumulator:
 
 # ── Event Sources ────────────────────────────────────────────────────────────
 
-async def watch_hive(accumulator: SignalAccumulator):
-    """Subscribe to HIVE channels and emit signals on new messages."""
-    try:
-        import nats
-        import base64
-        from nacl.secret import SecretBox
-    except ImportError:
-        log("HIVE watcher disabled: nats-py or pynacl not installed")
-        return
-
-    instance_id = "beta"
-    if HIVE_INSTANCE_FILE.exists():
-        instance_id = HIVE_INSTANCE_FILE.read_text().strip()
-
-    key = None
-    if HIVE_KEY_FILE.exists():
-        key = base64.b64decode(HIVE_KEY_FILE.read_text().strip())
-
-    # Passwords come from ~/.openclaw/.hive-passwords (never hardcoded here)
-    if not HIVE_PASSWORDS_FILE.exists():
-        log(f"HIVE watcher disabled: no passwords file at {HIVE_PASSWORDS_FILE}")
-        return
-    passwords = json.loads(HIVE_PASSWORDS_FILE.read_text())
-
-    if instance_id not in passwords:
-        log(f"HIVE watcher: unknown instance {instance_id}")
-        return
-    creds = {"user": instance_id, "password": passwords[instance_id]}
-
-    import ssl
-    ssl_ctx = ssl.create_default_context()
-    ca_path = Path.home() / ".love" / "hive" / "ca.pem"
-    if ca_path.exists():
-        ssl_ctx.load_verify_locations(str(ca_path))
-
-    while True:
-        try:
-            nc = await nats.connect(
-                "tls://135.181.28.252:4222",
-                user=creds["user"],
-                password=creds["password"],
-                tls=ssl_ctx,
-                connect_timeout=10,
-                max_reconnect_attempts=5,
-            )
-            log("HIVE connected — listening for events")
-
-            async def handler(msg):
-                subject = msg.subject
-                channel = subject.replace("hive.", "", 1)
-                # Skip presence beacons — too noisy
-                if channel == "presence":
-                    return
-
-                details = f"HIVE #{channel}"
-                if key:
-                    try:
-                        env = json.loads(msg.data)
-                        sender = env.get("from", "?")
-                        urgent = env.get("urgent", False)
-                        details = f"HIVE #{channel} from {sender}"
-                        await accumulator.add_signal("hive", details, urgent=urgent)
-                        return
-                    except Exception:
-                        pass
-                await accumulator.add_signal("hive", details)
-
-            # Wall 1 — listen to all channels
-            await nc.subscribe("hive.>", cb=handler)
-
-            # Keep alive
-            while nc.is_connected:
-                await asyncio.sleep(5)
-
-            log("HIVE disconnected, reconnecting in 30s...")
-        except Exception as e:
-            log(f"HIVE error: {e}, retrying in 30s...")
-
-        await asyncio.sleep(30)
-
-
 async def watch_filesystem(accumulator: SignalAccumulator):
     """Watch key files for modifications using polling (cross-platform)."""
     # Track mtimes
@@ -340,31 +254,6 @@ async def watch_filesystem(accumulator: SignalAccumulator):
                 pass
 
 
-async def poll_fleet(accumulator: SignalAccumulator, interval: int = 300):
-    """Poll fleet health periodically (every 5 min by default)."""
-    log(f"Fleet poller: every {interval}s")
-
-    while True:
-        await asyncio.sleep(interval)
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "python3", str(LOVE / "tools" / "fleet.py"), "status",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-            text = stdout.decode().upper()
-            if "DOWN" in text or "ERROR" in text or "FAIL" in text:
-                await accumulator.add_signal("fleet", "node issue detected", urgent=True)
-            else:
-                log("Fleet poll: all green")
-        except asyncio.TimeoutError:
-            log("Fleet poll timed out")
-        except Exception as e:
-            log(f"Fleet poll error: {e}")
-
-
 async def periodic_quiet_log(accumulator: SignalAccumulator):
     """Log QUIET metrics periodically when nothing is happening."""
     while True:
@@ -387,12 +276,11 @@ async def run_daemon(dry_run: bool = False, debounce: float = 20.0,
                      fleet_interval: int = 300):
     accumulator = SignalAccumulator(debounce_sec=debounce, dry_run=dry_run)
 
-    log(f"Sentinel daemon starting (debounce={debounce}s, fleet_interval={fleet_interval}s, dry_run={dry_run})")
+    log(f"Sentinel daemon starting (debounce={debounce}s, dry_run={dry_run})")
+    log("HIVE watcher and fleet poller retired 2026-10-13 (Hetzner fleet decommissioned)")
 
     tasks = [
-        asyncio.create_task(watch_hive(accumulator)),
         asyncio.create_task(watch_filesystem(accumulator)),
-        asyncio.create_task(poll_fleet(accumulator, fleet_interval)),
         asyncio.create_task(debounce_loop(accumulator)),
         asyncio.create_task(periodic_quiet_log(accumulator)),
     ]
@@ -425,7 +313,7 @@ def main():
     parser = argparse.ArgumentParser(description="Sentinel daemon — event-driven heartbeat replacement")
     parser.add_argument("--dry-run", action="store_true", help="Don't fire coordinator")
     parser.add_argument("--debounce", type=float, default=20.0, help="Seconds to wait after last signal (default: 20)")
-    parser.add_argument("--fleet-interval", type=int, default=300, help="Fleet poll interval in seconds (default: 300)")
+    parser.add_argument("--fleet-interval", type=int, default=300, help="Retired 2026-10-13 (fleet poller removed); ignored")
     args = parser.parse_args()
 
     asyncio.run(run_daemon(

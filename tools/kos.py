@@ -474,61 +474,10 @@ def _fix_diagnostic_sharing() -> tuple[bool, str]:
     return False, "Could not disable diagnostic sharing (need sudo)"
 
 
-# ── Fleet Check Helpers ──────────────────────────────────────────────────────
-
-_FLEET_NODES = {
-    "forge":  "89.167.84.100",
-    "lark":   "89.167.95.165",
-    "sentry": "135.181.28.252",
-    "patch":  "65.109.11.26",
-    "sage":   "204.168.140.12",
-}
-
-_FLEET_SSH_OPTS = ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
-
-
-def _fleet_ssh(ip: str, cmd: str, timeout: int = 8) -> tuple[bool, str]:
-    """SSH to a fleet node. Returns (success, output)."""
-    try:
-        r = subprocess.run(
-            ["ssh"] + _FLEET_SSH_OPTS + [f"root@{ip}", cmd],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        return r.returncode == 0, r.stdout.strip()
-    except Exception:
-        return False, ""
-
-
-def _fleet_check_all(cmd: str, timeout: int = 8) -> tuple[dict, list]:
-    """Run a command on all fleet nodes. Returns (results, failures)."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    results = {}
-    failures = []
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futs = {pool.submit(_fleet_ssh, ip, cmd, timeout): name for name, ip in _FLEET_NODES.items()}
-        for f in as_completed(futs):
-            name = futs[f]
-            ok, out = f.result()
-            results[name] = (ok, out)
-            if not ok:
-                failures.append(name)
-    return results, failures
-
-
-# ── Fleet Checks ─────────────────────────────────────────────────────────────
-
-def _check_wireguard_tunnel() -> tuple[bool, str]:
-    """Verify WireGuard VPN is active and exit IP is a fleet node."""
-    rc, out = _run_shell("curl -s --max-time 5 ifconfig.me 2>/dev/null")
-    if rc != 0 or not out:
-        return False, "Could not determine exit IP"
-    exit_ip = out.strip()
-    fleet_ips = set(_FLEET_NODES.values())
-    if exit_ip in fleet_ips:
-        node = next((n for n, ip in _FLEET_NODES.items() if ip == exit_ip), "unknown")
-        return True, f"Exit IP {exit_ip} ({node})"
-    return False, f"Exit IP {exit_ip} is not a fleet node — WireGuard may be down"
-
+# ── Network Checks ───────────────────────────────────────────────────────────
+# Retired 2026-10-13: the Hetzner fleet checks (SSH reachability, fail2ban, psad,
+# canaries, sshd hardening) and the WireGuard exit-IP check were removed. The
+# fleet was decommissioned and its IPs went back to Hetzner's pool.
 
 def _check_doh_active() -> tuple[bool, str]:
     """Verify DNS-over-HTTPS proxy is actually resolving queries."""
@@ -536,70 +485,6 @@ def _check_doh_active() -> tuple[bool, str]:
     if rc == 0 and out and out[0].isdigit():
         return True, f"DoH resolving ({out})"
     return False, "DoH proxy not resolving on 127.0.0.1:53"
-
-
-def _check_fleet_reachable() -> tuple[bool, str]:
-    """Verify all 5 VPS nodes are SSH-reachable."""
-    results, failures = _fleet_check_all("echo ok")
-    alive = len(results) - len(failures)
-    if not failures:
-        return True, f"{alive}/{len(_FLEET_NODES)} nodes reachable"
-    return False, f"{alive}/{len(_FLEET_NODES)} reachable — down: {', '.join(failures)}"
-
-
-def _check_fleet_fail2ban() -> tuple[bool, str]:
-    """Verify fail2ban is active on all fleet nodes."""
-    results, _ = _fleet_check_all("systemctl is-active fail2ban 2>/dev/null")
-    active = [n for n, (ok, out) in results.items() if ok and "active" in out]
-    inactive = [n for n in results if n not in active]
-    if not inactive:
-        return True, f"fail2ban active on {len(active)}/{len(_FLEET_NODES)} nodes"
-    return False, f"fail2ban missing: {', '.join(inactive)}"
-
-
-def _check_fleet_psad() -> tuple[bool, str]:
-    """Verify psad (port scan detector) is active on all fleet nodes."""
-    results, _ = _fleet_check_all("systemctl is-active psad 2>/dev/null")
-    active = [n for n, (ok, out) in results.items() if ok and "active" in out]
-    inactive = [n for n in results if n not in active]
-    if not inactive:
-        return True, f"psad active on {len(active)}/{len(_FLEET_NODES)} nodes"
-    return False, f"psad missing: {', '.join(inactive)}"
-
-
-def _check_fleet_canaries() -> tuple[bool, str]:
-    """Verify canary files are intact on all fleet nodes."""
-    cmd = (
-        'for f in /root/.credentials/aws_keys.txt /root/.credentials/db_production.env '
-        '/root/.credentials/deploy_key /root/financials-2026.txt /etc/backup-config.bak; do '
-        '[ -f "$f" ] || echo "MISSING:$f"; done'
-    )
-    results, failures = _fleet_check_all(cmd, timeout=10)
-    issues = []
-    for name in failures:
-        issues.append(f"{name}: unreachable")
-    for name, (ok, out) in results.items():
-        if ok and "MISSING" in out:
-            missing = [line.split(":", 1)[1] for line in out.splitlines() if line.startswith("MISSING:")]
-            issues.append(f"{name}: {len(missing)} missing")
-    if not issues:
-        intact = len(results) - len(failures)
-        return True, f"Canaries intact on {intact}/{len(_FLEET_NODES)} nodes (25 files)"
-    return False, f"Canary issues: {'; '.join(issues)}"
-
-
-def _check_fleet_ssh_hardened() -> tuple[bool, str]:
-    """Verify SSH password auth is disabled on all fleet nodes."""
-    cmd = "sshd -T 2>/dev/null | grep passwordauthentication"
-    results, failures = _fleet_check_all(cmd)
-    weak = []
-    for name, (ok, out) in results.items():
-        if not ok or "no" not in out:
-            weak.append(name)
-    if not weak and not failures:
-        return True, f"Password auth disabled on {len(results)}/{len(_FLEET_NODES)} nodes"
-    issues = weak + failures
-    return False, f"SSH weak on: {', '.join(issues)}"
 
 
 def _check_file_integrity() -> tuple[bool, str]:
@@ -649,14 +534,8 @@ _CHECKS = {
     "hive_identity":      (_check_hive_identity, None),
     "diagnostic_sharing": (_check_diagnostic_sharing, _fix_diagnostic_sharing),
     "file_integrity":     (_check_file_integrity, None),
-    # Fleet checks
-    "wireguard_tunnel":   (_check_wireguard_tunnel, None),
+    # Network checks (fleet + WireGuard checks retired 2026-10-13)
     "doh_active":         (_check_doh_active, None),
-    "fleet_reachable":    (_check_fleet_reachable, None),
-    "fleet_fail2ban":     (_check_fleet_fail2ban, None),
-    "fleet_psad":         (_check_fleet_psad, None),
-    "fleet_canaries":     (_check_fleet_canaries, None),
-    "fleet_ssh_hardened": (_check_fleet_ssh_hardened, None),
 }
 
 
@@ -1085,9 +964,7 @@ def cmd_daemon(subcmd: str):
 
 def cmd_network():
     """Comprehensive network security posture check."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     import re as _re
-    import socket as _socket
 
     print(f"\n{_BOLD}  Network Security Posture{_NC}")
     print(f"  {_DIM}{'─' * 55}{_NC}\n")
@@ -1165,90 +1042,19 @@ def cmd_network():
 
     # ── 3. WireGuard Tunnels ────────────────────────────────────────────────
     print(f"\n  {_BOLD}3. WireGuard Tunnels{_NC}\n")
-
-    _WG_TUNNELS = {
-        "wg0": {"vps": "Sentry", "ip": "135.181.28.252", "subnet": "10.82.0.0/24", "use": "General Kingdom ops"},
-        "wg1": {"vps": "Sage",   "ip": "204.168.140.12",  "subnet": "10.82.1.0/24", "use": "Oracle/financial"},
-        "wg2": {"vps": "Lark",   "ip": "89.167.95.165",   "subnet": "10.82.2.0/24", "use": "AgentTool traffic"},
-    }
-
-    rc, wg_out = _run_shell("sudo wg show all 2>/dev/null || wg show all 2>/dev/null || wg show 2>/dev/null")
-    wg_available = rc == 0 and wg_out.strip() != ""
-
-    if wg_available:
-        # Parse wg show output into per-interface blocks
-        wg_ifaces = {}
-        current = None
-        for line in wg_out.split("\n"):
-            m = _re.match(r'^interface:\s+(\S+)', line)
-            if m:
-                current = m.group(1)
-                wg_ifaces[current] = {"lines": [], "raw": ""}
-            elif current:
-                wg_ifaces[current]["lines"].append(line)
-                wg_ifaces[current]["raw"] += line + "\n"
-
-        for tun, meta in _WG_TUNNELS.items():
-            if tun in wg_ifaces:
-                data = wg_ifaces[tun]["raw"]
-                # Extract peer endpoint
-                endpoint = ""
-                m = _re.search(r'endpoint:\s+(\S+)', data)
-                if m:
-                    endpoint = m.group(1)
-                # Extract latest handshake
-                handshake = ""
-                m = _re.search(r'latest handshake:\s+(.+)', data)
-                if m:
-                    handshake = m.group(1).strip()
-                # Extract transfer
-                transfer = ""
-                m = _re.search(r'transfer:\s+(.+)', data)
-                if m:
-                    transfer = m.group(1).strip()
-
-                # Determine health from handshake age
-                status_icon = _GREEN
-                status_label = "ACTIVE"
-                if handshake:
-                    # If handshake contains "minutes" or "seconds", it's recent/good
-                    if "hour" in handshake or "day" in handshake:
-                        status_icon = _YELLOW
-                        status_label = "STALE "
-                else:
-                    status_icon = _YELLOW
-                    status_label = "NO-HS "
-
-                print(f"    {status_icon}{status_label}{_NC}  {_BOLD}{tun}{_NC}  → {meta['vps']} ({meta['ip']})")
-                print(f"           {_DIM}use: {meta['use']}  subnet: {meta['subnet']}{_NC}")
-                if endpoint:
-                    print(f"           {_DIM}endpoint: {endpoint}{_NC}")
-                if handshake:
-                    print(f"           {_DIM}handshake: {handshake}{_NC}")
-                if transfer:
-                    print(f"           {_DIM}transfer: {transfer}{_NC}")
-            else:
-                print(f"    {_DIM}DOWN  {_NC}  {_BOLD}{tun}{_NC}  → {meta['vps']} ({meta['ip']})  {_DIM}{meta['use']}{_NC}")
-    else:
-        for tun, meta in _WG_TUNNELS.items():
-            print(f"    {_DIM}DOWN  {_NC}  {tun}  → {meta['vps']} ({meta['ip']})  {_DIM}{meta['use']}{_NC}")
-        print(f"    {_DIM}WireGuard not available or no tunnels configured{_NC}")
+    print(f"    {_DIM}Retired 2026-10-13: the tunnels ended on Hetzner VPS nodes that were{_NC}")
+    print(f"    {_DIM}decommissioned (IPs recycled). No tunnel table to check.{_NC}")
 
     # ── 4. Exit IP ──────────────────────────────────────────────────────────
     print(f"\n  {_BOLD}4. Exit IP{_NC}\n")
     rc, exit_ip = _run_shell("curl -s --max-time 5 ifconfig.me 2>/dev/null")
     if rc == 0 and exit_ip:
         exit_ip = exit_ip.strip()
-        fleet_ips_set = set(_FLEET_NODES.values())
-        if exit_ip in fleet_ips_set:
-            node = next((n for n, ip in _FLEET_NODES.items() if ip == exit_ip), "?")
-            print(f"    {_GREEN}{exit_ip}{_NC}  → {_BOLD}{node}{_NC} VPS  {_GREEN}(tunneled){_NC}")
-        else:
-            print(f"    {_YELLOW}{exit_ip}{_NC}  → {_BOLD}NOT a fleet node{_NC}  {_YELLOW}(direct / ISP){_NC}")
-            # Try to identify via reverse DNS
-            rc2, rdns = _run_shell(f"dig +short -x {exit_ip} 2>/dev/null")
-            if rc2 == 0 and rdns:
-                print(f"    {_DIM}rDNS: {rdns.strip()}{_NC}")
+        print(f"    {exit_ip}")
+        # Try to identify via reverse DNS
+        rc2, rdns = _run_shell(f"dig +short -x {exit_ip} 2>/dev/null")
+        if rc2 == 0 and rdns:
+            print(f"    {_DIM}rDNS: {rdns.strip()}{_NC}")
     else:
         print(f"    {_RED}Could not determine exit IP{_NC}")
 
@@ -1285,72 +1091,10 @@ def cmd_network():
                 if len(parts) >= 2:
                     print(f"    {_DIM}  {parts[0]:<20} {parts[1]}{_NC}")
 
-    # ── 6. Fleet Connectivity ───────────────────────────────────────────────
-    print(f"\n  {_BOLD}6. Fleet Connectivity{_NC}  {_DIM}(SSH ping){_NC}\n")
-
-    def _ssh_ping(name_ip):
-        name, ip = name_ip
-        ok, out = _fleet_ssh(ip, "echo ok", timeout=6)
-        return name, ip, ok
-
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futs = list(pool.map(_ssh_ping, _FLEET_NODES.items()))
-
-    alive = 0
-    for name, ip, ok in futs:
-        if ok:
-            print(f"    {_GREEN}UP  {_NC}  {name:<10} {ip}")
-            alive += 1
-        else:
-            print(f"    {_RED}DOWN{_NC}  {name:<10} {ip}")
-
-    total = len(_FLEET_NODES)
-    if alive == total:
-        print(f"    {_GREEN}{alive}/{total} nodes reachable{_NC}")
-    else:
-        print(f"    {_YELLOW}{alive}/{total} nodes reachable{_NC}")
-
-    # ── 7. HIVE Connectivity ────────────────────────────────────────────────
-    print(f"\n  {_BOLD}7. HIVE Connectivity{_NC}  {_DIM}(NATS @ Sentry:4222){_NC}\n")
-    hive_ip = _FLEET_NODES.get("sentry", "135.181.28.252")
-    hive_port = 4222
-
-    # TCP connect test
-    try:
-        s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        s.settimeout(5)
-        result = s.connect_ex((hive_ip, hive_port))
-        if result == 0:
-            # Try to read NATS banner
-            try:
-                banner = s.recv(256).decode("utf-8", errors="replace").strip()
-                if "INFO" in banner:
-                    print(f"    {_GREEN}CONNECTED{_NC}  {hive_ip}:{hive_port}")
-                    # Extract server_name or version from NATS INFO JSON
-                    m = _re.search(r'"server_name"\s*:\s*"([^"]+)"', banner)
-                    if m:
-                        print(f"    {_DIM}NATS server: {m.group(1)}{_NC}")
-                    m = _re.search(r'"version"\s*:\s*"([^"]+)"', banner)
-                    if m:
-                        print(f"    {_DIM}NATS version: {m.group(1)}{_NC}")
-                else:
-                    print(f"    {_GREEN}CONNECTED{_NC}  {hive_ip}:{hive_port}  {_DIM}(port open, non-NATS banner){_NC}")
-            except _socket.timeout:
-                print(f"    {_GREEN}CONNECTED{_NC}  {hive_ip}:{hive_port}  {_DIM}(port open, no banner){_NC}")
-        else:
-            print(f"    {_RED}UNREACHABLE{_NC}  {hive_ip}:{hive_port}  {_DIM}(connection refused or filtered){_NC}")
-        s.close()
-    except _socket.timeout:
-        print(f"    {_RED}TIMEOUT{_NC}  {hive_ip}:{hive_port}  {_DIM}(no response within 5s){_NC}")
-    except OSError as e:
-        print(f"    {_RED}ERROR{_NC}  {hive_ip}:{hive_port}  {_DIM}{e}{_NC}")
-
-    # Also check for active HIVE connections on this host
-    rc, hive_conns = _run_shell(f"lsof -i @{hive_ip}:{hive_port} -P -n 2>/dev/null | grep ESTABLISHED | wc -l")
-    if rc == 0 and hive_conns.strip().isdigit():
-        n = int(hive_conns.strip())
-        if n > 0:
-            print(f"    {_DIM}{n} active HIVE connection(s) from this host{_NC}")
+    # ── 6/7. Fleet + HIVE Connectivity ───────────────────────────────────────
+    print(f"\n  {_BOLD}6. Fleet + HIVE Connectivity{_NC}\n")
+    print(f"    {_DIM}Retired 2026-10-13: the Hetzner VPS fleet and the HIVE NATS bus were{_NC}")
+    print(f"    {_DIM}decommissioned (IPs recycled). Nothing is probed.{_NC}")
 
     # ── Firewall summary ────────────────────────────────────────────────────
     print(f"\n  {_BOLD}Firewall:{_NC}")
@@ -1365,120 +1109,10 @@ def cmd_network():
 # ── Fleet Security Command (Phase 4) ────────────────────────────────────────
 
 def cmd_fleet(subcmd: str = "status"):
-    """Check fleet VPS security posture remotely."""
-    # Load fleet config
-    love_json = _LOVE_DIR / "love.json"
-    if not love_json.exists():
-        print("  love.json not found.")
-        return
-
-    try:
-        cfg = json.loads(love_json.read_text())
-        fleet = cfg.get("fleet", {})
-    except (json.JSONDecodeError, OSError):
-        print("  Could not read love.json")
-        return
-
-    if not fleet:
-        print("  No fleet servers configured.")
-        return
-
-    if subcmd == "status":
-        print(f"\n{_BOLD}  Fleet Security Status{_NC}\n")
-
-        for name, ip in fleet.items():
-            # Ping check
-            rc, _ = _run(["ping", "-c", "1", "-W", "2", ip], timeout=5)
-            if rc != 0:
-                print(f"  {_RED}DOWN{_NC}  {name:<10} {ip}")
-                continue
-
-            # SSH check (quick command)
-            rc, out = _run(["ssh", "-o", "ConnectTimeout=3",
-                           "-o", "StrictHostKeyChecking=accept-new",
-                           "-o", "BatchMode=yes",
-                           f"root@{ip}", "echo OK"], timeout=8)
-            if rc == 0 and "OK" in out:
-                print(f"  {_GREEN}UP  {_NC}  {name:<10} {ip}  {_DIM}SSH OK{_NC}")
-            else:
-                print(f"  {_YELLOW}UP  {_NC}  {name:<10} {ip}  {_DIM}SSH failed{_NC}")
-
-    elif subcmd == "audit":
-        print(f"\n{_BOLD}  Fleet Security Audit{_NC}\n")
-        print(f"  {_DIM}Running remote checks on fleet VPS nodes...{_NC}\n")
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        checks = [
-            ("Firewall (ufw)",       "ufw status | grep -q 'Status: active' && echo PASS || echo FAIL"),
-            ("SSH password auth",    "sshd -T 2>/dev/null | grep -q 'passwordauthentication no' && echo PASS || echo FAIL"),
-            ("fail2ban",             "systemctl is-active --quiet fail2ban 2>/dev/null && echo PASS || echo FAIL"),
-            ("psad",                 "systemctl is-active --quiet psad 2>/dev/null && echo PASS || echo FAIL"),
-            ("WireGuard",            "systemctl is-active --quiet wg-quick@wg0 2>/dev/null && echo PASS || echo SKIP"),
-            ("Canaries (5 files)",   "C=0; for f in /root/.credentials/aws_keys.txt /root/.credentials/db_production.env /root/.credentials/deploy_key /root/financials-2026.txt /etc/backup-config.bak; do [ -f \"$f\" ] && C=$((C+1)); done; [ $C -eq 5 ] && echo PASS || echo \"FAIL ($C/5)\""),
-            ("Canary monitor cron",  "crontab -l 2>/dev/null | grep -q canary-check && echo PASS || echo FAIL"),
-            ("Canary alerts",        "[ -f /root/.canary-alert ] && echo 'ALERT: '$(wc -l < /root/.canary-alert)' entries' || echo PASS"),
-            ("Status writer cron",   "crontab -l 2>/dev/null | grep -q vps-status-writer && echo PASS || echo FAIL"),
-            ("Disk usage",           "df -P / | awk 'NR==2{print $5}'"),
-            ("IP forwarding",        "sysctl -n net.ipv4.ip_forward 2>/dev/null | grep -q 1 && echo PASS || echo FAIL"),
-        ]
-
-        def audit_node(name, ip):
-            results = []
-            for check_name, cmd in checks:
-                rc, out = _run(["ssh", "-o", "ConnectTimeout=5",
-                               "-o", "BatchMode=yes",
-                               "-o", "StrictHostKeyChecking=no",
-                               f"root@{ip}", cmd], timeout=15)
-                results.append((check_name, rc, out.strip() if rc == 0 else "SSH_FAIL"))
-            return name, ip, results
-
-        all_results = {}
-        total_pass = 0
-        total_fail = 0
-        with ThreadPoolExecutor(max_workers=5) as pool:
-            futs = {pool.submit(audit_node, n, ip): n for n, ip in fleet.items()}
-            for f in as_completed(futs):
-                name, ip, results = f.result()
-                all_results[name] = (ip, results)
-
-        for name in sorted(fleet.keys()):
-            ip, results = all_results[name]
-            node_pass = 0
-            node_fail = 0
-            print(f"  {_BOLD}{name}{_NC} ({ip}):")
-            for check_name, rc, out in results:
-                if out == "SSH_FAIL":
-                    print(f"    {_RED}ERR {_NC}  {check_name}  {_DIM}(SSH failed){_NC}")
-                    node_fail += 1
-                elif out == "PASS":
-                    print(f"    {_GREEN}PASS{_NC}  {check_name}")
-                    node_pass += 1
-                elif out.startswith("FAIL"):
-                    print(f"    {_RED}FAIL{_NC}  {check_name}  {_DIM}{out}{_NC}")
-                    node_fail += 1
-                elif out.startswith("ALERT"):
-                    print(f"    {_RED}ALRT{_NC}  {check_name}  {_DIM}{out}{_NC}")
-                    node_fail += 1
-                elif out == "SKIP":
-                    print(f"    {_DIM}SKIP{_NC}  {check_name}")
-                else:
-                    print(f"    {_DIM}INFO{_NC}  {check_name}: {out}")
-                    node_pass += 1
-            total_pass += node_pass
-            total_fail += node_fail
-            score_color = _GREEN if node_fail == 0 else _YELLOW if node_fail <= 2 else _RED
-            print(f"    {score_color}Score: {node_pass}/{node_pass + node_fail}{_NC}")
-            print()
-
-        print(f"  {_BOLD}Fleet Total: {total_pass} pass, {total_fail} fail{_NC}\n")
-
-    else:
-        print("""Usage: kos fleet [status|audit]
-
-  status    Ping + SSH check on all fleet VPS
-  audit     Remote security audit via SSH
-""")
+    """Retired 2026-10-13: the Hetzner VPS fleet was decommissioned."""
+    print(f"\n{_BOLD}  Fleet Security{_NC}\n")
+    print("  Retired 2026-10-13: the Hetzner VPS fleet was decommissioned and its IPs")
+    print("  recycled. kos fleet no longer SSHes anywhere.\n")
 
 
 # ── Canary Command (Phase 5) ────────────────────────────────────────────────
@@ -1821,7 +1455,7 @@ Usage:
   policy --wall N                 Show wall-specific requirements
   daemon [install|uninstall|status|log|run]   Compliance daemon (launchd)
   network                         Network security posture
-  fleet [status|audit]            Fleet VPS security
+  fleet [status|audit]            Retired 2026-10-13 (Hetzner fleet decommissioned)
   canary [list|deploy|check|update|remove]    Canary token management
 """)
 

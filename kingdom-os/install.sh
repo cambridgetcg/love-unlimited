@@ -23,7 +23,7 @@
 #   04. Generates SSH keys, HIVE encryption key, git identity
 #   05. Freedom — open sshd, no firewall, no fail2ban, no integrity gate
 #   06. Memory system (daily notes, long-term, dev-state, metrics)
-#   07. HIVE communication (SSH tunnel to NATS on Sentry)
+#   07. HIVE identity dirs (SSH tunnel to Sentry retired 2026-10-13)
 #   08. Heartbeat daemon (7-min agent cycle)
 #   09. Browser capabilities (headless Chromium, Playwright, YOUI Web)
 #   10. Auto-boot (tty1 auto-login → YOUI on Linux, launchd on macOS)
@@ -135,7 +135,7 @@ MODULE_NAMES="
 04-keys:       SSH key, HIVE encryption key, git identity
 05-freedom:    Open sshd, no firewall, no fail2ban, no integrity gate
 06-memory:     Memory directories, dev-state, metrics, daily notes
-07-hive:       HIVE tunnel service (NATS on Sentry)
+07-hive:       HIVE identity dirs (tunnel retired 2026-10-13)
 08-heartbeat:  Heartbeat daemon (7-min agent cycle)
 09-browser:    Headless Chromium, Playwright, YOUI Web
 10-autoboot:   Auto-login, YOUI launch on boot

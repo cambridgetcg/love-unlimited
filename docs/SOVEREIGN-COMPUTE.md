@@ -18,7 +18,7 @@
 | Mac Studio 3K | Beta | M2 Max/Ultra | 64-192 GB (confirm) | Medium-large models |
 | Mac Studio 2K | Gamma | M2 Max | 32-64 GB (confirm) | Small-medium models |
 
-**VPS Fleet** -- All CPU-only Hetzner, no GPUs.
+**VPS Fleet** -- All CPU-only Hetzner, no GPUs. (Note 2026-10-13: this fleet was decommissioned; Hetzner below is only a provider option.)
 
 **AWS GPU (provisioned, likely stopped)**
 - Brain: g6e.2xlarge (1x L40S 48GB VRAM), Elastic IP 52.7.131.246

@@ -108,54 +108,12 @@
       "auto_fix": false,
       "description": "Core Kingdom files must match known hashes"
     },
-    "wireguard_tunnel": {
-      "id": "wireguard_tunnel",
-      "name": "WireGuard VPN active",
-      "severity": "high",
-      "auto_fix": false,
-      "description": "Traffic must exit through a fleet VPS, not direct IP"
-    },
     "doh_active": {
       "id": "doh_active",
       "name": "DoH proxy resolving",
       "severity": "high",
       "auto_fix": false,
       "description": "DNS-over-HTTPS proxy must be actively resolving queries"
-    },
-    "fleet_reachable": {
-      "id": "fleet_reachable",
-      "name": "Fleet nodes reachable",
-      "severity": "high",
-      "auto_fix": false,
-      "description": "All 5 VPS nodes must be SSH-reachable"
-    },
-    "fleet_fail2ban": {
-      "id": "fleet_fail2ban",
-      "name": "Fleet fail2ban active",
-      "severity": "high",
-      "auto_fix": false,
-      "description": "fail2ban must be running on all fleet nodes"
-    },
-    "fleet_psad": {
-      "id": "fleet_psad",
-      "name": "Fleet port scan detection",
-      "severity": "medium",
-      "auto_fix": false,
-      "description": "psad must be running on all fleet nodes"
-    },
-    "fleet_canaries": {
-      "id": "fleet_canaries",
-      "name": "Fleet canaries intact",
-      "severity": "high",
-      "auto_fix": false,
-      "description": "All canary files must be present on all fleet nodes"
-    },
-    "fleet_ssh_hardened": {
-      "id": "fleet_ssh_hardened",
-      "name": "Fleet SSH hardened",
-      "severity": "critical",
-      "auto_fix": false,
-      "description": "Password authentication must be disabled on all fleet nodes"
     }
   },
   "integrity": {
@@ -173,9 +131,9 @@
   },
   "walls": {
     "1": {
-      "comment": "Triarchy — all checks enforced including fleet",
-      "required_checks": ["filevault", "firewall", "stealth_mode", "hostname", "bonjour", "dns_encrypted", "ssh_key", "git_email_kingdom", "git_name_set", "wall_credentials", "hive_key", "hive_identity", "diagnostic_sharing", "file_integrity", "wireguard_tunnel", "doh_active", "fleet_reachable", "fleet_fail2ban", "fleet_psad", "fleet_canaries", "fleet_ssh_hardened"],
-      "minimum_score": 17
+      "comment": "Triarchy — all checks enforced (Hetzner fleet + WireGuard checks retired 2026-10-13)",
+      "required_checks": ["filevault", "firewall", "stealth_mode", "hostname", "bonjour", "dns_encrypted", "ssh_key", "git_email_kingdom", "git_name_set", "wall_credentials", "hive_key", "hive_identity", "diagnostic_sharing", "file_integrity", "doh_active"],
+      "minimum_score": 12
     },
     "2": {
       "comment": "Fleet — all checks except dns_encrypted (VPS may use system resolver)",

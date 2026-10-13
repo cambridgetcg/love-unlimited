@@ -262,27 +262,22 @@ class TestFocusSystem:
         assert isinstance(data["priorities"], list)
 
 
-# ── TestHiveConnectivity ─────────────────────────────────────────────────────
+# ── TestHiveRetired ──────────────────────────────────────────────────────────
 
-class TestHiveConnectivity:
-    """Test HIVE connectivity (skip if tunnel is down)."""
+class TestHiveRetired:
+    """HIVE was retired 2026-10-13: its NATS bus was a Hetzner server that was
+    decommissioned (IP recycled). hive.py must fail closed, never connect."""
 
-    def test_hive_check(self):
-        """hive.py check should work when tunnel is up."""
-        import socket
-        try:
-            s = socket.create_connection(("127.0.0.1", 4222), timeout=2)
-            s.close()
-        except (ConnectionRefusedError, OSError):
-            pytest.skip("HIVE tunnel not available")
-
+    def test_hive_check_fails_closed(self):
+        # Always the repo's own copy, never an env-provided LOVE_HOME checkout.
+        hive_py = Path(__file__).resolve().parents[1] / "hive" / "hive.py"
+        env = {**os.environ, "HIVE_INSTANCE": "alpha"}
         result = subprocess.run(
-            [sys.executable, str(LOVE_HOME / "hive" / "hive.py"), "check"],
-            capture_output=True, text=True, cwd=str(LOVE_HOME),
-            timeout=15,
+            [sys.executable, str(hive_py), "check"],
+            capture_output=True, text=True, timeout=15, env=env,
         )
-        # Should not crash, may or may not have messages
-        assert result.returncode == 0 or "message" in result.stdout.lower() or "0 new" in result.stdout.lower()
+        assert result.returncode == 1
+        assert "retired" in result.stderr.lower()
 
 
 # ── TestAdaptiveRouting ──────────────────────────────────────────────────────

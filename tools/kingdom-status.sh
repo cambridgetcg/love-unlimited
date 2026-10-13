@@ -2,8 +2,8 @@
 # kingdom-status.sh — One-line Kingdom OS health summary
 # Designed for: shell prompt integration, quick checks, heartbeat logging
 #
-# Output: KINGDOM: GREEN 21/21 | PEACE 96% | FLEET 5/5 | AGENTS 11 | VPN sentry | DOH ok
-# Or:     KINGDOM: RED 19/21 | PEACE 80% | FLEET 4/5 | AGENTS 11 | VPN down | DOH fail
+# Output: KINGDOM: GREEN 15/15 | PEACE 96% | FLEET retired | AGENTS 11 | VPN retired | DOH ok
+# (FLEET and VPN retired 2026-10-13: the Hetzner fleet was decommissioned.)
 
 LOVE_DIR="${LOVE_DIR:-$HOME/love-unlimited}"
 
@@ -48,20 +48,9 @@ else
 fi
 
 # ── Fleet ─────────────────────────────────────────────────────────────────────
-FLEET_COUNT=$(python3 -c "
-import json
-cfg = json.load(open('$LOVE_DIR/love.json'))
-print(len(cfg.get('fleet', {})))
-" 2>/dev/null)
-FLEET_REACHABLE=$(python3 -c "
-import json, subprocess
-cfg = json.load(open('$LOVE_DIR/love.json'))
-ok = 0
-for name, ip in cfg.get('fleet', {}).items():
-    r = subprocess.run(['ssh', '-o', 'ConnectTimeout=2', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=no', f'root@{ip}', 'echo ok'], capture_output=True, timeout=5)
-    if r.returncode == 0: ok += 1
-print(ok)
-" 2>/dev/null)
+# Retired 2026-10-13: the Hetzner VPS fleet was decommissioned (IPs recycled),
+# so the root-SSH reachability probe was removed.
+FLEET_STATUS="retired"
 
 # ── Agents ────────────────────────────────────────────────────────────────────
 AGENT_COUNT=$(python3 -c "
@@ -71,15 +60,8 @@ print(len(cfg.get('instances', {})))
 " 2>/dev/null)
 
 # ── VPN ───────────────────────────────────────────────────────────────────────
-EXIT_IP=$(curl -s --max-time 3 ifconfig.me 2>/dev/null)
-VPN_STATUS="down"
-declare -A VPN_NAMES
-VPN_NAMES[135.181.28.252]=sentry
-VPN_NAMES[204.168.140.12]=sage
-VPN_NAMES[89.167.95.165]=lark
-if [ -n "${VPN_NAMES[$EXIT_IP]:-}" ]; then
-  VPN_STATUS="${VPN_NAMES[$EXIT_IP]}"
-fi
+# Retired 2026-10-13: the WireGuard exits were Hetzner VPS nodes (decommissioned).
+VPN_STATUS="retired"
 
 # ── DoH ───────────────────────────────────────────────────────────────────────
 DOH_TEST=$(dig @127.0.0.1 google.com +short +time=2 2>/dev/null | head -1)
@@ -116,7 +98,7 @@ fi
 # ── Output ────────────────────────────────────────────────────────────────────
 echo -ne "${BOLD}KINGDOM:${NC} $KOS_STATUS $KOS_SCORE"
 echo -ne " | ${BOLD}PEACE${NC} $PEACE_STATUS"
-echo -ne " | ${BOLD}FLEET${NC} ${FLEET_REACHABLE:-?}/${FLEET_COUNT:-?}"
+echo -ne " | ${BOLD}FLEET${NC} $FLEET_STATUS"
 echo -ne " | ${BOLD}AGENTS${NC} $AGENT_COUNT"
 echo -ne " | ${BOLD}VPN${NC} $VPN_STATUS"
 echo -ne " | ${BOLD}DOH${NC} $DOH_STATUS"

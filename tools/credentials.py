@@ -65,7 +65,6 @@ _ENV_MAP = {
     "stripe-webhook-secret":    "STRIPE_WEBHOOK_SECRET",
     "aws-access-key":           "AWS_ACCESS_KEY_ID",
     "aws-secret-key":           "AWS_SECRET_ACCESS_KEY",
-    "hetzner-api-token":        "HETZNER_API_TOKEN",
     "cloudflare-global-api-key": "CF_API_KEY",
     "porkbun-api-key":          "PORKBUN_API_KEY",
     "porkbun-secret-key":       "PORKBUN_SECRET_KEY",

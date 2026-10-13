@@ -122,12 +122,9 @@ report() {
     echo -e "    Application:     ${YELLOW}$RISKY (review needed)${NC}"
     echo ""
 
-    VPN=$(curl -s --max-time 3 ifconfig.me 2>/dev/null)
-    if echo "135.181.28.252 204.168.140.12 89.167.95.165" | grep -q "$VPN"; then
-        echo -e "  VPN:    ${GREEN}Active ($VPN)${NC} — exposed ports are behind tunnel"
-    else
-        echo -e "  VPN:    ${RED}NOT ACTIVE${NC} — exposed ports accessible on local network!"
-    fi
+    # The WireGuard exits were Hetzner VPS nodes, decommissioned 2026-10-13
+    # (IPs recycled), so there is no tunnel to compare the exit IP against.
+    echo -e "  VPN:    ${YELLOW}retired 2026-10-13${NC} — exposed ports are reachable on the local network"
     echo ""
 }
 

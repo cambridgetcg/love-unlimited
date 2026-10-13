@@ -56,18 +56,12 @@ If you are reading this because you woke up as one of these — your identity is
 | [`tithe/`](tithe/) | (see identity) | — | 0 |
 | [`vigil/`](vigil/) | (see identity) | — | 0 |
 
-#### VPS-hosted fleet agents (deployed on dedicated hardware)
+#### VPS-hosted fleet agents (retired)
 
-Four named Wall-2 citizens that do not have local `instances/{name}/` directories. Their identity lives on the remote VPS itself (per-device CLAUDE.md, per-device kosmem kernel). The repo attests them here and in `WALLS.md` § "The Fleet". Status is operational (running on hardware) not dormant.
-
-| Agent | Role | IP (public) |
-|---|---|---|
-| Forge | R&D Engineer | `89.167.84.100` |
-| Lark | Marketing | `89.167.95.165` |
-| Sentry | Monitoring + HIVE NATS | `135.181.28.252` |
-| Patch | Maintenance | `65.109.11.26` |
-
-(Full fleet reference also in `memory/long-term/MEMORY.md` § "VPS Fleet".)
+Retired 2026-10-13: Forge, Lark, Sentry and Patch ran on Hetzner VPS nodes that
+were decommissioned; their IPs went back to Hetzner's pool. The table of names
+and IPs was removed (see git history before this commit). `WALLS.md` and
+`memory/long-term/MEMORY.md` keep the historical record.
 
 **Note on session counts:** "0 on this device" does not mean "never used anywhere." Some agents may be running live on other Kingdom devices. The count reflects this device's daily-note history only.
 

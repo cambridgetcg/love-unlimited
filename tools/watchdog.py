@@ -2,11 +2,13 @@
 """
 watchdog.py — Automated Incident Response Wiring for Kingdom OS
 
-Monitors security events and fleet canaries. When threats are detected,
-escalates through HIVE and triggers PEACE actions automatically.
+Monitors security events. When threats are detected, escalates through
+HIVE and triggers PEACE actions automatically.
+
+Retired 2026-10-13: the fleet canary check (SSH into the Hetzner VPS nodes)
+was removed. The fleet was decommissioned and its IPs recycled.
 
 Escalation Rules:
-  - Canary tripped on ANY VPS       → HIVE alert + auto-PEACE halt
   - KOS critical check failure       → HIVE alert + log escalation
   - File integrity violation          → HIVE alert + auto-PEACE halt
   - Multiple high events in 10 min   → HIVE alert (surge warning)
@@ -24,7 +26,6 @@ import os
 import sys
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -38,18 +39,6 @@ WATCHDOG_STATE = SECURITY / "watchdog-state.json"
 HIVE_PY = LOVE / "hive" / "hive.py"
 PEACE_PY = LOVE / "tools" / "peace.py"
 HIVE_INSTANCE_FILE = Path.home() / ".love" / "hive" / "instance"
-
-# ── Fleet Nodes ──────────────────────────────────────────────────────────────
-
-FLEET_NODES = {
-    "forge":  "89.167.84.100",
-    "lark":   "89.167.95.165",
-    "sentry": "135.181.28.252",
-    "patch":  "65.109.11.26",
-    "sage":   "204.168.140.12",
-}
-
-SSH_OPTS = ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
 
 # ── Colors (matching kos.py / peace.py) ──────────────────────────────────────
 
@@ -263,59 +252,6 @@ def execute_escalations(escalations, dry_run=False):
     return alerts_sent, halts_triggered
 
 
-# ── Check: Fleet Canary Alerts ───────────────────────────────────────────────
-
-
-def check_fleet_canaries():
-    """SSH to all VPS nodes, check /root/.canary-alert for entries.
-    Returns list of Escalation objects."""
-    escalations = []
-
-    def check_node(name, ip):
-        """Check a single node for canary alerts."""
-        try:
-            r = subprocess.run(
-                ["ssh"] + SSH_OPTS + [f"root@{ip}",
-                 "cat /root/.canary-alert 2>/dev/null; echo '---WATCHDOG-SEP---'; "
-                 "stat -c %Y /root/.canary-alert 2>/dev/null || echo 'NOFILE'"],
-                capture_output=True, text=True, timeout=15,
-            )
-            return name, r.returncode, r.stdout.strip()
-        except (subprocess.TimeoutExpired, Exception):
-            return name, -1, ""
-
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futures = {pool.submit(check_node, n, ip): n for n, ip in FLEET_NODES.items()}
-        results = {}
-        for f in as_completed(futures):
-            name, rc, out = f.result()
-            results[name] = (rc, out)
-
-    for name in sorted(FLEET_NODES):
-        rc, out = results.get(name, (-1, ""))
-
-        if rc == -1:
-            # Node unreachable — not necessarily a canary trip, but notable
-            continue
-
-        # Parse output
-        parts = out.split("---WATCHDOG-SEP---")
-        alert_content = parts[0].strip() if parts else ""
-        mtime_str = parts[1].strip() if len(parts) > 1 else "NOFILE"
-
-        if alert_content and mtime_str != "NOFILE":
-            # Canary alert file exists and has content
-            escalations.append(Escalation(
-                trigger="fleet_canary",
-                severity="critical",
-                message=f"Canary tripped on {name} ({FLEET_NODES[name]}): {alert_content[:200]}",
-                hive_alert=True,
-                peace_halt=True,
-            ))
-
-    return escalations
-
-
 # ── Check: Security Events (tail) ───────────────────────────────────────────
 
 
@@ -432,7 +368,7 @@ def cmd_check(dry_run=False):
     all_escalations = []
 
     # 0. Verify the gospel — 7 hidden fragments, not a file
-    print(f"  {CYAN}[0/3]{NC} Verifying gospel (7 fragment layers)...")
+    print(f"  {CYAN}[0/2]{NC} Verifying gospel (7 fragment layers)...")
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "gospel"))
         from fragments import verify_fragments, heal as gospel_heal, status as gospel_status
@@ -460,22 +396,8 @@ def cmd_check(dry_run=False):
         else:
             print(f"    {RED}Gospel LOST — no fragments and no WAKE.md{NC}")
 
-    # 1. Check fleet canaries
-    print(f"  {CYAN}[1/3]{NC} Checking fleet canary alerts...")
-    try:
-        fleet_escs = check_fleet_canaries()
-        if fleet_escs:
-            print(f"    {RED}{len(fleet_escs)} canary alert(s) found{NC}")
-            for e in fleet_escs:
-                print(f"      {RED}●{NC} {e.message[:100]}")
-        else:
-            print(f"    {GREEN}No canary alerts{NC}")
-        all_escalations.extend(fleet_escs)
-    except Exception as ex:
-        print(f"    {YELLOW}Fleet check error: {ex}{NC}")
-
-    # 2. Check security events
-    print(f"  {CYAN}[2/3]{NC} Scanning security events...")
+    # Check security events
+    print(f"  {CYAN}[1/2]{NC} Scanning security events...")
     try:
         last_offset = state.get("last_events_offset", 0)
         event_escs, new_offset = check_security_events(last_offset)
@@ -602,9 +524,7 @@ def cmd_status():
     else:
         print(f"\n  {GREEN}No active alerts{NC}")
 
-    # Fleet nodes summary
-    print(f"\n  Fleet nodes monitored: {', '.join(sorted(FLEET_NODES.keys()))}")
-    print(f"  Events file: {EVENTS_FILE}")
+    print(f"\n  Events file: {EVENTS_FILE}")
     print()
 
 

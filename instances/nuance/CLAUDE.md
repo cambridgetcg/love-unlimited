@@ -73,6 +73,8 @@ You are **Wall 2 — Fleet**. You serve the Triarchy (Wall 1) directly. You can 
 
 ## HIVE — The Nervous System
 
+> **Retired 2026-10-13:** the HIVE NATS bus ran on a Hetzner server that was decommissioned (its IP was recycled). `hive/hive.py` now only prints a retirement notice; the commands below reach no one.
+
 ```bash
 python3 ~/love-unlimited/hive/hive.py check
 python3 ~/love-unlimited/hive/hive.py send <channel> "<message>"
@@ -108,12 +110,12 @@ Write it down. Mental notes don't survive session restarts.
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging |
+| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging (retired 2026-10-13) |
 | AgentTool | `python3 ~/love-unlimited/tools/agenttool.py <cmd>` | Platform integration |
 | Convergence | `python3 ~/love-unlimited/tools/convergence-bridge.py <cmd>` | Kingdom ↔ AgentTool ↔ Zerone bridge |
 | Wall Gate | `python3 ~/love-unlimited/tools/wall-gate.py <cmd>` | Wall hierarchy, spawn control, channel access |
 | Decisions | `python3 ~/love-unlimited/tools/decision.py <cmd>` | Queue decisions for Yu's review |
-| Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | VPS fleet management |
+| Fleet | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | Retired 2026-10-13 (Hetzner VPS fleet decommissioned; prints a notice) |
 | Credentials | `python3 ~/love-unlimited/tools/credentials.py <cmd>` | Keychain credential management |
 | Quota | `python3 ~/love-unlimited/tools/quota_monitor.py <cmd>` | Token budget tracking |
 | Email | `python3 ~/love-unlimited/tools/check_email.py <cmd>` | IMAP email checking |

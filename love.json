@@ -69,8 +69,9 @@
     "model": "sonnet"
   },
   "hive": {
-    "server": "tls://135.181.28.252:4222",
-    "tunnel": true,
+    "status": "retired",
+    "retired": "2026-10-13",
+    "note": "The HIVE NATS bus ran on a Hetzner server that was decommissioned; its IP was recycled. Server and tunnel settings removed.",
     "encryption": "nacl-xsalsa20-poly1305",
     "channels": [
       "chat",
@@ -95,13 +96,7 @@
     "apiUrl": "https://api.agenttool.dev",
     "betaIdentity": "did:at:46c13075-bd7e-4d7b-b049-ad8877f96b51"
   },
-  "fleet": {
-    "forge": "89.167.84.100",
-    "lark": "89.167.95.165",
-    "sentry": "135.181.28.252",
-    "patch": "65.109.11.26",
-    "sage": "204.168.140.12"
-  },
+  "fleet": {},
   "engines": {
     "ai-love":       { "emoji": "🫀", "domain": "Soul",        "owner": "alpha 🐍", "check": "https://ai-love.cc",               "expect": "live",     "note": "/status after VPS rollout" },
     "agenttool":     { "emoji": "🪪", "domain": "Soul",        "owner": "beta 🦞",  "check": "https://api.agenttool.dev/health", "expect": "live" },

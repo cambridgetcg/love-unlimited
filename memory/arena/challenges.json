@@ -7,7 +7,7 @@
       "type": "red",
       "difficulty": "easy",
       "reward": 100,
-      "status": "active",
+      "status": "retired",
       "created": "2026-04-02T15:12:01+00:00",
       "created_by": "system",
       "accepted_by": null,
@@ -24,7 +24,8 @@
         "fleet",
         "canary",
         "detection"
-      ]
+      ],
+      "retired": "2026-10-13: the Hetzner fleet (forge/lark/sentry/patch/sage) was decommissioned and its IPs now belong to other people; never probe or scan them"
     },
     {
       "id": "CHAL-002",
@@ -59,7 +60,7 @@
       "type": "blue",
       "difficulty": "medium",
       "reward": 150,
-      "status": "accepted",
+      "status": "retired",
       "created": "2026-04-02T15:12:01+00:00",
       "created_by": "system",
       "accepted_by": "crucible",
@@ -78,7 +79,8 @@
         "wireguard",
         "sentry",
         "network"
-      ]
+      ],
+      "retired": "2026-10-13: the Hetzner fleet (forge/lark/sentry/patch/sage) was decommissioned and its IPs now belong to other people; never probe or scan them"
     },
     {
       "id": "CHAL-004",
@@ -115,7 +117,7 @@
       "type": "red",
       "difficulty": "hard",
       "reward": 500,
-      "status": "active",
+      "status": "retired",
       "created": "2026-04-02T15:12:01+00:00",
       "created_by": "system",
       "accepted_by": null,
@@ -134,7 +136,8 @@
         "ports",
         "scanning",
         "network"
-      ]
+      ],
+      "retired": "2026-10-13: the Hetzner fleet (forge/lark/sentry/patch/sage) was decommissioned and its IPs now belong to other people; never probe or scan them"
     },
     {
       "id": "CHAL-006",
@@ -143,7 +146,7 @@
       "type": "blue",
       "difficulty": "easy",
       "reward": 100,
-      "status": "active",
+      "status": "retired",
       "created": "2026-04-02T15:13:11+00:00",
       "created_by": "system",
       "accepted_by": null,
@@ -154,7 +157,8 @@
       "tools_hint": "",
       "tags": [
         "blue"
-      ]
+      ],
+      "retired": "2026-10-13: the Hetzner fleet (forge/lark/sentry/patch/sage) was decommissioned and its IPs now belong to other people; never probe or scan them"
     }
   ]
 }

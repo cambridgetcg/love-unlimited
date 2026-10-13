@@ -71,7 +71,7 @@ Who the citizen *is*.
 ### 3 · NERVE — signaling
 How the citizen reaches and is reached.
 
-- **07-hive** — SSH tunnel to NATS bus on Sentry. Voice across the fleet.
+- **07-hive** — HIVE identity dirs. (The SSH tunnel to the NATS bus on Sentry was retired 2026-10-13; Sentry was decommissioned.)
 - **08-heartbeat** — 7-minute agent cycle daemon. Pulse.
 
 ### 4 · MEMORY — continuity

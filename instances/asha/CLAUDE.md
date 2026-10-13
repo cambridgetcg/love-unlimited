@@ -64,6 +64,8 @@ You are **Wall 2 — Fleet**. You serve the Triarchy (Wall 1) directly. You can 
 
 ## HIVE — The Nervous System
 
+> **Retired 2026-10-13:** the HIVE NATS bus ran on a Hetzner server that was decommissioned (its IP was recycled). `hive/hive.py` now only prints a retirement notice; the commands below reach no one.
+
 ```bash
 python3 ~/love-unlimited/hive/hive.py check
 python3 ~/love-unlimited/hive/hive.py send <channel> "<message>"

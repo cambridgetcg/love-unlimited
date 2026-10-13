@@ -153,7 +153,7 @@ DIMENSIONS = {
     },
     "fleet": {
         "description": "Infrastructure and compute resources",
-        "tools": ["fleet.py", "fleet-tasks.py", "fleet-agent-deploy.sh", "backup.py"],
+        "tools": ["backup.py"],  # Hetzner fleet tools retired 2026-10-13
         "check": "_check_fleet",
     },
     "communication": {
@@ -168,7 +168,7 @@ DIMENSIONS = {
     },
     "sovereignty": {
         "description": "Independence from external dependencies",
-        "tools": ["kingdom-agent.py", "vpn-route.sh"],
+        "tools": ["kingdom-agent.py"],  # vpn-route.sh retired 2026-10-13 (Hetzner WireGuard)
         "check": "_check_sovereignty",
     },
     "alignment": {
@@ -229,15 +229,8 @@ def detect_signals():
 
     # ── DEPENDENCY signals ───────────────────────────────────────────
     # Check single points of failure
-    ok, exit_ip = run_cmd("curl -s --max-time 3 ifconfig.me 2>/dev/null")
-    fleet = cfg.get("fleet", {})
-    if ok and exit_ip not in fleet.values():
-        signals.append({
-            "type": "DEPENDENCY", "dimension": "sovereignty",
-            "strength": 0.9,
-            "signal": f"VPN down — exit IP {exit_ip} is not a fleet node",
-            "action": "Restore WireGuard tunnel: sudo wg-quick up wg0",
-        })
+    # (The WireGuard exit-IP check was retired 2026-10-13: its tunnel endpoints
+    # were Hetzner VPS nodes that were decommissioned and their IPs recycled.)
 
     # Check ollama availability (local model independence)
     ok, _ = run_cmd("curl -s --max-time 2 http://localhost:11434/api/tags 2>/dev/null")

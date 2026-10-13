@@ -39,11 +39,6 @@ Host *
 Host kingdom-*
   User root
   IdentityFile ~/.ssh/id_ed25519
-
-Host sentry
-  HostName ${SENTRY_IP}
-  User root
-  IdentityFile ~/.ssh/id_ed25519
 SSHEOF
   chmod 600 "$SSH_CONFIG"
   echo "  SSH config updated (accept-new globally)"

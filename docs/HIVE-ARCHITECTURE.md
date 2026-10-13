@@ -1,5 +1,11 @@
 # HIVE Architecture — Kingdom OS Communication Layer
 
+> **Retired 2026-10-13.** The HIVE NATS bus ran on Sentry, a Hetzner VPS that was
+> decommissioned; its IP went back to Hetzner's pool. `hive/hive.py` no longer
+> connects anywhere and the SSH-tunnel provisioning was removed. This page is kept
+> as a description of the old design; the transport section was removed (see git
+> history before this commit).
+
 _Communication is not a feature. It is the nervous system._
 
 ---
@@ -110,18 +116,10 @@ All payloads encrypted with a shared NaCl secret key:
 }
 ```
 
-## Transport: SSH Tunnel
+## Transport: SSH Tunnel (retired)
 
-NATS runs on Sentry (135.181.28.252:4222). Agents connect via SSH tunnel:
-
-```
-Agent machine                          Sentry VPS
-localhost:4222  ──SSH tunnel──→  127.0.0.1:4222 (NATS)
-```
-
-- **macOS**: `autossh` via launchd plist (KeepAlive=true)
-- **Linux VM**: OpenRC service (`/etc/init.d/kingdom-hive`)
-- **Fallback**: Direct TLS connection (requires CA cert)
+Retired 2026-10-13: NATS ran on the Hetzner Sentry VPS and agents reached it
+through an SSH tunnel. The server, its address and the tunnel setup are gone.
 
 ## Integration with kosmem
 

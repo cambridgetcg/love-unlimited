@@ -63,12 +63,7 @@ done
 
 section "SERVICES"
 
-# HIVE tunnel
-if nc -z 127.0.0.1 2222 2>/dev/null; then
-    check "HIVE tunnel (localhost:2222)" "pass" "open"
-else
-    check "HIVE tunnel (localhost:2222)" "fail" "connection refused"
-fi
+# HIVE tunnel: retired 2026-10-13 (Hetzner HIVE server decommissioned)
 
 # Ollama
 if curl -s --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
@@ -96,30 +91,12 @@ else
     check "Heart daemon (launchd)" "warn" "not registered"
 fi
 
-# HIVE tunnel launchd
-if launchctl list 2>/dev/null | grep -qE "love.*hive|com\.love\.hive"; then
-    check "HIVE tunnel (launchd)" "pass" "registered"
-elif pgrep -f "ssh.*hive-tunnel" >/dev/null 2>&1; then
-    check "HIVE tunnel (launchd)" "pass" "running via SSH (not launchd)"
-else
-    check "HIVE tunnel (launchd)" "warn" "not registered as launchd service"
-fi
+# HIVE tunnel launchd: retired 2026-10-13 (the Hetzner HIVE server was
+# decommissioned and its IP recycled; there is no tunnel to check).
 
 # ── 3. Fleet SSH Checks ─────────────────────────────────────────────────────
-
-section "FLEET"
-
-FLEET_NODES="forge:89.167.84.100 lark:89.167.95.165 sentry:135.181.28.252 patch:65.109.11.26 sage:204.168.140.12"
-
-for entry in $FLEET_NODES; do
-    node="${entry%%:*}"
-    ip="${entry##*:}"
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes -o ControlMaster=no -o ControlPath=none "root@$ip" "echo ok" 2>/dev/null | grep -q ok; then
-        check "Fleet $node ($ip)" "pass" "reachable"
-    else
-        check "Fleet $node ($ip)" "fail" "unreachable"
-    fi
-done
+# Retired 2026-10-13: the Hetzner VPS fleet was decommissioned and its IPs
+# recycled, so the root-SSH reachability loop was removed.
 
 # ── 4. File Reference Integrity ──────────────────────────────────────────────
 

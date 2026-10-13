@@ -16,12 +16,13 @@ Usage:
     peace-test.py list                      List available tests
 
 Tests:
-    canary-detection      Canary trip detection pipeline (fleet SSH)
     halt-resume           Halt/resume cycle (heartbeat, state, HIVE)
     integrity-detection   File integrity change detection (kos.py)
     snapshot-drift        Snapshot creation and drift detection
-    fleet-connectivity    Fleet node reachability and security posture
     watchdog-escalation   Watchdog event escalation (dry-run)
+
+Retired 2026-10-13: canary-detection and fleet-connectivity SSHed into the
+Hetzner VPS fleet, which was decommissioned (IPs recycled). Both were removed.
 """
 
 import json
@@ -30,7 +31,6 @@ import sys
 import subprocess
 import hashlib
 import time
-import random
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -49,18 +49,6 @@ KOS_PY = LOVE / "tools" / "kos.py"
 WATCHDOG_PY = LOVE / "tools" / "watchdog.py"
 _HI = Path.home() / ".openclaw" / ".hive-instance"
 HEARTBEAT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"love.{_HI.read_text().strip() if _HI.exists() else 'gamma'}.heartbeat.plist"
-
-# ── Fleet Nodes ──────────────────────────────────────────────────────────────
-
-FLEET_NODES = {
-    "forge":  "89.167.84.100",
-    "lark":   "89.167.95.165",
-    "sentry": "135.181.28.252",
-    "patch":  "65.109.11.26",
-    "sage":   "204.168.140.12",
-}
-
-SSH_OPTS = ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
 
 # ── Colors (matching peace.py / kos.py / watchdog.py) ───────────────────────
 
@@ -115,18 +103,6 @@ def sha256_file(path):
         return h.hexdigest()
     except (FileNotFoundError, PermissionError):
         return None
-
-
-def ssh_cmd(ip, remote_cmd, timeout=15):
-    """Run a command on a remote node via SSH. Returns (returncode, stdout)."""
-    try:
-        r = subprocess.run(
-            ["ssh"] + SSH_OPTS + [f"root@{ip}", remote_cmd],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        return r.returncode, r.stdout.strip()
-    except (subprocess.TimeoutExpired, Exception):
-        return -1, ""
 
 
 # ── Test Result Tracking ────────────────────────────────────────────────────
@@ -233,148 +209,6 @@ def save_test_result(result):
     if len(data["runs"]) > 200:
         data["runs"] = data["runs"][-200:]
     save_json(TEST_RESULTS_FILE, data)
-
-
-# ── Test: Canary Detection ──────────────────────────────────────────────────
-
-
-def test_canary_detection(dry_run=False):
-    """Test the canary detection pipeline end-to-end on a fleet node.
-
-    Steps:
-      1. Pick a random VPS node
-      2. Touch a canary file (update atime) via SSH
-      3. Run the canary-check script on that node
-      4. Verify .canary-alert was written
-      5. Run watchdog check --dry-run
-      6. Verify watchdog detected the trip
-      7. Clean up: remove .canary-alert, reset atime
-      8. Report: PASS/FAIL with timing
-    """
-    result = TestResult("canary-detection")
-    node_name = random.choice(list(FLEET_NODES.keys()))
-    node_ip = FLEET_NODES[node_name]
-    canary_file = "/root/.credentials/aws_keys.txt"
-
-    print(f"\n{BOLD}  Test: Canary Detection Pipeline{NC}")
-    print(f"  {DIM}Target node: {node_name} ({node_ip}){NC}")
-    print(f"  {DIM}Canary file: {canary_file}{NC}\n")
-
-    if dry_run:
-        print(f"  {YELLOW}DRY-RUN MODE — describing steps without executing{NC}\n")
-        print(f"  [1] Would pick random fleet node (selected: {node_name})")
-        print(f"  [2] Would SSH to {node_ip} and touch {canary_file} (updates atime)")
-        print(f"  [3] Would run canary-check.sh on {node_name} via SSH")
-        print(f"  [4] Would verify /root/.canary-alert exists on {node_name}")
-        print(f"  [5] Would run: watchdog.py check --dry-run")
-        print(f"  [6] Would verify watchdog detects the canary trip")
-        print(f"  [7] Would clean up: remove .canary-alert, reset atime on {node_name}")
-        print(f"  [8] Would report PASS/FAIL with timing\n")
-        return None
-
-    # Step 1: Record original atime
-    step = result.step("Record original atime").start()
-    rc, original_atime = ssh_cmd(node_ip, f'stat -c %X "{canary_file}" 2>/dev/null')
-    if rc != 0 or not original_atime:
-        step.stop("FAIL", f"Cannot stat canary on {node_name} — node unreachable or canary missing")
-        result.finish()
-        result.print_summary()
-        save_test_result(result)
-        return result
-    step.stop("PASS", f"atime={original_atime}")
-    print(f"  {GREEN}[1/7]{NC} Recorded original atime: {original_atime}")
-
-    # Step 2: Touch canary (update atime only, preserve mtime)
-    step = result.step("Touch canary file").start()
-    rc, _ = ssh_cmd(node_ip, f'touch -a "{canary_file}"')
-    if rc != 0:
-        step.stop("FAIL", f"SSH touch failed on {node_name}")
-        result.finish()
-        result.print_summary()
-        save_test_result(result)
-        return result
-    step.stop("PASS", f"Touched {canary_file} on {node_name}")
-    print(f"  {GREEN}[2/7]{NC} Touched canary file (atime updated)")
-
-    # Step 3: Run canary-check via cron script logic
-    step = result.step("Run canary check on node").start()
-    # The canary-check.sh script checks if atime > mtime for each canary
-    check_script = (
-        'for f in /root/.credentials/aws_keys.txt /root/.credentials/db_production.env '
-        '/root/.credentials/deploy_key /root/financials-2026.txt /etc/backup-config.bak; do '
-        'if [ -f "$f" ]; then '
-        'A=$(stat -c %X "$f" 2>/dev/null); M=$(stat -c %Y "$f" 2>/dev/null); '
-        'if [ "$A" -gt "$M" ] 2>/dev/null; then '
-        'echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) CANARY TRIPPED: $f (atime=$A > mtime=$M)" >> /root/.canary-alert; '
-        'fi; fi; done; echo DONE'
-    )
-    rc, out = ssh_cmd(node_ip, check_script, timeout=20)
-    if rc != 0:
-        step.stop("FAIL", "Canary check script failed")
-        # Clean up anyway
-        ssh_cmd(node_ip, f'touch -a -d @{original_atime} "{canary_file}" 2>/dev/null; '
-                         f'rm -f /root/.canary-alert 2>/dev/null')
-        result.finish()
-        result.print_summary()
-        save_test_result(result)
-        return result
-    step.stop("PASS", "Canary check executed")
-    print(f"  {GREEN}[3/7]{NC} Canary check script executed")
-
-    # Step 4: Verify .canary-alert written
-    step = result.step("Verify .canary-alert exists").start()
-    rc, alert_content = ssh_cmd(node_ip, 'cat /root/.canary-alert 2>/dev/null')
-    if rc != 0 or not alert_content:
-        step.stop("FAIL", "No .canary-alert file created")
-        # Clean up
-        ssh_cmd(node_ip, f'touch -a -d @{original_atime} "{canary_file}" 2>/dev/null; '
-                         f'rm -f /root/.canary-alert 2>/dev/null')
-        result.finish()
-        result.print_summary()
-        save_test_result(result)
-        return result
-    has_trip = "CANARY TRIPPED" in alert_content
-    step.stop("PASS" if has_trip else "FAIL",
-              f"Alert file has {len(alert_content.splitlines())} line(s)")
-    print(f"  {GREEN if has_trip else RED}[4/7]{NC} "
-          f".canary-alert {'contains trip entry' if has_trip else 'MISSING trip entry'}")
-
-    # Step 5: Run watchdog check --dry-run
-    step = result.step("Run watchdog dry-run").start()
-    rc, watchdog_out = run_cmd(
-        f'cd {LOVE} && python3 {WATCHDOG_PY} check --dry-run 2>&1',
-        timeout=60,
-    )
-    step.stop("PASS" if rc == 0 else "FAIL", f"exit={rc}")
-    print(f"  {GREEN if rc == 0 else RED}[5/7]{NC} Watchdog check --dry-run completed (exit={rc})")
-
-    # Step 6: Verify watchdog detected the trip
-    step = result.step("Verify watchdog detection").start()
-    detected = "canary alert" in watchdog_out.lower() or "CANARY" in watchdog_out
-    step.stop("PASS" if detected else "FAIL",
-              "Watchdog detected canary trip" if detected else "Watchdog did NOT detect trip")
-    print(f"  {GREEN if detected else RED}[6/7]{NC} "
-          f"{'Watchdog detected canary trip' if detected else 'Watchdog missed detection'}")
-
-    # Step 7: Clean up
-    step = result.step("Clean up").start()
-    # Reset atime to original value and remove alert file
-    cleanup_cmd = (
-        f'touch -a -d @{original_atime} "{canary_file}" 2>/dev/null; '
-        f'rm -f /root/.canary-alert 2>/dev/null; '
-        f'echo CLEANED'
-    )
-    rc, out = ssh_cmd(node_ip, cleanup_cmd, timeout=10)
-    cleaned = rc == 0 and "CLEANED" in out
-    step.stop("PASS" if cleaned else "FAIL",
-              f"Cleaned up on {node_name}" if cleaned else "Cleanup may have failed")
-    print(f"  {GREEN if cleaned else YELLOW}[7/7]{NC} "
-          f"{'Cleanup complete' if cleaned else 'Cleanup may need manual verification'}")
-
-    result.finish()
-    result.print_summary()
-    save_test_result(result)
-    return result
 
 
 # ── Test: Halt/Resume Cycle ─────────────────────────────────────────────────
@@ -749,126 +583,6 @@ def test_snapshot_drift(dry_run=False):
     return result
 
 
-# ── Test: Fleet Connectivity ────────────────────────────────────────────────
-
-
-def test_fleet_connectivity(dry_run=False):
-    """Test fleet node reachability and security posture.
-
-    For each of 5 nodes, verify:
-      - SSH access
-      - fail2ban running
-      - psad running
-      - Canary files present
-      - status.json exists
-    """
-    result = TestResult("fleet-connectivity")
-
-    print(f"\n{BOLD}  Test: Fleet Connectivity & Security Posture{NC}")
-    print(f"  {DIM}Nodes: {', '.join(sorted(FLEET_NODES.keys()))}{NC}\n")
-
-    if dry_run:
-        print(f"  {YELLOW}DRY-RUN MODE — describing steps without executing{NC}\n")
-        for name, ip in sorted(FLEET_NODES.items()):
-            print(f"  [{name}] Would SSH to root@{ip} and verify:")
-            print(f"         - SSH access (echo OK)")
-            print(f"         - fail2ban active")
-            print(f"         - psad active")
-            print(f"         - 5 canary files present")
-            print(f"         - /root/status.json exists")
-        print()
-        return None
-
-    # Combined check script for each node
-    check_script = (
-        'echo "SSH:PASS"; '
-        'systemctl is-active --quiet fail2ban 2>/dev/null && echo "FAIL2BAN:PASS" || echo "FAIL2BAN:FAIL"; '
-        'systemctl is-active --quiet psad 2>/dev/null && echo "PSAD:PASS" || echo "PSAD:FAIL"; '
-        'C=0; for f in /root/.credentials/aws_keys.txt /root/.credentials/db_production.env '
-        '/root/.credentials/deploy_key /root/financials-2026.txt /etc/backup-config.bak; do '
-        '[ -f "$f" ] && C=$((C+1)); done; '
-        '[ $C -eq 5 ] && echo "CANARIES:PASS" || echo "CANARIES:FAIL($C/5)"; '
-        '[ -f /root/status.json ] && echo "STATUS:PASS" || echo "STATUS:FAIL"'
-    )
-
-    def check_node(name, ip):
-        """Check a single node. Returns (name, ip, results_dict)."""
-        rc, out = ssh_cmd(ip, check_script, timeout=20)
-        results = {}
-        if rc != 0 or not out:
-            return name, ip, {"ssh": False, "fail2ban": False, "psad": False,
-                              "canaries": False, "status_json": False, "error": "SSH unreachable"}
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("SSH:"):
-                results["ssh"] = "PASS" in line
-            elif line.startswith("FAIL2BAN:"):
-                results["fail2ban"] = "PASS" in line
-            elif line.startswith("PSAD:"):
-                results["psad"] = "PASS" in line
-            elif line.startswith("CANARIES:"):
-                results["canaries"] = "PASS" in line
-                if "FAIL" in line:
-                    results["canaries_detail"] = line.split(":", 1)[1] if ":" in line else ""
-            elif line.startswith("STATUS:"):
-                results["status_json"] = "PASS" in line
-        return name, ip, results
-
-    # Run checks in parallel
-    node_results = {}
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futs = {pool.submit(check_node, n, ip): n for n, ip in FLEET_NODES.items()}
-        for f in as_completed(futs):
-            name, ip, checks = f.result()
-            node_results[name] = (ip, checks)
-
-    # Report per node
-    total_pass = 0
-    total_fail = 0
-    for name in sorted(FLEET_NODES.keys()):
-        ip, checks = node_results[name]
-        step = result.step(f"Node: {name} ({ip})").start()
-
-        if checks.get("error"):
-            step.stop("FAIL", checks["error"])
-            print(f"  {RED}{name}{NC} ({ip}): {RED}UNREACHABLE{NC}")
-            total_fail += 1
-            continue
-
-        node_checks = [
-            ("SSH", checks.get("ssh", False)),
-            ("fail2ban", checks.get("fail2ban", False)),
-            ("psad", checks.get("psad", False)),
-            ("Canaries", checks.get("canaries", False)),
-            ("status.json", checks.get("status_json", False)),
-        ]
-        passed = sum(1 for _, ok in node_checks if ok)
-        failed = len(node_checks) - passed
-        total_pass += passed
-        total_fail += failed
-
-        details = []
-        for check_name, ok in node_checks:
-            details.append(f"{check_name}={'OK' if ok else 'FAIL'}")
-
-        step.stop("PASS" if failed == 0 else "FAIL", "; ".join(details))
-
-        color = GREEN if failed == 0 else YELLOW if failed <= 1 else RED
-        print(f"  {BOLD}{name}{NC} ({ip}):")
-        for check_name, ok in node_checks:
-            icon = f"{GREEN}PASS{NC}" if ok else f"{RED}FAIL{NC}"
-            print(f"    {icon}  {check_name}")
-        print(f"    {color}Score: {passed}/{len(node_checks)}{NC}")
-
-    print(f"\n  Fleet total: {total_pass} passed, {total_fail} failed "
-          f"across {len(FLEET_NODES)} nodes")
-
-    result.finish()
-    result.print_summary()
-    save_test_result(result)
-    return result
-
-
 # ── Test: Watchdog Escalation ───────────────────────────────────────────────
 
 
@@ -985,16 +699,15 @@ def test_watchdog_escalation(dry_run=False):
 # ── Test Registry ───────────────────────────────────────────────────────────
 
 TESTS = {
-    "canary-detection":    ("Canary trip detection pipeline (fleet SSH)", test_canary_detection),
     "halt-resume":         ("Halt/resume cycle (heartbeat, state, HIVE)", test_halt_resume),
     "integrity-detection": ("File integrity change detection (kos.py)", test_integrity_detection),
     "snapshot-drift":      ("Snapshot creation and drift detection", test_snapshot_drift),
-    "fleet-connectivity":  ("Fleet node reachability and security posture", test_fleet_connectivity),
     "watchdog-escalation": ("Watchdog event escalation (dry-run)", test_watchdog_escalation),
 }
 
 # Tests that are safe to run in parallel (no shared state mutations)
-PARALLEL_SAFE = ["canary-detection", "fleet-connectivity"]
+# (canary-detection and fleet-connectivity were the only ones; retired 2026-10-13)
+PARALLEL_SAFE = []
 # Tests that mutate shared state and must run sequentially
 SEQUENTIAL = ["halt-resume", "integrity-detection", "snapshot-drift", "watchdog-escalation"]
 
@@ -1049,7 +762,7 @@ def cmd_run_all(dry_run=False, parallel=False):
     if parallel and not dry_run:
         # Run parallel-safe tests concurrently
         print(f"\n  {CYAN}Phase 1: Parallel tests ({len(PARALLEL_SAFE)}){NC}")
-        with ThreadPoolExecutor(max_workers=len(PARALLEL_SAFE)) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, len(PARALLEL_SAFE))) as pool:
             futs = {}
             for name in PARALLEL_SAFE:
                 desc, test_fn = TESTS[name]

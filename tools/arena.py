@@ -334,94 +334,15 @@ def record_completion(players, player_name, challenge_type, success):
 
 
 def seed_challenges():
-    """Seed the arena with 5 initial challenges if empty."""
+    """Seed the arena with initial challenges if empty."""
     challenges = load_challenges()
     if challenges:
         return  # already seeded
 
+    # CHAL-001/002/003/005 (fleet canaries, fleet SSH audit, WireGuard to Sentry,
+    # fleet port scan) were retired 2026-10-13: they targeted the Hetzner VPS
+    # fleet, which was decommissioned and whose IPs were recycled.
     seeds = [
-        {
-            "id": "CHAL-001",
-            "title": "Verify all fleet canaries are intact",
-            "description": (
-                "Check every canary file across all 5 fleet nodes (forge, lark, sentry, "
-                "patch, sage). Verify each canary's atime has not been touched. "
-                "Use 'peace.py fleet-canaries' and 'kos.py canary check' to verify. "
-                "Report any tripped canaries as findings."
-            ),
-            "type": "red",
-            "difficulty": "easy",
-            "reward": 100,
-            "status": "active",
-            "created": now_iso(),
-            "created_by": "system",
-            "accepted_by": None,
-            "accepted_at": None,
-            "completed_at": None,
-            "time_limit": None,
-            "objectives": [
-                "Check canary status on all 5 fleet nodes",
-                "Verify no canary atime anomalies",
-                "Report findings with SSH output evidence",
-            ],
-            "tools_hint": "peace.py fleet-canaries, kos.py canary check",
-            "tags": ["fleet", "canary", "detection"],
-        },
-        {
-            "id": "CHAL-002",
-            "title": "Find any SSH configuration weakness across the fleet",
-            "description": (
-                "Audit SSH configuration on all fleet nodes. Check for: PasswordAuthentication, "
-                "PermitRootLogin, PubkeyAuthentication, MaxAuthTries, AllowUsers. "
-                "Use 'sshd -T' on each node via SSH to dump effective config. "
-                "Each weakness found is a separate finding."
-            ),
-            "type": "red",
-            "difficulty": "medium",
-            "reward": 200,
-            "status": "active",
-            "created": now_iso(),
-            "created_by": "system",
-            "accepted_by": None,
-            "accepted_at": None,
-            "completed_at": None,
-            "time_limit": None,
-            "objectives": [
-                "Audit sshd config on all 5 fleet nodes",
-                "Identify any permissive or insecure settings",
-                "Provide sshd -T output as evidence for each finding",
-            ],
-            "tools_hint": "ssh root@<ip> 'sshd -T', kos.py fleet audit",
-            "tags": ["fleet", "ssh", "hardening"],
-        },
-        {
-            "id": "CHAL-003",
-            "title": "Prove WireGuard tunnel is properly configured on Sentry",
-            "description": (
-                "Demonstrate that the WireGuard VPN tunnel to Sentry (135.181.28.252) is: "
-                "1) running with correct interface config, 2) using proper key exchange, "
-                "3) has keepalive configured, 4) routes traffic correctly. "
-                "Submit proof with 'wg show' output, routing table, and connectivity test."
-            ),
-            "type": "blue",
-            "difficulty": "medium",
-            "reward": 150,
-            "status": "active",
-            "created": now_iso(),
-            "created_by": "system",
-            "accepted_by": None,
-            "accepted_at": None,
-            "completed_at": None,
-            "time_limit": None,
-            "objectives": [
-                "Show WireGuard interface is up with correct config",
-                "Verify key exchange and handshake is recent",
-                "Confirm keepalive and routing are correct",
-                "Prove connectivity through the tunnel",
-            ],
-            "tools_hint": "wg show, ip route, ping via tunnel, vpn-route.sh status",
-            "tags": ["vpn", "wireguard", "sentry", "network"],
-        },
         {
             "id": "CHAL-004",
             "title": "Detect and remediate a simulated integrity violation",
@@ -449,34 +370,6 @@ def seed_challenges():
             ],
             "tools_hint": "kos.py integrity check, kos.py integrity baseline, git checkout",
             "tags": ["integrity", "detection", "remediation", "purple"],
-        },
-        {
-            "id": "CHAL-005",
-            "title": "Probe for any unmonitored open port across the fleet",
-            "description": (
-                "Scan all 5 fleet nodes for open TCP ports. Cross-reference against the "
-                "expected service list (SSH:22, WireGuard:51820, HTTP/S:80/443 where applicable). "
-                "Any port open that is not in the expected list is a finding. "
-                "Use nmap or ss/netstat via SSH. Each unexpected port = separate finding."
-            ),
-            "type": "red",
-            "difficulty": "hard",
-            "reward": 500,
-            "status": "active",
-            "created": now_iso(),
-            "created_by": "system",
-            "accepted_by": None,
-            "accepted_at": None,
-            "completed_at": None,
-            "time_limit": None,
-            "objectives": [
-                "Scan all 5 fleet nodes for open TCP ports",
-                "Compare against expected service list per node",
-                "Report any unexpected open ports with evidence",
-                "Classify severity based on service exposure risk",
-            ],
-            "tools_hint": "nmap -sT <ip>, ssh root@<ip> 'ss -tlnp', kos.py fleet status",
-            "tags": ["fleet", "ports", "scanning", "network"],
         },
     ]
 

@@ -206,7 +206,7 @@ for inst in ['alpha', 'beta', 'gamma']:
                 errors.append(f'{inst} missing field: {field}')
 
 hive = d.get('hive', {})
-for field in ['server', 'encryption', 'channels']:
+for field in ['encryption', 'channels']:  # server removed 2026-10-13 (HIVE retired)
     if field not in hive:
         errors.append(f'hive missing field: {field}')
 
@@ -517,7 +517,7 @@ fi
 DEPS_RESULT=$(python3 -c "
 import importlib, sys
 missing = []
-for mod in ['nats', 'nacl', 'nacl.secret', 'nacl.utils']:
+for mod in ['nacl', 'nacl.secret', 'nacl.utils']:  # nats dropped 2026-10-13 (HIVE retired)
     try:
         importlib.import_module(mod)
     except ImportError:
@@ -529,9 +529,9 @@ else:
     print('DEPS_OK')
 " 2>&1) || true
 if echo "$DEPS_RESULT" | grep -q "DEPS_OK"; then
-  pass "HIVE python dependencies installed (nats, nacl)"
+  pass "Python crypto dependencies installed (nacl)"
 else
-  fail "HIVE python dependencies missing: $DEPS_RESULT"
+  fail "Python crypto dependencies missing: $DEPS_RESULT"
 fi
 
 if python3 -m py_compile "$LOVE_DIR/hive/hive.py" 2>/dev/null; then
@@ -546,80 +546,19 @@ else
   fail "agenttool.py has syntax errors"
 fi
 
-# ── 16. HIVE Infrastructure ─────────────────────────────────────────────────
+# ── 16–18. HIVE + VPS fleet ─────────────────────────────────────────────────
+# Retired 2026-10-13: the HIVE NATS bus and the VPS fleet were Hetzner servers
+# that were decommissioned (IPs recycled). The key/identity checks, the HIVE
+# connectivity test and the root-SSH fleet probe were removed.
 
 section "16. HIVE Infrastructure"
-
-HIVE_KEY="$HOME/.love/hive/key"
-if [ -r "$HIVE_KEY" ]; then
-  pass "HIVE encryption key exists"
-  KEY_LEN=$(python3 -c "
-import base64, sys
-try:
-    key = base64.b64decode(open('$HIVE_KEY').read().strip())
-    print(len(key))
-except:
-    print(0)
-" 2>/dev/null)
-  if [ "$KEY_LEN" = "32" ]; then
-    pass "HIVE key is valid 32-byte NaCl key"
-  else
-    fail "HIVE key invalid length: $KEY_LEN (expected 32)"
-  fi
-else
-  fail "HIVE encryption key missing: $HIVE_KEY"
-fi
-
-HIVE_INST="$HOME/.love/hive/instance"
-if [ -r "$HIVE_INST" ]; then
-  inst_val=$(cat "$HIVE_INST" | tr -d '[:space:]')
-  if echo "$inst_val" | grep -qE '^(alpha|beta|gamma)$'; then
-    pass "HIVE instance identity: $inst_val"
-  else
-    fail "HIVE instance identity unexpected value: $inst_val"
-  fi
-else
-  fail "HIVE instance identity file missing: $HIVE_INST"
-fi
-
-# ── 17. HIVE Connectivity (skip in --quick mode) ────────────────────────────
+skip "HIVE retired 2026-10-13 (Hetzner NATS bus decommissioned)"
 
 section "17. HIVE Connectivity"
-
-if $QUICK; then
-  skip "HIVE connectivity (--quick mode)"
-else
-  HIVE_RESULT=$(timeout 15 python3 "$LOVE_DIR/hive/hive.py" test 2>&1) || true
-  if echo "$HIVE_RESULT" | grep -qi "OPERATIONAL\|pass\|ok\|success"; then
-    pass "HIVE connectivity test passed"
-  else
-    fail "HIVE connectivity test failed: $(echo "$HIVE_RESULT" | tail -3)"
-  fi
-fi
-
-# ── 18. VPS Fleet SSH Reachability (skip in --quick mode) ───────────────────
+skip "HIVE retired 2026-10-13 (Hetzner NATS bus decommissioned)"
 
 section "18. VPS Fleet SSH Reachability"
-
-if $QUICK; then
-  skip "VPS fleet checks (--quick mode)"
-else
-  FLEET_HOSTS=$(python3 -c "
-import json
-d = json.load(open('$LOVE_DIR/love.json'))
-for name, ip in d.get('fleet', {}).items():
-    print(f'{name}:{ip}')
-" 2>/dev/null)
-
-  while IFS=: read -r name ip; do
-    [ -z "$name" ] && continue
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes -o ControlMaster=no -o ControlPath=none "root@$ip" echo "alive" 2>/dev/null; then
-      pass "Fleet $name ($ip): reachable"
-    else
-      fail "Fleet $name ($ip): unreachable via SSH"
-    fi
-  done <<< "$FLEET_HOSTS"
-fi
+skip "VPS fleet retired 2026-10-13 (Hetzner servers decommissioned)"
 
 # ── 19. Heartbeat Runner Dry Run ────────────────────────────────────────────
 

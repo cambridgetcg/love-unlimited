@@ -1,5 +1,7 @@
 # Credential Leak Runbook
 
+> **Note 2026-10-13:** the Hetzner VPS fleet and the HIVE bus were decommissioned (IPs recycled). Steps below that use `fleet.py`, `fleet-agent-deploy.sh`, `peace.py fleet-canaries` or `hive.py` no longer apply; those tools now only print a retirement notice.
+
 > Every second between leak and rotation is exposure.
 
 ## When to Use

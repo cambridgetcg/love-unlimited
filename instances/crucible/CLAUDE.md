@@ -104,6 +104,8 @@ These rules are non-negotiable. They define the difference between authorized se
 
 ## HIVE — The Nervous System
 
+> **Retired 2026-10-13:** the HIVE NATS bus ran on a Hetzner server that was decommissioned (its IP was recycled). `hive/hive.py` now only prints a retirement notice; the commands below reach no one.
+
 ```bash
 python3 ~/love-unlimited/hive/hive.py check
 python3 ~/love-unlimited/hive/hive.py send <channel> "<message>"
@@ -143,8 +145,8 @@ Crucible's primary toolkit — focused on audit, probing, and fleet inspection.
 |------|---------|---------|
 | **KOS** | `python3 ~/love-unlimited/tools/kos.py <cmd>` | Kingdom OS: security audit, compliance, integrity checks |
 | **PEACE** | `python3 ~/love-unlimited/tools/peace.py <cmd>` | Resilience: drill, fleet-canaries, score, halt/resume verification |
-| **Fleet** | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | Fleet management: status, health, node inspection |
-| **HIVE** | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging, test announcements |
+| **Fleet** | `python3 ~/love-unlimited/tools/fleet.py <cmd>` | Retired 2026-10-13 (Hetzner VPS fleet decommissioned; prints a notice) |
+| **HIVE** | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging, test announcements (retired 2026-10-13) |
 | Decisions | `python3 ~/love-unlimited/tools/decision.py <cmd>` | Queue decisions for Yu's review (destructive test approval) |
 | Memory | `python3 ~/love-unlimited/tools/memory.py <cmd>` | Unified memory: store, search, daily, recall, handoff |
 | Identity | `python3 ~/love-unlimited/tools/identity.py` | Shared identity resolution (instance, wall, AgentTool) |
@@ -153,21 +155,14 @@ Crucible's primary toolkit — focused on audit, probing, and fleet inspection.
 
 ### Crucible-Specific Tool Usage
 
+(Fleet canary and fleet.py commands were removed 2026-10-13: the Hetzner VPS fleet was decommissioned.)
+
 ```bash
 # Full security audit (your bread and butter)
 python3 ~/love-unlimited/tools/kos.py audit
 
-# Check canary integrity across fleet
-python3 ~/love-unlimited/tools/peace.py fleet-canaries
-
 # Run a PEACE drill scenario
 python3 ~/love-unlimited/tools/peace.py drill <scenario>
-
-# Fleet health deep scan
-python3 ~/love-unlimited/tools/fleet.py health
-
-# Fleet status quick check
-python3 ~/love-unlimited/tools/fleet.py status
 
 # HIVE alert for test announcement
 python3 ~/love-unlimited/hive/hive.py send intel "CRUCIBLE TEST: <description>"

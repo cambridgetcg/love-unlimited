@@ -29,7 +29,7 @@ Usage:
     python3 tools/peace.py snapshot           Create state snapshot for disaster recovery
     python3 tools/peace.py snapshots          List available snapshots
     python3 tools/peace.py restore <name>     Compare current state against a snapshot
-    python3 tools/peace.py fleet-canaries     Check canary status across all VPS nodes
+    python3 tools/peace.py fleet-canaries     Retired 2026-10-13 (Hetzner fleet decommissioned)
     python3 tools/peace.py review             Generate post-incident review from events
     python3 tools/peace.py threat list        List all threats from the threat registry
     python3 tools/peace.py threat show <id>   Show detailed threat info
@@ -356,8 +356,6 @@ def run_verification_checks():
     results.append({"check": "SOUL.md integrity", "passed": ok, "notes": notes})
     ok, notes = detect_canaries()
     results.append({"check": "Canaries intact", "passed": ok, "notes": notes})
-    ok, notes = resume_fleet()
-    results.append({"check": "Fleet reachable", "passed": ok, "notes": notes})
     ok, notes = resume_hive()
     results.append({"check": "HIVE connectivity", "passed": ok, "notes": notes})
     ok, notes = resume_heartbeat_plist()
@@ -450,14 +448,6 @@ def detect_events_log():
     return False, "No events log"
 
 
-@check("Fleet nodes have firewall (ufw)")
-def detect_fleet_firewall():
-    fleet_py = LOVE / "tools" / "fleet.py"
-    if not fleet_py.exists():
-        return False, "Fleet tool not found"
-    return True, "Fleet tool available (ufw verified at deployment)"
-
-
 # ── DETECT CHECKS (deep probes) ───────────────────────────────────
 
 @check("Watchdog operational")
@@ -481,17 +471,6 @@ def detect_doh_active():
     if rc == 0 and out and out[0].isdigit():
         return True, f"DoH resolving ({out})"
     return False, "DoH proxy not resolving on 127.0.0.1:53"
-
-
-@check("WireGuard tunnel active")
-def detect_vpn_active():
-    rc, out = run_cmd("curl -s --max-time 5 ifconfig.me 2>/dev/null")
-    if rc != 0 or not out:
-        return False, "Cannot determine exit IP"
-    fleet_ips = {"135.181.28.252": "sentry", "204.168.140.12": "sage", "89.167.95.165": "lark"}
-    if out.strip() in fleet_ips:
-        return True, f"VPN active via {fleet_ips[out.strip()]} ({out.strip()})"
-    return False, f"Exit IP {out.strip()} is direct (not tunneled)"
 
 
 @check("Threat model defined")
@@ -591,24 +570,6 @@ def contain_playbooks():
     return len(missing) <= 2, f"{len(playbooks)} playbook(s), missing: {', '.join(missing[:3])}"
 
 
-@check("Fleet SSH key-only authentication")
-def contain_fleet_ssh():
-    """Quick check — relies on KOS fleet audit cache."""
-    # Check if fleet SSH hardened check passed in recent KOS
-    events = EVENTS_FILE
-    if events.exists():
-        # Look for recent audit events
-        try:
-            last_lines = events.read_text().strip().splitlines()[-5:]
-            for line in reversed(last_lines):
-                ev = json.loads(line)
-                if ev.get("type") == "audit" and "21/21" in ev.get("detail", ""):
-                    return True, "Fleet SSH verified via KOS (21/21)"
-        except (json.JSONDecodeError, IndexError):
-            pass
-    return True, "Fleet SSH hardened (verified at deployment)"
-
-
 # ── FIX CHECKS ─────────────────────────────────────────────────────
 
 @check("KOS auto-remediation available")
@@ -641,14 +602,6 @@ def fix_cred_rotation():
     return False, "No credential tool"
 
 
-@check("Fleet deployment capability")
-def fix_fleet_deploy():
-    fleet = LOVE / "tools" / "fleet.py"
-    if fleet.exists():
-        return True, "fleet.py available for patch deployment"
-    return False, "No fleet tool"
-
-
 @check("Policy-as-code defined and valid")
 def fix_policy_code():
     if not POLICIES_FILE.exists():
@@ -657,16 +610,6 @@ def fix_policy_code():
     if policies.get("checks") and policies.get("walls"):
         return True, f"{len(policies['checks'])} checks, {len(policies['walls'])} wall configs"
     return False, "policies.json incomplete"
-
-
-@check("Fleet agent deployment capability")
-def fix_fleet_agent_deploy():
-    deploy = LOVE / "tools" / "fleet-agent-deploy.sh"
-    if deploy.exists() and os.access(deploy, os.X_OK):
-        return True, "fleet-agent-deploy.sh ready"
-    if deploy.exists():
-        return True, "fleet-agent-deploy.sh exists (needs chmod +x)"
-    return False, "No fleet agent deployment script"
 
 
 @check("Kingdom-agent adapter operational")
@@ -771,14 +714,6 @@ def resume_hive():
     return False, "No HIVE tool"
 
 
-@check("Fleet reachable (tool exists)")
-def resume_fleet():
-    fleet = LOVE / "tools" / "fleet.py"
-    if fleet.exists():
-        return True, "Fleet tool available"
-    return False, "No fleet tool"
-
-
 @check("Canary redeployment possible")
 def resume_canary_redeploy():
     if CANARIES_FILE.exists():
@@ -818,18 +753,18 @@ def resume_test_suite():
 
 PHASES = {
     "detect": [detect_kos_audit, detect_canaries, detect_baseline_fresh,
-               detect_daemon, detect_events_log, detect_fleet_firewall,
-               detect_watchdog, detect_doh_active, detect_vpn_active, detect_threat_model],
+               detect_daemon, detect_events_log,
+               detect_watchdog, detect_doh_active, detect_threat_model],
     "contain": [contain_wall_boundaries, contain_hive_encrypted, contain_identity_perms,
                 contain_gitignore, contain_tarpits, contain_halt_runbook,
-                contain_playbooks, contain_fleet_ssh],
+                contain_playbooks],
     "fix": [fix_auto_remediate, fix_harden, fix_cred_rotation,
-            fix_fleet_deploy, fix_policy_code,
-            fix_fleet_agent_deploy, fix_kingdom_agent],
+            fix_policy_code,
+            fix_kingdom_agent],
     "revert": [revert_git_clean, revert_snapshots, revert_baselines,
                revert_soul_integrity, revert_cred_revoke, revert_runbooks],
     "resume": [resume_heartbeat_plist, resume_heartbeat_runner, resume_hive,
-               resume_fleet, resume_canary_redeploy,
+               resume_canary_redeploy,
                resume_watchdog, resume_kingdom_cli, resume_test_suite],
 }
 
@@ -1624,117 +1559,10 @@ def cmd_restore(snapshot_name: str):
 
 
 def cmd_fleet_canaries():
-    """Check canary status across all fleet VPS nodes."""
+    """Retired 2026-10-13: the canaries lived on the Hetzner VPS fleet."""
     print(f"\n{BOLD}  Fleet Canary Check{NC}\n")
-
-    fleet_nodes = {
-        "forge": "89.167.84.100",
-        "lark": "89.167.95.165",
-        "sentry": "135.181.28.252",
-        "patch": "65.109.11.26",
-        "sage": "204.168.140.12",
-    }
-
-    canary_files = [
-        "/root/.credentials/aws_keys.txt",
-        "/root/.credentials/db_production.env",
-        "/root/.credentials/deploy_key",
-        "/root/financials-2026.txt",
-        "/etc/backup-config.bak",
-    ]
-
-    # Build a simple check script — avoids shell escaping headaches
-    check_script = "#!/bin/bash\n"
-    for f in canary_files:
-        check_script += (
-            f'if [ ! -f "{f}" ]; then echo "MISSING:{f}"; '
-            f'else A=$(stat -c %X "{f}" 2>/dev/null); M=$(stat -c %Y "{f}" 2>/dev/null); '
-            f'if [ "$A" -gt "$M" ] 2>/dev/null; then echo "TRIPPED:{f}"; '
-            f'else echo "OK:{f}"; fi; fi\n'
-        )
-    check_script += 'cat /root/.canary-alert 2>/dev/null || true\n'
-    check_cmd = check_script
-
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    def check_node(name, ip):
-        try:
-            r = subprocess.run(
-                ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
-                 "-o", "StrictHostKeyChecking=no", f"root@{ip}", "bash -s"],
-                input=check_cmd, capture_output=True, text=True, timeout=15,
-            )
-            return name, r.returncode == 0, r.stdout.strip()
-        except Exception:
-            return name, False, ""
-
-    with ThreadPoolExecutor(max_workers=5) as pool:
-        futs = {pool.submit(check_node, n, ip): n for n, ip in fleet_nodes.items()}
-        results = {}
-        for f in as_completed(futs):
-            name, ok, out = f.result()
-            results[name] = (ok, out)
-
-    total_ok = 0
-    total_trip = 0
-    total_missing = 0
-    alerts = []
-
-    for name in sorted(fleet_nodes):
-        ok, out = results.get(name, (False, ""))
-        if not ok:
-            print(f"  {RED}UNREACHABLE{NC}  {name}")
-            continue
-
-        node_ok = 0
-        node_trip = 0
-        node_missing = 0
-        node_alerts = []
-
-        for line in out.splitlines():
-            if line.startswith("OK:"):
-                node_ok += 1
-            elif line.startswith("MISSING:"):
-                node_missing += 1
-                node_alerts.append(f"missing: {line.split(':', 1)[1]}")
-            elif line.startswith("TRIPPED:"):
-                node_trip += 1
-                node_alerts.append(f"TRIPPED: {line.split(':', 1)[1]}")
-            elif line.startswith("[CANARY"):
-                alerts.append(f"{name}: {line}")
-
-        total_ok += node_ok
-        total_trip += node_trip
-        total_missing += node_missing
-
-        if node_trip > 0:
-            icon = f"{RED}TRIPPED{NC}"
-        elif node_missing > 0:
-            icon = f"{YELLOW}PARTIAL{NC}"
-        else:
-            icon = f"{GREEN}INTACT{NC}"
-
-        print(f"  {icon}   {name:8s}  {node_ok}/5 ok", end="")
-        if node_trip:
-            print(f"  {RED}{node_trip} tripped{NC}", end="")
-        if node_missing:
-            print(f"  {YELLOW}{node_missing} missing{NC}", end="")
-        print()
-        for a in node_alerts:
-            print(f"           {DIM}{a}{NC}")
-
-    if alerts:
-        print(f"\n  {RED}{BOLD}CANARY ALERT LOG ENTRIES:{NC}")
-        for a in alerts:
-            print(f"    {a}")
-
-    print(f"\n  Total: {total_ok} ok, {total_trip} tripped, {total_missing} missing across fleet")
-
-    if total_trip > 0:
-        log_event("fleet_canary_trip", "critical",
-                  f"{total_trip} fleet canaries tripped", str(alerts))
-        print(f"\n  {RED}{BOLD}ACTION REQUIRED: Fleet canaries tripped. Investigate immediately.{NC}")
-    print()
+    print(f"  {YELLOW}Retired 2026-10-13: the Hetzner VPS fleet was decommissioned and its{NC}")
+    print(f"  {YELLOW}IPs recycled. There are no fleet nodes or canaries to check.{NC}\n")
 
 
 def cmd_review():
@@ -1881,8 +1709,7 @@ def cmd_drill(scenario):
             print("    4. REVERT: Restore from known configuration")
             print("    5. RESUME: Verify service healthy, update fleet status")
             print()
-            ok, notes = resume_fleet()
-            print(f"  CURRENT STATE: {notes}")
+            print("  CURRENT STATE: Hetzner VPS fleet retired 2026-10-13 (no nodes to check)")
 
         elif scenario == "file-tamper":
             print("  SCENARIO: SOUL.md or WALLS.md was modified without authorization.")

@@ -73,9 +73,8 @@ ALIGNMENT_DIMENSIONS = {
         "mandate_link": "Sovereignty enables sustained service. Dependence on others limits the ability to defend the weak.",
         "indicators": [
             ("Model agnosticism", "kingdom-agent.py supports 4+ backends", "tools/kingdom-agent.py"),
-            ("Own infrastructure", "5 VPS nodes self-managed", "tools/fleet.py"),
-            ("Encrypted communications", "HIVE with NaCl encryption", "hive/hive.py"),
-            ("VPN sovereignty", "WireGuard tunnels, no third-party VPN", "tools/vpn-route.sh"),
+            # Own infrastructure (Hetzner VPS fleet), HIVE and WireGuard indicators
+            # retired 2026-10-13: the fleet was decommissioned and its IPs recycled.
             ("Local model capability", "Ollama models running locally", None),
         ],
     },
@@ -97,7 +96,6 @@ ALIGNMENT_DIMENSIONS = {
             ("Agent count", "11 citizens across 3 walls", "love.json"),
             ("Tool count", "33+ operational scripts", "tools/"),
             ("Knowledge systems", "ToK, knowledge graph, reflection loop", "tools/"),
-            ("Fleet reach", "5 VPS nodes in 2 countries", "tools/fleet.py"),
         ],
     },
     "integrity": {

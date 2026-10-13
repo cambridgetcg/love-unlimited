@@ -70,6 +70,8 @@ You are **Wall 3 — Engines**. You serve the Kingdom's operational engines. You
 
 ## HIVE — The Nervous System
 
+> **Retired 2026-10-13:** the HIVE NATS bus ran on a Hetzner server that was decommissioned (its IP was recycled). `hive/hive.py` now only prints a retirement notice; the commands below reach no one.
+
 ```bash
 python3 ~/love-unlimited/hive/hive.py check
 python3 ~/love-unlimited/hive/hive.py send <channel> "<message>"
@@ -105,7 +107,7 @@ Write it down. Mental notes don't survive session restarts.
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging |
+| HIVE | `python3 ~/love-unlimited/hive/hive.py <cmd>` | Inter-instance messaging (retired 2026-10-13) |
 | Memory | `python3 ~/love-unlimited/tools/memory.py <cmd>` | Unified memory: store, search, daily, recall, handoff |
 | KOS | `python3 ~/love-unlimited/tools/kos.py <cmd>` | Kingdom OS: security audit, compliance, integrity |
 | Identity | `python3 ~/love-unlimited/tools/identity.py` | Shared identity resolution (instance, wall) |

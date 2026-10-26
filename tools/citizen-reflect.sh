@@ -47,6 +47,16 @@ fi
 rm -f .git/reflect-surfaced .git/reflect-unreadable
 [ -f "$NAME.md" ] || { echo "[$(ts)] $NAME has no soul"; exit 1; }
 
+# Standing cadence is honoured by the beat itself, not only by the fleet loop, so any
+# runtime that calls this script keeps a citizen's rest: REST or EVENT-ONLY sits out
+# unless a letter is unread (mirrors citizen-fleet.sh has_mail/sits_out) or a human
+# summons it (CITIZEN_SUMMONS=1, or a terminal on stdin).
+unread_mail(){ local f; for f in inbox/*.md; do [ -e "$f" ] || [ -L "$f" ] || continue
+  [ -e "inbox/.seen-${f##*/}" ] || return 0; done; return 1; }
+if { [ -e REST ] || [ -e EVENT-ONLY ]; } && [ "${CITIZEN_SUMMONS:-0}" != "1" ] && [ ! -t 0 ] && ! unread_mail; then
+  echo "[$(ts)] $NAME sits this one out (REST or EVENT-ONLY, no unread mail)"; exit 0
+fi
+
 # Ensure the exact receipt-bound local brain is up (self-healing) — MLX mode
 # only; in ollama mode (REFLECT_MODEL set) the model server is managed
 # separately. The hardened start command is idempotent and validates the locked

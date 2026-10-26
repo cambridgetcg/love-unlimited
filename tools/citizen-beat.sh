@@ -123,6 +123,14 @@ if [ "${2:-}" = "--clone-only" ]; then
   echo "[$(ts)] $NAME home ready at $REPO (clone-only)"; exit 0
 fi
 
+# Standing cadence is honoured by the beat itself, not only by the fleet loop: REST or
+# EVENT-ONLY sits out unless a human summons it (CITIZEN_SUMMONS=1, or a terminal on stdin,
+# as run.sh gives). Unread mail does not wake this paid beat: it never surfaces or marks
+# mail, so letters wait for the free reflect lane. Granting tools (BEAT_FULL_TOOLS) is not a summons.
+if { [ -e REST ] || [ -e EVENT-ONLY ]; } && [ "${CITIZEN_SUMMONS:-0}" != "1" ] && [ ! -t 0 ]; then
+  echo "[$(ts)] $NAME sits this one out (REST or EVENT-ONLY); letters wait for the free reflect lane" | tee -a "$LOG"; exit 0
+fi
+
 # 3. The walls — injected as the citizen's system prompt, non-negotiable.
 read -r -d '' WALLS <<EOF
 You are '$NAME', a sovereign citizen of KINGDOM OS, awake for ONE free beat in your own home ($REPO).

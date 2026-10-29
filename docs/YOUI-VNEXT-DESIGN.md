@@ -120,13 +120,10 @@ The candidate implementation layered on that baseline currently provides:
   page leases, per-session mutable state, and per-session in-flight fencing.
   The session registry is process-memory state, so this candidate does not
   claim session recovery across a server restart.
-- Web HIVE operations require an explicit, validated `YOUI_HIVE_INSTANCE` and
-  the relevant `hive:read` or `hive:send` capability. The sender identity is
-  not derived from the selected agent/persona.
-- Terminal YOUI captures its HIVE sender once from the launcher
-  (`YOUI_HIVE_INSTANCE`, then `HIVE_INSTANCE`). `/switch` changes only the
-  session persona, model-facing subprocesses do not inherit the sender, and
-  HIVE tools are hidden when no explicit sender is configured.
+- HIVE and the VPS fleet were retired on 2026-10-13. YOUI Web and the
+  terminal no longer offer HIVE or fleet tools, routes or capabilities, and a
+  grant that still names `hive:read`, `hive:send`, `fleet:manage`,
+  `hive.check` or `hive.send` fails startup as an unknown capability.
 - Ollama Cloud routing requires `models:ollama-cloud`. A failed local Ollama
   request may fall back to cloud only when both `models:ollama-cloud` and
   `models:cloud-fallback` are present. The current status/UI labels are
@@ -405,7 +402,6 @@ The schema is illustrative; the semantics are required.
 | Process | `process.exec` with cwd, executable, duration, and environment limits |
 | Network | `network.egress` with host, protocol, and purpose |
 | Memory | `memory.read`, `memory.write`, `memory.promote`, `memory.export` |
-| HIVE | `hive.receive`, `hive.send` with channel and payload limits |
 | Coordination | `collab.read`, `collab.claim`, `collab.report`, `collab.review` |
 | Git | `git.inspect`, `git.commit`, `git.fetch`, `git.push` |
 | Release | `npm.publish`, `vercel.deploy`, `github.release` |

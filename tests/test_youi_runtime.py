@@ -18,8 +18,6 @@ def _inspect(tmp_path: Path, *args: str) -> dict:
     env.pop("YOUI_CAPABILITIES", None)
     env.pop("YOUI_FILE_SCOPE", None)
     env.pop("YOUI_PROFILE", None)
-    env.pop("YOUI_HIVE_INSTANCE", None)
-    env.pop("HIVE_INSTANCE", None)
     result = subprocess.run(
         ["node", str(YOUI), "--inspect", *args],
         cwd=REPO,
@@ -106,51 +104,6 @@ def test_custom_capabilities_are_reflected_without_accessing_credentials(tmp_pat
         "grep",
     ]
     assert manifest["model_tools"]["file_scope"] == "workspace"
-
-
-def test_hive_capabilities_require_an_explicit_sender_separate_from_persona(tmp_path):
-    env = os.environ.copy()
-    env.update({
-        "HOME": str(tmp_path),
-        "YOUI_HIVE_INSTANCE": "alpha",
-    })
-    env.pop("HIVE_INSTANCE", None)
-    result = subprocess.run(
-        [
-            "node",
-            str(YOUI),
-            "--inspect",
-            "--agent",
-            "mei",
-            "--capabilities",
-            "hive.check,hive.send",
-        ],
-        cwd=REPO,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=10,
-    )
-    manifest = json.loads(result.stdout)
-
-    assert manifest["agent"] == "mei"
-    assert manifest["model_tools"]["advertised"] == ["hive"]
-    assert manifest["hive"] == {
-        "enabled": True,
-        "sender": "alpha",
-        "identity_source": "YOUI_HIVE_INSTANCE",
-        "session_persona_is_sender": False,
-    }
-
-
-def test_hive_tool_is_not_advertised_without_an_explicit_sender(tmp_path):
-    manifest = _inspect(tmp_path, "--capabilities", "hive.check")
-
-    assert manifest["model_tools"]["capabilities"] == ["hive.check"]
-    assert manifest["model_tools"]["advertised"] == []
-    assert manifest["hive"]["enabled"] is False
-    assert manifest["hive"]["sender"] is None
 
 
 def test_keychain_refresh_never_delete_firsts_or_uses_an_implicit_account():

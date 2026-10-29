@@ -468,14 +468,13 @@ test("YOUI Web isolates browser sessions and enforces its local security boundar
   assert.ok(firstStatus.json.capabilities.includes("publish:write"));
 
   const deniedHighAuthority = await request(port, {
-    path: "/api/hive/send",
+    path: "/api/autonomous/start",
     method: "POST",
     headers: sessionHeaders(browser, first, { origin, unsafe: true }),
-    body: {},
   });
   assert.equal(deniedHighAuthority.status, 403);
   assert.equal(deniedHighAuthority.json.code, "capability_denied");
-  assert.equal(deniedHighAuthority.json.capability, "hive:send");
+  assert.equal(deniedHighAuthority.json.capability, "autonomous:control");
   assert.ok(!firstStatus.json.capabilities.includes("tools:shell"));
 
   const unmappedMutation = await request(port, {
@@ -551,73 +550,6 @@ test("YOUI Web isolates browser sessions and enforces its local security boundar
   assert.equal(wrongPortHost.status, 421);
 });
 
-test("YOUI Web never derives HIVE sender identity from the selected persona", async t => {
-  async function openSession(extraEnv, label) {
-    const { port } = await startServer(t, {
-      KINGDOM_AGENT: "beta",
-      YOUI_HIVE_INSTANCE: "",
-      YOUI_CAPABILITIES: "status:read,sessions:manage,hive:read",
-      ...extraEnv,
-    });
-    const origin = `http://127.0.0.1:${port}`;
-    const bootstrap = await request(port);
-    const browser = cookiesFrom(bootstrap);
-    const page = pageId(label);
-    const created = await request(port, {
-      path: "/api/sessions",
-      method: "POST",
-      headers: {
-        Cookie: browser.header,
-        Origin: origin,
-        "X-YOUI-CSRF": browser.csrf,
-        "X-YOUI-Page": page,
-      },
-      body: { label, agent: "beta" },
-    });
-    assert.equal(created.status, 201);
-    return {
-      port,
-      browser,
-      origin,
-      credential: {
-        id: created.json.session.id,
-        token: created.json.sessionToken,
-        page,
-      },
-    };
-  }
-
-  const missing = await openSession({}, "hive-missing");
-  const missingStatus = await request(missing.port, {
-    path: "/api/status",
-    headers: sessionHeaders(missing.browser, missing.credential),
-  });
-  assert.equal(missingStatus.status, 200);
-  assert.equal(missingStatus.json.agent.id, "beta");
-  assert.equal(missingStatus.json.hive.instance, null);
-  assert.equal(missingStatus.json.hive.identitySource, null);
-
-  const blockedWho = await request(missing.port, {
-    path: "/api/hive/who",
-    headers: sessionHeaders(missing.browser, missing.credential),
-  });
-  assert.equal(blockedWho.status, 503);
-  assert.equal(blockedWho.json.code, "hive_identity_required");
-
-  const configured = await openSession(
-    { YOUI_HIVE_INSTANCE: "device-test-sender" },
-    "hive-explicit",
-  );
-  const configuredStatus = await request(configured.port, {
-    path: "/api/status",
-    headers: sessionHeaders(configured.browser, configured.credential),
-  });
-  assert.equal(configuredStatus.status, 200);
-  assert.equal(configuredStatus.json.agent.id, "beta");
-  assert.equal(configuredStatus.json.hive.instance, "device-test-sender");
-  assert.equal(configuredStatus.json.hive.identitySource, "YOUI_HIVE_INSTANCE");
-});
-
 test("YOUI Web fences in-flight mutations and raw Ollama tool calls", async t => {
   const fakeVllm = await startFakeVllm(t);
   const { port } = await startServer(t, {
@@ -638,7 +570,8 @@ test("YOUI Web fences in-flight mutations and raw Ollama tool calls", async t =>
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "raw fence", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "raw fence", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -731,7 +664,8 @@ test("YOUI Web aborts a disconnected provider request and releases the exact ses
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "abort unlock", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "abort unlock", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -843,6 +777,8 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
   const fakeVllm = await startFakeVllm(t);
   const { port } = await startServer(t, {
     KINGDOM_AGENT: "alpha",
+    // The process-owned loop runs on the server's default model; fake it.
+    YOUI_MODEL: "Qwen/Qwen2.5-72B-Instruct-AWQ",
     OLLAMA_VLLM_BASE_URL: fakeVllm.baseUrl,
     YOUI_CAPABILITIES: "sessions:manage,autonomous:control",
   });
@@ -858,7 +794,8 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "autonomous control", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "autonomous control", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -922,4 +859,31 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
   });
   assert.equal(secondStop.status, 200);
   await within(secondCycle.closed, 1_000, "second stopped autonomous provider request");
+});
+
+test("YOUI Web answers in direct mode by default, with Alpha on Opus 5.5 at effort high", async t => {
+  async function status(extraEnv) {
+    const { port } = await startServer(t, { KINGDOM_AGENT: "alpha", ...extraEnv });
+    const origin = `http://127.0.0.1:${port}`;
+    const browser = cookiesFrom(await request(port));
+    const page = pageId("defaults");
+    const created = await request(port, {
+      path: "/api/sessions",
+      method: "POST",
+      headers: { Cookie: browser.header, Origin: origin, "X-YOUI-CSRF": browser.csrf, "X-YOUI-Page": page },
+      body: { label: "defaults", agent: "alpha" },
+    });
+    assert.equal(created.status, 201);
+    const credential = { id: created.json.session.id, token: created.json.sessionToken, page };
+    const read = await request(port, { path: "/api/status", headers: sessionHeaders(browser, credential) });
+    assert.equal(read.status, 200);
+    return read.json;
+  }
+  const plain = await status({});
+  assert.equal(plain.chatMode, "direct");
+  assert.equal(plain.model, "claude-opus-5-5");
+  assert.equal(plain.effort, "high");
+  // YOUI_MODEL pins a listed model; an unlisted one is ignored.
+  assert.equal((await status({ YOUI_MODEL: "claude-sonnet-4-6" })).model, "claude-sonnet-4-6");
+  assert.equal((await status({ YOUI_MODEL: "not-a-model" })).model, "claude-opus-5-5");
 });

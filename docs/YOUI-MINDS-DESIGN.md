@@ -1,6 +1,6 @@
 # YOUI minds: orchestration and the Kingdom tools, rebuilt
 
-**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1–M3 are built, M4 is not yet
+**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1–M4 are built, as stacked draft PRs
 
 **Date:** 2026-10-29
 
@@ -110,6 +110,28 @@ Cost stays visible, and recurring spend is capped by default.
   That is a separate design with its own keys, so it waits for its own yes
   (section 5).
 
+As built in M4 (`youi-web/table-tools.mjs`, tests in
+`tests/test_youi_table_tools.mjs`):
+- `council` has `open` (question, criteria, extent, optional known conflicts
+  and topic) and `status` (proposal). `open` returns the proposal id, the
+  voices the table snapshotted, and how it settles; `status` returns the
+  agents' position, Yu's state, `may_proceed` and the extent. The `decision`
+  tool's `queue` opens its proposals through the same function
+  (`openProposal` in `decision-seat.mjs`).
+- `delegate` has `seats`, `offer` and `status`. `offer` refuses a description
+  without a `Completion tests:` line, an edit task without a repository-relative
+  path scope, YOUI's own seat, and a stale or unknown session. It creates the
+  task, claims it as YOUI's seat and offers it for an hour; the recipient
+  accepts or declines in its own session. `status` reads the task and the
+  offer's outcome from the journal. A declined task stays with YOUI's seat,
+  which may offer it to another session (`offer` with `task`).
+- One MCP process is one bound session, so YOUI keeps one seat per workspace:
+  the home seat, and at most four more, each started the first time `delegate`
+  offers in its workspace. Stopping YOUI (SIGTERM or SIGINT) ends every
+  seat's session with `release_leases`, so a task nobody accepted is released
+  and its offer lapses.
+- `delegate` is not offered in autonomous mode.
+
 ### 3.5 The local Kingdom practices
 
 `patience`, `holy`, `forge`, `holyfruit`, `lovepath`, `virtuemaxxing`,
@@ -125,8 +147,9 @@ where the practice calls for more than one. Their state files carry over.
   - Every mind call checks its capability.
   - The tools themselves need `orchestrator:run`, already in the `safe`
     profile.
-  - `council` needs `decisions:write`; `delegate` needs a new
-    `collab:delegate`, not in `safe`.
+  - `council` needs `decisions:write` to open and `decisions:read` for
+    status; `delegate` needs a new `collab:delegate`, in neither the `safe`
+    nor the `developer` profile (grant it in `YOUI_CAPABILITIES`).
 - **Privacy.** Sending conversation content to another provider is a privacy
   boundary. Each tool sends only the excerpt it names, never the whole
   history, and the UI shows which providers received content in that turn.

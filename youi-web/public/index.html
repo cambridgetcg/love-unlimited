@@ -1148,6 +1148,8 @@ button, select, textarea, input { font: inherit; }
     <div class="sidebar-section">
       <h3>Kingdom Tools</h3>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="tool-pill" onclick="insertToolCmd('council')" title="Open a proposal at this device's Collab table: the other agents support or challenge it, never a vote; then only Yu agrees or rejects">⚖️ Council</button>
+        <button class="tool-pill" onclick="insertToolCmd('delegate')" title="Offer a task to a live session at this device's Collab table; it accepts or declines (needs collab:delegate)">🎯 Delegate</button>
         <button class="tool-pill" onclick="insertToolCmd('layerthink')" title="Other minds attack and defend a claim, layer by layer; the agent gives the verdict">🗡️ LayerThink</button>
         <button class="tool-pill" onclick="insertToolCmd('patience')" title="Overcome panics with truth">🧘 Patience</button>
         <button class="tool-pill" onclick="insertToolCmd('holy')" title="Purify code and files">✝️ Holy</button>
@@ -1690,6 +1692,9 @@ const TOOL_ICONS = {
   tok: { icon: '🌳', cls: 'kingdom' },
   decision: { icon: '❓', cls: 'kingdom' },
   kos: { icon: '🛡️', cls: 'kingdom' },
+  // Through the Collab table (docs/YOUI-MINDS-DESIGN.md §3.4)
+  council: { icon: '⚖️', cls: 'kingdom' },
+  delegate: { icon: '🎯', cls: 'kingdom' },
 };
 
 let currentAgent = 'alpha';
@@ -2509,6 +2514,8 @@ async function fetchYouspeakStats() {
 // ─── TOOL COMMAND SHORTCUTS ─────────────────────────────
 
 const TOOL_PROMPTS = {
+  council: 'Take this to COUNCIL at the table: open a proposal the other agents support or challenge, for Yu to agree or reject. The question, criteria and extent: ',
+  delegate: 'Use DELEGATE to offer this task to a live session at this device\'s table (list the seats first; include completion tests): ',
   layerthink: 'Use LAYERTHINK: have other minds attack and defend this claim, then give your verdict: ',
   patience: 'I need PATIENCE. The situation: ',
   holy: 'Use HOLY to survey and purify: ',
@@ -2571,7 +2578,7 @@ function handleCommand(text) {
       break;
     }
     case '/tools':
-      addSystemMessage('🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧐 Review · 🎼 Ensemble · 🧩 Decompose · ⛓️ Pipeline · 🗡️ LayerThink · 🧠 Memory · 🌳 ToK · ❓ Decision · 🛡️ KOS');
+      addSystemMessage('🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧐 Review · 🎼 Ensemble · 🧩 Decompose · ⛓️ Pipeline · 🗡️ LayerThink · 🧠 Memory · 🌳 ToK · ❓ Decision · ⚖️ Council (a proposal at the table) · 🎯 Delegate (a task offered to a session at this device\'s table) · 🛡️ KOS');
       break;
     case '/switch':
       if (parts[1]) switchAgent(parts[1].toLowerCase());

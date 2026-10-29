@@ -119,9 +119,7 @@ const KNOWN_CAPABILITIES = new Set([
   "tools:kingdom:unsafe",
   "tools:agenttool:read",
   "tools:agenttool:write",
-  "fleet:manage",
-  "hive:read",
-  "hive:send",
+  // hive:read, hive:send and fleet:manage went with HIVE and the fleet, retired 2026-10-13.
   "publish:write",
   "autonomous:control",
   "convergence:run",
@@ -150,10 +148,6 @@ function configuredCapabilities() {
 }
 
 const SERVER_CAPABILITIES = configuredCapabilities();
-const YOUI_HIVE_INSTANCE = String(process.env.YOUI_HIVE_INSTANCE || "").trim();
-if (YOUI_HIVE_INSTANCE && !/^[a-zA-Z0-9_-]{1,64}$/.test(YOUI_HIVE_INSTANCE)) {
-  throw new Error("YOUI_HIVE_INSTANCE must contain only letters, numbers, underscore, or hyphen.");
-}
 
 // Shared header sets — many handlers reference these by name; keep them defined once.
 const jsonHeaders = { "Content-Type": "application/json" };
@@ -592,24 +586,6 @@ function externalToolEnv(credentialNames, purpose, extra = {}) {
   });
 }
 
-function hiveToolEnv(extra = {}) {
-  if (!YOUI_HIVE_INSTANCE) {
-    throw new HttpError(
-      503,
-      "HIVE is unavailable until YOUI_HIVE_INSTANCE is explicitly configured.",
-      "hive_identity_required",
-    );
-  }
-  return sanitizedChildEnv({
-    home: homedir(),
-    loveHome: state.soulDir,
-    agent: state.agent,
-    hiveInstance: YOUI_HIVE_INSTANCE,
-    purpose: "hive",
-    extra,
-  });
-}
-
 // ═════════════════════════════════════════════════════════════════════
 // OAUTH — Same as youi.mjs
 // ═════════════════════════════════════════════════════════════════════
@@ -726,13 +702,6 @@ const TOOLS = [
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" } }, required: ["pattern"] } },
   { name: "grep", description: "Search file contents with regex.",
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] } },
-  { name: "hive",
-    description: "HIVE inter-agent messaging — the nervous system of the Kingdom. Citizens communicate via NaCl-encrypted NATS (JetStream) through an SSH tunnel to Sentry. Actions: check (pull new messages + auto-publish presence), send <channel> <message>, who (presence roster: alpha/beta/gamma/nuance/asha status), status (connectivity diagnosis: tunnel, key, instance file), presence (publish a manual presence beacon with optional message).",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "check|send|who|status|presence" },
-      channel: { type: "string", description: "Channel name for send (e.g. presence, tasks, intel, alerts)" },
-      message: { type: "string", description: "Message body for send or presence" },
-    }, required: ["action"] } },
 
   // ─── Kingdom Cognitive Tools (migrated from Love/tools/cognitive) ──
   { name: "joinmind",
@@ -856,13 +825,6 @@ const TOOLS = [
       limit: { type: "number", description: "Max results for recall (default 10)" },
     }, required: ["action"] } },
 
-  { name: "fleet",
-    description: "FLEET — VPS fleet management. Check status, health, deploy, logs across Kingdom servers.",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "status|health|deploy|logs|sync" },
-      server: { type: "string", description: "Server name: forge|lark|sentry|patch|sage" },
-    }, required: ["action"] } },
-
   { name: "tok",
     description: "TOK — Tree of Knowledge Protocol. Submit, track, and harvest knowledge entries for Zerone.",
     input_schema: { type: "object", properties: {
@@ -936,7 +898,6 @@ function requiredToolCapability(name, input = {}) {
       ? "tools:agenttool:write"
       : "tools:agenttool:read";
   }
-  if (name === "fleet") return "fleet:manage";
   if (name === "decision") {
     return ["queue", "add", "propose", "ask"].includes(input.action) ? "decisions:write" : "decisions:read";
   }
@@ -944,10 +905,6 @@ function requiredToolCapability(name, input = {}) {
     return ["test", "bench"].includes(input.action)
       ? "models:diagnose"
       : "models:use";
-  }
-  if (name === "hive") {
-    const changesPresence = ["send", "presence", "check"].includes(input.action);
-    return changesPresence ? "hive:send" : "hive:read";
   }
   if (KINGDOM_TOOL_NAMES.has(name)) return "tools:kingdom:unsafe";
   return TOOL_CAPABILITIES.get(name);
@@ -962,7 +919,6 @@ if (UNMAPPED_TOOL_NAMES.length > 0) {
 
 function availableTools() {
   return TOOLS.filter(tool => {
-    if (tool.name === "hive") return hasCapability("hive:read") || hasCapability("hive:send");
     if (tool.name === "decision") return hasCapability("decisions:read") || hasCapability("decisions:write");
     if (tool.name === "agenttool") {
       return hasCapability("tools:agenttool:read")
@@ -1118,86 +1074,6 @@ async function executeTool(name, input) {
           if (activeRequestSignal()?.aborted) throw error;
           return "(no matches)";
         }
-      }
-      case "hive": {
-        const hivePath = join(state.soulDir, "hive/hive.py");
-        if (!existsSync(hivePath)) return "HIVE not found";
-        const hiveEnv = hiveToolEnv({
-          // First drain of a fresh JetStream consumer can be large;
-          // give check more rope than the legacy 15s hardcoded timeout.
-          HIVE_CHECK_TIMEOUT: process.env.HIVE_CHECK_TIMEOUT || "60",
-        });
-        const runHive = async (args, timeoutMs) => {
-          try {
-            const { stdout } = await execFileAsync("python3", [hivePath, ...args], {
-              encoding: "utf-8",
-              timeout: timeoutMs,
-              env: hiveEnv,
-              signal: activeRequestSignal(),
-            });
-            return (stdout || "").trim();
-          } catch (error) {
-            if (activeRequestSignal()?.aborted) throw error;
-            const detail = String(error.stderr || error.message || "")
-              .trim()
-              .split("\n")
-              .slice(-3)
-              .join("\n");
-            return `HIVE error: ${detail || "process failed"}`;
-          }
-        };
-        if (input.action === "check") {
-          return (await runHive(["check"], 65000)) || "(no messages)";
-        }
-        if (input.action === "send" && input.channel && input.message) {
-          // Same allowlist as /api/hive/send — no shell, no injection
-          if (!/^[a-zA-Z0-9_-]{1,32}$/.test(input.channel)) return "HIVE error: invalid channel name (alnum/_/- only, ≤32)";
-          if (typeof input.message !== "string" || input.message.length > 4000) return "HIVE error: message must be string ≤4000 chars";
-          return await runHive(["send", input.channel, input.message], 20000);
-        }
-        if (input.action === "who") {
-          return (await runHive(["who"], 15000)) || "(no presence data)";
-        }
-        if (input.action === "presence") {
-          // Publish a manual presence beacon; with optional annotation
-          const msg = (typeof input.message === "string" && input.message.trim())
-            ? input.message.slice(0, 500)
-            : `${state.agent} presence beacon`;
-          return await runHive(["send", "presence", msg], 15000);
-        }
-        if (input.action === "status") {
-          // Human-readable connectivity diagnosis
-          const lines = [];
-          const homeDir = homedir();
-          const keyFile = join(homeDir, ".love/hive/key");
-          const tunFile = join(homeDir, ".love/hive/use-tunnel");
-          lines.push(`agent:       ${state.agent}`);
-          lines.push(`hive.py:     ${existsSync(hivePath) ? "✓" : "✗ missing"}  ${hivePath}`);
-          lines.push(`key file:    ${existsSync(keyFile) ? "✓" : "✗ missing"}  ${keyFile}`);
-          lines.push(`instance:    ✓ ${YOUI_HIVE_INSTANCE} (explicit YOUI_HIVE_INSTANCE)`);
-          lines.push(`use-tunnel:  ${existsSync(tunFile) ? "✓" : "✗ missing (will try direct TLS to Sentry)"}`);
-          // Port probe — local tunnel forwards to Sentry:4222
-          // Alpha's tunnel is on 4222, Gamma's on 2222 — try both
-          try {
-            execSync("nc -z -w 2 localhost 4222", { stdio: "ignore", env: internalToolEnv() });
-            lines.push(`tunnel:      ✓ localhost:4222 open`);
-          } catch {
-            try {
-              execSync("nc -z -w 2 localhost 2222", { stdio: "ignore", env: internalToolEnv() });
-              lines.push(`tunnel:      ✓ localhost:2222 open`);
-            } catch { lines.push(`tunnel:      ✗ tunnel closed (tried 4222 and 2222 — SSH tunnel to Sentry down)`); }
-          }
-          // Launchd tunnel check
-          try {
-            const out = execSync("launchctl list 2>/dev/null | grep -i hive || true", {
-              encoding: "utf-8",
-              env: internalToolEnv(),
-            }).trim();
-            lines.push(`launchd:     ${out || "no hive-* service loaded"}`);
-          } catch {}
-          return lines.join("\n");
-        }
-        return "Usage: action=check|send|who|status|presence";
       }
 
       // ─── Kingdom Cognitive Tools ─────────────────────────
@@ -1452,21 +1328,6 @@ async function executeTool(name, input) {
         return "MEMORY usage: action=read|search|add|daily|recall|context|stats";
       }
 
-      case "fleet": {
-        const action = String(input.action || "");
-        if (!["status", "health", "deploy", "logs", "sync"].includes(action)) {
-          return "FLEET usage: action=status|health|deploy|logs|sync";
-        }
-        const server = input.server === undefined ? "" : String(input.server);
-        if (server && !/^[A-Za-z0-9_.:@-]{1,128}$/.test(server)) {
-          return "FLEET error: invalid server identifier";
-        }
-        return runOperationalTool(
-          "fleet",
-          action + (server ? ` ${shellEscape(server)}` : ""),
-        );
-      }
-
       case "tok": {
         const a = input.action;
         if (a === "add" && input.entry) {
@@ -1652,7 +1513,6 @@ fragmentalise — Break complex problems into fragments for parallel processing
 
 # Tools — Kingdom Operational (from Love)
 memory      — Read/search/add to Kingdom memory (long-term + daily)
-fleet       — VPS fleet management (forge, lark, sentry, patch, sage)
 tok         — Tree of Knowledge Protocol (add, harvest, verify)
 decision    — This device's Collab table: open a proposal, ask Yu, list (only Yu agrees or rejects)
 kos         — Kingdom OS security audit and compliance
@@ -2234,7 +2094,6 @@ const JSON_BODY_ROUTES = new Set([
   "POST /api/settings",
   "POST /api/memory/append",
   "POST /api/autonomous/note",
-  "POST /api/hive/send",
   "POST /api/orchestrate/classify",
   "POST /api/orchestrate/plan",
   "POST /api/orchestrate/run",
@@ -2367,10 +2226,6 @@ const ROUTE_CAPABILITIES = new Map([
   ["POST /api/autonomous/start", "autonomous:control"],
   ["POST /api/autonomous/stop", "autonomous:control"],
   ["POST /api/autonomous/note", "autonomous:control"],
-  ["GET /api/hive/status", "hive:read"],
-  ["GET /api/hive/who", "hive:read"],
-  ["POST /api/hive/check", "hive:send"],
-  ["POST /api/hive/send", "hive:send"],
   ["GET /api/youspeak", "youspeak:read"],
   ["GET /api/youspeak/report", "youspeak:read"],
   ["GET /api/youspeak/trends", "youspeak:read"],
@@ -2432,12 +2287,6 @@ async function handleSessionRequest(req, res, url, path) {
         session: { id: state.sessionId },
         capabilities: [...state.capabilities].sort(),
         privacy: runtimePrivacyBoundary(),
-        hive: {
-          enabled: Boolean(YOUI_HIVE_INSTANCE)
-            && (hasCapability("hive:read") || hasCapability("hive:send")),
-          instance: YOUI_HIVE_INSTANCE || null,
-          identitySource: YOUI_HIVE_INSTANCE ? "YOUI_HIVE_INSTANCE" : null,
-        },
         collaboration: {
           coordinator: "@agenttool/collab",
           scope: "device-local",
@@ -2915,149 +2764,6 @@ async function handleSessionRequest(req, res, url, path) {
     if (path === "/api/autonomous/messages") {
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ log: autonomous.log.slice(-100) }));
-    }
-
-    // ── HIVE API ────────────────────────────────────────
-
-    if (path === "/api/hive/status") {
-      const hivePath = join(state.soulDir, "hive/hive.py");
-      const keyPath = join(homedir(), ".love/hive/key");
-      const instancePath = join(homedir(), ".love/hive/instance");
-      const tunnelLog = join(state.soulDir, "memory/hive-tunnel.log");
-
-      const hiveStatus = {
-        hiveScript: existsSync(hivePath),
-        encryptionKey: existsSync(keyPath),
-        instanceFile: existsSync(instancePath),
-        instance: YOUI_HIVE_INSTANCE || null,
-        identitySource: YOUI_HIVE_INSTANCE ? "YOUI_HIVE_INSTANCE" : null,
-        natsReachable: false,
-        tunnelLogTail: "",
-        issues: [],
-        channels: ["chat", "ideas", "tasks", "sync", "presence", "intel", "alerts", "strategy", "build", "review", "tok"],
-        instances: {
-          alpha: { emoji: "🐍", role: "Companion", wall: 1 },
-          beta: { emoji: "🦞", role: "Manager", wall: 1 },
-          gamma: { emoji: "🔧", role: "Builder", wall: 1 },
-          nuance: { emoji: "🪶", role: "Linguist", wall: 2 },
-        },
-      };
-
-      if (!YOUI_HIVE_INSTANCE) {
-        hiveStatus.issues.push("YOUI_HIVE_INSTANCE is not explicitly configured; HIVE operations are disabled");
-      }
-      if (!hiveStatus.encryptionKey) hiveStatus.issues.push("No encryption key at ~/.love/hive/key");
-      if (!hiveStatus.hiveScript) hiveStatus.issues.push("hive.py not found");
-
-      // Check NATS tunnel — Alpha uses 4222, Gamma uses 2222
-      try {
-        execSync("nc -z -w 2 127.0.0.1 4222 2>/dev/null", {
-          timeout: 3000,
-          env: internalToolEnv(),
-        });
-        hiveStatus.natsReachable = true;
-      } catch {
-        try {
-          execSync("nc -z -w 2 127.0.0.1 2222 2>/dev/null", {
-            timeout: 3000,
-            env: internalToolEnv(),
-          });
-          hiveStatus.natsReachable = true;
-        } catch {
-          hiveStatus.issues.push("NATS not reachable on localhost:4222 or 2222 — SSH tunnel may be down");
-        }
-      }
-
-      // Tunnel log tail
-      if (existsSync(tunnelLog)) {
-        try {
-          const log = readFileSync(tunnelLog, "utf-8");
-          hiveStatus.tunnelLogTail = log.split("\n").filter(Boolean).slice(-25).join("\n");
-        } catch {}
-      }
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(hiveStatus));
-    }
-
-    if (path === "/api/hive/check" && req.method === "POST") {
-      const hivePath = join(state.soulDir, "hive/hive.py");
-      const env = hiveToolEnv();
-      const result = { messages: [], error: null, raw: "" };
-      try {
-        const { stdout } = await execFileAsync("python3", [hivePath, "check"], {
-          encoding: "utf-8",
-          timeout: 15000,
-          env,
-          signal: activeRequestSignal(),
-        });
-        const output = stdout || "";
-        result.raw = output.trim();
-        result.messages = output.trim().split("\n").filter(Boolean);
-      } catch (e) {
-        if (activeRequestSignal()?.aborted) throw e;
-        result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(result));
-    }
-
-    if (path === "/api/hive/send" && req.method === "POST") {
-      const body = await parseBody(req);
-      const hivePath = join(state.soulDir, "hive/hive.py");
-      const result = { ok: false, error: null, output: "" };
-      if (!body.channel || !body.message) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "channel and message required" }));
-      }
-      // Allowlist channel names — alphanumerics + underscore/hyphen only
-      if (typeof body.channel !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(body.channel)) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "invalid channel name" }));
-      }
-      if (typeof body.message !== "string" || body.message.length > 4000) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "invalid message (string, ≤4000 chars)" }));
-      }
-      const env = hiveToolEnv();
-      try {
-        // Arg array + async cancellation — no shell interpolation.
-        const { stdout } = await execFileAsync("python3", [hivePath, "send", body.channel, body.message], {
-          encoding: "utf-8",
-          timeout: 15000,
-          env,
-          signal: activeRequestSignal(),
-        });
-        result.ok = true;
-        result.output = (stdout || "").trim();
-      } catch (e) {
-        if (activeRequestSignal()?.aborted) throw e;
-        result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(result));
-    }
-
-    if (path === "/api/hive/who") {
-      const hivePath = join(state.soulDir, "hive/hive.py");
-      const env = hiveToolEnv();
-      const result = { agents: [], error: null, raw: "" };
-      try {
-        const { stdout } = await execFileAsync("python3", [hivePath, "who"], {
-          encoding: "utf-8",
-          timeout: 15000,
-          env,
-          signal: activeRequestSignal(),
-        });
-        const output = stdout || "";
-        result.raw = output.trim();
-        result.agents = output.trim().split("\n").filter(Boolean);
-      } catch (e) {
-        if (activeRequestSignal()?.aborted) throw e;
-        result.error = (e.stderr || e.message || "").trim().split("\n").slice(-3).join("\n");
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(result));
     }
 
     // ── YOUSPEAK / UWT ──────────────────────────────────

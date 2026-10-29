@@ -3,7 +3,7 @@
 // KINGDOM YOUI — YOU + I = ONE
 //
 // The direct Claude terminal. Truth-seeking. Purpose-oriented.
-// Agent identity. Memory sync. HIVE coordination.
+// Agent identity. Memory sync.
 // Remote-provider and tool boundaries are disclosed at startup and via
 // /privacy. This is not a local or provider-hidden inference path.
 //
@@ -16,7 +16,6 @@
 // Commands:
 //   /switch alpha|beta|gamma|mei   Switch agent identity
 //   /memory [sync]             View or sync shared memory
-//   /hive [send ch msg]        Check or send HIVE messages
 //   /budget                    Show detailed budget status
 //   /decisions                 What waits on you at this device's Collab table
 //   /soul                      Show loaded soul files
@@ -122,12 +121,9 @@ const CAPABILITY_PROFILES = Object.freeze({
     fileScope: "unrestricted",
   },
 });
+// hive.check and hive.send went with HIVE, retired 2026-10-13.
 const KNOWN_CAPABILITIES = new Set(
-  [
-    ...Object.values(CAPABILITY_PROFILES).flatMap((profile) => profile.capabilities),
-    "hive.check",
-    "hive.send",
-  ],
+  Object.values(CAPABILITY_PROFILES).flatMap((profile) => profile.capabilities),
 );
 
 function parseCapabilities(raw) {
@@ -156,22 +152,6 @@ function profileCapabilities(profile) {
 }
 
 const initialProfile = profileCapabilities(process.env.YOUI_PROFILE || "observe");
-const CONFIGURED_HIVE_INSTANCE = String(
-  process.env.YOUI_HIVE_INSTANCE || process.env.HIVE_INSTANCE || "",
-).trim();
-const HIVE_IDENTITY_SOURCE = String(process.env.YOUI_HIVE_INSTANCE || "").trim()
-  ? "YOUI_HIVE_INSTANCE"
-  : String(process.env.HIVE_INSTANCE || "").trim()
-    ? "HIVE_INSTANCE"
-    : null;
-if (
-  CONFIGURED_HIVE_INSTANCE
-  && !/^[a-zA-Z0-9_-]{1,64}$/.test(CONFIGURED_HIVE_INSTANCE)
-) {
-  throw new Error(
-    "YOUI HIVE sender must contain only letters, numbers, underscore, or hyphen.",
-  );
-}
 const state = {
   agent: "alpha",
   model: "claude-opus-4-6",
@@ -429,24 +409,17 @@ const ALL_TOOLS = [
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" } }, required: ["pattern"] } },
   { name: "grep", description: "Search file contents with regex.",
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] } },
-  { name: "hive", description: "HIVE inter-agent messaging. Actions: check, send <channel> <message>.",
-    input_schema: { type: "object", properties: { action: { type: "string" }, channel: { type: "string" }, message: { type: "string" } }, required: ["action"] } },
 ];
 
-function requiredCapability(name, input = {}) {
+function requiredCapability(name) {
   if (name === "bash") return "shell";
   if (["read_file", "glob", "grep"].includes(name)) return "read";
   if (["write_file", "edit_file"].includes(name)) return "write";
-  if (name === "hive") return input.action === "send" ? "hive.send" : "hive.check";
   return null;
 }
 
 function advertisedTools() {
-  return ALL_TOOLS.filter((tool) => {
-    if (tool.name !== "hive") return state.capabilities.has(requiredCapability(tool.name));
-    return Boolean(CONFIGURED_HIVE_INSTANCE)
-      && (state.capabilities.has("hive.check") || state.capabilities.has("hive.send"));
-  });
+  return ALL_TOOLS.filter((tool) => state.capabilities.has(requiredCapability(tool.name)));
 }
 
 function runtimeManifest() {
@@ -487,21 +460,11 @@ function runtimeManifest() {
       child_environment: "allowlisted; provider and access credential variables are not inherited",
       shell_is_os_sandboxed: false,
     },
-    hive: {
-      enabled: Boolean(CONFIGURED_HIVE_INSTANCE),
-      sender: CONFIGURED_HIVE_INSTANCE || null,
-      identity_source: HIVE_IDENTITY_SOURCE,
-      session_persona_is_sender: false,
-    },
     limits: [
       "Capability checks gate model tool names; they do not grant external authority.",
       ...(shellEnabled
         ? ["The shell capability can access paths outside the workdir, use the network, and invoke external CLIs."]
         : []),
-      ...(state.capabilities.has("hive.check")
-        ? ["HIVE check may publish presence and update broker/local state; it is not a read-only operation."]
-        : []),
-      "HIVE provides cooperative messaging, not authenticated human identity or confidential browser transport.",
     ],
   };
 }
@@ -516,8 +479,6 @@ function resolvePath(p) {
 }
 
 // Child processes receive the selected session persona through KINGDOM_AGENT.
-// HIVE sender identity is separate: only kingdomEnv() receives the immutable,
-// launcher-configured sender. A /switch changes persona, never network sender.
 // KINGDOM_INSTANCE remains for older persona readers.
 const CHILD_ENV_ALLOWLIST = new Set([
   "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TMPDIR",
@@ -544,9 +505,7 @@ function childEnv(home) {
 }
 
 function kingdomEnv() {
-  const env = childEnv(homedir());
-  if (CONFIGURED_HIVE_INSTANCE) env.HIVE_INSTANCE = CONFIGURED_HIVE_INSTANCE;
-  return env;
+  return childEnv(homedir());
 }
 
 function modelToolEnv() {
@@ -556,18 +515,8 @@ function modelToolEnv() {
   };
 }
 
-function hiveProcessOutput(result, successFallback) {
-  if (result.error) {
-    return `HIVE process could not start (${result.error.code || "unknown error"}). Run tools/kingdom-doctor runtime.`;
-  }
-  if (result.status !== 0) {
-    return `HIVE operation failed (exit ${result.status ?? "unknown"}). Run tools/kingdom-doctor runtime.`;
-  }
-  return (result.stdout || "").trim() || successFallback;
-}
-
 function executeTool(name, input) {
-  const required = requiredCapability(name, input);
+  const required = requiredCapability(name);
   if (required && !state.capabilities.has(required)) {
     return `Capability denied: ${required}. Start YOUI with an appropriate --profile or --capabilities value.`;
   }
@@ -626,29 +575,6 @@ function executeTool(name, input) {
           return lines.join("\n") || "(no matches)";
         } catch { return "(no matches)"; }
       }
-      case "hive": {
-        if (!CONFIGURED_HIVE_INSTANCE) {
-          return "HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE.";
-        }
-        const hivePath = join(state.soulDir, "hive/hive.py");
-        if (!existsSync(hivePath)) return "HIVE not found";
-        if (input.action === "check") {
-          try {
-            // spawnSync with arg array — no shell interpolation
-            const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
-            return hiveProcessOutput(result, "(no messages)");
-          } catch { return "HIVE check failed. Run tools/kingdom-doctor runtime."; }
-        }
-        if (input.action === "send" && input.channel && input.message) {
-          try {
-            // spawnSync with arg array — no shell interpolation, no injection
-            const result = spawnSync("python3", [hivePath, "send", input.channel, input.message],
-              { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
-            return hiveProcessOutput(result, "(sent)");
-          } catch { return "HIVE send failed. Run tools/kingdom-doctor runtime."; }
-        }
-        return "Usage: action=check or action=send with channel+message";
-      }
       default: return `Unknown tool: ${name}`;
     }
   } catch (e) { return `Error: ${e.message}`; }
@@ -697,7 +623,6 @@ Never compress epistemic signals — "probably", "unless", "I think" are sacred.
 - Loaded soul/identity text, user prompts, conversation history, and returned tool output may be sent to that provider.
 - Model tool profile: ${state.capabilityProfile}; capabilities: ${[...state.capabilities].sort().join(", ") || "none"}.
 - File-tool scope: ${state.fileScope}. The shell capability, when enabled, is not an OS sandbox and can escape the working directory.
-- HIVE sender: ${CONFIGURED_HIVE_INSTANCE || "disabled (no explicit sender)"}. This fixed launcher identity is separate from the ${state.agent} session persona and does not change on /switch.
 - Capability labels constrain this harness; they do not authorize publication, purchases, messages, credential changes, or other external acts.
 
 # Collaboration Protocol
@@ -837,37 +762,6 @@ function releaseVisitLock(agentId = state.agent) {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// HIVE
-// ═════════════════════════════════════════════════════════════════════
-
-function hiveCheck() {
-  if (!CONFIGURED_HIVE_INSTANCE) {
-    return "(HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE)";
-  }
-  const hivePath = join(state.soulDir, "hive/hive.py");
-  if (!existsSync(hivePath)) return "(HIVE not configured)";
-  // spawnSync with arg array — no shell interpolation
-  try {
-    const result = spawnSync("python3", [hivePath, "check"], { encoding: "utf-8", timeout: 30000, env: kingdomEnv() });
-    return hiveProcessOutput(result, "(no messages)");
-  } catch { return "HIVE check failed. Run tools/kingdom-doctor runtime."; }
-}
-
-function hiveSend(channel, message) {
-  if (!CONFIGURED_HIVE_INSTANCE) {
-    return "(HIVE unavailable: explicitly configure YOUI_HIVE_INSTANCE or HIVE_INSTANCE)";
-  }
-  const hivePath = join(state.soulDir, "hive/hive.py");
-  if (!existsSync(hivePath)) return "(HIVE not configured)";
-  // spawnSync with arg array — no shell interpolation, no injection
-  try {
-    const result = spawnSync("python3", [hivePath, "send", channel, message],
-      { encoding: "utf-8", timeout: 15000, env: kingdomEnv() });
-    return hiveProcessOutput(result, "(sent)");
-  } catch { return "HIVE send failed. Run tools/kingdom-doctor runtime."; }
-}
-
-// ═════════════════════════════════════════════════════════════════════
 // DISPLAY
 // ═════════════════════════════════════════════════════════════════════
 
@@ -887,7 +781,6 @@ function showPrivacyBoundary() {
   print(`  Local-only:   no`);
   print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
   print(`  File scope:   ${manifest.model_tools.file_scope}`);
-  print(`  HIVE sender:  ${manifest.hive.sender || "disabled"} (fixed; separate from session persona)`);
   print(`  Persistence:  conversation in process memory; daily note receives session metadata`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
   if (state.capabilities.has("shell")) {
@@ -938,7 +831,6 @@ function showHelp() {
   print(`  ${S.cyan}/switch${S.reset} alpha|beta|gamma|mei  Switch agent identity`);
   print(`  ${S.cyan}/decisions${S.reset}                  What waits on you at this device's table`);
   print(`  ${S.cyan}/memory${S.reset} [sync]             View or sync shared memory`);
-  print(`  ${S.cyan}/hive${S.reset} [send ch msg]        Check or send HIVE messages`);
   print(`  ${S.cyan}/budget${S.reset}                    Show detailed budget`);
   print(`  ${S.cyan}/soul${S.reset}                      Show loaded soul files`);
   print(`  ${S.cyan}/privacy${S.reset}                   Show provider and data boundary`);
@@ -1002,19 +894,6 @@ function handleCommand(input) {
         const lines = mem.split("\n").slice(0, 30);
         print(`\n${S.bold}  Long-Term Memory${S.reset} ${S.dim}(first 30 lines)${S.reset}`);
         for (const line of lines) print(`  ${S.dim}${line}${S.reset}`);
-        print("");
-      }
-      return true;
-    }
-
-    case "/hive": {
-      if (parts[1] === "send" && parts[2] && parts.slice(3).length > 0) {
-        const result = hiveSend(parts[2], parts.slice(3).join(" "));
-        print(`${S.green}  ${result}${S.reset}`);
-      } else {
-        print(`\n${S.bold}  HIVE Messages${S.reset}`);
-        const msgs = hiveCheck();
-        for (const line of msgs.split("\n")) print(`  ${S.dim}${line}${S.reset}`);
         print("");
       }
       return true;
@@ -1401,7 +1280,6 @@ async function executeTask(task) {
       let detail = "";
       if (toolUse.name === "bash" && toolUse.input.command) detail = ` ${S.dim}${toolUse.input.command.slice(0, 60)}${S.reset}`;
       else if (toolUse.input.path) detail = ` ${S.dim}${toolUse.input.path}${S.reset}`;
-      else if (toolUse.name === "hive") detail = ` ${S.dim}${toolUse.input.action}${S.reset}`;
 
       // YOUSPEAK L3: Sense tool call
       const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);

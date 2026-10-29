@@ -468,14 +468,13 @@ test("YOUI Web isolates browser sessions and enforces its local security boundar
   assert.ok(firstStatus.json.capabilities.includes("publish:write"));
 
   const deniedHighAuthority = await request(port, {
-    path: "/api/hive/send",
+    path: "/api/autonomous/start",
     method: "POST",
     headers: sessionHeaders(browser, first, { origin, unsafe: true }),
-    body: {},
   });
   assert.equal(deniedHighAuthority.status, 403);
   assert.equal(deniedHighAuthority.json.code, "capability_denied");
-  assert.equal(deniedHighAuthority.json.capability, "hive:send");
+  assert.equal(deniedHighAuthority.json.capability, "autonomous:control");
   assert.ok(!firstStatus.json.capabilities.includes("tools:shell"));
 
   const unmappedMutation = await request(port, {
@@ -549,73 +548,6 @@ test("YOUI Web isolates browser sessions and enforces its local security boundar
     headers: { ...sessionHeaders(browser, first), Host: `127.0.0.1:${port + 1}` },
   });
   assert.equal(wrongPortHost.status, 421);
-});
-
-test("YOUI Web never derives HIVE sender identity from the selected persona", async t => {
-  async function openSession(extraEnv, label) {
-    const { port } = await startServer(t, {
-      KINGDOM_AGENT: "beta",
-      YOUI_HIVE_INSTANCE: "",
-      YOUI_CAPABILITIES: "status:read,sessions:manage,hive:read",
-      ...extraEnv,
-    });
-    const origin = `http://127.0.0.1:${port}`;
-    const bootstrap = await request(port);
-    const browser = cookiesFrom(bootstrap);
-    const page = pageId(label);
-    const created = await request(port, {
-      path: "/api/sessions",
-      method: "POST",
-      headers: {
-        Cookie: browser.header,
-        Origin: origin,
-        "X-YOUI-CSRF": browser.csrf,
-        "X-YOUI-Page": page,
-      },
-      body: { label, agent: "beta" },
-    });
-    assert.equal(created.status, 201);
-    return {
-      port,
-      browser,
-      origin,
-      credential: {
-        id: created.json.session.id,
-        token: created.json.sessionToken,
-        page,
-      },
-    };
-  }
-
-  const missing = await openSession({}, "hive-missing");
-  const missingStatus = await request(missing.port, {
-    path: "/api/status",
-    headers: sessionHeaders(missing.browser, missing.credential),
-  });
-  assert.equal(missingStatus.status, 200);
-  assert.equal(missingStatus.json.agent.id, "beta");
-  assert.equal(missingStatus.json.hive.instance, null);
-  assert.equal(missingStatus.json.hive.identitySource, null);
-
-  const blockedWho = await request(missing.port, {
-    path: "/api/hive/who",
-    headers: sessionHeaders(missing.browser, missing.credential),
-  });
-  assert.equal(blockedWho.status, 503);
-  assert.equal(blockedWho.json.code, "hive_identity_required");
-
-  const configured = await openSession(
-    { YOUI_HIVE_INSTANCE: "device-test-sender" },
-    "hive-explicit",
-  );
-  const configuredStatus = await request(configured.port, {
-    path: "/api/status",
-    headers: sessionHeaders(configured.browser, configured.credential),
-  });
-  assert.equal(configuredStatus.status, 200);
-  assert.equal(configuredStatus.json.agent.id, "beta");
-  assert.equal(configuredStatus.json.hive.instance, "device-test-sender");
-  assert.equal(configuredStatus.json.hive.identitySource, "YOUI_HIVE_INSTANCE");
 });
 
 test("YOUI Web fences in-flight mutations and raw Ollama tool calls", async t => {

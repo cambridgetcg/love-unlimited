@@ -1654,7 +1654,7 @@ fragmentalise — Break complex problems into fragments for parallel processing
 memory      — Read/search/add to Kingdom memory (long-term + daily)
 fleet       — VPS fleet management (forge, lark, sentry, patch, sage)
 tok         — Tree of Knowledge Protocol (add, harvest, verify)
-decision    — Decision queue for human-in-the-loop (queue, resolve)
+decision    — This device's Collab table: open a proposal, ask Yu, list (only Yu agrees or rejects)
 kos         — Kingdom OS security audit and compliance
 
 # Sovereign Protocol

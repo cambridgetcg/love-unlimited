@@ -1,0 +1,70 @@
+/* YOUI decision room — uses the page's own tokens (index.html :root). */
+.dec-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+.dec-toolbar select {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light); background: var(--bg-elevated); color: var(--text-primary);
+  font-size: 0.8rem;
+}
+.dec-card {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  margin-bottom: 10px; padding: 12px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-primary);
+  font: inherit; transition: var(--transition);
+}
+.dec-card:hover { border-color: var(--agent); background: var(--bg-hover); }
+.dec-card.dec-pos-consented.dec-person-awaiting { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-dim); }
+.dec-card-q, .dec-title { font-size: 0.9rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dec-title { margin: 10px 0 8px; font-weight: 600; }
+.dec-card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 0.72rem; }
+.dec-chip { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-light); color: var(--text-secondary); }
+.dec-chip-ai { color: var(--cyan); border-color: rgba(6, 182, 212, 0.35); }
+.dec-chip-person { color: var(--gold); border-color: rgba(251, 191, 36, 0.35); }
+.dec-chip-go { color: var(--green); border-color: rgba(34, 197, 94, 0.45); }
+.dec-dim { color: var(--text-dim); font-size: 0.75rem; }
+.dec-field { margin: 12px 0; }
+.dec-label { font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+.dec-value { font-size: 0.84rem; line-height: 1.5; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dec-act { font-size: 0.78rem; }
+.dec-bytes { margin: 12px 0; font-size: 0.75rem; color: var(--text-dim); }
+.dec-bytes summary { cursor: pointer; }
+.dec-bytes pre, pre.dec-mono {
+  margin-top: 6px; padding: 10px; border-radius: var(--radius-sm); background: var(--bg-deep);
+  border: 1px solid var(--border); font-family: var(--mono); font-size: 0.7rem;
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary);
+}
+.dec-mono { font-family: var(--mono); font-size: 0.72rem; overflow-wrap: anywhere; color: var(--text-secondary); }
+.dec-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.dec-btn {
+  min-height: 36px; padding: 8px 14px; border-radius: var(--radius-sm); cursor: pointer;
+  border: 1px solid var(--agent); background: transparent; color: var(--agent); font-size: 0.82rem;
+  margin-top: 6px; margin-right: 6px; transition: var(--transition);
+}
+.dec-btn:hover:not([disabled]) { background: rgba(168, 85, 247, 0.12); }
+.dec-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+.dec-btn-agree { border-color: var(--green); color: var(--green); }
+.dec-btn-agree:hover:not([disabled]) { background: rgba(34, 197, 94, 0.12); }
+.dec-btn-reject { border-color: var(--red); color: var(--red); }
+.dec-btn-reject:hover:not([disabled]) { background: rgba(239, 68, 68, 0.12); }
+.dec-btn-quiet { border-color: var(--border-light); color: var(--text-secondary); }
+.dec-back { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 0.78rem; padding: 0; }
+.dec-back:hover { color: var(--agent); }
+#drawer-decisions textarea, #drawer-decisions input[type="text"], #drawer-decisions select.dec-input {
+  width: 100%; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-light);
+  background: var(--bg-elevated); color: var(--text-primary); font: inherit; font-size: 0.82rem; resize: vertical;
+}
+.dec-confirm:not(:empty) {
+  margin: 10px 0; padding: 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light); background: var(--bg-surface);
+}
+.dec-notice { padding: 9px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; line-height: 1.45; margin: 8px 0; }
+.dec-info { background: rgba(6, 182, 212, 0.08); color: var(--text-secondary); }
+.dec-ok { background: rgba(34, 197, 94, 0.1); color: var(--green); }
+.dec-warn { background: rgba(251, 191, 36, 0.1); color: var(--gold); }
+.dec-subhead { font-size: 0.78rem; color: var(--text-secondary); margin: 14px 0 8px; font-weight: 600; }
+.dec-message { padding: 10px 12px; margin-bottom: 8px; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border); }
+.dec-message-head { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 4px; overflow-wrap: anywhere; }
+.dec-message-body { font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dec-form label { display: block; margin: 10px 0 4px; font-size: 0.72rem; color: var(--text-dim); }
+.btn-badge.dec-badge-live { background: var(--gold-dim); color: var(--gold); }
+.dec-toolbar-top { margin: 0; padding: 10px 20px; background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+.dec-toolbar-top select { flex: 1 1 0; }

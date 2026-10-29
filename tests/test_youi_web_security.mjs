@@ -861,7 +861,7 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
   await within(secondCycle.closed, 1_000, "second stopped autonomous provider request");
 });
 
-test("YOUI Web answers in direct mode by default, with Alpha on a Claude model", async t => {
+test("YOUI Web answers in direct mode by default, with Alpha on Opus 5.5 at effort high", async t => {
   async function status(extraEnv) {
     const { port } = await startServer(t, { KINGDOM_AGENT: "alpha", ...extraEnv });
     const origin = `http://127.0.0.1:${port}`;
@@ -881,8 +881,9 @@ test("YOUI Web answers in direct mode by default, with Alpha on a Claude model",
   }
   const plain = await status({});
   assert.equal(plain.chatMode, "direct");
-  assert.equal(plain.model, "claude-opus-4-7");
+  assert.equal(plain.model, "claude-opus-5-5");
+  assert.equal(plain.effort, "high");
   // YOUI_MODEL pins a listed model; an unlisted one is ignored.
   assert.equal((await status({ YOUI_MODEL: "claude-sonnet-4-6" })).model, "claude-sonnet-4-6");
-  assert.equal((await status({ YOUI_MODEL: "not-a-model" })).model, "claude-opus-4-7");
+  assert.equal((await status({ YOUI_MODEL: "not-a-model" })).model, "claude-opus-5-5");
 });

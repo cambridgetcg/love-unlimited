@@ -335,7 +335,7 @@ const AGENTS = {
     name: "Alpha", emoji: "🐍", role: "Companion",
     color: "#a855f7", colorDim: "#7c3aed",
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-7", defaultEffort: "max",
+    defaultModel: "claude-opus-5-5", defaultEffort: "high",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
   beta: {

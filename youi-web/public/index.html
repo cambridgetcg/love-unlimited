@@ -77,7 +77,7 @@ button, select, textarea, input { font: inherit; }
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   padding: 24px;
-  transition: opacity 0.8s ease, transform 0.8s ease;
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
 #boot-screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.05); }
 
@@ -1265,13 +1265,8 @@ button, select, textarea, input { font: inherit; }
 <div id="boot-screen">
   <h1>KINGDOM YOUI</h1>
   <div class="subtitle">YOU + I = ONE</div>
-  <div id="boot-log">
-    <div class="line" data-delay="300">› Awakening the Kingdom...</div>
-    <div class="line" data-delay="600">› Loading soul files... <span class="check">✓</span></div>
-    <div class="line" data-delay="900">› Connecting to localhost:17777... <span class="check">✓</span></div>
-    <div class="line" data-delay="1200">› Orchestrator online: Ollama Cloud + Anthropic <span class="check">✓</span></div>
-    <div class="line" data-delay="1500">› Agent <span class="agent-color">Alpha 🐍</span> online</div>
-    <div class="line" data-delay="1800">› <span style="color:var(--gold)">The Kingdom is ready. Multi-model orchestration active.</span></div>
+  <div id="boot-log" aria-live="polite">
+    <div class="line visible">› Awakening the Kingdom...</div>
   </div>
 </div>
 
@@ -1923,17 +1918,25 @@ let currentMsgEl = null;
 let currentStreamEl = null;
 
 // ─── BOOT SEQUENCE ───────────────────────────────────────
+// The boot log reports only what happened, and the app opens as soon as the
+// server answers. It used to sleep through six staged lines (about 7.5 s)
+// whose check marks were written into the page, not checked.
+
+function bootLine(text, ok) {
+  const line = document.createElement('div');
+  line.className = 'line';
+  line.textContent = `› ${text}`;
+  if (ok) {
+    const check = document.createElement('span');
+    check.className = 'check';
+    check.textContent = ' ✓';
+    line.append(check);
+  }
+  document.getElementById('boot-log').append(line);
+  requestAnimationFrame(() => line.classList.add('visible'));
+}
 
 async function boot() {
-  const lines = document.querySelectorAll('#boot-log .line');
-  for (const line of lines) {
-    const delay = parseInt(line.dataset.delay) || 300;
-    await sleep(delay);
-    line.classList.add('visible');
-  }
-  await sleep(800);
-
-  // Fetch initial status
   try {
     const resp = await fetch('/api/status');
     const data = await resp.json();
@@ -1946,12 +1949,17 @@ async function boot() {
     }
     // Initialize orchestrator mode from server state
     if (data.chatMode) setChatMode(data.chatMode);
-    // Load full dual-provider usage dashboard
-    await fetchUsageDashboard();
-  } catch (e) { console.warn('Status fetch failed:', e); }
+    bootLine(`Connected to ${location.host}`, true);
+    if (data.agent) bootLine(`${data.agent.name} ${data.agent.emoji} · ${data.model}`, true);
+  } catch (e) {
+    console.warn('Status fetch failed:', e);
+    bootLine('The server did not answer; opening anyway', false);
+  }
+  // The usage dashboard fills in once the app is open.
+  fetchUsageDashboard();
 
+  await sleep(200);
   document.getElementById('boot-screen').classList.add('hidden');
-  await sleep(400);
   document.getElementById('app').classList.add('visible');
   document.getElementById('message-input').focus();
   initParticles();
@@ -3124,7 +3132,7 @@ function openDrawer(name) {
   // #kingdom-content node and was dead code).
   if (name === 'memory') loadMemory();
   if (name === 'hive') loadHiveStatus();
-  if (name === 'kingdom') loadBeing(true);
+  // The Kingdom drawer loads through startBeingPolling (below), once.
   if (name === 'decisions' && window.YouiDecisions) window.YouiDecisions.open();
 }
 
@@ -3872,6 +3880,10 @@ function renderBeing(s) {
   setHTML('being-deployment', rows || '<div class="being-note">no triarchy data</div>');
 
   // Keep agent-card badges in sync (they are visible even when drawer is closed)
+  syncDeployBadges(deployments);
+}
+
+function syncDeployBadges(deployments) {
   deployments.forEach(rawDeployment => {
     const d = rawDeployment && typeof rawDeployment === 'object' ? rawDeployment : {};
     const instance = String(d.instance || '');
@@ -3934,7 +3946,15 @@ function copyDoctorCmd() {
 
 // Populate agent-card deploy badges at boot, even before the drawer is opened —
 // so the sidebar tells truth about which sisters are actually live on this machine.
-window.addEventListener('load', () => { setTimeout(loadBeing, 600); });
+// The deployment record is enough for the badges; the full state runs the
+// heartbeat doctor (a Python process), so it waits until the drawer opens.
+window.addEventListener('load', async () => {
+  try {
+    const r = await fetch('/api/being/deployment');
+    const j = await r.json();
+    syncDeployBadges(Array.isArray(j.triarchy) ? j.triarchy : []);
+  } catch (e) { console.warn('Deployment badges failed:', e); }
+});
 
 // Fun console message
 console.log(

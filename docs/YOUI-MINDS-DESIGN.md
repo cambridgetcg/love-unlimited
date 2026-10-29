@@ -1,6 +1,6 @@
 # YOUI minds: orchestration and the Kingdom tools, rebuilt
 
-**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1 is built, M2–M4 are not yet
+**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1 and M2 are built, M3–M4 are not yet
 
 **Date:** 2026-10-29
 
@@ -154,8 +154,9 @@ and no network.
 ## 6. Open questions
 
 - Should `ensemble` minds see each other's answers? Herding argues for no:
-  each mind answers alone, and Alpha fuses the answers.
+  each mind answers alone, and Alpha fuses the answers. (M2 builds it so.)
 - What should the per-message ceiling be (calls and tokens)? This design
-  proposes 6 calls by default, configurable.
+  proposes 6 calls by default, configurable. (M2 builds 6 calls, set by
+  `YOUI_MIND_CALLS_PER_MESSAGE` within 1–20; tokens are reported, not capped.)
 - Which models count as minds once Ollama Cloud has a key? The registry only
   lists them; the choice stays Alpha's within the ceiling.

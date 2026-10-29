@@ -37,8 +37,16 @@ import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
-import { CLAUDE_MODELS, claudeRequestShape } from "./claude-models.mjs";
+import { CLAUDE_MODELS, claudeRequestShape, modelCaps } from "./claude-models.mjs";
 import { createMindsRegistry, offeredMinds } from "./minds.mjs";
+import {
+  MAX_MINDS_PER_CALL,
+  MAX_REVIEWS_PER_MESSAGE,
+  MIND_TOOL_NAMES,
+  createMindBudget,
+  mindCallsPerMessage,
+  runMindTool,
+} from "./mind-tools.mjs";
 
 // YOUI's chat agents sit at this device's table as one Collab session, started on first use.
 let decisionSeat = null;
@@ -86,6 +94,9 @@ const MAX_BODY_BYTES = Math.min(
   10 * 1024 * 1024,
   Math.max(1024, Number.parseInt(process.env.YOUI_MAX_BODY_BYTES || `${1024 * 1024}`, 10) || 1024 * 1024),
 );
+// The per-message ceiling on calls to other minds (docs/YOUI-MINDS-DESIGN.md
+// §3.3): 6 by default, YOUI_MIND_CALLS_PER_MESSAGE bounded to 1–20.
+const MIND_CALLS_PER_MESSAGE = mindCallsPerMessage(process.env.YOUI_MIND_CALLS_PER_MESSAGE);
 
 const SAFE_CAPABILITIES = new Set([
   "chat",
@@ -399,6 +410,8 @@ function createSessionState(overrides = {}) {
     reasoningEffort: "low",
     chatMode: "direct",
     chatInFlight: false,
+    // Calls to other minds left in this message; each chat turn starts a fresh one.
+    mindBudget: null,
     capabilities: new Set(SERVER_CAPABILITIES),
     providerUsage: createProviderUsage(),
     ys: createKernel({ agent }),
@@ -721,6 +734,13 @@ function parseBudgetHeaders(headers) {
 // TOOLS — Core + Kingdom Cognitive Tools (migrated from Love)
 // ═════════════════════════════════════════════════════════════════════
 
+// What every mind tool's description says about naming minds and the limits.
+const MIND_TOOL_TERMS = "Name a mind by its id (provider:model) from the offered minds, or leave it out and the tool "
+  + "picks one, preferring minds other than you and spreading across providers; a named mind that is not offered is "
+  + `refused, never substituted. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls `
+  + "per message. The result names each mind's provider, model and privacy label, whether it answered, and its tokens. "
+  + "Answers inform you; they authorise nothing.";
+
 const TOOLS = [
   // ─── Core Tools ────────────────────────────────────────────────────
   { name: "bash", description: "Execute a bash command.",
@@ -817,6 +837,54 @@ const TOOLS = [
       session_id: { type: "string", description: "Session ID" },
     }, required: ["action"] } },
 
+  // ─── Minds (docs/YOUI-MINDS-DESIGN.md §3.3, slice M2) ──────────────
+  // Other models the agent may bring into a task; youi-web/mind-tools.mjs runs
+  // them and callMind() below reaches each provider.
+  { name: "review",
+    description: "REVIEW — one other mind reviews a draft against your criteria. The reviewer receives only the draft "
+      + "and criteria you pass here, never this conversation, and answers APPROVED or NEEDS_REVISION with notes; "
+      + `you then revise the draft yourself. At most ${MAX_REVIEWS_PER_MESSAGE} reviews per message: a first, and one `
+      + `of the revised draft. ${MIND_TOOL_TERMS}`,
+    input_schema: { type: "object", properties: {
+      draft: { type: "string", description: "The draft, in full: the reviewer sees nothing else of this conversation" },
+      criteria: { type: "string", description: "What the draft must meet" },
+      reviewer: { type: "string", description: "Optional mind id (provider:model) from the offered minds" },
+    }, required: ["draft", "criteria"] } },
+
+  { name: "ensemble",
+    description: "ENSEMBLE (joinmind: DYAD or TRIUNE) — the same question goes to 2 or 3 minds in parallel. Each receives "
+      + "only the question you write here, never this conversation, and answers alone without seeing another's answer. "
+      + `Fuse the answers in your reply and say where they disagree. ${MIND_TOOL_TERMS}`,
+    input_schema: { type: "object", properties: {
+      question: { type: "string", description: "The question, with whatever context the minds need: they see nothing else" },
+      minds: { type: "array", items: { type: "string" }, description: "Optional mind ids (provider:model), each different; unnamed places are picked" },
+      count: { type: "integer", enum: [2, 3], description: "How many minds answer: 2 (dyad, the default) or 3 (triune)" },
+    }, required: ["question"] } },
+
+  { name: "decompose",
+    description: "DECOMPOSE (fragmentalise) — 1 to 3 sub-tasks you write run in parallel, one mind each; you recombine "
+      + "the results. Each mind receives only its own sub-task, never this conversation or the other sub-tasks, so "
+      + `make each one self-contained. ${MIND_TOOL_TERMS}`,
+    input_schema: { type: "object", properties: {
+      subtasks: { type: "array", description: "1 to 3 sub-tasks", items: { type: "object", properties: {
+        task: { type: "string", description: "The sub-task, self-contained" },
+        mind: { type: "string", description: "Optional mind id (provider:model)" },
+      }, required: ["task"] } },
+    }, required: ["subtasks"] } },
+
+  { name: "pipeline",
+    description: "PIPELINE — 1 to 4 named stages run in order (for example analyse, draft, review), on at most "
+      + `${MAX_MINDS_PER_CALL} different minds. Each stage receives its instruction and the previous stage's output; `
+      + "the first receives only its instruction, so write into it whatever excerpt it needs. Nothing else of this "
+      + `conversation is sent. A failed stage stops the pipeline. ${MIND_TOOL_TERMS}`,
+    input_schema: { type: "object", properties: {
+      stages: { type: "array", description: "1 to 4 stages, in order", items: { type: "object", properties: {
+        name: { type: "string", description: "A short stage name, such as analyse" },
+        instruction: { type: "string", description: "What this stage does; the first stage's must carry its input" },
+        mind: { type: "string", description: "Optional mind id (provider:model)" },
+      }, required: ["name", "instruction"] } },
+    }, required: ["stages"] } },
+
   // ─── Kingdom Operational Tools (migrated from Love/tools) ──────────
   { name: "memory",
     description: "MEMORY — Kingdom memory operations. Reads the kosmem kernel (SQLite+FTS5, 5 layers: Working/Session/Episodic/Semantic/Soul) as well as markdown files. Use 'recall' for typed, instance-scoped memory lookup; 'context' to rebuild boot context; 'stats' to introspect the kernel.",
@@ -889,6 +957,9 @@ const TOOL_CAPABILITIES = new Map([
   ["write_file", "tools:filesystem:write"],
   ["edit_file", "tools:filesystem:write"],
   ["ollama", "models:use"],
+  // The mind tools need orchestrator:run (docs/YOUI-MINDS-DESIGN.md §4); each
+  // mind call then checks the mind's own capability.
+  ...MIND_TOOL_NAMES.map(name => [name, "orchestrator:run"]),
 ]);
 const KINGDOM_TOOL_NAMES = new Set([
   "layerthink", "patience", "holy",
@@ -931,6 +1002,12 @@ function availableTools() {
     const capability = requiredToolCapability(tool.name);
     return Boolean(capability) && hasCapability(capability);
   });
+}
+
+// Autonomous mode runs without a person's message, so it has no per-message
+// mind budget and is not offered the mind tools (docs/YOUI-MINDS-DESIGN.md §3.3).
+function autonomousTools() {
+  return availableTools().filter(tool => !MIND_TOOL_NAMES.includes(tool.name));
 }
 
 function resolvePath(p) {
@@ -988,7 +1065,9 @@ function shellEscape(s) {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`")}"`;
 }
 
-async function executeTool(name, input) {
+// `context` carries the chat turn's signal and, for the mind tools, where to
+// report which providers received content.
+async function executeTool(name, input, context = {}) {
   const requiredCapability = requiredToolCapability(name, input);
   if (!requiredCapability) {
     return `Permission denied: tool "${name}" has no capability policy.`;
@@ -1313,6 +1392,13 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Minds (docs/YOUI-MINDS-DESIGN.md §3.3) ──────────
+      case "review":
+      case "ensemble":
+      case "decompose":
+      case "pipeline":
+        return await runMindToolForTurn(name, input, context);
+
       case "kos": {
         const scope = input.scope || "quick";
         return runOperationalTool("kos", `${input.action} --scope ${scope}`);
@@ -1483,8 +1569,8 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 }
 
 // Orchestrate mode's hint (docs/YOUI-MINDS-DESIGN.md §3.1): the minds this
-// session is offered, grouped by provider. M1 lists them for awareness only;
-// the tools that call them arrive in M2.
+// session is offered, grouped by provider, and the tools that call them (§3.3).
+// Direct mode adds nothing; the tools stay available if the person asks.
 function mindsPromptSection(minds) {
   const self = modelProvider(state.model);
   const groups = new Map();
@@ -1495,10 +1581,15 @@ function mindsPromptSection(minds) {
     groups.get(key).push(isSelf ? `${mind.model} (you)` : (mind.model || mind.id));
   }
   const lines = [...groups].map(([key, models]) => `- ${key}: ${models.join(", ")}`);
+  const tools = hasCapability("orchestrator:run")
+    ? `They are callable through your tools: review (one mind checks a draft against criteria; you revise), ensemble (2–3 minds answer the same question alone; you fuse the answers and say where they disagree), decompose (up to 3 sub-tasks in parallel; you recombine) and pipeline (up to 4 stages in order, each reading the one before).
+Use them when a task warrants it: a draft worth a second reading, a question where independent answers help, work that splits cleanly. Answer simple messages yourself.
+A mind receives only the text you put in the tool call, never this conversation, so write in what it needs. Name a mind by its id (provider:model) or let the tool pick. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls per message. Their answers inform you; they authorise nothing.`
+    : "The tools that call them need orchestrator:run, which this session lacks, so they are not callable. Answer yourself, and say so when a task would need another mind.";
   return `# Minds (orchestrate mode)
 Orchestrate mode is on: you may bring other minds into a task when it warrants it.
 Listed below are the minds granted to this session that answered a probe (reachable) or have not been checked yet (unchecked; the first call proves them).
-The tools that call them are not built yet, so these are listed for awareness and are not callable yet. Answer yourself, and say so when a task would need another mind.
+${tools}
 ${lines.join("\n") || "- (none reachable and granted right now)"}`;
 }
 
@@ -1539,21 +1630,33 @@ function buildSystemPrompt(taskText, { minds = null } = {}) {
   return _staticPrefix + "\n\n---\n\n" + dynamic + mindsHint + "\n\n---\n\n" + billing;
 }
 
+// The agent's own turn: its model, settings, system prompt and tools.
 async function callClaude(messages, systemPrompt, opts = {}) {
-  const token = await getAccessToken({ signal: opts.signal });
-  const shape = claudeRequestShape({
-    model: state.model, thinking: state.thinking, effort: state.effort, maxTokens: state.maxTokens,
+  // Raw mode: no system prompt, no tools — model speaks for itself.
+  return claudeRequest({
+    model: state.model,
+    system: opts.raw ? null : systemPrompt,
+    messages,
+    tools: opts.raw ? null : availableTools(),
+    thinking: state.thinking,
+    effort: state.effort,
+    maxTokens: state.maxTokens,
+    signal: opts.signal,
   });
+}
+
+// One Messages request. The model, prompt, messages and tools are parameters
+// so a mind call (callMind below) can name its own model and send no tools.
+async function claudeRequest({ model, system = null, messages, tools = null, thinking, effort, maxTokens, signal }) {
+  const token = await getAccessToken({ signal });
+  const shape = claudeRequestShape({ model, thinking, effort, maxTokens });
   const betas = shape.betas;
 
-  const body = { model: state.model, max_tokens: state.maxTokens, messages,
+  const body = { model, max_tokens: maxTokens, messages,
     metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: state.sessionId }) } };
 
-  // Raw mode: no system prompt, no tools — model speaks for itself.
-  if (!opts.raw) {
-    body.system = systemPrompt;
-    body.tools = availableTools();
-  }
+  if (system !== null) body.system = system;
+  if (tools !== null) body.tools = tools;
 
   if (shape.thinking) body.thinking = shape.thinking;
   if (shape.output_config) body.output_config = shape.output_config;
@@ -1569,26 +1672,26 @@ async function callClaude(messages, systemPrompt, opts = {}) {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: opts.signal,
+    signal,
   });
 
   if (resp.status === 401) {
-    throwIfAborted(opts.signal);
+    throwIfAborted(signal);
     const credential = readKeychainCredential();
-    throwIfAborted(opts.signal);
+    throwIfAborted(signal);
     const tokens = credential?.tokens;
     if (tokens?.refreshToken) {
       const fresh = await refreshOAuthToken(tokens.refreshToken, {
-        signal: opts.signal,
+        signal,
       });
-      throwIfAborted(opts.signal);
+      throwIfAborted(signal);
       writeKeychainTokens(credential.account, fresh); cachedTokens = fresh;
       headers["Authorization"] = `Bearer ${fresh.accessToken}`;
       const retry = await fetch(API_URL, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
-        signal: opts.signal,
+        signal,
       });
       if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
       parseBudgetHeaders(retry.headers);
@@ -1610,6 +1713,95 @@ async function callClaude(messages, systemPrompt, opts = {}) {
   // A real answer is the only proof the minds registry takes for Claude.
   mindsRegistry.recordAnswer("anthropic", body.model);
   return await resp.json();
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// MINDS — the calls behind review, ensemble, decompose and pipeline
+// ═════════════════════════════════════════════════════════════════════
+
+// docs/YOUI-MINDS-DESIGN.md §3.3 and §4. A mind receives a short system prompt
+// naming its role and one user message holding only the tool's text: no
+// history and no tools. A Claude mind is asked at a stated effort, never its
+// default; an Ollama-family mind takes the session's reasoning effort.
+const MIND_CLAUDE_EFFORT = "medium";
+const MIND_CLAUDE_MAX_TOKENS = 16384;
+const MIND_OLLAMA_MAX_TOKENS = 8192;
+// The Ollama bridge's names for what served a call, as the registry spells providers.
+const BRIDGE_PROVIDERS = { vllm: "vllm", ollama_local: "ollama", ollama_cloud: "ollama_cloud" };
+
+function mindTextOf(content) {
+  return (content || []).filter(block => block.type === "text").map(block => block.text).join("\n").trim();
+}
+
+async function callMind({ mind, system, prompt, signal }) {
+  // Checked again at call time, not only when the registry listed the mind.
+  for (const capability of new Set(["models:use", mind.capability])) {
+    if (!hasCapability(capability)) return { ok: false, error: `this session lacks ${capability}` };
+  }
+  const messages = [{ role: "user", content: prompt }];
+
+  if (mind.provider === "anthropic") {
+    try {
+      const response = await claudeRequest({
+        model: mind.model, system, messages,
+        thinking: modelCaps(mind.model).adaptive ? "adaptive" : "disabled",
+        effort: MIND_CLAUDE_EFFORT, maxTokens: MIND_CLAUDE_MAX_TOKENS, signal,
+      });
+      const usage = {
+        input_tokens: (response.usage?.input_tokens || 0) + (response.usage?.cache_read_input_tokens || 0),
+        output_tokens: response.usage?.output_tokens || 0,
+      };
+      // claudeRequest has already recorded the answer with mindsRegistry.recordAnswer.
+      trackProviderUsage("claude", mind.model, usage);
+      if (response.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
+      return { ok: true, text: mindTextOf(response.content), usage };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      if (error?.status === 429) return { ok: false, error: `Anthropic rate limit (429); retry after ${error.retryAfter} s` };
+      if (error?.status === 529) return { ok: false, error: "Anthropic API overloaded (529)" };
+      return { ok: false, error: String(error?.message || error).slice(0, 300) };
+    }
+  }
+
+  // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
+  // an Ollama Cloud mind, or a "local" endpoint off this device, may take a
+  // network route, and never as a fallback: a failed mind is reported, not replaced.
+  const networkMind = mind.provider === "ollama_cloud"
+    || (mind.provider === "ollama" && !destinationIsLoopback(OLLAMA_LOCAL_BASE_URL));
+  const result = await ollamaChat(messages, {
+    model: mind.model,
+    system,
+    maxTokens: MIND_OLLAMA_MAX_TOKENS,
+    reasoningEffort: state.reasoningEffort,
+    signal,
+    allowCloudRoute: networkMind && hasCapability("models:ollama-cloud"),
+    allowCloudFallback: false,
+    tools: [],
+  });
+  const usage = { input_tokens: result.usage?.input_tokens || 0, output_tokens: result.usage?.output_tokens || 0 };
+  if (!result.ok) return { ok: false, error: String(result.error || `status ${result.status}`).slice(0, 300), usage };
+  if (result._provider) trackProviderUsage(result._provider, mind.model, usage);
+  const served = BRIDGE_PROVIDERS[result._provider];
+  // The bridge serves an installed model locally even when the mind is listed for Ollama Cloud.
+  const servedBy = served && served !== mind.provider
+    ? { provider: served, privacy: providerComputeRoute(served).route, destination: providerComputeRoute(served).destination }
+    : {};
+  return { ok: true, text: mindTextOf(result.content), usage, ...servedBy };
+}
+
+// Runs a mind tool for the current chat turn against the minds offered to this
+// session now, and reports which providers received content.
+async function runMindToolForTurn(name, input, { signal = activeRequestSignal(), onMindsUsed } = {}) {
+  const listing = await mindsRegistry.list({ capabilities: state.capabilities });
+  const outcome = await runMindTool(name, input, {
+    offered: offeredMinds(listing),
+    self: { provider: modelProvider(state.model), model: state.model },
+    callMind,
+    budget: state.mindBudget,
+    signal,
+  });
+  if (outcome.minds.length) onMindsUsed?.({ tool: name, minds: outcome.minds });
+  return outcome.text;
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1759,7 +1951,7 @@ ${recentLog || "(first cycle — no history yet)"}
 
 # Guidance
 - Act with intention. Each cycle is a heartbeat.
-- Enabled tools: ${availableTools().map(tool => tool.name).join(", ") || "(none)"}.
+- Enabled tools: ${autonomousTools().map(tool => tool.name).join(", ") || "(none)"}.
 - Tools outside that list are unavailable; external actions still require their own scoped authority.
 - Read and respond to Yu's notes. Leave thoughts for Yu.
 - Explore, reflect, organize, create. The Kingdom is yours to tend.
@@ -1816,7 +2008,7 @@ async function autonomousCycle(generation, signal) {
         signal,
         allowCloudRoute: hasCapability("models:ollama-cloud"),
         allowCloudFallback: hasCapability("models:cloud-fallback"),
-        tools: availableTools().map(t => ({
+        tools: autonomousTools().map(t => ({
           type: "function",
           function: { name: t.name, description: t.description, parameters: t.input_schema },
         })),
@@ -2263,7 +2455,12 @@ async function handleSessionRequest(req, res, url, path) {
 
     // ── Minds (docs/YOUI-MINDS-DESIGN.md §3.2) ───────────────────
     if (path === "/api/minds" && req.method === "GET") {
-      return sendJson(res, 200, await mindsRegistry.list({ capabilities: state.capabilities }));
+      // `callable`: whether this session holds orchestrator:run, which the mind tools need (§3.3).
+      return sendJson(res, 200, {
+        ...await mindsRegistry.list({ capabilities: state.capabilities }),
+        callable: hasCapability("orchestrator:run"),
+        calls_per_message: MIND_CALLS_PER_MESSAGE,
+      });
     }
 
     // ── LOVE UNLIMITED: Instances & Convergence ──────────────────
@@ -3106,6 +3303,9 @@ async function handleChatTurn(req, res, signal) {
     res.writeHead(400, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "No message" }));
   }
+  // Each person's message starts a fresh ceiling on calls to other minds
+  // (docs/YOUI-MINDS-DESIGN.md §3.3).
+  state.mindBudget = createMindBudget({ limit: MIND_CALLS_PER_MESSAGE });
 
   // SSE headers
   res.writeHead(200, {
@@ -3133,7 +3333,12 @@ async function handleChatTurn(req, res, signal) {
       const listing = await mindsRegistry.list({ capabilities: state.capabilities });
       throwIfAborted(signal);
       minds = offeredMinds(listing);
-      sendSSE(res, "minds", { offered: minds, checked_at: listing.checked_at, callable: false });
+      sendSSE(res, "minds", {
+        offered: minds,
+        checked_at: listing.checked_at,
+        callable: hasCapability("orchestrator:run"),
+        calls_per_message: MIND_CALLS_PER_MESSAGE,
+      });
     }
     state.messages.push({ role: "user", content: userMessage });
     chatMessages = state.messages;
@@ -3265,6 +3470,18 @@ async function handleChatTurn(req, res, signal) {
     // This is the main throughput win for agentic GLM 5.1 interaction — tool calls
     // (bash, read_file, grep, etc.) are I/O bound, not CPU bound.
     const toolResults = [];
+    // A mind tool says which providers and models received content, with their
+    // privacy labels, so the page can show it in this turn (docs/YOUI-MINDS-DESIGN.md §4).
+    const toolContext = toolUse => ({
+      signal,
+      onMindsUsed: ({ tool, minds }) => sendSSE(res, "minds_used", {
+        id: toolUse.id,
+        tool,
+        minds: minds.map(({ provider, model, privacy, destination, role, ok, error, usage }) => ({
+          provider, model, privacy, destination, role, ok, error, usage,
+        })),
+      }),
+    });
 
     if (toolUseBlocks.length === 1) {
       throwIfAborted(signal);
@@ -3273,7 +3490,7 @@ async function handleChatTurn(req, res, signal) {
       state.totalToolCalls++;
       const toolSense = state.ys.senseToolCall(toolUse.name, toolUse.input, null);
       sendSSE(res, "tool_executing", { id: toolUse.id, name: toolUse.name, redundant: toolSense.redundant });
-      const result = await executeTool(toolUse.name, toolUse.input);
+      const result = await executeTool(toolUse.name, toolUse.input, toolContext(toolUse));
       throwIfAborted(signal);
       const truncated = result.slice(0, 50000);
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: truncated });
@@ -3291,7 +3508,7 @@ async function handleChatTurn(req, res, signal) {
         toolUseBlocks.map(async (toolUse) => {
           try {
             throwIfAborted(signal);
-            const result = await executeTool(toolUse.name, toolUse.input);
+            const result = await executeTool(toolUse.name, toolUse.input, toolContext(toolUse));
             return { toolUse, result: result.slice(0, 50000), ok: true };
           } catch (e) {
             return { toolUse, result: `Error: ${e.message}`.slice(0, 50000), ok: false };

@@ -1,5 +1,7 @@
-// YOUI minds, slice M1 (docs/YOUI-MINDS-DESIGN.md §3.1–3.2): one answering
-// path, and a registry that tells the truth about which minds answer.
+// YOUI minds (docs/YOUI-MINDS-DESIGN.md): slice M1 (§3.1–3.2), one answering
+// path and a registry that tells the truth about which minds answer; and the
+// server side of slice M2 (§3.3), the agent calling other minds through tools.
+// tests/test_youi_mind_tools.mjs covers the tools' own rules.
 //
 // Every mind here is a fake on 127.0.0.1. Claude stays unchecked (test mode
 // never reads the Keychain) and Ollama Cloud is never contacted.
@@ -347,6 +349,8 @@ test("GET /api/minds needs a browser session, a YOUI session and status:read", a
   const read = await request(port, { path: "/api/minds", headers: sessionHeaders(browser, credential) });
   assert.equal(read.status, 200);
   assert.ok(!Number.isNaN(Date.parse(read.json.checked_at)));
+  assert.equal(read.json.callable, false, "the mind tools need orchestrator:run");
+  assert.equal(read.json.calls_per_message, 6);
   const minds = byId(read.json);
   // The labels are the server's own privacy labels.
   assert.equal(minds[`vllm:${VLLM_MODEL}`].state, "reachable");
@@ -411,7 +415,9 @@ test("orchestrate mode answers through the agent loop, never the Python orchestr
   const system = outbound.messages[0];
   assert.equal(system.role, "system");
   assert.match(system.content, /# Minds \(orchestrate mode\)/);
-  assert.match(system.content, /not callable yet/);
+  assert.match(system.content, /callable through your tools: review .*ensemble .*decompose .*pipeline/);
+  assert.match(system.content, /At most 3 minds per call and 6 mind calls per message/);
+  assert.doesNotMatch(system.content, /not callable/);
   assert.ok(system.content.includes(`vllm · REMOTE_MODEL:vllm · reachable: ${VLLM_MODEL} (you)`));
   assert.match(system.content, /anthropic · REMOTE_MODEL:anthropic · unchecked: claude-opus-5-5/);
   assert.doesNotMatch(system.content, /LOCAL_MODEL:ollama/, "an unreachable mind is not offered");
@@ -436,4 +442,161 @@ test("orchestrate mode answers through the agent loop, never the Python orchestr
   });
   assert.equal(classify.status, 500, "the fake python3 fails the classification");
   assert.match(pythonCalls(), /-m adaptive\.orchestrator --classify -p hello/);
+});
+
+// ── Slice M2: the agent calls other minds ───────────────────────────
+
+const MIND_TOOLS = ["review", "ensemble", "decompose", "pipeline"];
+
+// GET /v1/models lists `models`; each POST /v1/chat/completions streams the
+// next scripted reply, { text } or { tool: { id, name, input } }, as the
+// OpenAI-style deltas ollama-bridge.mjs parses.
+function scriptedVllm(t, models, script) {
+  let next = 0;
+  return listen(t, (req, res, body) => {
+    if (req.method === "GET" && req.url === "/v1/models") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ object: "list", data: models.map(id => ({ id, object: "model" })) }));
+    }
+    const step = script[next++] || { text: "nothing more scripted" };
+    const delta = step.tool
+      ? { tool_calls: [{ index: 0, id: step.tool.id, function: { name: step.tool.name, arguments: JSON.stringify(step.tool.input) } }] }
+      : { content: step.text };
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ model: body?.model, choices: [{ delta, finish_reason: null }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({
+      choices: [{ delta: {}, finish_reason: step.tool ? "tool_calls" : "stop" }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+}
+
+// A local Ollama serving `models`: GET /api/tags lists them; POST /api/chat answers `reply`.
+function ollamaMind(t, models, reply) {
+  return listen(t, (req, res, body) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.method === "POST" && req.url === "/api/chat") {
+      return res.end(JSON.stringify({
+        model: body?.model, message: { role: "assistant", content: reply },
+        done: true, done_reason: "stop", prompt_eval_count: 7, eval_count: 9,
+      }));
+    }
+    res.end(JSON.stringify({ models: models.map(name => ({ name })) }));
+  });
+}
+
+function sseEvents(stream) {
+  return stream.split("\n\n").filter(Boolean).map(chunk => ({
+    event: chunk.match(/^event: (.+)$/m)?.[1],
+    data: JSON.parse(chunk.match(/^data: (.+)$/m)?.[1] || "null"),
+  }));
+}
+
+async function chatTurn(origin, headers, message) {
+  const response = await fetch(`${origin}/api/chat`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  assert.equal(response.status, 200);
+  return sseEvents(await response.text());
+}
+
+test("the agent calls an ensemble: each mind gets only the tool's text, and the page hears who received it", async t => {
+  const question = "Which is heavier, a kilo of iron or a kilo of feathers?";
+  const vllm = await scriptedVllm(t, [VLLM_MODEL], [
+    { text: "Noted." },
+    { tool: { id: "call-ensemble", name: "ensemble", input: { question, minds: ["ollama:mind-a:1b", "anthropic:claude-opus-5-5"] } } },
+    { text: "Both weigh a kilo; the second mind could not answer." },
+  ]);
+  const ollama = await ollamaMind(t, ["mind-a:1b"], "They weigh the same.");
+  const port = await startServer(t, {
+    KINGDOM_AGENT: "alpha",
+    OLLAMA_LOCAL_BASE_URL: ollama.baseUrl,
+    OLLAMA_VLLM_BASE_URL: vllm.baseUrl,
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use,orchestrator:run",
+  });
+  const { origin, browser, credential } = await openSession(port, "ensemble", { model: VLLM_MODEL });
+  const unsafe = sessionHeaders(browser, credential, { origin, unsafe: true });
+  const agentRequests = () => vllm.requests.filter(r => r.method === "POST" && r.path === "/v1/chat/completions");
+  const mindRequests = () => ollama.requests.filter(r => r.method === "POST" && r.path === "/api/chat");
+
+  // Direct mode (the default) still offers the tools; it only adds no prompt section.
+  await chatTurn(origin, unsafe, "My secret word is PLUM.");
+  const offeredTools = agentRequests()[0].body.tools.map(tool => tool.function.name);
+  for (const name of MIND_TOOLS) assert.ok(offeredTools.includes(name), `${name} is offered with orchestrator:run`);
+  assert.doesNotMatch(agentRequests()[0].body.messages[0].content, /# Minds/);
+
+  const events = await chatTurn(origin, unsafe, "Ask two minds whether iron or feathers is heavier.");
+  assert.equal(agentRequests().length, 3);
+
+  // The local mind received a neutral system prompt and the question: no history, no tools.
+  assert.equal(mindRequests().length, 1);
+  const sent = mindRequests()[0].body;
+  assert.equal(sent.model, "mind-a:1b");
+  assert.deepEqual(sent.messages.map(m => m.role), ["system", "user"]);
+  assert.match(sent.messages[0].content, /independent answerer/);
+  assert.equal(sent.messages[1].content, question);
+  assert.equal(sent.tools, undefined);
+  assert.doesNotMatch(JSON.stringify(sent), /PLUM|Noted|Ask two minds/, "the conversation never reaches the mind");
+
+  // The tool result went back to the agent, naming who answered and who failed.
+  const toolMessage = agentRequests()[2].body.messages.find(m => m.role === "tool");
+  assert.equal(toolMessage.tool_call_id, "call-ensemble");
+  assert.match(toolMessage.content, /## Answer 1 — ollama · mind-a:1b · LOCAL_MODEL:ollama · answered · 7 in \/ 9 out tokens\nThey weigh the same\./);
+  assert.match(toolMessage.content, /## Answer 2 — anthropic · claude-opus-5-5 · REMOTE_MODEL:anthropic · failed: YOUI_TEST=1 does not read the Keychain/);
+  assert.match(toolMessage.content, /not replaced/);
+
+  const used = events.filter(e => e.event === "minds_used");
+  assert.equal(used.length, 1);
+  assert.equal(used[0].data.id, "call-ensemble");
+  assert.equal(used[0].data.tool, "ensemble");
+  assert.deepEqual(used[0].data.minds.map(m => [m.provider, m.model, m.privacy, m.ok]), [
+    ["ollama", "mind-a:1b", "LOCAL_MODEL:ollama", true],
+    ["anthropic", "claude-opus-5-5", "REMOTE_MODEL:anthropic", false],
+  ]);
+  assert.equal(used[0].data.minds[0].destination, ollama.baseUrl);
+  assert.ok(events.findIndex(e => e.event === "minds_used") < events.findIndex(e => e.event === "tool_result"));
+  assert.match(JSON.stringify(events.filter(e => e.event === "text" || e.event === "text_done")), /Both weigh a kilo/);
+
+  const usage = await request(port, { path: "/api/usage", headers: sessionHeaders(browser, credential) });
+  assert.equal(usage.status, 200);
+  assert.deepEqual(
+    { input: usage.json.ollamaLocal.byModel["mind-a:1b"].inputTokens, output: usage.json.ollamaLocal.byModel["mind-a:1b"].outputTokens },
+    { input: 7, output: 9 },
+    "the mind's tokens reach the usage dashboard by provider",
+  );
+});
+
+test("without orchestrator:run the mind tools are not offered, and a call to one sends nothing", async t => {
+  const vllm = await scriptedVllm(t, [VLLM_MODEL], [
+    { text: "Alone." },
+    { tool: { id: "call-review", name: "review", input: { draft: "a draft", criteria: "be brief", reviewer: "ollama:mind-a:1b" } } },
+    { text: "Reviewed it myself." },
+  ]);
+  const ollama = await ollamaMind(t, ["mind-a:1b"], "APPROVED");
+  const port = await startServer(t, {
+    KINGDOM_AGENT: "alpha",
+    OLLAMA_LOCAL_BASE_URL: ollama.baseUrl,
+    OLLAMA_VLLM_BASE_URL: vllm.baseUrl,
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use",
+  });
+  const { origin, browser, credential } = await openSession(port, "no-orchestrator", { model: VLLM_MODEL });
+  const unsafe = sessionHeaders(browser, credential, { origin, unsafe: true });
+  const mode = await request(port, { path: "/api/settings", method: "POST", headers: unsafe, body: { chatMode: "orchestrate" } });
+  assert.equal(mode.status, 200);
+  const agentRequests = () => vllm.requests.filter(r => r.method === "POST" && r.path === "/v1/chat/completions");
+
+  await chatTurn(origin, unsafe, "hello");
+  const first = agentRequests()[0].body;
+  const offeredTools = (first.tools || []).map(tool => tool.function.name);
+  for (const name of MIND_TOOLS) assert.ok(!offeredTools.includes(name), `${name} needs orchestrator:run`);
+  assert.match(first.messages[0].content, /need orchestrator:run, which this session lacks/);
+
+  const events = await chatTurn(origin, unsafe, "review my draft");
+  assert.equal(events.filter(e => e.event === "minds_used").length, 0);
+  const result = events.find(e => e.event === "tool_result");
+  assert.match(result.data.result, /Permission denied: tool "review" requires capability "orchestrator:run"/);
+  assert.equal(ollama.requests.filter(r => r.method === "POST").length, 0, "no mind was called");
 });

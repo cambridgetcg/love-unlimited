@@ -42,8 +42,14 @@ test("orchestrator and being views do not interpolate remote fields into executa
   const page = read("youi-web/public/index.html");
 
   assert.match(page, /function safeClassToken\(/);
-  assert.match(page, /modeBadge\.textContent\s*=\s*String\(mode\)/);
-  assert.match(page, /pill\.textContent\s*=\s*String\(models\[i\]\)/);
+  // The minds view replaced the dispatch panel and orchestration header
+  // (docs/YOUI-MINDS-DESIGN.md): registry fields go in as text, classes through safeClassToken.
+  assert.match(page, /name\.textContent\s*=\s*label/);
+  assert.match(page, /detail\.textContent\s*=\s*value/);
+  assert.match(page, /mind-state \$\{safeClassToken\(group\.state\)\}/);
+  const mindsView = page.match(/function mindsRow\([\s\S]*?\n\/\/ ─── AGENT SWITCHING/)?.[0] || "";
+  assert.ok(mindsView.includes("function renderMinds("), "the minds view should be found");
+  assert.doesNotMatch(mindsView, /innerHTML/);
   assert.match(page, /installedLabels\.map\(escapeHtml\)/);
   assert.match(page, /escapeHtml\(String\(d\.error\)\.slice\(0,\s*80\)\)/);
   assert.match(page, /const statusCls = safeClassToken\(engine\.status\)/);

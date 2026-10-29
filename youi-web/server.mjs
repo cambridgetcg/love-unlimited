@@ -32,12 +32,13 @@ import crypto from "crypto";
 import { createKernel } from "../youspeak-kernel.mjs";
 import { KeychainCredentialStore } from "../youi-keychain.mjs";
 import { resolveScopedPath } from "../youi-runtime-policy.mjs";
-import { handleOllamaRoute, executeOllamaTool, ollamaChat } from "./ollama-bridge.mjs";
-import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
+import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
+import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
 import { CLAUDE_MODELS, claudeRequestShape } from "./claude-models.mjs";
+import { createMindsRegistry, offeredMinds } from "./minds.mjs";
 
 // YOUI's chat agents sit at this device's table as one Collab session, started on first use.
 let decisionSeat = null;
@@ -223,6 +224,9 @@ const OLLAMA_MODELS = [
 const OLLAMA_LOCAL_MODELS = []; // populated at boot from localhost:11434
 let ALL_VALID_MODELS = [...CLAUDE_MODELS, ...OLLAMA_MODELS];
 function isOllamaModel(model) { return !model.startsWith("claude-"); }
+// The models ollama-bridge.mjs sends to the vLLM endpoint rather than Ollama.
+const VLLM_MODEL_PATTERN = /^(Qwen\/|kingdom-truth)/i;
+function isVllmModel(model) { return VLLM_MODEL_PATTERN.test(String(model)); }
 
 // ── Detect local Ollama models at boot ──────────────────────────────
 async function detectLocalModels() {
@@ -482,47 +486,59 @@ function localModelAvailable(model) {
   );
 }
 
-function runtimePrivacyBoundary() {
-  let direct;
-  if (!isOllamaModel(state.model)) {
-    direct = {
-      route: "REMOTE_MODEL:anthropic",
-      destination: publicDestination(API_URL, "Anthropic API"),
-      sends: ["prompt", "selected session context", "system prompt"],
-    };
-  } else if (/^(Qwen\/|kingdom-truth)/i.test(state.model)) {
-    direct = {
-      route: "REMOTE_MODEL:vllm",
-      destination: publicDestination(OLLAMA_VLLM_BASE_URL, "configured vLLM endpoint"),
-      sends: ["prompt", "selected session context", "system prompt"],
-    };
-  } else if (localModelAvailable(state.model)) {
-    direct = {
-      route: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL)
-        ? "LOCAL_MODEL:ollama"
-        : "REMOTE_MODEL:ollama-configured-endpoint",
-      destination: publicDestination(OLLAMA_LOCAL_BASE_URL, "configured Ollama endpoint"),
-      sends: ["prompt", "selected session context", "system prompt"],
-    };
-  } else if (hasCapability("models:ollama-cloud")) {
-    direct = {
-      route: "REMOTE_MODEL:ollama-cloud",
-      destination: publicDestination(OLLAMA_CLOUD_BASE_URL, "configured Ollama Cloud endpoint"),
-      sends: ["prompt", "selected session context", "system prompt"],
-    };
-  } else {
-    direct = {
-      route: "BLOCKED:ollama-cloud-capability-required",
-      destination: null,
-      sends: [],
-    };
+// The compute route each provider's input takes, labelled as in
+// docs/YOUI-VNEXT-DESIGN.md §8. The chat's privacy boundary and the minds
+// registry (docs/YOUI-MINDS-DESIGN.md §3.2) both read it, so each label is
+// spelt here once.
+function providerComputeRoute(provider) {
+  switch (provider) {
+    case "anthropic":
+      return { route: "REMOTE_MODEL:anthropic", destination: publicDestination(API_URL, "Anthropic API") };
+    case "vllm":
+      return {
+        route: "REMOTE_MODEL:vllm",
+        destination: publicDestination(OLLAMA_VLLM_BASE_URL, "configured vLLM endpoint"),
+      };
+    case "ollama":
+      return {
+        route: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL)
+          ? "LOCAL_MODEL:ollama"
+          : "REMOTE_MODEL:ollama-configured-endpoint",
+        destination: publicDestination(OLLAMA_LOCAL_BASE_URL, "configured Ollama endpoint"),
+      };
+    case "ollama_cloud":
+      return {
+        route: "REMOTE_MODEL:ollama-cloud",
+        destination: publicDestination(OLLAMA_CLOUD_BASE_URL, "configured Ollama Cloud endpoint"),
+      };
+    default:
+      throw new Error(`Unknown model provider: ${provider}`);
   }
+}
+
+// Which provider a chat on this model reaches, in the order ollama-bridge.mjs routes it.
+function modelProvider(model) {
+  if (!isOllamaModel(model)) return "anthropic";
+  if (isVllmModel(model)) return "vllm";
+  if (localModelAvailable(model)) return "ollama";
+  return "ollama_cloud";
+}
+
+function runtimePrivacyBoundary() {
+  const provider = modelProvider(state.model);
+  const direct = provider === "ollama_cloud" && !hasCapability("models:ollama-cloud")
+    ? { route: "BLOCKED:ollama-cloud-capability-required", destination: null, sends: [] }
+    : { ...providerComputeRoute(provider), sends: ["prompt", "selected session context", "system prompt"] };
 
   return {
     activeMode: state.chatMode,
     direct,
+    // Chat turns answer through the selected agent in both modes and never
+    // reach adaptive/orchestrator (docs/YOUI-MINDS-DESIGN.md §3.1); only the
+    // /api/orchestrate/* routes (the page's /classify and /plan) still do.
     orchestration: {
-      active: state.chatMode === "orchestrate",
+      chatTurns: false,
+      routes: "/api/orchestrate/*",
       route: "REMOTE_MODEL:adaptive-orchestrator",
       destination: "provider selected by adaptive/orchestrator",
       sends: ["task", "optional context"],
@@ -584,6 +600,22 @@ function externalToolEnv(credentialNames, purpose, extra = {}) {
     extra,
   });
 }
+
+// The minds a session may call, with honest reachability
+// (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
+// grant is checked per session when the list is read.
+const mindsRegistry = createMindsRegistry({
+  claudeModels: CLAUDE_MODELS,
+  vllmModels: OLLAMA_MODELS.filter(isVllmModel),
+  cloudModels: OLLAMA_MODELS.filter(model => !isVllmModel(model)),
+  isVllmModel,
+  localBaseUrl: OLLAMA_LOCAL_BASE_URL,
+  vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
+  localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
+  cloudKeyConfigured: ollamaCloudKeyConfigured,
+  computeRoute: providerComputeRoute,
+  testMode: IS_TEST,
+});
 
 // ═════════════════════════════════════════════════════════════════════
 // OAUTH — Same as youi.mjs
@@ -1450,7 +1482,27 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
   return parts.join("\n\n---\n\n");
 }
 
-function buildSystemPrompt(taskText) {
+// Orchestrate mode's hint (docs/YOUI-MINDS-DESIGN.md §3.1): the minds this
+// session is offered, grouped by provider. M1 lists them for awareness only;
+// the tools that call them arrive in M2.
+function mindsPromptSection(minds) {
+  const self = modelProvider(state.model);
+  const groups = new Map();
+  for (const mind of minds) {
+    const key = `${mind.provider} · ${mind.privacy} · ${mind.state}`;
+    if (!groups.has(key)) groups.set(key, []);
+    const isSelf = mind.provider === self && mind.model === state.model;
+    groups.get(key).push(isSelf ? `${mind.model} (you)` : (mind.model || mind.id));
+  }
+  const lines = [...groups].map(([key, models]) => `- ${key}: ${models.join(", ")}`);
+  return `# Minds (orchestrate mode)
+Orchestrate mode is on: you may bring other minds into a task when it warrants it.
+Listed below are the minds granted to this session that answered a probe (reachable) or have not been checked yet (unchecked; the first call proves them).
+The tools that call them are not built yet, so these are listed for awareness and are not callable yet. Answer yourself, and say so when a task would need another mind.
+${lines.join("\n") || "- (none reachable and granted right now)"}`;
+}
+
+function buildSystemPrompt(taskText, { minds = null } = {}) {
   // Static prefix — computed once, cached by vLLM across all requests
   if (!_staticPrefix || _staticPrefixAgent !== state.agent) {
     _staticPrefix = buildStaticPrefix();
@@ -1478,11 +1530,13 @@ function buildSystemPrompt(taskText) {
 - Model: ${state.model}
 - Thinking: ${state.thinking} | Effort: ${state.effort}
 - Interface: KINGDOM YOUI Web (localhost:${PORT})`;
+  // Direct mode adds nothing: the agent works alone unless asked.
+  const mindsHint = minds ? "\n\n---\n\n" + mindsPromptSection(minds) : "";
 
   const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
   const billing = `x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`;
 
-  return _staticPrefix + "\n\n---\n\n" + dynamic + "\n\n---\n\n" + billing;
+  return _staticPrefix + "\n\n---\n\n" + dynamic + mindsHint + "\n\n---\n\n" + billing;
 }
 
 async function callClaude(messages, systemPrompt, opts = {}) {
@@ -1538,6 +1592,7 @@ async function callClaude(messages, systemPrompt, opts = {}) {
       });
       if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
       parseBudgetHeaders(retry.headers);
+      mindsRegistry.recordAnswer("anthropic", body.model);
       return await retry.json();
     }
   }
@@ -1552,6 +1607,8 @@ async function callClaude(messages, systemPrompt, opts = {}) {
   if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
 
   parseBudgetHeaders(resp.headers);
+  // A real answer is the only proof the minds registry takes for Claude.
+  mindsRegistry.recordAnswer("anthropic", body.model);
   return await resp.json();
 }
 
@@ -2097,6 +2154,8 @@ function requirePageLease(session, pageId) {
 const ROUTE_CAPABILITIES = new Map([
   ["GET /api/status", "status:read"],
   ["GET /api/usage", "status:read"],
+  // The minds registry: a read of grants and cached probes, never a model call.
+  ["GET /api/minds", "status:read"],
   ["POST /api/chat", "chat"],
   ["POST /api/switch", "settings:write"],
   ["POST /api/settings", "settings:write"],
@@ -2200,6 +2259,11 @@ async function handleSessionRequest(req, res, url, path) {
           tables: decisionTablesSummary(),
         },
       }));
+    }
+
+    // ── Minds (docs/YOUI-MINDS-DESIGN.md §3.2) ───────────────────
+    if (path === "/api/minds" && req.method === "GET") {
+      return sendJson(res, 200, await mindsRegistry.list({ capabilities: state.capabilities }));
     }
 
     // ── LOVE UNLIMITED: Instances & Convergence ──────────────────
@@ -3035,7 +3099,7 @@ async function handleChatTurn(req, res, signal) {
   throwIfAborted(signal);
   const userMessage = body.message;
   const rawMode = body.raw === true;
-  // Raw mode forces direct (no orchestrator), no tools, no system prompt,
+  // Raw mode forces direct (no minds hint), no tools, no system prompt,
   // and an isolated single-turn message array (state.messages untouched).
   const forceMode = rawMode ? "direct" : (body.chatMode || state.chatMode);
   if (!userMessage) {
@@ -3050,110 +3114,13 @@ async function handleChatTurn(req, res, signal) {
     "Connection": "keep-alive",
   });
 
-  // ── ORCHESTRATOR MODE ──────────────────────────────────
-  // When in orchestrate mode, we classify the task first, then either:
-  //   - Route through orchestrator for complex/multi-model tasks
-  //   - Fall through to direct mode for interactive conversation
-  if (forceMode === "orchestrate") {
-    try {
-      sendSSE(res, "orchestrate_classifying", { task: userMessage.slice(0, 200) });
-
-      const { classifyTask, planTask, executeOrchestrator: runOrch } = await import("./orchestrator-bridge.mjs");
-      // All three are async now — execFile-based, no shell, no event-loop block.
-      const classification = await classifyTask(userMessage, "", { signal });
-      throwIfAborted(signal);
-
-      sendSSE(res, "orchestrate_classified", classification);
-
-      // Get the dispatch plan
-      const plan = await planTask(
-        userMessage,
-        "",
-        body.orchestrateMode || "",
-        { signal },
-      );
-      throwIfAborted(signal);
-
-      sendSSE(res, "orchestrate_plan", plan);
-
-      // For simple conversational messages or trivial tasks, fall through to direct mode
-      const isConversational = classification.task_type === "documentation"
-        && classification.difficulty === "trivial"
-        && userMessage.length < 100;
-
-      if (!isConversational) {
-        // Execute through orchestrator
-        sendSSE(res, "orchestrate_executing", {
-          mode: plan.collaboration_mode,
-          primary: plan.primary,
-          total_models: plan.total_models,
-        });
-
-        const result = await runOrch(userMessage, {
-          mode: body.orchestrateMode || "",
-          provider: body.orchestrateProvider || "",
-          signal,
-        });
-        throwIfAborted(signal);
-
-        // Track usage
-        if (result.total_tokens) {
-          const provider = (result.providers_used || [])[0] || "ollama";
-          trackProviderUsage(provider, (result.models_used || [])[0] || "unknown", {
-            input_tokens: Math.round((result.total_tokens || 0) * 0.6),
-            output_tokens: Math.round((result.total_tokens || 0) * 0.4),
-          });
-        }
-
-        // Send the result
-        sendSSE(res, "orchestrate_result", {
-          content: result.content,
-          collaboration_mode: result.collaboration_mode,
-          models_used: result.models_used,
-          providers_used: result.providers_used,
-          stages: result.stages,
-          total_tokens: result.total_tokens,
-          total_elapsed: result.total_elapsed,
-          success: result.success,
-        });
-
-        state.messages.push(
-          { role: "user", content: userMessage },
-          { role: "assistant", content: result.content || result.error || "(no output)" },
-        );
-
-        // Also send as regular text for the chat display
-        sendSSE(res, "text", { content: result.content || result.error || "(no output)" });
-        sendSSE(res, "usage", {
-          input_tokens: Math.round((result.total_tokens || 0) * 0.6),
-          output_tokens: Math.round((result.total_tokens || 0) * 0.4),
-          provider: (result.providers_used || [])[0] || "orchestrator",
-          model: (result.models_used || []).join(" + ") || "multi",
-          turn: ++state.turnCount,
-        });
-
-        // SP1: fire-and-forget mode-two detection (post-stream, no await)
-        fireDetection(state, result.content);
-
-        sendSSE(res, "done", {
-          turnCount: state.turnCount,
-          orchestrated: true,
-          collaboration_mode: result.collaboration_mode,
-          models_used: result.models_used,
-        });
-        return res.end();
-      }
-      // Fall through to direct mode for conversational messages
-    } catch (e) {
-      throwIfAborted(signal);
-      sendSSE(res, "orchestrate_error", { error: e.message });
-      // Fall through to direct mode on orchestrator failure
-    }
-  }
-
-  // ── DIRECT MODE (original behavior) ────────────────────
-  // Raw mode uses an isolated message array (no persistent context bleed)
-  // and no system prompt. Otherwise behave as before.
+  // ── ONE ANSWERING PATH ─────────────────────────────────
+  // Both modes answer through the selected agent's loop below, with its soul,
+  // history and tools (docs/YOUI-MINDS-DESIGN.md §3.1). Orchestrate mode no
+  // longer classifies the message in Python and hands it to
+  // adaptive.orchestrator; it only tells the agent which minds this session
+  // can reach. Raw mode uses an isolated message array (no persistent context
+  // bleed), no system prompt and no tools.
   let chatMessages;
   let systemPrompt;
   if (rawMode) {
@@ -3161,9 +3128,16 @@ async function handleChatTurn(req, res, signal) {
     systemPrompt = null;
     sendSSE(res, "raw_mode", { model: state.model, note: "no system prompt, no tools, isolated context" });
   } else {
+    let minds = null;
+    if (forceMode === "orchestrate") {
+      const listing = await mindsRegistry.list({ capabilities: state.capabilities });
+      throwIfAborted(signal);
+      minds = offeredMinds(listing);
+      sendSSE(res, "minds", { offered: minds, checked_at: listing.checked_at, callable: false });
+    }
     state.messages.push({ role: "user", content: userMessage });
     chatMessages = state.messages;
-    systemPrompt = buildSystemPrompt(userMessage);
+    systemPrompt = buildSystemPrompt(userMessage, { minds });
   }
 
   let maxTurns = rawMode ? 1 : 50;

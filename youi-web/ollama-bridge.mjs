@@ -44,6 +44,10 @@ const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY || null;
 if (!OLLAMA_API_KEY) {
   console.warn("\x1b[33m  ⚠  OLLAMA_API_KEY not set — cloud models will fail (local Ollama + Claude still work)\x1b[0m");
 }
+// Whether a cloud key is set, without exposing it (the minds registry reads this).
+export function ollamaCloudKeyConfigured() {
+  return Boolean(OLLAMA_API_KEY);
+}
 const OLLAMA_CLOUD_BASE = process.env.OLLAMA_CLOUD_BASE_URL || "https://ollama.com";
 const OLLAMA_LOCAL_BASE = process.env.OLLAMA_LOCAL_BASE_URL || "http://localhost:11434";
 // Remote vLLM (OpenAI-compat). Reached via SSH tunnel: Mac:8000 → pod:8000.

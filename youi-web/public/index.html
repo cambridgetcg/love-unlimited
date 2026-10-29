@@ -298,80 +298,13 @@ button, select, textarea, input { font: inherit; }
 .dispatch-row .dl { color: var(--text-dim); }
 .dispatch-row .dv { color: var(--text-primary); font-weight: 500; }
 
-/* Difficulty color coding */
-.diff-trivial { color: var(--text-dim) !important; }
-.diff-easy { color: var(--green) !important; }
-.diff-medium { color: var(--gold) !important; }
-.diff-hard { color: #f97316 !important; }
-.diff-frontier { color: var(--red) !important; }
-
-/* Importance color coding */
-.imp-low { color: var(--text-dim) !important; }
-.imp-medium { color: var(--text-secondary) !important; }
-.imp-high { color: var(--gold) !important; }
-.imp-critical { color: var(--red) !important; }
-
-/* Collaboration mode badges */
-.collab-badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 10px; font-size: 0.65rem;
-  font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-}
-.collab-solo { background: rgba(34,197,94,0.15); color: var(--green); }
-.collab-review { background: rgba(6,182,212,0.15); color: var(--cyan); }
-.collab-decompose { background: rgba(251,191,36,0.15); color: var(--gold); }
-.collab-ensemble { background: rgba(168,85,247,0.15); color: var(--agent); }
-.collab-pipeline { background: rgba(239,68,68,0.15); color: var(--red); }
-
-/* Stage progress in dispatch panel */
-#dispatch-stages {
-  margin-top: 8px;
-}
-.stage-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 0; font-size: 0.68rem;
-}
-.stage-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--border-light); flex-shrink: 0;
-  transition: background 0.3s ease;
-}
-.stage-dot.active { background: var(--gold); animation: pulse-dot 1s ease-in-out infinite; }
-.stage-dot.done { background: var(--green); }
-.stage-dot.failed { background: var(--red); }
-.stage-label { color: var(--text-dim); }
-.stage-model { color: var(--text-secondary); font-family: var(--mono); font-size: 0.6rem; }
-
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 3px var(--gold); }
-  50% { box-shadow: 0 0 8px var(--gold); }
-}
-
-/* Orchestration result header in chat */
-.orch-header {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 8px 12px; margin-bottom: 8px;
-  background: var(--bg-elevated); border-radius: var(--radius-sm);
-  border: 1px solid var(--border); font-size: 0.72rem;
-}
-.orch-header .orch-tag {
-  padding: 2px 8px; border-radius: 10px;
-  font-weight: 600; font-size: 0.65rem;
-}
-.orch-models {
-  display: flex; gap: 4px; flex-wrap: wrap;
-}
-.orch-model-pill {
-  display: inline-flex; align-items: center; gap: 3px;
-  padding: 1px 6px; border-radius: 8px; font-size: 0.6rem;
-  background: var(--bg-surface); border: 1px solid var(--border);
-  font-family: var(--mono); color: var(--text-secondary);
-}
-.orch-model-pill.provider-anthropic { border-color: rgba(239,68,68,0.3); color: #f87171; }
-.orch-model-pill.provider-ollama_cloud { border-color: rgba(6,182,212,0.3); color: var(--cyan); }
-.orch-elapsed {
-  margin-left: auto; color: var(--text-dim); font-family: var(--mono);
-}
+/* Minds view (orchestrate mode): what the registry reports, by provider */
+.mind-state { font-family: var(--mono); font-size: 0.62rem; }
+.mind-state.reachable { color: var(--green); }
+.mind-state.unchecked { color: var(--gold); }
+.mind-state.unreachable { color: var(--red); }
+.mind-state.not_granted, .mind-state.not_configured { color: var(--text-dim); }
+.minds-note { margin-top: 6px; font-size: 0.6rem; color: var(--text-dim); line-height: 1.4; }
 
 /* ─── MAIN AREA ─────────────────────────────────────────── */
 
@@ -1226,25 +1159,20 @@ button, select, textarea, input { font: inherit; }
         <button id="mode-orchestrate" class="mode-btn" onclick="setChatMode('orchestrate')">
           <span class="mode-icon">🧠</span>
           <span class="mode-label">Orchestrate</span>
-          <span class="mode-desc">Auto-route to best model(s)</span>
+          <span class="mode-desc">Sees other minds</span>
         </button>
         <button id="mode-direct" class="mode-btn active" onclick="setChatMode('direct')">
           <span class="mode-icon">💬</span>
           <span class="mode-label">Direct</span>
-          <span class="mode-desc">Single model conversation</span>
+          <span class="mode-desc">Works alone</span>
         </button>
       </div>
-      <!-- Live dispatch info (shown during orchestration) -->
-      <div id="dispatch-panel" style="display:none; margin-top:12px">
-        <div class="dispatch-badge" id="dispatch-badge">
-          <div class="dispatch-row"><span class="dl">Difficulty</span><span class="dv" id="dp-diff">—</span></div>
-          <div class="dispatch-row"><span class="dl">Importance</span><span class="dv" id="dp-imp">—</span></div>
-          <div class="dispatch-row"><span class="dl">Type</span><span class="dv" id="dp-type">—</span></div>
-          <div class="dispatch-row"><span class="dl">Mode</span><span class="dv" id="dp-mode">—</span></div>
-          <div class="dispatch-row"><span class="dl">Primary</span><span class="dv" id="dp-primary">—</span></div>
-          <div class="dispatch-row"><span class="dl">Reviewer</span><span class="dv" id="dp-reviewer">—</span></div>
+      <!-- Minds the registry offers (orchestrate mode); docs/YOUI-MINDS-DESIGN.md §3.2 -->
+      <div id="minds-panel" style="display:none; margin-top:12px">
+        <div class="dispatch-badge" id="minds-list">
+          <div class="dispatch-row"><span class="dl">Minds</span><span class="dv">checking…</span></div>
         </div>
-        <div id="dispatch-stages"></div>
+        <div class="minds-note" id="minds-note"></div>
       </div>
     </div>
 
@@ -1490,7 +1418,7 @@ button, select, textarea, input { font: inherit; }
       <div class="welcome-msg">
         <div class="crown">🏰</div>
         <h2>Welcome to the Kingdom</h2>
-        <p>Orchestrator active — describe any task and the Kingdom routes it to the optimal model(s). GLM 5.1 classifies, Ollama Cloud + Anthropic execute.</p>
+        <p>The selected agent answers every message, with its soul, history and tools. In orchestrate mode it also sees which other minds it can reach.</p>
         <div style="margin-top:12px;font-size:0.72rem;color:var(--text-dim)">
           Try: <code>/classify</code> <code>/plan</code> <code>/mode</code> or just type a task
         </div>
@@ -1806,7 +1734,10 @@ async function boot() {
   initParticles();
 }
 
-// ─── ORCHESTRATOR MODE ────────────────────────────────────
+// ─── MODE AND MINDS ───────────────────────────────────────
+// Both modes answer through the selected agent (docs/YOUI-MINDS-DESIGN.md §3.1).
+// Orchestrate mode also tells it which minds it can reach; the panel shows the
+// same registry (GET /api/minds), so it never waits for a classification.
 
 let chatMode = 'direct'; // 'orchestrate' or 'direct'; the server's state decides at boot
 
@@ -1819,16 +1750,8 @@ function setChatMode(mode) {
   chatMode = mode;
   document.getElementById('mode-orchestrate').classList.toggle('active', mode === 'orchestrate');
   document.getElementById('mode-direct').classList.toggle('active', mode === 'direct');
-
-  // Show/hide settings section based on mode
-  const settings = document.getElementById('settings-section');
-  if (mode === 'orchestrate') {
-    settings.style.opacity = '0.5';
-    settings.querySelector('h3').textContent = 'Settings (override)';
-  } else {
-    settings.style.opacity = '1';
-    settings.querySelector('h3').textContent = 'Settings';
-  }
+  document.getElementById('minds-panel').style.display = mode === 'orchestrate' ? 'block' : 'none';
+  if (mode === 'orchestrate') fetchMinds();
 
   // Persist to server
   fetch('/api/settings', {
@@ -1841,110 +1764,68 @@ function setChatMode(mode) {
     .catch(() => {});
 }
 
-function showDispatchPanel(classification, plan) {
-  const panel = document.getElementById('dispatch-panel');
-  panel.style.display = 'block';
+const MIND_STATE_LABELS = {
+  reachable: 'reachable', unchecked: 'unchecked', unreachable: 'unreachable',
+  not_granted: 'not granted', not_configured: 'not configured',
+};
 
-  const diff = classification?.difficulty || plan?.profile?.difficulty || '—';
-  const imp = classification?.importance || plan?.profile?.importance || '—';
-  const type = classification?.task_type || plan?.profile?.task_type || '—';
-  const mode = plan?.collaboration_mode || classification?.collaboration_mode || '—';
-
-  document.getElementById('dp-diff').textContent = diff;
-  document.getElementById('dp-diff').className = `dv diff-${safeClassToken(diff)}`;
-  document.getElementById('dp-imp').textContent = imp;
-  document.getElementById('dp-imp').className = `dv imp-${safeClassToken(imp)}`;
-  document.getElementById('dp-type').textContent = type;
-  const modeEl = document.getElementById('dp-mode');
-  const modeBadge = document.createElement('span');
-  modeBadge.className = `collab-badge collab-${safeClassToken(mode)}`;
-  modeBadge.textContent = String(mode);
-  modeEl.replaceChildren(modeBadge);
-
-  if (plan?.primary) {
-    const p = plan.primary;
-    document.getElementById('dp-primary').textContent = `${p.model}`;
-    document.getElementById('dp-primary').title = `${p.provider}/${p.model} (${p.role})`;
-  }
-  if (plan?.reviewer) {
-    const r = plan.reviewer;
-    document.getElementById('dp-reviewer').textContent = `${r.model}`;
-    document.getElementById('dp-reviewer').title = `${r.provider}/${r.model} (${r.role})`;
-  } else {
-    document.getElementById('dp-reviewer').textContent = '—';
-  }
-
-  // Show stages for pipeline/decompose
-  const stagesEl = document.getElementById('dispatch-stages');
-  stagesEl.innerHTML = '';
-  const subTasks = Array.isArray(plan?.sub_tasks) ? plan.sub_tasks : [];
-  if (subTasks.length) {
-    for (const sub of subTasks) {
-      const item = document.createElement('div');
-      item.className = 'stage-item';
-      const model = sub?.primary?.model || '';
-      const dot = document.createElement('div');
-      dot.className = 'stage-dot';
-      const label = document.createElement('span');
-      label.className = 'stage-label';
-      label.textContent = String(sub?.task || '').slice(0, 40);
-      const modelEl = document.createElement('span');
-      modelEl.className = 'stage-model';
-      modelEl.textContent = String(model);
-      item.append(dot, label, modelEl);
-      stagesEl.appendChild(item);
+async function fetchMinds() {
+  try {
+    const response = await fetch('/api/minds');
+    if (!response.ok) {
+      renderMinds(null, response.status === 403 ? 'needs status:read' : 'did not load');
+      return;
     }
+    renderMinds((await response.json()).minds);
+  } catch {
+    renderMinds(null, 'did not load');
   }
 }
 
-function hideDispatchPanel() {
-  document.getElementById('dispatch-panel').style.display = 'none';
+function mindsRow(label, value, valueClass = '', title = '') {
+  const row = document.createElement('div');
+  row.className = 'dispatch-row';
+  if (title) row.title = title;
+  const name = document.createElement('span');
+  name.className = 'dl';
+  name.textContent = label;
+  const detail = document.createElement('span');
+  detail.className = `dv ${valueClass}`.trim();
+  detail.textContent = value;
+  row.append(name, detail);
+  return row;
 }
 
-function buildOrchHeader(data = {}) {
-  const mode = data.collaboration_mode || 'solo';
-  const models = Array.isArray(data.models_used) ? data.models_used : [];
-  const providers = Array.isArray(data.providers_used) ? data.providers_used : [];
-  const elapsedValue = Number(data.total_elapsed);
-  const elapsed = Number.isFinite(elapsedValue) && elapsedValue > 0
-    ? elapsedValue.toFixed(1) + 's'
-    : '';
-  const stages = Array.isArray(data.stages) ? data.stages : [];
-
-  const header = document.createElement('div');
-  header.className = 'orch-header';
-
-  const tag = document.createElement('span');
-  tag.className = `orch-tag collab-badge collab-${safeClassToken(mode)}`;
-  tag.textContent = String(mode);
-  header.appendChild(tag);
-
-  const modelList = document.createElement('div');
-  modelList.className = 'orch-models';
-  for (let i = 0; i < models.length; i++) {
-    const prov = providers[i] || providers[0] || '';
-    const pill = document.createElement('span');
-    pill.className = `orch-model-pill provider-${safeClassToken(prov)}`;
-    pill.textContent = String(models[i]);
-    modelList.appendChild(pill);
+// One row per provider and state (vllm: 1 reachable); the row's title names
+// the privacy label, the models and why.
+function renderMinds(minds, problem = '') {
+  const list = document.getElementById('minds-list');
+  const note = document.getElementById('minds-note');
+  if (!list || !note) return;
+  if (!Array.isArray(minds)) {
+    list.replaceChildren(mindsRow('Minds', problem || 'unknown'));
+    note.textContent = '';
+    return;
   }
-  header.appendChild(modelList);
-
-  if (stages.length) {
-    const ok = stages.filter(s => s.success).length;
-    const stageStats = document.createElement('span');
-    stageStats.style.color = 'var(--text-dim)';
-    stageStats.style.fontSize = '0.65rem';
-    stageStats.textContent = `${ok}/${stages.length} stages`;
-    header.appendChild(stageStats);
+  const groups = new Map();
+  for (const mind of minds) {
+    const key = `${mind.provider}|${mind.state}`;
+    if (!groups.has(key)) {
+      groups.set(key, { provider: mind.provider, state: mind.state, privacy: mind.privacy, models: [], notes: new Set() });
+    }
+    const group = groups.get(key);
+    if (mind.model) group.models.push(mind.model);
+    if (mind.note) group.notes.add(mind.note);
   }
-  if (elapsed) {
-    const elapsedEl = document.createElement('span');
-    elapsedEl.className = 'orch-elapsed';
-    elapsedEl.textContent = elapsed;
-    header.appendChild(elapsedEl);
-  }
-  return header;
+  const rows = [...groups.values()].map(group => mindsRow(
+    String(group.provider),
+    `${group.models.length || ''} ${MIND_STATE_LABELS[group.state] || group.state}`.trim(),
+    `mind-state ${safeClassToken(group.state)}`,
+    [group.privacy, ...group.models, ...group.notes].join('\n'),
+  ));
+  list.replaceChildren(...(rows.length ? rows : [mindsRow('Minds', 'none listed')]));
+  const offered = minds.filter(mind => mind.offered).length;
+  note.textContent = `${offered} offered to the agent for awareness; it cannot call them yet.`;
 }
 
 // ─── AGENT SWITCHING ─────────────────────────────────────
@@ -2014,9 +1895,9 @@ async function updateSetting(key, value) {
 function updatePrivacyUI(privacy) {
   const element = document.getElementById('privacy-route');
   if (!element || !privacy) return;
-  const active = privacy.activeMode === 'orchestrate'
-    ? privacy.orchestration
-    : privacy.direct;
+  // Chat turns take the direct route in both modes; privacy.orchestration
+  // describes only the /classify and /plan diagnostics.
+  const active = privacy.direct;
   const fallback = privacy.fallback?.localToCloud ? 'cloud fallback granted' : 'no local→cloud fallback';
   element.textContent = `Compute: ${active?.route || 'unknown'} · ${active?.destination || 'no destination'} · ${fallback}`;
 }
@@ -2196,46 +2077,9 @@ function handleSSEEvent(type, data, indicator) {
       addSystemMessage(data.message, 'error');
       break;
 
-    // ── Orchestrator Events ──────────────────────────────
-    case 'orchestrate_classifying':
-      indicator?.remove();
-      addSystemMessage('🧠 Classifying task...', 'info');
-      break;
-
-    case 'orchestrate_classified':
-      showDispatchPanel(data, null);
-      addSystemMessage(
-        `Classification: ${data.difficulty || '?'}/${data.importance || '?'} (${data.task_type || '?'}) → ${data.collaboration_mode || '?'}`,
-        'info'
-      );
-      break;
-
-    case 'orchestrate_plan':
-      showDispatchPanel(null, data);
-      break;
-
-    case 'orchestrate_executing': {
-      const mode = data.mode || 'solo';
-      const models = data.total_models || 1;
-      indicator?.remove();
-      addSystemMessage(`⚡ Executing: ${mode} mode with ${models} model${models > 1 ? 's' : ''}`, 'info');
-      break;
-    }
-
-    case 'orchestrate_result':
-      indicator?.remove();
-      ensureAssistantMessage();
-      // Add orchestration header before the text
-      if (currentMsgEl) {
-        const header = buildOrchHeader(data);
-        currentMsgEl.querySelector('.bubble')?.prepend(header);
-      }
-      hideDispatchPanel();
-      break;
-
-    case 'orchestrate_error':
-      addSystemMessage(`Orchestrator: ${data.error}. Falling back to direct mode.`, 'error');
-      hideDispatchPanel();
+    // Orchestrate mode: this turn read the registry; refresh the panel from it.
+    case 'minds':
+      fetchMinds();
       break;
 
     case 'done':
@@ -2246,16 +2090,6 @@ function handleSSEEvent(type, data, indicator) {
       fetchYouspeakStats();
       // Update layers from the done event's full report
       if (data.youspeak) updateYouspeakLayers(data.youspeak);
-      // Clean up orchestration UI
-      if (data.orchestrated) {
-        const modes = data.models_used || [];
-        const collab = data.collaboration_mode || 'solo';
-        addSystemMessage(
-          `✅ Orchestrated: ${collab} — ${modes.join(' + ')}`,
-          'info'
-        );
-      }
-      hideDispatchPanel();
       break;
   }
   scrollToBottom();
@@ -2672,7 +2506,6 @@ function handleCommand(text) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task: taskText }),
       }).then(r => r.json()).then(d => {
-        showDispatchPanel(d, null);
         addSystemMessage(`${d.difficulty}/${d.importance} (${d.task_type}) → ${d.collaboration_mode}\n${d.reasoning || ''}`);
       }).catch(e => addSystemMessage('Classify failed: ' + e.message, 'error'));
       break;
@@ -2685,7 +2518,6 @@ function handleCommand(text) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task: taskText }),
       }).then(r => r.json()).then(d => {
-        showDispatchPanel(d.profile, d);
         const p = d.primary || {};
         let msg = `Plan: ${d.collaboration_mode} — Primary: ${p.provider}/${p.model}`;
         if (d.reviewer) msg += ` | Review: ${d.reviewer.provider}/${d.reviewer.model}`;

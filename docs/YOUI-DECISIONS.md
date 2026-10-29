@@ -65,9 +65,11 @@ history stay readable.
    journal; otherwise `AGENTOOL_COLLAB_DB`, then `~/.local/share/agenttool/collab.sqlite`.
    YOUI always passes that journal to the desk explicitly.
 2. Enrol your passkey once, in your own terminal:
-   `agenttool-collab-host person passkey-enroll --ceremony`. Open the page it
-   prints, create the passkey with Touch ID, compare the fingerprint the
-   terminal shows, and type `yes`.
+   `agenttool-collab-host person passkey-enroll --ceremony`. The page opens in
+   your browser (or open the link it prints, within three minutes). Create the
+   passkey with Touch ID, compare the fingerprint the terminal shows, and type
+   `yes`. A page left over from an earlier attempt says it has expired; use the
+   newest link.
 3. Other devices' tables: list them in `YOUI_DECISION_TABLES`, for example
    `[{"id":"lab","label":"Lab","ssh":"lab-desk"}]`, after setting each one up
    as in [KINGDOM-TABLES.md](KINGDOM-TABLES.md).

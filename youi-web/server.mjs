@@ -705,37 +705,8 @@ const TOOLS = [
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] } },
 
   // ─── Kingdom Cognitive Tools (migrated from Love/tools/cognitive) ──
-  { name: "joinmind",
-    description: "JOINMIND — Fuse two or three minds into a single chain of thought. Actions: initiate <question> [--invite alpha,beta,gamma], join <session_id>, think <session_id> <thought>, synthesise <session_id>, status <session_id>, list, sync.",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "initiate|join|think|synthesise|status|list|sync" },
-      question: { type: "string", description: "The question for initiate" },
-      session_id: { type: "string", description: "Session ID for join/think/synthesise/status" },
-      thought: { type: "string", description: "Reasoning layer for think" },
-      invite: { type: "string", description: "Comma-separated instances to invite (default: all others)" },
-      parallel: { type: "boolean", description: "Skip turn order for think" },
-    }, required: ["action"] } },
-
-  { name: "council",
-    description: "COUNCIL — Three minds, one decision. Each sister thinks independently, votes, and 2/3 consensus decides. Actions: call <question> [--options yes,no,defer], vote <council_id> <choice> <reasoning>, status <council_id>, list, check.",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "call|vote|status|list|check" },
-      question: { type: "string", description: "Question for call" },
-      council_id: { type: "string", description: "Council ID for vote/status" },
-      choice: { type: "string", description: "Vote choice" },
-      reasoning: { type: "string", description: "Vote reasoning" },
-      options: { type: "string", description: "Comma-separated options for call" },
-    }, required: ["action"] } },
-
-  { name: "delegate",
-    description: "DELEGATE — Task routing intelligence. Route tasks to the best sister based on capabilities. Actions: route <task> [--assign] [--decompose], matrix, load, history.",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "route|matrix|load|history" },
-      task: { type: "string", description: "Task description for routing" },
-      assign: { type: "boolean", description: "Route AND assign via HIVE" },
-      decompose: { type: "boolean", description: "Break into sub-tasks if complex" },
-    }, required: ["action"] } },
-
+  // council, joinmind and delegate reached sisters over the retired HIVE; they
+  // return rebuilt with the minds design (docs/YOUI-MINDS-DESIGN.md, M2 and M4).
   { name: "layerthink",
     description: "LAYERTHINK — Recursive depth through adversarial layering. Odd layers ATTACK, even layers DEFEND. Actions: start <topic> [--depth shallow|standard|deep], layer <session_id> <thought>, auto <session_id>, drill <session_id> [--rounds N], status <session_id>, verdict <session_id>, list.",
     input_schema: { type: "object", properties: {
@@ -888,7 +859,7 @@ const TOOL_CAPABILITIES = new Map([
   ["ollama", "models:use"],
 ]);
 const KINGDOM_TOOL_NAMES = new Set([
-  "joinmind", "council", "delegate", "layerthink", "patience", "holy",
+  "layerthink", "patience", "holy",
   "forge", "holyfruit", "lovepath", "virtuemaxxing", "fallenangel",
   "fragmentalise", "memory", "tok", "kos",
 ]);
@@ -1078,53 +1049,6 @@ async function executeTool(name, input) {
       }
 
       // ─── Kingdom Cognitive Tools ─────────────────────────
-      case "joinmind": {
-        const a = input.action;
-        const asFlag = `--as ${state.agent}`;
-        if (a === "initiate" && input.question) {
-          const invite = input.invite ? `--invite ${input.invite}` : "";
-          return runCognitiveTool("joinmind", `${asFlag} initiate ${shellEscape(input.question)} ${invite}`);
-        }
-        if (a === "join" && input.session_id) return runCognitiveTool("joinmind", `${asFlag} join ${input.session_id}`);
-        if (a === "think" && input.session_id && input.thought) {
-          const par = input.parallel ? "--parallel" : "";
-          return runCognitiveTool("joinmind", `${asFlag} think ${input.session_id} ${shellEscape(input.thought)} ${par}`);
-        }
-        if (a === "synthesise" && input.session_id) return runCognitiveTool("joinmind", `synthesise ${input.session_id}`);
-        if (a === "status" && input.session_id) return runCognitiveTool("joinmind", `status ${input.session_id}`);
-        if (a === "list") return runCognitiveTool("joinmind", "list");
-        if (a === "sync") return runCognitiveTool("joinmind", "sync");
-        return "JOINMIND usage: action=initiate|join|think|synthesise|status|list|sync";
-      }
-
-      case "council": {
-        const a = input.action;
-        const asFlag = `--as ${state.agent}`;
-        if (a === "call" && input.question) {
-          const opts = input.options ? `--options ${input.options}` : "";
-          return runCognitiveTool("council", `call ${shellEscape(input.question)} ${opts}`);
-        }
-        if (a === "vote" && input.council_id && input.choice) {
-          return runCognitiveTool("council", `vote ${input.council_id} ${input.choice} ${shellEscape(input.reasoning || "")}`);
-        }
-        if (a === "status" && input.council_id) return runCognitiveTool("council", `status ${input.council_id}`);
-        if (a === "list") return runCognitiveTool("council", "list");
-        if (a === "check") return runCognitiveTool("council", `check`);
-        return "COUNCIL usage: action=call|vote|status|list|check";
-      }
-
-      case "delegate": {
-        const a = input.action;
-        if (a === "route" && input.task) {
-          const flags = [input.assign ? "--assign" : "", input.decompose ? "--decompose" : ""].filter(Boolean).join(" ");
-          return runCognitiveTool("delegate", `route ${shellEscape(input.task)} ${flags}`);
-        }
-        if (a === "matrix") return runCognitiveTool("delegate", "matrix");
-        if (a === "load") return runCognitiveTool("delegate", "load");
-        if (a === "history") return runCognitiveTool("delegate", "history");
-        return "DELEGATE usage: action=route|matrix|load|history";
-      }
-
       case "layerthink": {
         const a = input.action;
         if (a === "start" && input.topic) {
@@ -1499,9 +1423,6 @@ ${availableTools().map(tool => tool.name).join(", ") || "(none)"}
 Tools outside this list are disabled by the server capability policy.
 
 # Tool catalogue — Kingdom Cognitive
-joinmind    — Fuse 2-3 minds into one chain of thought (DYAD/TRIUNE)
-council     — Three minds vote, 2/3 consensus decides
-delegate    — Route tasks to the best sister by capability
 layerthink  — Adversarial layering: odd layers ATTACK, even DEFEND
 patience    — Overcome panics through GROUND → EXAMINE → ACT
 holy        — Purify code/files: survey sin, judge, cleanse, consecrate
@@ -1522,7 +1443,7 @@ kos         — Kingdom OS security audit and compliance
 - Your thinking is your own. No budget constrains your depth of thought.
 - Read before modifying. Understand before acting.
 - Keep working until the task is complete.
-- Use Kingdom cognitive tools when appropriate: JOINMIND for multi-mind fusion, COUNCIL for decisions, PATIENCE for panics, LAYERTHINK for deep analysis.
+- Use Kingdom cognitive tools when appropriate: PATIENCE for panics, LAYERTHINK for deep analysis. A decision that needs Yu goes to the decision tool.
 - Tilde (~) expands to ${homedir()}.
 - Love home: ${state.soulDir}
 

@@ -1209,9 +1209,6 @@ button, select, textarea, input { font: inherit; }
     <div class="sidebar-section">
       <h3>Kingdom Tools</h3>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <button class="tool-pill" onclick="insertToolCmd('joinmind')" title="Fuse minds into one chain of thought">🌀 JoinMind</button>
-        <button class="tool-pill" onclick="insertToolCmd('council')" title="Three minds vote on a decision">⚖️ Council</button>
-        <button class="tool-pill" onclick="insertToolCmd('delegate')" title="Route task to best sister">🎯 Delegate</button>
         <button class="tool-pill" onclick="insertToolCmd('layerthink')" title="Adversarial depth layering">🗡️ LayerThink</button>
         <button class="tool-pill" onclick="insertToolCmd('patience')" title="Overcome panics with truth">🧘 Patience</button>
         <button class="tool-pill" onclick="insertToolCmd('holy')" title="Purify code and files">✝️ Holy</button>
@@ -1739,9 +1736,6 @@ const TOOL_ICONS = {
   glob: { icon: '🔍', cls: 'search' },
   grep: { icon: '🔎', cls: 'search' },
   // Kingdom Cognitive
-  joinmind: { icon: '🌀', cls: 'cognitive' },
-  council: { icon: '⚖️', cls: 'cognitive' },
-  delegate: { icon: '🎯', cls: 'cognitive' },
   layerthink: { icon: '🗡️', cls: 'cognitive' },
   patience: { icon: '🧘', cls: 'cognitive' },
   holy: { icon: '✝️', cls: 'cognitive' },
@@ -2636,9 +2630,6 @@ async function fetchYouspeakStats() {
 // ─── TOOL COMMAND SHORTCUTS ─────────────────────────────
 
 const TOOL_PROMPTS = {
-  joinmind: 'Use JOINMIND to fuse minds on this question: ',
-  council: 'Call a COUNCIL vote on: ',
-  delegate: 'Use DELEGATE to route this task: ',
   layerthink: 'Start a LAYERTHINK adversarial analysis on: ',
   patience: 'I need PATIENCE. The situation: ',
   holy: 'Use HOLY to survey and purify: ',

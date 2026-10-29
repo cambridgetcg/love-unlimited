@@ -66,3 +66,5 @@
 .dec-message-body { font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dec-form label { display: block; margin: 10px 0 4px; font-size: 0.72rem; color: var(--text-dim); }
 .btn-badge.dec-badge-live { background: var(--gold-dim); color: var(--gold); }
+.dec-toolbar-top { margin: 0; padding: 10px 20px; background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+.dec-toolbar-top select { flex: 1 1 0; }

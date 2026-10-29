@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Kingdom Decision Queue — server + CLI.
+"""Kingdom Decision Queue — retired for new decisions; history stays readable.
+
+New decisions live on this device's Collab table (YOUI's decision room,
+docs/YOUI-DECISIONS.md): agents open proposals, settle them first, and Yu
+agrees or rejects with Touch ID on the desk's own page. This queue let any
+local process add or resolve a decision without Yu, so its write paths now
+refuse and point there. list, resolved, check and the read-only UI remain.
 
 Usage:
   python3 decision.py serve [--port 7777]      # Start web UI
@@ -325,29 +331,9 @@ class DecisionHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/api/decisions":
-            body = self._read_body()
-            queue = _read_json(QUEUE_FILE)
-            decision = {
-                "id": body.get("id", f"dec-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}"),
-                "title": body.get("title", "Untitled"),
-                "project": body.get("project", "unknown"),
-                "priority": body.get("priority", "medium"),
-                "category": body.get("category", "general"),
-                "context": body.get("context", ""),
-                "recommendation": body.get("recommendation", ""),
-                "options": body.get("options", []),
-                "source": body.get("source", "manual"),
-                "created": body.get("created", datetime.now(timezone.utc).isoformat()),
-                "status": "pending",
-                "resolution": None,
-                "resolved_at": None,
-                "notes": [],
-            }
-            queue.append(decision)
-            _write_json(QUEUE_FILE, queue)
-            self._send_json(decision, 201)
-        else:
-            self._send_json({"error": "not found"}, 404)
+            self._send_json({"error": "retired", "message": RETIRED_MESSAGE}, 410)
+            return
+        self._send_json({"error": "not found"}, 404)
 
     def do_PUT(self):
         # /api/decisions/<id>/resolve
@@ -355,88 +341,16 @@ class DecisionHandler(BaseHTTPRequestHandler):
         # /api/decisions/<id>/note
         parts = self.path.strip("/").split("/")
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "decisions":
-            dec_id = parts[2]
-            action = parts[3]
-            body = self._read_body()
-            queue = _read_json(QUEUE_FILE)
-            resolved_list = _read_json(RESOLVED_FILE)
-
-            target = None
-            target_idx = None
-            for i, d in enumerate(queue):
-                if d["id"] == dec_id:
-                    target = d
-                    target_idx = i
-                    break
-
-            if target is None:
-                self._send_json({"error": "decision not found"}, 404)
-                return
-
-            if action == "resolve":
-                target["status"] = body.get("status", "approved")
-                target["resolution"] = body.get("resolution", "")
-                target["resolved_at"] = datetime.now(timezone.utc).isoformat()
-                if body.get("note"):
-                    target["notes"].append({
-                        "text": body["note"],
-                        "ts": datetime.now(timezone.utc).isoformat()
-                    })
-                resolved_list.append(target)
-                queue.pop(target_idx)
-                _write_json(QUEUE_FILE, queue)
-                _write_json(RESOLVED_FILE, resolved_list)
-                self._send_json(target)
-
-            elif action == "defer":
-                target["status"] = "deferred"
-                if body.get("note"):
-                    target["notes"].append({
-                        "text": body["note"],
-                        "ts": datetime.now(timezone.utc).isoformat()
-                    })
-                _write_json(QUEUE_FILE, queue)
-                self._send_json(target)
-
-            elif action == "note":
-                target["notes"].append({
-                    "text": body.get("text", ""),
-                    "ts": datetime.now(timezone.utc).isoformat()
-                })
-                _write_json(QUEUE_FILE, queue)
-                self._send_json(target)
-
-            elif action == "requeue":
-                target["status"] = "pending"
-                _write_json(QUEUE_FILE, queue)
-                self._send_json(target)
-
-            else:
-                self._send_json({"error": f"unknown action: {action}"}, 400)
-        else:
-            self._send_json({"error": "not found"}, 404)
+            self._send_json({"error": "retired", "message": RETIRED_MESSAGE}, 410)
+            return
+        self._send_json({"error": "not found"}, 404)
 
     def do_DELETE(self):
         parts = self.path.strip("/").split("/")
         if len(parts) == 3 and parts[0] == "api" and parts[1] == "decisions":
-            dec_id = parts[2]
-            queue = _read_json(QUEUE_FILE)
-            resolved_list = _read_json(RESOLVED_FILE)
-            target = None
-            for i, d in enumerate(queue):
-                if d["id"] == dec_id:
-                    target = d
-                    target["status"] = "dismissed"
-                    target["resolved_at"] = datetime.now(timezone.utc).isoformat()
-                    resolved_list.append(target)
-                    queue.pop(i)
-                    break
-            _write_json(QUEUE_FILE, queue)
-            _write_json(RESOLVED_FILE, resolved_list)
-            self._send_json({"ok": True})
-        else:
-            self._send_json({"error": "not found"}, 404)
-
+            self._send_json({"error": "retired", "message": RETIRED_MESSAGE}, 410)
+            return
+        self._send_json({"error": "not found"}, 404)
 
 def cmd_serve(args):
     port = args.port
@@ -451,32 +365,16 @@ def cmd_serve(args):
         server.server_close()
 
 
-def cmd_add(args):
-    queue = _read_json(QUEUE_FILE)
-    options = []
-    if args.option:
-        for i, opt in enumerate(args.option):
-            options.append({"id": chr(97 + i), "label": opt, "detail": ""})
+RETIRED_MESSAGE = (
+    "The Kingdom Decision Queue no longer takes new decisions. Open a proposal on this "
+    "device's Collab table (collab_proposal_open, or YOUI's decision tool), and Yu decides "
+    "in YOUI's decision room. Earlier decisions stay readable with list and resolved."
+)
 
-    decision = {
-        "id": f"dec-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}",
-        "title": args.title,
-        "project": args.project or "unknown",
-        "priority": args.priority or "medium",
-        "category": args.category or "general",
-        "context": args.context or "",
-        "recommendation": args.recommendation or "",
-        "options": options,
-        "source": args.source or "cli",
-        "created": datetime.now(timezone.utc).isoformat(),
-        "status": "pending",
-        "resolution": None,
-        "resolved_at": None,
-        "notes": [],
-    }
-    queue.append(decision)
-    _write_json(QUEUE_FILE, queue)
-    print(f"Queued: {decision['id']} — {decision['title']}")
+
+def cmd_add(args):
+    print(RETIRED_MESSAGE, file=sys.stderr)
+    sys.exit(2)
 
 
 def cmd_list(args):

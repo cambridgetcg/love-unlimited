@@ -1822,18 +1822,20 @@ button, select, textarea, input { font: inherit; }
     <h2><span class="icon">🤝</span> Decisions — YOU + I</h2>
     <button class="drawer-close" onclick="closeDrawer()">✕</button>
   </div>
+  <div class="dec-toolbar dec-toolbar-top">
+    <select id="dec-table" aria-label="Table (device)"></select>
+    <select id="dec-workspace" aria-label="Collab workspace"></select>
+    <button class="dec-btn dec-btn-quiet" id="dec-refresh">Refresh</button>
+  </div>
   <div class="drawer-tabs">
-    <div class="drawer-tab active" data-pane="dec-table">Table</div>
+    <div class="drawer-tab active" data-pane="dec-table-pane">Table</div>
     <div class="drawer-tab" data-pane="dec-inbox">Inbox</div>
     <div class="drawer-tab" data-pane="dec-propose">Propose</div>
+    <div class="drawer-tab" data-pane="dec-seats">Seats</div>
     <div class="drawer-tab" data-pane="dec-passkey">Passkey</div>
   </div>
   <div class="drawer-body">
-    <div class="drawer-pane active" id="dec-table">
-      <div class="dec-toolbar">
-        <select id="dec-workspace" aria-label="Collab workspace"></select>
-        <button class="dec-btn dec-btn-quiet" id="dec-refresh">Refresh</button>
-      </div>
+    <div class="drawer-pane active" id="dec-table-pane">
       <div id="dec-table-list"><div class="dec-dim">Loading…</div></div>
     </div>
     <div class="drawer-pane" id="dec-inbox">
@@ -1841,7 +1843,7 @@ button, select, textarea, input { font: inherit; }
     </div>
     <div class="drawer-pane" id="dec-propose">
       <div class="dec-form">
-        <div class="dec-notice dec-info">The agents talk first. When they settle, it comes back to you for Touch ID.</div>
+        <div class="dec-notice dec-info">The agents at this table talk first. When they settle, it comes back to you.</div>
         <label for="dec-p-question">Question</label>
         <textarea id="dec-p-question" rows="2" maxlength="8000"></textarea>
         <label for="dec-p-criteria">Criteria — how to judge which way to go</label>
@@ -1863,15 +1865,11 @@ button, select, textarea, input { font: inherit; }
         <div id="dec-propose-result"></div>
       </div>
     </div>
+    <div class="drawer-pane" id="dec-seats">
+      <div id="dec-seats-list"><div class="dec-dim">Loading…</div></div>
+    </div>
     <div class="drawer-pane" id="dec-passkey">
-      <div class="dec-notice dec-info">Your agreement is signed with a passkey on this Mac (Touch ID). Agents cannot touch it. Create one here, then confirm it once at your own terminal.</div>
-      <div id="dec-passkey-list"></div>
-      <div class="dec-form">
-        <label for="dec-passkey-label">Label</label>
-        <input type="text" id="dec-passkey-label" maxlength="80" value="Touch ID">
-        <button class="dec-btn" id="dec-passkey-create">Create a Touch ID passkey</button>
-        <div id="dec-passkey-result"></div>
-      </div>
+      <div id="dec-passkey-list"><div class="dec-dim">Loading…</div></div>
     </div>
   </div>
 </div>

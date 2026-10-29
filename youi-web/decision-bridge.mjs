@@ -1,111 +1,205 @@
-// decision-bridge.mjs — the YOUI decision room's window onto Collab proposals.
+// decision-bridge.mjs — the YOUI decision room's window onto Collab tables.
 //
-// YOUI is where Yu and the agents meet on direction: proposals, the agents'
-// position, Yu's replies and Yu's own proposals. YOUI never opens the Collab
-// journal. Every read and act goes through the person desk
-// (`agenttool-collab-host person <verb>`), which validates input, verifies
-// passkey assertions and writes the hash-chained journal.
+// YOUI is where Yu and the agents meet on direction. Each device in the
+// Kingdom keeps its own table: its own Collab journal, its agents' voices and
+// its own person desk. YOUI never opens a journal. Every read and desk write
+// runs one verb of a desk: this device's (`agenttool-collab-host person`), or
+// another device's through its SSH forced command (`person-remote`, which
+// reads a JSON argv and never a shell line).
 //
-// Yu agrees or rejects here only with an enrolled passkey (Touch ID): the
-// browser signs the desk's challenge and this bridge forwards the assertion.
-// The terminal route and passkey enrolment stay at Yu's own terminal; the desk
-// runs in a new session without a controlling terminal, so it cannot prompt.
-// Desk notes and proposals are not authenticated as Yu and authorise nothing.
-// Contract: docs/superpowers/specs/2026-10-29-collab-yu-ai-consent-design.md
-// in cambridgetcg/agenttool.
+// Yu agrees or rejects only on a page the desk serves itself (`person
+// ceremony`): the page that shows the bytes decides what Touch ID signs, and
+// YOUI's own pages live where agents edit. YOUI only asks this device's desk
+// to open that page (with `--via` for another device's table) and links to it.
+// Desk notes, desk proposals and their withdrawal are not authenticated as Yu
+// and authorise nothing. Contract: the consent design in cambridgetcg/agenttool,
+// docs/superpowers/specs/2026-10-29-collab-yu-ai-consent-design.md.
 //
-// Routes:
+// Routes (every one takes ?table=<id> or a "table" body field; default the first):
+//   GET  /api/decisions/tables
 //   GET  /api/decisions/workspaces
-//   GET  /api/decisions/proposals?workspace=<id>[&proposal=<id>]
-//   GET  /api/decisions/inbox?workspace=<id>
+//   GET  /api/decisions/voices?workspace=<id>
+//   GET  /api/decisions/proposals?workspace=<id>[&proposal=<id>|&limit=<n>]
+//   GET  /api/decisions/inbox[?workspace=<id>]
 //   GET  /api/decisions/passkeys
-//   POST /api/decisions/challenge      { proposal, act, reason? }
-//   POST /api/decisions/act            { proposal, act, reason?, assertion }
-//   POST /api/decisions/say            { workspace, body, proposal?, idempotency_key }
-//   POST /api/decisions/propose        { workspace, question, criteria, extent, ..., idempotency_key }
-//   POST /api/decisions/passkey/stage  { credential_id, public_key_spki, algorithm, label? }
+//   POST /api/decisions/say       { workspace, body, proposal?, idempotency_key }
+//   POST /api/decisions/propose   { workspace, question, criteria, extent, known_conflicts?, topic?, consult_seconds?, idempotency_key }
+//   POST /api/decisions/withdraw  { workspace, proposal, reason, idempotency_key }
+//   POST /api/decisions/ceremony  { proposal, act, reason? }  → { url, expires_at }
 
 import { spawn } from "child_process";
-import crypto from "crypto";
-import { chmodSync, mkdirSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { dirname, join } from "path";
+import { join } from "path";
 import { HttpError } from "./security.mjs";
 import { sanitizedChildEnv } from "./subprocess-env.mjs";
 
 const HOST_TIMEOUT_MS = 15_000;
-const MAX_HOST_OUTPUT_BYTES = 4 * 1024 * 1024;
+const REMOTE_TIMEOUT_MS = 25_000;
+const CEREMONY_LIFETIME_MS = 200_000;
+const MAX_HOST_OUTPUT_BYTES = 8 * 1024 * 1024;
+const MAX_CONCURRENT_DESKS = 3;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:.-]{0,199}$/;
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
-const BASE64URL = /^[A-Za-z0-9_-]+$/;
+const TABLE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const SSH_DESTINATION = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,200}$/;
 
-/** How to reach the person desk. A .js or .ts path runs under Bun. */
-export function personDeskInvocation(args, env = process.env) {
-  const host = env.YOUI_COLLAB_HOST || "agenttool-collab-host";
-  const db = env.YOUI_COLLAB_DB ? [`--db=${env.YOUI_COLLAB_DB}`] : [];
-  if (/\.(m?js|ts)$/.test(host)) {
-    return { file: env.YOUI_COLLAB_BUN || "bun", args: [host, "person", ...args, ...db] };
-  }
-  return { file: host, args: ["person", ...args, ...db] };
+/** The installed desk, unless YOUI_COLLAB_HOST names another. A .js or .ts path runs under Bun. */
+function deskCommand(env) {
+  return env.YOUI_COLLAB_HOST
+    || join(homedir(), ".local", "share", "agenttool", "collab", "current", "agenttool-collab-host.js");
 }
 
-/** Run one person-desk verb and return its single JSON receipt. */
-export function runPersonDesk(args, { stdin = null, signal, env = process.env } = {}) {
-  const { file, args: argv } = personDeskInvocation(args, env);
-  return new Promise((resolve, reject) => {
+/** This device's journal, resolved once and always passed explicitly. */
+export function localJournal(env = process.env) {
+  return env.YOUI_COLLAB_DB
+    || env.AGENTOOL_COLLAB_DB
+    || join(homedir(), ".local", "share", "agenttool", "collab.sqlite");
+}
+
+/** The tables YOUI can reach: this device's, plus any listed in YOUI_DECISION_TABLES. */
+export function decisionTables(env = process.env) {
+  const tables = [{ id: "local", label: "This device", ssh: null }];
+  if (!env.YOUI_DECISION_TABLES) return tables;
+  let listed;
+  try {
+    listed = JSON.parse(env.YOUI_DECISION_TABLES);
+  } catch {
+    throw new Error("YOUI_DECISION_TABLES must be JSON: [{\"id\":\"lab\",\"label\":\"Lab\",\"ssh\":\"lab-desk\"}]");
+  }
+  if (!Array.isArray(listed)) throw new Error("YOUI_DECISION_TABLES must be a JSON array");
+  for (const table of listed) {
+    if (!table || !TABLE_ID.test(table.id ?? "") || table.id === "local"
+      || typeof table.ssh !== "string" || !SSH_DESTINATION.test(table.ssh)) {
+      throw new Error("Each YOUI_DECISION_TABLES entry needs an id (a-z, 0-9, -) and an ssh destination");
+    }
+    tables.push({ id: table.id, label: String(table.label || table.id).slice(0, 60), ssh: table.ssh });
+  }
+  return tables;
+}
+
+function invocation(table, args, env) {
+  if (table.ssh) {
+    // The remote forced command reads this JSON argv; no shell ever parses it.
+    return { file: env.YOUI_DECISION_SSH || "/usr/bin/ssh",
+      args: ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", table.ssh, JSON.stringify(args)] };
+  }
+  const host = deskCommand(env);
+  const tail = ["person", ...args, `--db=${localJournal(env)}`];
+  if (/\.(m?js|ts)$/.test(host)) {
+    return { file: env.YOUI_COLLAB_BUN || "/opt/homebrew/bin/bun",
+      args: ["--no-env-file", "--config=/dev/null", host, ...tail] };
+  }
+  return { file: host, args: tail };
+}
+
+// A small gate so many tabs and polls cannot start unbounded desk processes.
+let running = 0;
+const queued = [];
+async function withSlot(task) {
+  if (running >= MAX_CONCURRENT_DESKS) await new Promise(resolve => queued.push(resolve));
+  running += 1;
+  try {
+    return await task();
+  } finally {
+    running -= 1;
+    queued.shift()?.();
+  }
+}
+
+const inflightReads = new Map();
+
+function killGroup(child) {
+  try { process.kill(-child.pid, "SIGTERM"); } catch {}
+  setTimeout(() => { try { process.kill(-child.pid, "SIGKILL"); } catch {} }, 1_000).unref();
+}
+
+/** Run one desk verb and return its JSON receipt. Writes ignore the browser going away. */
+function runDesk(table, args, { env, signal, write = false } = {}) {
+  const { file, args: argv } = invocation(table, args, env);
+  return withSlot(() => new Promise((resolve, reject) => {
     const child = spawn(file, argv, {
       env: sanitizedChildEnv({ source: env, home: homedir(), purpose: "person-desk" }),
       // A new session has no controlling terminal, so the desk can never prompt.
       detached: true,
-      stdio: [stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
-      signal,
+      stdio: ["ignore", "pipe", "ignore"],
     });
-    let stdout = "";
+    const chunks = [];
     let bytes = 0;
     let settled = false;
     const finish = (error, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       if (error) reject(error);
       else resolve(value);
     };
+    const onAbort = () => {
+      killGroup(child);
+      finish(new HttpError(499, "The request was cancelled", "request_cancelled"));
+    };
+    if (signal && !write) signal.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      finish(new HttpError(504, "The person desk did not answer in time", "person_desk_timeout"));
-    }, HOST_TIMEOUT_MS);
+      killGroup(child);
+      finish(write
+        ? new HttpError(504, "The desk did not answer in time; the write may or may not have happened, so read again", "person_desk_outcome_unknown")
+        : new HttpError(504, "The desk did not answer in time", "person_desk_timeout"));
+    }, table.ssh ? REMOTE_TIMEOUT_MS : HOST_TIMEOUT_MS);
     child.stdout.on("data", chunk => {
       bytes += chunk.length;
       if (bytes > MAX_HOST_OUTPUT_BYTES) {
-        child.kill("SIGTERM");
-        finish(new HttpError(502, "The person desk answer was too large", "person_desk_output_too_large"));
+        killGroup(child);
+        finish(new HttpError(502, "The desk answer was too large", "person_desk_output_too_large"));
         return;
       }
-      stdout += chunk.toString("utf-8");
+      chunks.push(chunk);
     });
-    child.stderr.resume();
-    child.once("error", error => {
-      finish(new HttpError(
-        502,
-        error.code === "ENOENT"
-          ? "agenttool-collab-host was not found; set YOUI_COLLAB_HOST"
-          : "The person desk could not start",
-        "person_desk_unavailable",
-      ));
-    });
+    child.once("error", error => finish(new HttpError(
+      503,
+      error.code === "ENOENT" ? "The person desk is not installed here; set YOUI_COLLAB_HOST" : "The person desk could not start",
+      "person_desk_unavailable",
+    )));
     child.once("close", exitCode => {
-      const line = stdout.trim().split("\n").at(-1) || "";
-      let receipt;
+      // Decode once, so a multibyte character split across chunks survives.
+      const line = Buffer.concat(chunks).toString("utf-8").trim().split("\n").at(-1) || "";
       try {
-        receipt = JSON.parse(line);
+        finish(null, { exitCode, receipt: JSON.parse(line) });
       } catch {
-        finish(new HttpError(502, "The person desk returned no receipt", "person_desk_unreadable"));
-        return;
+        finish(new HttpError(502, table.ssh ? "The other device's desk returned no receipt" : "The desk returned no receipt",
+          "person_desk_unreadable"));
       }
-      finish(null, { exitCode, receipt });
     });
-    if (stdin !== null) child.stdin.end(stdin);
-  });
+  }));
+}
+
+/** Identical reads in flight share one desk process. */
+function readDesk(table, args, options) {
+  const key = JSON.stringify([table.id, args]);
+  const existing = inflightReads.get(key);
+  if (existing) return existing;
+  const promise = runDesk(table, args, { ...options, signal: undefined }).finally(() => inflightReads.delete(key));
+  inflightReads.set(key, promise);
+  return promise;
+}
+
+function statusFor(receipt) {
+  const code = String(receipt?.error || "");
+  if (code === "usage_error" || code.startsWith("invalid_")) return 400;
+  if (code === "journal_not_found") return 503;
+  if (code === "internal_error" || code.startsWith("remote_desk")) return 502;
+  if (code.endsWith("_not_found") || code === "passkey_not_enrolled") return 404;
+  return 409;
+}
+
+function sendReceipt(res, { exitCode, receipt }) {
+  const status = exitCode === 0 ? 200 : statusFor(receipt);
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify({ ...receipt, source: "person_desk" }));
+}
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
 }
 
 function requireId(value, field) {
@@ -126,13 +220,6 @@ function requireText(value, field, max, { optional = false } = {}) {
   return value;
 }
 
-function requireAct(value) {
-  if (value !== "agree" && value !== "reject") {
-    throw new HttpError(400, "act must be agree or reject", "invalid_decision_input");
-  }
-  return value;
-}
-
 function requireKey(value) {
   if (typeof value !== "string" || !KEY_PATTERN.test(value)) {
     throw new HttpError(400, "idempotency_key must be a retry key", "invalid_decision_input");
@@ -140,58 +227,89 @@ function requireKey(value) {
   return value;
 }
 
-function requireBase64url(value, field, maxLength = 8192) {
-  if (typeof value !== "string" || !BASE64URL.test(value) || value.length > maxLength) {
-    throw new HttpError(400, `${field} must be base64url`, "invalid_decision_input");
-  }
-  return value;
+function pickTable(tables, id) {
+  const table = id ? tables.find(item => item.id === id) : tables[0];
+  if (!table) throw new HttpError(404, "No such table", "decision_table_not_found");
+  return table;
 }
 
-/** The passkey's relying party: WebAuthn refuses IP addresses, so YOUI must be opened at localhost. */
-export function passkeyScope(req) {
-  const origin = req.headers.origin;
-  let url;
-  try {
-    url = new URL(origin);
-  } catch {
-    throw new HttpError(400, "A same-origin request is required", "invalid_decision_input");
-  }
-  if (url.protocol !== "http:" || url.hostname !== "localhost") {
-    throw new HttpError(
-      409,
-      "Passkeys need a domain: open YOUI at http://localhost, not an IP address",
-      "passkey_needs_localhost",
-    );
-  }
-  return { rp_id: "localhost", origin: url.origin };
-}
+// One ceremony at a time: its page listens on the passkey's fixed origin.
+let ceremony = null;
 
-/** Where a staged enrolment waits for Yu to confirm it at the terminal. */
-export function stagedEnrollmentPath(env = process.env) {
-  return env.YOUI_PASSKEY_STAGING_FILE
-    || join(homedir(), ".local", "share", "agenttool", "youi-passkey-enrollment.json");
-}
-
-function hostCommandHint(env = process.env) {
-  const host = env.YOUI_COLLAB_HOST || "agenttool-collab-host";
-  return /\.(m?js|ts)$/.test(host) ? `bun ${host}` : host;
-}
-
-function sendReceipt(res, { exitCode, receipt }) {
-  const status = exitCode === 0 ? 200 : receipt?.error === "usage_error" ? 400 : 409;
-  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-  res.end(JSON.stringify(receipt));
+/** Ask this device's desk to serve a signing page; resolve with its URL. */
+function openCeremony(table, args, env) {
+  if (ceremony && !ceremony.ended) killGroup(ceremony.child);
+  const { file, args: argv } = invocation({ id: "local", ssh: null }, [
+    "ceremony", ...args, ...(table.ssh ? [`--via=${table.ssh}`] : []),
+  ], env);
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, argv, {
+      env: sanitizedChildEnv({ source: env, home: homedir(), purpose: "person-desk-ceremony" }),
+      detached: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const current = { child, ended: false };
+    ceremony = current;
+    let buffer = Buffer.alloc(0);
+    let opened = false;
+    const lifetime = setTimeout(() => killGroup(child), CEREMONY_LIFETIME_MS);
+    lifetime.unref();
+    child.stdout.on("data", chunk => {
+      buffer = Buffer.concat([buffer, chunk]);
+      let index;
+      while ((index = buffer.indexOf(10)) >= 0) {
+        const line = buffer.subarray(0, index).toString("utf-8");
+        buffer = buffer.subarray(index + 1);
+        let receipt;
+        try { receipt = JSON.parse(line); } catch { continue; }
+        if (!opened && receipt.status === "open" && typeof receipt.url === "string"
+          && /^http:\/\/localhost:\d+\/c\/[A-Za-z0-9_-]+$/.test(receipt.url)) {
+          opened = true;
+          resolve({ url: receipt.url, expires_at: receipt.expires_at });
+        } else if (!opened) {
+          opened = true;
+          reject(Object.assign(new HttpError(statusFor(receipt), receipt.message || "The desk refused the ceremony",
+            receipt.error || "ceremony_refused"), { receipt }));
+        }
+      }
+    });
+    child.once("error", () => reject(new HttpError(503, "The person desk is not installed here; set YOUI_COLLAB_HOST",
+      "person_desk_unavailable")));
+    child.once("close", () => {
+      current.ended = true;
+      clearTimeout(lifetime);
+      if (!opened) reject(new HttpError(502, "The desk closed without opening a page", "ceremony_unopened"));
+    });
+  });
 }
 
 /** Handle /api/decisions/*; returns true when the path belonged here. */
 export async function handleDecisionRoute(path, req, res, url, parseBody, { signal, env = process.env } = {}) {
   if (!path.startsWith("/api/decisions/")) return false;
-  const desk = (args, options = {}) => runPersonDesk(args, { signal, env, ...options });
+  const tables = decisionTables(env);
+  const options = { env, signal };
+  const respond = async (promise) => {
+    try {
+      sendReceipt(res, await promise);
+    } catch (error) {
+      if (!(error instanceof HttpError)) throw error;
+      // Report a missing desk plainly instead of logging a stack on every poll.
+      sendJson(res, error.statusCode, { error: error.code, message: error.message, source: "youi" });
+    }
+    return true;
+  };
 
   if (req.method === "GET") {
-    if (path === "/api/decisions/workspaces") {
-      sendReceipt(res, await desk(["workspaces"]));
+    if (path === "/api/decisions/tables") {
+      sendJson(res, 200, { tables: tables.map(({ id, label, ssh }) => ({ id, label, remote: Boolean(ssh) })) });
       return true;
+    }
+    const table = pickTable(tables, url.searchParams.get("table"));
+    if (path === "/api/decisions/workspaces") return respond(readDesk(table, ["workspaces"], options));
+    if (path === "/api/decisions/passkeys") return respond(readDesk(table, ["passkeys"], options));
+    if (path === "/api/decisions/voices") {
+      const workspace = requireId(url.searchParams.get("workspace"), "workspace");
+      return respond(readDesk(table, ["voices", `--workspace=${workspace}`], options));
     }
     if (path === "/api/decisions/proposals") {
       const workspace = requireId(url.searchParams.get("workspace"), "workspace");
@@ -200,75 +318,32 @@ export async function handleDecisionRoute(path, req, res, url, parseBody, { sign
       if (limit !== null && !/^([1-9]|[1-4]\d|50)$/.test(limit)) {
         throw new HttpError(400, "limit must be an integer from 1 to 50", "invalid_decision_input");
       }
-      sendReceipt(res, await desk([
+      return respond(readDesk(table, [
         "proposals",
         `--workspace=${workspace}`,
-        ...(proposal ? [`--proposal=${requireId(proposal, "proposal")}`] : []),
-        ...(limit && !proposal ? [`--limit=${limit}`] : []),
-      ]));
-      return true;
+        ...(proposal ? [`--proposal=${requireId(proposal, "proposal")}`] : limit ? [`--limit=${limit}`] : []),
+      ], options));
     }
     if (path === "/api/decisions/inbox") {
-      const workspace = requireId(url.searchParams.get("workspace"), "workspace");
-      sendReceipt(res, await desk(["inbox", `--workspace=${workspace}`]));
-      return true;
-    }
-    if (path === "/api/decisions/passkeys") {
-      sendReceipt(res, await desk(["passkeys"]));
-      return true;
+      const workspace = url.searchParams.get("workspace");
+      return respond(readDesk(table, ["inbox", ...(workspace ? [`--workspace=${requireId(workspace, "workspace")}`] : [])], options));
     }
     return false;
   }
 
   if (req.method !== "POST") return false;
   const body = await parseBody(req);
-
-  if (path === "/api/decisions/challenge") {
-    const act = requireAct(body.act);
-    const reason = act === "reject" ? requireText(body.reason, "reason", 2000) : null;
-    sendReceipt(res, await desk([
-      "challenge",
-      `--proposal=${requireId(body.proposal, "proposal")}`,
-      `--act=${act}`,
-      ...(reason ? [`--reason=${reason}`] : []),
-    ]));
-    return true;
-  }
-
-  if (path === "/api/decisions/act") {
-    const act = requireAct(body.act);
-    const reason = act === "reject" ? requireText(body.reason, "reason", 2000) : null;
-    const assertion = body.assertion && typeof body.assertion === "object" ? body.assertion : null;
-    if (!assertion) {
-      throw new HttpError(400, "A passkey assertion is required; YOUI never records an act without one", "invalid_decision_input");
-    }
-    const forwarded = {
-      credential_id: requireBase64url(assertion.credential_id, "credential_id", 1400),
-      authenticator_data: requireBase64url(assertion.authenticator_data, "authenticator_data"),
-      client_data_json: requireBase64url(assertion.client_data_json, "client_data_json"),
-      signature: requireBase64url(assertion.signature, "signature", 512),
-      ...(typeof assertion.user_handle === "string" && assertion.user_handle
-        ? { user_handle: requireBase64url(assertion.user_handle, "user_handle", 512) }
-        : {}),
-    };
-    sendReceipt(res, await desk([
-      act === "agree" ? "consent" : "reject",
-      `--proposal=${requireId(body.proposal, "proposal")}`,
-      ...(reason ? [`--reason=${reason}`] : []),
-      "--passkey-assertion=-",
-    ], { stdin: JSON.stringify(forwarded) }));
-    return true;
-  }
+  const table = pickTable(tables, body.table);
+  const write = { ...options, write: true };
 
   if (path === "/api/decisions/say") {
-    sendReceipt(res, await desk([
+    return respond(runDesk(table, [
       "say",
       `--workspace=${requireId(body.workspace, "workspace")}`,
       `--body=${requireText(body.body, "body", 8000)}`,
       ...(body.proposal ? [`--proposal=${requireId(body.proposal, "proposal")}`] : []),
       `--idempotency-key=${requireKey(body.idempotency_key)}`,
-    ]));
-    return true;
+    ], write));
   }
 
   if (path === "/api/decisions/propose") {
@@ -278,7 +353,7 @@ export async function handleDecisionRoute(path, req, res, url, parseBody, { sign
     if (consult !== undefined && consult !== null && !Number.isSafeInteger(consult)) {
       throw new HttpError(400, "consult_seconds must be an integer", "invalid_decision_input");
     }
-    sendReceipt(res, await desk([
+    return respond(runDesk(table, [
       "propose",
       `--workspace=${requireId(body.workspace, "workspace")}`,
       `--question=${requireText(body.question, "question", 8000)}`,
@@ -288,43 +363,44 @@ export async function handleDecisionRoute(path, req, res, url, parseBody, { sign
       ...(topic ? [`--topic=${topic}`] : []),
       ...(Number.isSafeInteger(consult) ? [`--consult-seconds=${consult}`] : []),
       `--idempotency-key=${requireKey(body.idempotency_key)}`,
-    ]));
-    return true;
+    ], write));
   }
 
-  if (path === "/api/decisions/passkey/stage") {
-    // Staging writes a file and nothing else; only Yu's terminal can enrol it.
-    const scope = passkeyScope(req);
-    const publicKey = requireBase64url(body.public_key_spki, "public_key_spki", 1400);
-    if (body.algorithm !== -7) {
-      throw new HttpError(400, "Only ES256 (COSE -7) passkeys are supported", "invalid_decision_input");
+  if (path === "/api/decisions/withdraw") {
+    return respond(runDesk(table, [
+      "withdraw",
+      `--workspace=${requireId(body.workspace, "workspace")}`,
+      `--proposal=${requireId(body.proposal, "proposal")}`,
+      `--reason=${requireText(body.reason, "reason", 2000)}`,
+      `--idempotency-key=${requireKey(body.idempotency_key)}`,
+    ], write));
+  }
+
+  if (path === "/api/decisions/ceremony") {
+    if (body.act !== "agree" && body.act !== "reject") {
+      throw new HttpError(400, "act must be agree or reject", "invalid_decision_input");
     }
-    const label = requireText(body.label, "label", 80, { optional: true });
-    const enrollment = {
-      credential_id: requireBase64url(body.credential_id, "credential_id", 1400),
-      public_key_spki: publicKey,
-      algorithm: -7,
-      rp_id: scope.rp_id,
-      origin: scope.origin,
-      ...(label ? { label } : {}),
-    };
-    const file = stagedEnrollmentPath(env);
-    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-    writeFileSync(file, `${JSON.stringify(enrollment, null, 2)}\n`, { mode: 0o600 });
-    chmodSync(file, 0o600);
-    const fingerprint = crypto.createHash("sha256").update(Buffer.from(publicKey, "base64url")).digest("hex");
-    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    res.end(JSON.stringify({
-      status: "staged",
-      fingerprint,
-      file,
-      // Passkeys live in the journal, so the command must name the same one YOUI reads.
-      command: `${hostCommandHint(env)} person passkey-enroll --file ${file}`
-        + (env.YOUI_COLLAB_DB ? ` --db ${env.YOUI_COLLAB_DB}` : ""),
-      note: "Run the command in your own terminal and compare the fingerprint before typing yes.",
-    }));
+    const reason = body.act === "reject" ? requireText(body.reason, "reason", 2000) : null;
+    try {
+      const opened = await openCeremony(table, [
+        `--proposal=${requireId(body.proposal, "proposal")}`,
+        `--act=${body.act}`,
+        ...(reason ? [`--reason=${reason}`] : []),
+      ], env);
+      sendJson(res, 200, { status: "open", ...opened, source: "person_desk" });
+    } catch (error) {
+      if (!(error instanceof HttpError)) throw error;
+      sendJson(res, error.statusCode, { ...(error.receipt || {}), error: error.code, message: error.message, source: "person_desk" });
+    }
     return true;
   }
 
   return false;
 }
+
+/** How to run one verb of this device's desk; YOUI's terminal uses it for /decisions. */
+export function localDeskInvocation(args, env = process.env) {
+  return invocation({ id: "local", ssh: null }, args, env);
+}
+
+export const __test = { statusFor, invocation, deskCommand };

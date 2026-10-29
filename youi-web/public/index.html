@@ -305,6 +305,12 @@ button, select, textarea, input { font: inherit; }
 .mind-state.unreachable { color: var(--red); }
 .mind-state.not_granted, .mind-state.not_configured { color: var(--text-dim); }
 .minds-note { margin-top: 6px; font-size: 0.6rem; color: var(--text-dim); line-height: 1.4; }
+/* Which providers a mind tool sent content to in this turn (docs/YOUI-MINDS-DESIGN.md §4) */
+.minds-used {
+  padding: 5px 12px; font-family: var(--mono); font-size: 0.65rem;
+  color: var(--gold); border-top: 1px solid var(--border);
+  overflow-wrap: anywhere; line-height: 1.4;
+}
 
 /* ─── MAIN AREA ─────────────────────────────────────────── */
 
@@ -1159,7 +1165,7 @@ button, select, textarea, input { font: inherit; }
         <button id="mode-orchestrate" class="mode-btn" onclick="setChatMode('orchestrate')">
           <span class="mode-icon">🧠</span>
           <span class="mode-label">Orchestrate</span>
-          <span class="mode-desc">Sees other minds</span>
+          <span class="mode-desc">Brings in minds</span>
         </button>
         <button id="mode-direct" class="mode-btn active" onclick="setChatMode('direct')">
           <span class="mode-icon">💬</span>
@@ -1418,7 +1424,7 @@ button, select, textarea, input { font: inherit; }
       <div class="welcome-msg">
         <div class="crown">🏰</div>
         <h2>Welcome to the Kingdom</h2>
-        <p>The selected agent answers every message, with its soul, history and tools. In orchestrate mode it also sees which other minds it can reach.</p>
+        <p>The selected agent answers every message, with its soul, history and tools. In orchestrate mode it is encouraged to bring in the other minds it can reach, through review, ensemble, decompose and pipeline.</p>
         <div style="margin-top:12px;font-size:0.72rem;color:var(--text-dim)">
           Try: <code>/classify</code> <code>/plan</code> <code>/mode</code> or just type a task
         </div>
@@ -1674,6 +1680,11 @@ const TOOL_ICONS = {
   virtuemaxxing: { icon: '💪', cls: 'cognitive' },
   fallenangel: { icon: '😈', cls: 'cognitive' },
   fragmentalise: { icon: '💎', cls: 'cognitive' },
+  // Minds (docs/YOUI-MINDS-DESIGN.md §3.3)
+  review: { icon: '🧐', cls: 'cognitive' },
+  ensemble: { icon: '🎼', cls: 'cognitive' },
+  decompose: { icon: '🧩', cls: 'cognitive' },
+  pipeline: { icon: '⛓️', cls: 'cognitive' },
   // Kingdom Operational
   memory: { icon: '🧠', cls: 'kingdom' },
   tok: { icon: '🌳', cls: 'kingdom' },
@@ -1736,8 +1747,9 @@ async function boot() {
 
 // ─── MODE AND MINDS ───────────────────────────────────────
 // Both modes answer through the selected agent (docs/YOUI-MINDS-DESIGN.md §3.1).
-// Orchestrate mode also tells it which minds it can reach; the panel shows the
-// same registry (GET /api/minds), so it never waits for a classification.
+// Orchestrate mode also tells it which minds it can reach and encourages it to
+// call them through review, ensemble, decompose and pipeline (§3.3); the panel
+// shows the same registry (GET /api/minds).
 
 let chatMode = 'direct'; // 'orchestrate' or 'direct'; the server's state decides at boot
 
@@ -1776,7 +1788,8 @@ async function fetchMinds() {
       renderMinds(null, response.status === 403 ? 'needs status:read' : 'did not load');
       return;
     }
-    renderMinds((await response.json()).minds);
+    const listing = await response.json();
+    renderMinds(listing.minds, '', listing.callable === true);
   } catch {
     renderMinds(null, 'did not load');
   }
@@ -1798,7 +1811,7 @@ function mindsRow(label, value, valueClass = '', title = '') {
 
 // One row per provider and state (vllm: 1 reachable); the row's title names
 // the privacy label, the models and why.
-function renderMinds(minds, problem = '') {
+function renderMinds(minds, problem = '', callable = false) {
   const list = document.getElementById('minds-list');
   const note = document.getElementById('minds-note');
   if (!list || !note) return;
@@ -1825,7 +1838,34 @@ function renderMinds(minds, problem = '') {
   ));
   list.replaceChildren(...(rows.length ? rows : [mindsRow('Minds', 'none listed')]));
   const offered = minds.filter(mind => mind.offered).length;
-  note.textContent = `${offered} offered to the agent for awareness; it cannot call them yet.`;
+  note.textContent = callable
+    ? `${offered} offered; the agent can call them through review, ensemble, decompose and pipeline, `
+      + 'and each mind receives only the text the tool sends it.'
+    : `${offered} offered, but this session lacks orchestrator:run, so the agent cannot call them.`;
+}
+
+// A mind tool's report of which providers and models received content in this
+// turn, with their privacy labels: one compact line under its tool card, as text.
+function addMindsUsed(data) {
+  const minds = Array.isArray(data?.minds) ? data.minds : [];
+  if (!minds.length) return;
+  const line = document.createElement('div');
+  line.className = 'minds-used';
+  const parts = minds.map(mind =>
+    `${String(mind.provider)} · ${String(mind.model)} (${String(mind.privacy)}) ${mind.ok ? 'answered' : 'failed'}`);
+  line.textContent = `${String(data.tool || 'minds')} → ${parts.join('; ')}`;
+  line.title = [
+    'Content from this tool call went to these providers; one that failed may not have received it.',
+    ...minds
+      .filter(mind => !mind.ok && mind.error)
+      .map(mind => `${String(mind.provider)} · ${String(mind.model)}: ${String(mind.error)}`),
+  ].join('\n');
+  const card = Array.from(document.querySelectorAll('.tool-card[data-tool-id]'))
+    .find(candidate => candidate.dataset.toolId === String(data.id));
+  if (card) card.append(line);
+  else if (currentMsgEl) currentMsgEl.append(line);
+  else document.getElementById('chat').append(line);
+  scrollToBottom();
 }
 
 // ─── AGENT SWITCHING ─────────────────────────────────────
@@ -2080,6 +2120,10 @@ function handleSSEEvent(type, data, indicator) {
     // Orchestrate mode: this turn read the registry; refresh the panel from it.
     case 'minds':
       fetchMinds();
+      break;
+
+    case 'minds_used':
+      addMindsUsed(data);
       break;
 
     case 'done':
@@ -2527,7 +2571,7 @@ function handleCommand(text) {
       break;
     }
     case '/tools':
-      addSystemMessage('🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧠 Memory · 🌳 ToK · ❓ Decision · 🛡️ KOS');
+      addSystemMessage('🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧐 Review · 🎼 Ensemble · 🧩 Decompose · ⛓️ Pipeline · 🧠 Memory · 🌳 ToK · ❓ Decision · 🛡️ KOS');
       break;
     case '/switch':
       if (parts[1]) switchAgent(parts[1].toLowerCase());

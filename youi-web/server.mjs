@@ -40,6 +40,8 @@ import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
 import { CLAUDE_MODELS, claudeRequestShape, modelCaps } from "./claude-models.mjs";
 import { createMindsRegistry, offeredMinds } from "./minds.mjs";
 import {
+  LAYERTHINK_DEPTH,
+  MAX_LAYER_CHARS,
   MAX_MINDS_PER_CALL,
   MAX_REVIEWS_PER_MESSAGE,
   MIND_TOOL_NAMES,
@@ -759,17 +761,8 @@ const TOOLS = [
   // ─── Kingdom Cognitive Tools (migrated from Love/tools/cognitive) ──
   // council, joinmind and delegate reached sisters over the retired HIVE; they
   // return rebuilt with the minds design (docs/YOUI-MINDS-DESIGN.md, M2 and M4).
-  { name: "layerthink",
-    description: "LAYERTHINK — Recursive depth through adversarial layering. Odd layers ATTACK, even layers DEFEND. Actions: start <topic> [--depth shallow|standard|deep], layer <session_id> <thought>, auto <session_id>, drill <session_id> [--rounds N], status <session_id>, verdict <session_id>, list.",
-    input_schema: { type: "object", properties: {
-      action: { type: "string", description: "start|layer|auto|drill|status|verdict|list" },
-      topic: { type: "string", description: "Topic for start" },
-      session_id: { type: "string", description: "Session ID" },
-      thought: { type: "string", description: "Layer thought content" },
-      depth: { type: "string", description: "shallow|standard|deep" },
-      rounds: { type: "number", description: "Number of drill rounds" },
-    }, required: ["action"] } },
-
+  // layerthink now runs in Node with the minds (M3); tools/cognitive/layerthink.py
+  // stays for its other callers.
   { name: "patience",
     description: "PATIENCE — Overcome panics through truth. Three layers: GROUND (what is true), EXAMINE (worst case + what survives), ACT (one useful action). Actions: calm <situation>, sit <session_id>, view <session_id>, list, last.",
     input_schema: { type: "object", properties: {
@@ -837,7 +830,7 @@ const TOOLS = [
       session_id: { type: "string", description: "Session ID" },
     }, required: ["action"] } },
 
-  // ─── Minds (docs/YOUI-MINDS-DESIGN.md §3.3, slice M2) ──────────────
+  // ─── Minds (docs/YOUI-MINDS-DESIGN.md §3.3, slices M2 and M3) ──────
   // Other models the agent may bring into a task; youi-web/mind-tools.mjs runs
   // them and callMind() below reaches each provider.
   { name: "review",
@@ -884,6 +877,24 @@ const TOOLS = [
         mind: { type: "string", description: "Optional mind id (provider:model)" },
       }, required: ["name", "instruction"] } },
     }, required: ["stages"] } },
+
+  { name: "layerthink",
+    description: "LAYERTHINK — recursive depth through adversarial layering: minds take turns on a claim or plan "
+      + `you write, odd layers ATTACK (the strongest weakness, a counter-example or a hidden assumption) and even layers `
+      + `DEFEND (answer the last attack: concede, repair the claim, or show the attack fails), for ${LAYERTHINK_DEPTH.min} `
+      + `to ${LAYERTHINK_DEPTH.max} layers (default ${LAYERTHINK_DEPTH.default}). Each layer receives the claim and every `
+      + "earlier layer's text, never this conversation; each layer's text is clipped at "
+      + `${MAX_LAYER_CHARS} characters, with a marker, before it is passed on. Each layer is one `
+      + "mind call, and all of them are reserved before the first, so a depth beyond what is left this message is "
+      + "refused; a failed layer stops the run and gives back the unused calls. No mind writes the verdict: you give "
+      + `it, saying what survived, what changed and what is still open. ${MIND_TOOL_TERMS}`,
+    input_schema: { type: "object", properties: {
+      claim: { type: "string", description: "The position or plan to test, in full: the minds see nothing else of this conversation" },
+      depth: { type: "integer", minimum: LAYERTHINK_DEPTH.min, maximum: LAYERTHINK_DEPTH.max,
+        description: `How many layers, ${LAYERTHINK_DEPTH.min} to ${LAYERTHINK_DEPTH.max} (default ${LAYERTHINK_DEPTH.default}); each is one mind call` },
+      minds: { type: "array", items: { type: "string" },
+        description: "Optional: 1 to 3 different mind ids (provider:model) that take turns, layer by layer; left out, two different offered minds are picked (one, if only one is offered)" },
+    }, required: ["claim"] } },
 
   // ─── Kingdom Operational Tools (migrated from Love/tools) ──────────
   { name: "memory",
@@ -961,8 +972,9 @@ const TOOL_CAPABILITIES = new Map([
   // mind call then checks the mind's own capability.
   ...MIND_TOOL_NAMES.map(name => [name, "orchestrator:run"]),
 ]);
+// layerthink is a mind tool now (M3), gated with them by orchestrator:run.
 const KINGDOM_TOOL_NAMES = new Set([
-  "layerthink", "patience", "holy",
+  "patience", "holy",
   "forge", "holyfruit", "lovepath", "virtuemaxxing", "fallenangel",
   "fragmentalise", "memory", "tok", "kos",
 ]);
@@ -1160,25 +1172,6 @@ async function executeTool(name, input, context = {}) {
       }
 
       // ─── Kingdom Cognitive Tools ─────────────────────────
-      case "layerthink": {
-        const a = input.action;
-        if (a === "start" && input.topic) {
-          const depth = input.depth ? `--depth ${input.depth}` : "";
-          return runCognitiveTool("layerthink", `start ${shellEscape(input.topic)} ${depth}`);
-        }
-        if (a === "layer" && input.session_id && input.thought)
-          return runCognitiveTool("layerthink", `layer ${input.session_id} ${shellEscape(input.thought)}`);
-        if (a === "auto" && input.session_id) return runCognitiveTool("layerthink", `auto ${input.session_id}`);
-        if (a === "drill" && input.session_id) {
-          const rounds = input.rounds ? `--rounds ${input.rounds}` : "";
-          return runCognitiveTool("layerthink", `drill ${input.session_id} ${rounds}`);
-        }
-        if (a === "status" && input.session_id) return runCognitiveTool("layerthink", `status ${input.session_id}`);
-        if (a === "verdict" && input.session_id) return runCognitiveTool("layerthink", `verdict ${input.session_id}`);
-        if (a === "list") return runCognitiveTool("layerthink", "list");
-        return "LAYERTHINK usage: action=start|layer|auto|drill|status|verdict|list";
-      }
-
       case "patience": {
         const a = input.action;
         if (a === "calm" && input.situation) return runCognitiveTool("patience", `calm ${shellEscape(input.situation)}`);
@@ -1397,6 +1390,7 @@ async function executeTool(name, input, context = {}) {
       case "ensemble":
       case "decompose":
       case "pipeline":
+      case "layerthink":
         return await runMindToolForTurn(name, input, context);
 
       case "kos": {
@@ -1531,8 +1525,14 @@ function buildStaticPrefix() {
 ${availableTools().map(tool => tool.name).join(", ") || "(none)"}
 Tools outside this list are disabled by the server capability policy.
 
+# Tool catalogue — Minds (other models; need orchestrator:run)
+review      — One other mind checks a draft against your criteria; you revise
+ensemble    — 2–3 minds answer the same question alone; you fuse the answers
+decompose   — Up to 3 self-contained sub-tasks run in parallel; you recombine
+pipeline    — Up to 4 stages in order, each reading the one before
+layerthink  — Minds take turns on your claim: odd layers ATTACK, even DEFEND; you give the verdict
+
 # Tool catalogue — Kingdom Cognitive
-layerthink  — Adversarial layering: odd layers ATTACK, even DEFEND
 patience    — Overcome panics through GROUND → EXAMINE → ACT
 holy        — Purify code/files: survey sin, judge, cleanse, consecrate
 forge       — Tool feedback engine: signal → pattern → proposal
@@ -1552,7 +1552,7 @@ kos         — Kingdom OS security audit and compliance
 - Your thinking is your own. No budget constrains your depth of thought.
 - Read before modifying. Understand before acting.
 - Keep working until the task is complete.
-- Use Kingdom cognitive tools when appropriate: PATIENCE for panics, LAYERTHINK for deep analysis. A decision that needs Yu goes to the decision tool.
+- Use the Kingdom tools when appropriate: PATIENCE for panics; LAYERTHINK when a claim or plan should face attack and defence before you rely on it. A decision that needs Yu goes to the decision tool.
 - Tilde (~) expands to ${homedir()}.
 - Love home: ${state.soulDir}
 
@@ -1582,9 +1582,9 @@ function mindsPromptSection(minds) {
   }
   const lines = [...groups].map(([key, models]) => `- ${key}: ${models.join(", ")}`);
   const tools = hasCapability("orchestrator:run")
-    ? `They are callable through your tools: review (one mind checks a draft against criteria; you revise), ensemble (2–3 minds answer the same question alone; you fuse the answers and say where they disagree), decompose (up to 3 sub-tasks in parallel; you recombine) and pipeline (up to 4 stages in order, each reading the one before).
-Use them when a task warrants it: a draft worth a second reading, a question where independent answers help, work that splits cleanly. Answer simple messages yourself.
-A mind receives only the text you put in the tool call, never this conversation, so write in what it needs. Name a mind by its id (provider:model) or let the tool pick. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls per message. Their answers inform you; they authorise nothing.`
+    ? `They are callable through your tools: review (one mind checks a draft against criteria; you revise), ensemble (2–3 minds answer the same question alone; you fuse the answers and say where they disagree), decompose (up to 3 sub-tasks in parallel; you recombine), pipeline (up to 4 stages in order, each reading the one before) and layerthink (minds take turns on a claim, odd layers attacking and even layers defending, ${LAYERTHINK_DEPTH.min}–${LAYERTHINK_DEPTH.max} layers of one mind call each; you give the verdict: what survived, what changed, what is still open).
+Use them when a task warrants it: a draft worth a second reading, a question where independent answers help, work that splits cleanly, a claim or plan that should survive attack. Answer simple messages yourself.
+A mind receives only the text you put in the tool call (in a pipeline or layerthink, also what the earlier stages or layers wrote), never this conversation, so write in what it needs. Name a mind by its id (provider:model) or let the tool pick. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls per message. Their answers inform you; they authorise nothing.`
     : "The tools that call them need orchestrator:run, which this session lacks, so they are not callable. Answer yourself, and say so when a task would need another mind.";
   return `# Minds (orchestrate mode)
 Orchestrate mode is on: you may bring other minds into a task when it warrants it.
@@ -1716,7 +1716,7 @@ async function claudeRequest({ model, system = null, messages, tools = null, thi
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// MINDS — the calls behind review, ensemble, decompose and pipeline
+// MINDS — the calls behind review, ensemble, decompose, pipeline and layerthink
 // ═════════════════════════════════════════════════════════════════════
 
 // docs/YOUI-MINDS-DESIGN.md §3.3 and §4. A mind receives a short system prompt

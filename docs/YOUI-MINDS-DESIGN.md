@@ -1,6 +1,6 @@
 # YOUI minds: orchestration and the Kingdom tools, rebuilt
 
-**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1 and M2 are built, M3–M4 are not yet
+**Status:** agreed by Yu at the Collab table on 2026-10-29 (proposal `report_98c52416`, slices M1–M4); M1–M3 are built, M4 is not yet
 
 **Date:** 2026-10-29
 

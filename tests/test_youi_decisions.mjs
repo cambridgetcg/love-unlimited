@@ -220,6 +220,7 @@ test("passkey staging needs localhost and writes only a private file", async t =
   assert.equal(staged.status, 200, staged.text);
   assert.equal(staged.json.fingerprint, createHash("sha256").update(Buffer.from(spki, "base64url")).digest("hex"));
   assert.match(staged.json.command, /person passkey-enroll --file /);
+  assert.ok(staged.json.command.endsWith(` --db ${desk.env.YOUI_COLLAB_DB}`), "enrol into the journal YOUI reads");
   assert.equal(statSync(staging).mode & 0o777, 0o600);
   assert.deepEqual(JSON.parse(readFileSync(staging, "utf8")), {
     credential_id: body.credential_id,

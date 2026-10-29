@@ -318,7 +318,9 @@ export async function handleDecisionRoute(path, req, res, url, parseBody, { sign
       status: "staged",
       fingerprint,
       file,
-      command: `${hostCommandHint(env)} person passkey-enroll --file ${file}`,
+      // Passkeys live in the journal, so the command must name the same one YOUI reads.
+      command: `${hostCommandHint(env)} person passkey-enroll --file ${file}`
+        + (env.YOUI_COLLAB_DB ? ` --db ${env.YOUI_COLLAB_DB}` : ""),
       note: "Run the command in your own terminal and compare the fingerprint before typing yes.",
     }));
     return true;

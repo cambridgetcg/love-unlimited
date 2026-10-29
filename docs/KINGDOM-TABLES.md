@@ -20,7 +20,9 @@ run, at that device's own terminal.
    device's journal. Agents that start their helpers through their own MCP
    binding form one voice with them; any other session is its own voice.
 3. **Enrol Yu's passkey there.** On Yu's device:
-   `agenttool-collab-host person passkey-export --credential <id> > passkey.json`.
+   `agenttool-collab-host person passkey-export --credential=<id> > passkey.json`
+   (the `=` form, because a credential ID can begin with `-`; enrolment reads
+   this receipt as it is).
    Copy the file over, then at the new device's terminal:
    `agenttool-collab-host person passkey-enroll --file passkey.json`. Compare
    the fingerprint with the one on Yu's device before typing `yes`.
@@ -30,6 +32,10 @@ run, at that device's own terminal.
    ```text
    restrict,command="env AGENTOOL_COLLAB_DB=<journal> <bun> --no-env-file --config=/dev/null <version>/agenttool-collab-host.js person-remote" ssh-ed25519 AAAA… youi-desk
    ```
+
+   A wrapper that sets the journal and Bun works as the command too, for
+   example `command="<home>/.local/bin/agenttool-collab-host person-remote"`.
+   Prefix `from="<your LAN>"` to accept the key only from your own network.
 
    The forced command reads a JSON argv from `SSH_ORIGINAL_COMMAND`. It allows
    reads, notes, desk proposals and withdrawals, `challenge`, and passkey acts

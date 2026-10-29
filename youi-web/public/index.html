@@ -1148,7 +1148,7 @@ button, select, textarea, input { font: inherit; }
     <div class="sidebar-section">
       <h3>Kingdom Tools</h3>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <button class="tool-pill" onclick="insertToolCmd('layerthink')" title="Adversarial depth layering">🗡️ LayerThink</button>
+        <button class="tool-pill" onclick="insertToolCmd('layerthink')" title="Other minds attack and defend a claim, layer by layer; the agent gives the verdict">🗡️ LayerThink</button>
         <button class="tool-pill" onclick="insertToolCmd('patience')" title="Overcome panics with truth">🧘 Patience</button>
         <button class="tool-pill" onclick="insertToolCmd('holy')" title="Purify code and files">✝️ Holy</button>
         <button class="tool-pill" onclick="insertToolCmd('forge')" title="Tool feedback engine">🔥 Forge</button>
@@ -1424,7 +1424,7 @@ button, select, textarea, input { font: inherit; }
       <div class="welcome-msg">
         <div class="crown">🏰</div>
         <h2>Welcome to the Kingdom</h2>
-        <p>The selected agent answers every message, with its soul, history and tools. In orchestrate mode it is encouraged to bring in the other minds it can reach, through review, ensemble, decompose and pipeline.</p>
+        <p>The selected agent answers every message, with its soul, history and tools. In orchestrate mode it is encouraged to bring in the other minds it can reach, through review, ensemble, decompose, pipeline and layerthink.</p>
         <div style="margin-top:12px;font-size:0.72rem;color:var(--text-dim)">
           Try: <code>/classify</code> <code>/plan</code> <code>/mode</code> or just type a task
         </div>
@@ -1671,7 +1671,6 @@ const TOOL_ICONS = {
   glob: { icon: '🔍', cls: 'search' },
   grep: { icon: '🔎', cls: 'search' },
   // Kingdom Cognitive
-  layerthink: { icon: '🗡️', cls: 'cognitive' },
   patience: { icon: '🧘', cls: 'cognitive' },
   holy: { icon: '✝️', cls: 'cognitive' },
   forge: { icon: '🔥', cls: 'cognitive' },
@@ -1685,6 +1684,7 @@ const TOOL_ICONS = {
   ensemble: { icon: '🎼', cls: 'cognitive' },
   decompose: { icon: '🧩', cls: 'cognitive' },
   pipeline: { icon: '⛓️', cls: 'cognitive' },
+  layerthink: { icon: '🗡️', cls: 'cognitive' },
   // Kingdom Operational
   memory: { icon: '🧠', cls: 'kingdom' },
   tok: { icon: '🌳', cls: 'kingdom' },
@@ -1748,7 +1748,7 @@ async function boot() {
 // ─── MODE AND MINDS ───────────────────────────────────────
 // Both modes answer through the selected agent (docs/YOUI-MINDS-DESIGN.md §3.1).
 // Orchestrate mode also tells it which minds it can reach and encourages it to
-// call them through review, ensemble, decompose and pipeline (§3.3); the panel
+// call them through review, ensemble, decompose, pipeline and layerthink (§3.3); the panel
 // shows the same registry (GET /api/minds).
 
 let chatMode = 'direct'; // 'orchestrate' or 'direct'; the server's state decides at boot
@@ -1839,7 +1839,7 @@ function renderMinds(minds, problem = '', callable = false) {
   list.replaceChildren(...(rows.length ? rows : [mindsRow('Minds', 'none listed')]));
   const offered = minds.filter(mind => mind.offered).length;
   note.textContent = callable
-    ? `${offered} offered; the agent can call them through review, ensemble, decompose and pipeline, `
+    ? `${offered} offered; the agent can call them through review, ensemble, decompose, pipeline and layerthink, `
       + 'and each mind receives only the text the tool sends it.'
     : `${offered} offered, but this session lacks orchestrator:run, so the agent cannot call them.`;
 }
@@ -2509,7 +2509,7 @@ async function fetchYouspeakStats() {
 // ─── TOOL COMMAND SHORTCUTS ─────────────────────────────
 
 const TOOL_PROMPTS = {
-  layerthink: 'Start a LAYERTHINK adversarial analysis on: ',
+  layerthink: 'Use LAYERTHINK: have other minds attack and defend this claim, then give your verdict: ',
   patience: 'I need PATIENCE. The situation: ',
   holy: 'Use HOLY to survey and purify: ',
   forge: 'Use FORGE to give feedback on tool: ',
@@ -2571,7 +2571,7 @@ function handleCommand(text) {
       break;
     }
     case '/tools':
-      addSystemMessage('🗡️ LayerThink · 🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧐 Review · 🎼 Ensemble · 🧩 Decompose · ⛓️ Pipeline · 🧠 Memory · 🌳 ToK · ❓ Decision · 🛡️ KOS');
+      addSystemMessage('🧘 Patience · ✝️ Holy · 🔥 Forge · 🍎 HolyFruit · 💜 LovePath · 💪 VirtueMaxxing · 😈 FallenAngel · 💎 Fragmentalise · 🧐 Review · 🎼 Ensemble · 🧩 Decompose · ⛓️ Pipeline · 🗡️ LayerThink · 🧠 Memory · 🌳 ToK · ❓ Decision · 🛡️ KOS');
       break;
     case '/switch':
       if (parts[1]) switchAgent(parts[1].toLowerCase());

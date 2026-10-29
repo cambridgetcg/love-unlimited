@@ -1,8 +1,9 @@
 // mind-tools.mjs — the tools the agent calls to bring other minds into a task.
 //
-// docs/YOUI-MINDS-DESIGN.md §3.3 (slice M2): review, ensemble, decompose and
-// pipeline. The agent being spoken to decides when to call them; nothing here
-// bypasses it. The module is pure: the server injects
+// docs/YOUI-MINDS-DESIGN.md §3.3: review, ensemble, decompose and pipeline
+// (slice M2), and layerthink (slice M3). The agent being spoken to decides
+// when to call them; nothing here bypasses it. The module is pure: the server
+// injects
 //
 //   callMind({ mind, system, prompt, signal })
 //     -> { ok, text, usage: { input_tokens, output_tokens }, error }
@@ -10,8 +11,10 @@
 // with a per-message budget, and passes the minds the registry offers this
 // session (minds.mjs). The boundaries, as §3.3 and §4 set them:
 //
-// - a mind receives only the text in the tool input, under a short neutral
-//   system prompt naming its role; never the conversation or any tools;
+// - a mind receives only the text in the tool input (and, in a pipeline or
+//   layerthink, what earlier stages or layers of the same call wrote), under
+//   a short neutral system prompt naming its role; never the conversation or
+//   any tools;
 // - at most 3 minds per tool call, and a per-message ceiling on mind calls;
 //   a call that would pass the ceiling is refused before anything is sent;
 // - a named mind must be offered to this session, or the tool refuses and
@@ -21,9 +24,14 @@
 //   never replaced;
 // - an answer informs the agent; it authorises nothing.
 
-export const MIND_TOOL_NAMES = Object.freeze(["review", "ensemble", "decompose", "pipeline"]);
+export const MIND_TOOL_NAMES = Object.freeze(["review", "ensemble", "decompose", "pipeline", "layerthink"]);
 export const MAX_MINDS_PER_CALL = 3;
 export const MAX_PIPELINE_STAGES = 4;
+export const LAYERTHINK_DEPTH = Object.freeze({ min: 2, max: 6, default: 4 });
+// One layer's text, as passed to later layers and shown in the result. Six
+// full layers (45,000 characters) and their labels stay inside the server's
+// 50,000-character tool result, so the request for a verdict is never cut.
+export const MAX_LAYER_CHARS = 7_500;
 // A first review and one of the revised draft (§3.3: at most 1 revision pass).
 export const MAX_REVIEWS_PER_MESSAGE = 2;
 export const DEFAULT_MIND_CALLS_PER_MESSAGE = 6;
@@ -42,6 +50,14 @@ export const MIND_SYSTEM_PROMPTS = Object.freeze({
   worker: "You are a worker on one part of a larger task. Complete the sub-task you are given and return only the result.",
   stage: name => `You are the "${name}" stage of a pipeline. Follow the instruction you are given; when the previous `
     + "stage's output is included, build on it. Return only this stage's output.",
+  attacker: "You are an attacking layer in an adversarial analysis. You are given a claim and the layers written before "
+    + "yours, and nothing else. Find the strongest weakness in the claim as it now stands, after any repairs earlier "
+    + "layers made: a concrete counter-example, a hidden assumption, or a step that does not follow. Be specific. "
+    + "Do not rebut your own attack, defend the claim, or give an overall verdict; the next layer answers you.",
+  defender: "You are a defending layer in an adversarial analysis. You are given a claim and the layers written before "
+    + "yours, and nothing else. Answer the last attack directly: concede what holds, repair the claim where it needs "
+    + "repair and state the repaired claim, or show why the attack fails. Be specific. Do not open a new attack or "
+    + "give an overall verdict.",
 });
 
 /** YOUI_MIND_CALLS_PER_MESSAGE, bounded 1–20; anything unreadable is the default, 6. */
@@ -472,16 +488,159 @@ async function pipeline(input, context) {
   ], reports);
 }
 
+// ── layerthink ──────────────────────────────────────────────────────
+
+const LAYER_ROLES = { odd: "ATTACK", even: "DEFEND" };
+const layerRole = number => (number % 2 === 1 ? LAYER_ROLES.odd : LAYER_ROLES.even);
+
+// The text of one layer as later layers receive it and the result shows it:
+// clipped at MAX_LAYER_CHARS, with a marker saying so.
+function layerText(number, text) {
+  const { text: kept, clipped } = clip(String(text ?? "").trim(), MAX_LAYER_CHARS);
+  return clipped
+    ? `${kept}\n[layer ${number} clipped here at ${MAX_LAYER_CHARS} characters; ${clipped} more were neither passed to later layers nor shown]`
+    : kept;
+}
+
+function layerPrompt(claim, layers, number, depth) {
+  const role = layerRole(number);
+  const task = role === "ATTACK"
+    ? (number === 1
+      ? "Find the strongest weakness in the claim."
+      : `Attack the claim as it stands after layer ${number - 1}'s defence; do not repeat an attack already answered unless the answer fails.`)
+    : `Answer layer ${number - 1}'s attack directly.`;
+  return [
+    "Claim under test:",
+    claim,
+    "",
+    ...(layers.length
+      ? ["Layers so far:", "", ...layers.flatMap(layer => [`## Layer ${layer.number} — ${layer.role}`, layer.text, ""])]
+      : []),
+    `Write layer ${number} of ${depth}: ${role}. ${task}`,
+  ].join("\n");
+}
+
+function layerList(numbers) {
+  return numbers.length === 1 ? `layer ${numbers[0]}` : `layers ${numbers.join(", ")}`;
+}
+
+async function layerthink(input, context) {
+  const { budget, self } = context;
+  if (!isText(input?.claim)) {
+    return refusal("layerthink: claim is required, as text: the position or plan to test, written in full, "
+      + "since the minds see nothing else of this conversation. Nothing was sent.");
+  }
+  const depth = input.depth === undefined || input.depth === null ? LAYERTHINK_DEPTH.default : Number(input.depth);
+  if (!Number.isInteger(depth) || depth < LAYERTHINK_DEPTH.min || depth > LAYERTHINK_DEPTH.max) {
+    return refusal(`layerthink: depth must be a whole number from ${LAYERTHINK_DEPTH.min} to ${LAYERTHINK_DEPTH.max} `
+      + `(default ${LAYERTHINK_DEPTH.default}). Nothing was sent.`);
+  }
+  let named = [];
+  if (input.minds !== undefined && input.minds !== null) {
+    if (!Array.isArray(input.minds) || input.minds.some(name => optionalMind(name) === undefined || optionalMind(name) === null)) {
+      return refusal("layerthink: minds must be a list of 1 to 3 mind ids (provider:model). Nothing was sent.");
+    }
+    named = input.minds.map(name => name.trim());
+  }
+  if (named.length > MAX_MINDS_PER_CALL) {
+    return refusal(`layerthink: ${named.length} minds are named; at most ${MAX_MINDS_PER_CALL} take turns in one call. Nothing was sent.`);
+  }
+  // Left out, two minds take turns: different ones when two are offered.
+  const picked = assignMinds("layerthink", named.length ? named : [null, null], context.offered, self);
+  if (picked.error) return refusal(picked.error);
+  const turns = [];
+  for (const mind of picked.minds) {
+    if (!turns.some(taken => mindId(taken) === mindId(mind))) turns.push(mind);
+  }
+  if (turns.length < picked.minds.length && named.length) {
+    return refusal("layerthink: the same mind is named twice; name each mind once and the layers alternate between them. Nothing was sent.");
+  }
+
+  // Every layer is reserved before the first is asked, so a run cannot overshoot the ceiling.
+  const left = budget.limit - budget.used;
+  const denied = reserve("layerthink", budget, depth);
+  if (denied) {
+    const fits = left >= LAYERTHINK_DEPTH.min ? ` A depth of ${left} or less would fit what is left.` : "";
+    return refusal(denied + fits);
+  }
+
+  const reports = [];
+  const layers = [];
+  const lines = [];
+  let failedAt = null;
+  for (let number = 1; number <= depth; number++) {
+    const role = layerRole(number);
+    if (failedAt !== null) {
+      lines.push(`## Layer ${number} of ${depth} — ${role} — not run: layer ${failedAt} failed, and no other mind was put in its place`, "");
+      continue;
+    }
+    const mind = turns[(number - 1) % turns.length];
+    const report = await callOne({
+      mind,
+      role: `layer ${number} ${role}`,
+      system: role === "ATTACK" ? MIND_SYSTEM_PROMPTS.attacker : MIND_SYSTEM_PROMPTS.defender,
+      prompt: layerPrompt(input.claim, layers, number, depth),
+    }, context);
+    // An empty layer gives the next one nothing to answer, so it counts as a failure.
+    if (report.ok && !report.text.trim()) Object.assign(report, { ok: false, error: "the mind returned no text" });
+    reports.push(report);
+    if (report.ok) {
+      const text = layerText(number, report.text);
+      layers.push({ number, role, text });
+      lines.push(`## Layer ${number} of ${depth} — ${role} — ${mindLabel(report)}`, text, "");
+    } else {
+      lines.push(`## Layer ${number} of ${depth} — ${role} — ${mindLabel(report)}`, "(no text: this layer failed, and the run stopped here)", "");
+      failedAt = number;
+    }
+  }
+  // Layers that never ran give their reserved calls back.
+  const unused = depth - reports.length;
+  budget.used -= unused;
+
+  const roster = turns.map((mind, index) => {
+    const numbers = Array.from({ length: depth }, (_, i) => i + 1).filter(n => (n - 1) % turns.length === index);
+    return `${mindId(mind)} (${mind.privacy}${isSelf(mind, self) ? ", your own model" : ""}) takes ${layerList(numbers)}`;
+  });
+  const answered = layers.length;
+  const outcome = failedAt === null
+    ? `All ${depth} layers ran.`
+    : `Stopped at layer ${failedAt} of ${depth}: ${reports.at(-1).error}.`
+      + (unused ? ` ${unused === 1 ? `Layer ${depth} did` : `Layers ${failedAt + 1}–${depth} did`} not run; `
+        + `${unused === 1 ? "its reserved mind call" : `their ${unused} reserved mind calls`} went back to this message's budget.` : "");
+  const open = answered % 2 === 1
+    ? ` Layer ${answered}'s attack was never answered: count it as open unless you answer it yourself.`
+    : "";
+  const verdict = answered === 0
+    ? "Verdict: no layer answered, so there is nothing to judge. Say the run failed, and test the claim yourself."
+    : "Verdict: no mind wrote one, and nothing in the layers above is a verdict. Give it yourself in your reply: "
+      + "what survived the attacks, what changed in the claim, and what is still open.";
+  const claimShown = clip(input.claim.trim(), 200);
+  return done([
+    `LAYERTHINK — depth ${depth}: odd layers ATTACK, even layers DEFEND, the minds taking turns layer by layer. `
+      + `Each layer received the claim and the text of every layer before it (each layer's text clipped at ${MAX_LAYER_CHARS} `
+      + "characters), and nothing else of this conversation.",
+    `Claim: ${claimShown.text}${claimShown.clipped ? "…" : ""}`,
+    `Minds in turn: ${roster.join("; ")}.`,
+    ...(turns.length === 1 ? ["Only one mind took part, so it attacked and defended in turn."] : []),
+    budgetLine(budget),
+    "",
+    ...lines,
+    outcome + open,
+    verdict,
+    "These layers inform you; they authorise nothing.",
+  ], reports);
+}
+
 // ── Entry ───────────────────────────────────────────────────────────
 
-const TOOLS = { review, ensemble, decompose, pipeline };
+const TOOLS = { review, ensemble, decompose, pipeline, layerthink };
 
 /**
  * Runs one mind tool. Returns `{ refused, text, minds }`: `text` is the tool
  * result for the agent; `minds` lists each mind called (provider, model,
  * privacy label, role, ok, error, usage), without its answer.
  *
- * @param {string} name     review | ensemble | decompose | pipeline
+ * @param {string} name     review | ensemble | decompose | pipeline | layerthink
  * @param {object} input    the agent's tool input
  * @param {object} context
  * @param {object[]} context.offered  the registry's offered minds for this session

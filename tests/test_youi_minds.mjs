@@ -1,6 +1,7 @@
 // YOUI minds (docs/YOUI-MINDS-DESIGN.md): slice M1 (§3.1–3.2), one answering
 // path and a registry that tells the truth about which minds answer; and the
-// server side of slice M2 (§3.3), the agent calling other minds through tools.
+// server side of slices M2 and M3 (§3.3), the agent calling other minds
+// through tools, layerthink among them.
 // tests/test_youi_mind_tools.mjs covers the tools' own rules.
 //
 // Every mind here is a fake on 127.0.0.1. Claude stays unchecked (test mode
@@ -446,7 +447,7 @@ test("orchestrate mode answers through the agent loop, never the Python orchestr
 
 // ── Slice M2: the agent calls other minds ───────────────────────────
 
-const MIND_TOOLS = ["review", "ensemble", "decompose", "pipeline"];
+const MIND_TOOLS = ["review", "ensemble", "decompose", "pipeline", "layerthink"];
 
 // GET /v1/models lists `models`; each POST /v1/chat/completions streams the
 // next scripted reply, { text } or { tool: { id, name, input } }, as the
@@ -472,13 +473,16 @@ function scriptedVllm(t, models, script) {
   });
 }
 
-// A local Ollama serving `models`: GET /api/tags lists them; POST /api/chat answers `reply`.
+// A local Ollama serving `models`: GET /api/tags lists them; POST /api/chat
+// answers `reply`, or `reply(body, n)` for the n-th chat request.
 function ollamaMind(t, models, reply) {
+  let chats = 0;
   return listen(t, (req, res, body) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     if (req.method === "POST" && req.url === "/api/chat") {
+      chats += 1;
       return res.end(JSON.stringify({
-        model: body?.model, message: { role: "assistant", content: reply },
+        model: body?.model, message: { role: "assistant", content: typeof reply === "function" ? reply(body, chats) : reply },
         done: true, done_reason: "stop", prompt_eval_count: 7, eval_count: 9,
       }));
     }
@@ -567,6 +571,79 @@ test("the agent calls an ensemble: each mind gets only the tool's text, and the 
     { input: 7, output: 9 },
     "the mind's tokens reach the usage dashboard by provider",
   );
+});
+
+test("the agent calls layerthink: local minds take turns attacking and defending, and the layers return to the agent", async t => {
+  const claim = "Moving the shop's images to a CDN halves page load time.";
+  const vllm = await scriptedVllm(t, [VLLM_MODEL], [
+    { tool: { id: "call-layerthink", name: "layerthink", input: { claim, depth: 3, minds: ["ollama:mind-a:1b", "ollama:mind-b:1b"] } } },
+    { text: "What survived: a CDN helps image-heavy pages; still open: the halving." },
+  ]);
+  const ollama = await ollamaMind(t, ["mind-a:1b", "mind-b:1b"], (body, n) => {
+    const role = /attacking layer/.test(body.messages[0].content) ? "ATTACK" : "DEFEND";
+    return `${role}-${n} from ${body.model}`;
+  });
+  // A python3 that records its arguments: layerthink must not start tools/cognitive/layerthink.py.
+  const bin = mkdtempSync(join(tmpdir(), "youi-minds-python-"));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const pythonLog = join(bin, "python3.log");
+  writeFileSync(join(bin, "python3"), `#!/bin/sh\necho "$*" >> "${pythonLog}"\nexit 1\n`);
+  chmodSync(join(bin, "python3"), 0o755);
+  const port = await startServer(t, {
+    KINGDOM_AGENT: "alpha",
+    OLLAMA_LOCAL_BASE_URL: ollama.baseUrl,
+    OLLAMA_VLLM_BASE_URL: vllm.baseUrl,
+    PATH: `${bin}:${process.env.PATH}`,
+    // No tools:kingdom:unsafe: layerthink is gated with the mind tools by orchestrator:run.
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use,orchestrator:run",
+  });
+  const { origin, browser, credential } = await openSession(port, "layerthink", { model: VLLM_MODEL });
+  const unsafe = sessionHeaders(browser, credential, { origin, unsafe: true });
+  const agentRequests = () => vllm.requests.filter(r => r.method === "POST" && r.path === "/v1/chat/completions");
+  const mindRequests = () => ollama.requests.filter(r => r.method === "POST" && r.path === "/api/chat");
+
+  const events = await chatTurn(origin, unsafe, "Test whether a CDN halves our load time. The password is PLUM.");
+  assert.equal(agentRequests().length, 2);
+  const offered = agentRequests()[0].body.tools.find(tool => tool.function.name === "layerthink");
+  assert.deepEqual(Object.keys(offered.function.parameters.properties).sort(), ["claim", "depth", "minds"]);
+  assert.doesNotMatch(JSON.stringify(offered), /session_id|action/, "the Python session actions are gone");
+
+  // Three layers, one mind call each, the two minds taking turns.
+  const sent = mindRequests().map(r => r.body);
+  assert.deepEqual(sent.map(body => body.model), ["mind-a:1b", "mind-b:1b", "mind-a:1b"]);
+  assert.deepEqual(sent.map(body => /attacking layer/.test(body.messages[0].content)), [true, false, true]);
+  for (const body of sent) {
+    assert.deepEqual(body.messages.map(m => m.role), ["system", "user"]);
+    assert.ok(body.messages[1].content.includes(claim));
+    assert.equal(body.tools, undefined);
+    assert.doesNotMatch(JSON.stringify(body), /PLUM|Test whether/, "the conversation never reaches a mind");
+  }
+  assert.match(sent[1].messages[1].content, /## Layer 1 — ATTACK\nATTACK-1 from mind-a:1b/);
+  assert.match(sent[2].messages[1].content, /## Layer 1 — ATTACK\nATTACK-1 from mind-a:1b\n\n## Layer 2 — DEFEND\nDEFEND-2 from mind-b:1b/);
+
+  // The layers went back to the agent, labelled, with the verdict left to it.
+  const toolMessage = agentRequests()[1].body.messages.find(m => m.role === "tool");
+  assert.equal(toolMessage.tool_call_id, "call-layerthink");
+  assert.match(toolMessage.content, /## Layer 1 of 3 — ATTACK — ollama · mind-a:1b · LOCAL_MODEL:ollama · answered · 7 in \/ 9 out tokens\nATTACK-1 from mind-a:1b/);
+  assert.match(toolMessage.content, /## Layer 2 of 3 — DEFEND — ollama · mind-b:1b · LOCAL_MODEL:ollama · answered/);
+  assert.match(toolMessage.content, /## Layer 3 of 3 — ATTACK — ollama · mind-a:1b/);
+  assert.match(toolMessage.content, /Layer 3's attack was never answered/);
+  assert.match(toolMessage.content, /Verdict: no mind wrote one[^\n]*Give it yourself/);
+  assert.match(toolMessage.content, /3 of 6 used, 3 left/);
+
+  const used = events.filter(e => e.event === "minds_used");
+  assert.equal(used.length, 1);
+  assert.equal(used[0].data.id, "call-layerthink");
+  assert.equal(used[0].data.tool, "layerthink");
+  assert.deepEqual(used[0].data.minds.map(m => [m.provider, m.model, m.privacy, m.role, m.ok]), [
+    ["ollama", "mind-a:1b", "LOCAL_MODEL:ollama", "layer 1 ATTACK", true],
+    ["ollama", "mind-b:1b", "LOCAL_MODEL:ollama", "layer 2 DEFEND", true],
+    ["ollama", "mind-a:1b", "LOCAL_MODEL:ollama", "layer 3 ATTACK", true],
+  ]);
+  assert.match(JSON.stringify(events.filter(e => e.event === "text" || e.event === "text_done")), /What survived/);
+
+  const pythonCalls = existsSync(pythonLog) ? readFileSync(pythonLog, "utf-8") : "";
+  assert.doesNotMatch(pythonCalls, /layerthink/, "tools/cognitive/layerthink.py was not started");
 });
 
 test("without orchestrator:run the mind tools are not offered, and a call to one sends nothing", async t => {

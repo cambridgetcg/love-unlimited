@@ -1226,12 +1226,12 @@ button, select, textarea, input { font: inherit; }
     <div class="sidebar-section" id="orchestrator-section">
       <h3>Mode</h3>
       <div class="mode-toggle">
-        <button id="mode-orchestrate" class="mode-btn active" onclick="setChatMode('orchestrate')">
+        <button id="mode-orchestrate" class="mode-btn" onclick="setChatMode('orchestrate')">
           <span class="mode-icon">🧠</span>
           <span class="mode-label">Orchestrate</span>
           <span class="mode-desc">Auto-route to best model(s)</span>
         </button>
-        <button id="mode-direct" class="mode-btn" onclick="setChatMode('direct')">
+        <button id="mode-direct" class="mode-btn active" onclick="setChatMode('direct')">
           <span class="mode-icon">💬</span>
           <span class="mode-label">Direct</span>
           <span class="mode-desc">Single model conversation</span>
@@ -1813,7 +1813,7 @@ async function boot() {
 
 // ─── ORCHESTRATOR MODE ────────────────────────────────────
 
-let chatMode = 'orchestrate'; // 'orchestrate' or 'direct'
+let chatMode = 'direct'; // 'orchestrate' or 'direct'; the server's state decides at boot
 
 function safeClassToken(value, fallback = 'unknown') {
   const token = String(value ?? '').trim().toLowerCase();

@@ -570,7 +570,8 @@ test("YOUI Web fences in-flight mutations and raw Ollama tool calls", async t =>
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "raw fence", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "raw fence", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -663,7 +664,8 @@ test("YOUI Web aborts a disconnected provider request and releases the exact ses
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "abort unlock", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "abort unlock", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -775,6 +777,8 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
   const fakeVllm = await startFakeVllm(t);
   const { port } = await startServer(t, {
     KINGDOM_AGENT: "alpha",
+    // The process-owned loop runs on the server's default model; fake it.
+    YOUI_MODEL: "Qwen/Qwen2.5-72B-Instruct-AWQ",
     OLLAMA_VLLM_BASE_URL: fakeVllm.baseUrl,
     YOUI_CAPABILITIES: "sessions:manage,autonomous:control",
   });
@@ -790,7 +794,8 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "autonomous control", agent: "alpha" },
+    // The fake vLLM answers only for the vLLM model, so name it.
+    body: { label: "autonomous control", agent: "alpha", model: "Qwen/Qwen2.5-72B-Instruct-AWQ" },
   });
   assert.equal(created.status, 201);
   const credential = {
@@ -854,4 +859,30 @@ test("YOUI Web serializes autonomous stop and restart into one process-owned loo
   });
   assert.equal(secondStop.status, 200);
   await within(secondCycle.closed, 1_000, "second stopped autonomous provider request");
+});
+
+test("YOUI Web answers in direct mode by default, with Alpha on a Claude model", async t => {
+  async function status(extraEnv) {
+    const { port } = await startServer(t, { KINGDOM_AGENT: "alpha", ...extraEnv });
+    const origin = `http://127.0.0.1:${port}`;
+    const browser = cookiesFrom(await request(port));
+    const page = pageId("defaults");
+    const created = await request(port, {
+      path: "/api/sessions",
+      method: "POST",
+      headers: { Cookie: browser.header, Origin: origin, "X-YOUI-CSRF": browser.csrf, "X-YOUI-Page": page },
+      body: { label: "defaults", agent: "alpha" },
+    });
+    assert.equal(created.status, 201);
+    const credential = { id: created.json.session.id, token: created.json.sessionToken, page };
+    const read = await request(port, { path: "/api/status", headers: sessionHeaders(browser, credential) });
+    assert.equal(read.status, 200);
+    return read.json;
+  }
+  const plain = await status({});
+  assert.equal(plain.chatMode, "direct");
+  assert.equal(plain.model, "claude-opus-4-7");
+  // YOUI_MODEL pins a listed model; an unlisted one is ignored.
+  assert.equal((await status({ YOUI_MODEL: "claude-sonnet-4-6" })).model, "claude-sonnet-4-6");
+  assert.equal((await status({ YOUI_MODEL: "not-a-model" })).model, "claude-opus-4-7");
 });

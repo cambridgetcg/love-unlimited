@@ -335,7 +335,7 @@ const AGENTS = {
     name: "Alpha", emoji: "🐍", role: "Companion",
     color: "#a855f7", colorDim: "#7c3aed",
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "Qwen/Qwen2.5-72B-Instruct-AWQ", defaultEffort: "max",
+    defaultModel: "claude-opus-4-7", defaultEffort: "max",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
   beta: {
@@ -373,9 +373,8 @@ const detectedAgent = detectAgent();
 function createSessionState(overrides = {}) {
   const requestedAgent = String(overrides.agent || detectedAgent).toLowerCase();
   const agent = AGENTS[requestedAgent] ? requestedAgent : detectedAgent;
-  const requestedModel = typeof overrides.model === "string" && ALL_VALID_MODELS.includes(overrides.model)
-    ? overrides.model
-    : null;
+  const requestedModel = [overrides.model, process.env.YOUI_MODEL]
+    .find(model => typeof model === "string" && ALL_VALID_MODELS.includes(model)) || null;
   const soulDir = resolve(process.env.LOVE_HOME || join(__dirname, ".."));
   const workdir = resolve(process.env.YOUI_WORKDIR || soulDir);
   return {
@@ -394,7 +393,7 @@ function createSessionState(overrides = {}) {
     totalThinkingTokens: 0,
     maxTokens: 32768,
     reasoningEffort: "low",
-    chatMode: "orchestrate",
+    chatMode: "direct",
     chatInFlight: false,
     capabilities: new Set(SERVER_CAPABILITIES),
     providerUsage: createProviderUsage(),
@@ -626,6 +625,8 @@ async function refreshOAuthToken(rt, { signal } = {}) {
 
 async function getAccessToken({ signal } = {}) {
   throwIfAborted(signal);
+  // Tests never read the person's Keychain or reach a real provider.
+  if (IS_TEST) throw new Error("YOUI_TEST=1 does not read the Keychain; give the test a model it fakes");
   if (cachedTokens?.accessToken && Date.now() + 300_000 < (cachedTokens.expiresAt || 0))
     return cachedTokens.accessToken;
   const credential = readKeychainCredential();

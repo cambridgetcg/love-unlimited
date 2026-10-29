@@ -37,6 +37,7 @@ import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bri
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
+import { CLAUDE_MODELS, claudeRequestShape } from "./claude-models.mjs";
 
 // YOUI's chat agents sit at this device's table as one Collab session, started on first use.
 let decisionSeat = null;
@@ -219,7 +220,6 @@ const OLLAMA_MODELS = [
   "cogito-2.1:671b",
   "gemini-3-flash-preview",
 ];
-const CLAUDE_MODELS = ["claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
 const OLLAMA_LOCAL_MODELS = []; // populated at boot from localhost:11434
 let ALL_VALID_MODELS = [...CLAUDE_MODELS, ...OLLAMA_MODELS];
 function isOllamaModel(model) { return !model.startsWith("claude-"); }
@@ -1358,15 +1358,6 @@ function getDeviceId() {
   return id;
 }
 
-function modelCaps(model) {
-  const m = model.toLowerCase();
-  if (m.includes("opus-4-7"))   return { adaptive: true,  effort: true,  maxEffort: true,  context1m: true  };
-  if (m.includes("opus-4-6"))   return { adaptive: true,  effort: true,  maxEffort: true,  context1m: true  };
-  if (m.includes("sonnet-4-6")) return { adaptive: true,  effort: true,  maxEffort: false, context1m: true  };
-  if (m.includes("sonnet-4"))   return { adaptive: false, effort: false, maxEffort: false, context1m: true  };
-  if (m.includes("haiku"))      return { adaptive: false, effort: false, maxEffort: false, context1m: false };
-  return { adaptive: false, effort: false, maxEffort: false, context1m: false };
-}
 
 // ── Prefix-cache-optimized system prompt ──────────────────────────
 // vLLM caches the KV state of contiguous identical token prefixes.
@@ -1495,13 +1486,11 @@ function buildSystemPrompt(taskText) {
 }
 
 async function callClaude(messages, systemPrompt, opts = {}) {
-  const caps = modelCaps(state.model);
   const token = await getAccessToken({ signal: opts.signal });
-
-  const betas = ["oauth-2025-04-20", "claude-code-20250219"];
-  if (caps.adaptive || state.thinking === "enabled") betas.push("interleaved-thinking-2025-05-14");
-  if (caps.context1m) betas.push("context-1m-2025-08-07");
-  if (caps.effort) betas.push("effort-2025-11-24");
+  const shape = claudeRequestShape({
+    model: state.model, thinking: state.thinking, effort: state.effort, maxTokens: state.maxTokens,
+  });
+  const betas = shape.betas;
 
   const body = { model: state.model, max_tokens: state.maxTokens, messages,
     metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: state.sessionId }) } };
@@ -1512,15 +1501,8 @@ async function callClaude(messages, systemPrompt, opts = {}) {
     body.tools = availableTools();
   }
 
-  if (state.thinking === "adaptive" && caps.adaptive) body.thinking = { type: "adaptive" };
-  else if (state.thinking !== "disabled") {
-    body.thinking = { type: "enabled", budget_tokens: Math.min(state.maxTokens - 1, 16384) };
-    if (!betas.includes("interleaved-thinking-2025-05-14")) betas.push("interleaved-thinking-2025-05-14");
-  }
-  if (caps.effort && state.effort !== "none") {
-    const eff = (state.effort === "max" && !caps.maxEffort) ? "high" : state.effort;
-    body.output_config = { effort: eff };
-  }
+  if (shape.thinking) body.thinking = shape.thinking;
+  if (shape.output_config) body.output_config = shape.output_config;
 
   const headers = {
     "Content-Type": "application/json", "Authorization": `Bearer ${token}`,
@@ -3256,6 +3238,15 @@ async function handleChatTurn(req, res, signal) {
       }
     }
 
+    // Claude 5-series models can decline a request (HTTP 200, stop_reason
+    // "refusal"), often with no text at all; say so instead of going quiet.
+    if (response.stop_reason === "refusal") {
+      const category = response.stop_details?.category;
+      sendSSE(res, "error", {
+        message: `The model declined this request${category ? ` (${category})` : ""}. Rephrase it, or choose another model.`,
+      });
+    }
+
     if (rawMode && toolUseBlocks.length > 0) {
       sendSSE(res, "error", { message: "Raw mode rejected a provider tool call" });
       throw new Error("Raw mode provider returned a tool call");
@@ -3288,7 +3279,9 @@ async function handleChatTurn(req, res, signal) {
       youspeak: state.ys.statusLine(),
     });
 
-    if (!rawMode) state.messages.push({ role: "assistant", content: response.content });
+    // An empty assistant turn (a refusal can have no content) would make the
+    // next request invalid, so it stays out of the history.
+    if (!rawMode && response.content?.length) state.messages.push({ role: "assistant", content: response.content });
 
     // No tools → done
     if (toolUseBlocks.length === 0) break;

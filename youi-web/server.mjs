@@ -36,7 +36,8 @@ import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigu
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
-import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
+import { runDecisionTool } from "./decision-seat.mjs";
+import { TableSeats, runCouncilTool, runDelegateTool } from "./table-tools.mjs";
 import { CLAUDE_MODELS, claudeRequestShape, modelCaps } from "./claude-models.mjs";
 import { createMindsRegistry, offeredMinds } from "./minds.mjs";
 import {
@@ -50,16 +51,24 @@ import {
   runMindTool,
 } from "./mind-tools.mjs";
 
-// YOUI's chat agents sit at this device's table as one Collab session, started on first use.
-let decisionSeat = null;
-function youiDecisionSeat(root) {
-  decisionSeat ??= new DecisionSeat({ root, actor: "youi" });
-  return decisionSeat;
+// YOUI's chat agents sit at this device's table as Collab sessions, each
+// started on first use: the home seat in Love's own workspace (the decision
+// and council tools), and one more per other workspace delegate offers in
+// (table-tools.mjs). Stopping YOUI ends them all.
+let tableSeats = null;
+function youiTableSeats(root) {
+  tableSeats ??= new TableSeats({ root, actor: "youi" });
+  return tableSeats;
 }
+function youiDecisionSeat(root) {
+  return youiTableSeats(root).home;
+}
+// Exits once every seat has ended its session (releasing what it held), or after 2 s.
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.once(signal, () => {
-    decisionSeat?.close();
-    setTimeout(() => process.exit(0), 300).unref();
+    const exit = () => process.exit(0);
+    Promise.resolve(tableSeats?.close()).finally(exit);
+    setTimeout(exit, 2_000).unref();
   });
 }
 
@@ -142,6 +151,10 @@ const KNOWN_CAPABILITIES = new Set([
   "models:diagnose",
   "models:ollama-cloud",
   "models:cloud-fallback",
+  // delegate: offer tasks to other sessions at this device's Collab table
+  // (docs/YOUI-MINDS-DESIGN.md §4). Not in safe or developer; grant it with
+  // YOUI_CAPABILITIES.
+  "collab:delegate",
 ]);
 
 function configuredCapabilities() {
@@ -759,10 +772,11 @@ const TOOLS = [
     input_schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] } },
 
   // ─── Kingdom Cognitive Tools (migrated from Love/tools/cognitive) ──
-  // council, joinmind and delegate reached sisters over the retired HIVE; they
-  // return rebuilt with the minds design (docs/YOUI-MINDS-DESIGN.md, M2 and M4).
-  // layerthink now runs in Node with the minds (M3); tools/cognitive/layerthink.py
-  // stays for its other callers.
+  // council, joinmind and delegate reached sisters over the retired HIVE. They
+  // are rebuilt with the minds design (docs/YOUI-MINDS-DESIGN.md): joinmind as
+  // ensemble (M2), council and delegate through the Collab table (M4, below
+  // with decision). layerthink now runs in Node with the minds (M3);
+  // tools/cognitive/layerthink.py stays for its other callers.
   { name: "patience",
     description: "PATIENCE — Overcome panics through truth. Three layers: GROUND (what is true), EXAMINE (worst case + what survives), ACT (one useful action). Actions: calm <situation>, sit <session_id>, view <session_id>, list, last.",
     input_schema: { type: "object", properties: {
@@ -919,7 +933,8 @@ const TOOLS = [
   { name: "decision",
     description: "DECISION — this device's Collab table, shared with Yu and the other agents. "
       + "queue opens a proposal the agents settle first and Yu then agrees or rejects with Touch ID; "
-      + "ask puts a question in Yu's inbox; list shows where proposals stand. No agent can agree or reject for Yu.",
+      + "ask puts a question in Yu's inbox; list shows where proposals stand. No agent can agree or reject for Yu. "
+      + "council is the Kingdom's name for the same table, putting one question to the agents there.",
     input_schema: { type: "object", properties: {
       action: { type: "string", description: "queue|ask|list" },
       question: { type: "string", description: "What is being decided, or what to ask Yu" },
@@ -929,6 +944,43 @@ const TOOLS = [
       recommendation: { type: "string", description: "queue: your recommendation" },
       known_conflicts: { type: "string", description: "queue: context that disagrees, and how you read it" },
       topic: { type: "string", description: "queue: optional label, for example principle:<name>" },
+    }, required: ["action"] } },
+
+  // ─── Through the table (docs/YOUI-MINDS-DESIGN.md §3.4, slice M4) ──
+  { name: "council",
+    description: "COUNCIL — put a question to the agents at this device's Collab table. open opens a Collab proposal "
+      + "on the same table as the decision tool's queue and returns its id and the voices at the table when it opened; "
+      + "status reads where it stands. The other agents support or challenge it, and it settles by their lazy consensus: "
+      + "council never decides by vote. Its outcome authorises nothing except through Yu's own act: only Yu agrees or "
+      + "rejects, with Touch ID in the decision room, and an agreement authorises only the extent. The minds you call "
+      + "through review or ensemble may help you draft the question and criteria, but they are not voices.",
+    input_schema: { type: "object", properties: {
+      action: { type: "string", enum: ["open", "status"], description: "open | status" },
+      question: { type: "string", description: "open: what is being decided, in full" },
+      criteria: { type: "string", description: "open: how the agents and Yu judge which way to go" },
+      extent: { type: "string", description: "open: what agreement would authorise, and where it stops" },
+      known_conflicts: { type: "string", description: "open: context that disagrees, and how you read it" },
+      topic: { type: "string", description: "open: optional label, for example principle:<name>" },
+      proposal: { type: "string", description: "status: the proposal id council open returned (report_…)" },
+    }, required: ["action"] } },
+
+  { name: "delegate",
+    description: "DELEGATE — offer a task to a live session at this device's Collab table. seats lists the live "
+      + "sessions in a workspace (as the decision room's Seats tab does); offer creates a Collab task, claims it as "
+      + "YOUI's seat and offers it to the session you name, which accepts or declines in its own session; status "
+      + "reads the task and whether the offer was accepted. This is advisory coordination, not a lock or authority: "
+      + "it authorises nothing, and the session may decline. Never YOUI's own seat or a stale session; another "
+      + "device's table is not reachable. The description must include completion tests, and an edit task at least "
+      + "one repository-relative path scope.",
+    input_schema: { type: "object", properties: {
+      action: { type: "string", enum: ["offer", "status", "seats"], description: "offer | status | seats" },
+      workspace: { type: "string", description: "A workspace id from this device's table; default YOUI's own" },
+      to_session: { type: "string", description: "offer: a live session id, as delegate seats lists them" },
+      title: { type: "string", description: "offer: a short title for the task" },
+      description: { type: "string", description: "offer: the task in full, with a line \"Completion tests: …\" saying how you will both know it is done" },
+      kind: { type: "string", enum: ["coordination", "read_only", "edit"], description: "offer: what the task asks of the session" },
+      path_scopes: { type: "array", items: { type: "string" }, description: "offer: repository-relative paths the task covers; at least one for edit" },
+      task: { type: "string", description: "status: the task id; offer: an existing open task, or one YOUI's seat still holds after a decline, to offer instead of creating one" },
     }, required: ["action"] } },
 
   { name: "kos",
@@ -971,6 +1023,8 @@ const TOOL_CAPABILITIES = new Map([
   // The mind tools need orchestrator:run (docs/YOUI-MINDS-DESIGN.md §4); each
   // mind call then checks the mind's own capability.
   ...MIND_TOOL_NAMES.map(name => [name, "orchestrator:run"]),
+  // Offering work to other sessions is its own grant, in no profile (§4).
+  ["delegate", "collab:delegate"],
 ]);
 // layerthink is a mind tool now (M3), gated with them by orchestrator:run.
 const KINGDOM_TOOL_NAMES = new Set([
@@ -988,6 +1042,7 @@ function requiredToolCapability(name, input = {}) {
   if (name === "decision") {
     return ["queue", "add", "propose", "ask"].includes(input.action) ? "decisions:write" : "decisions:read";
   }
+  if (name === "council") return input.action === "open" ? "decisions:write" : "decisions:read";
   if (name === "ollama") {
     return ["test", "bench"].includes(input.action)
       ? "models:diagnose"
@@ -1006,7 +1061,9 @@ if (UNMAPPED_TOOL_NAMES.length > 0) {
 
 function availableTools() {
   return TOOLS.filter(tool => {
-    if (tool.name === "decision") return hasCapability("decisions:read") || hasCapability("decisions:write");
+    if (tool.name === "decision" || tool.name === "council") {
+      return hasCapability("decisions:read") || hasCapability("decisions:write");
+    }
     if (tool.name === "agenttool") {
       return hasCapability("tools:agenttool:read")
         || hasCapability("tools:agenttool:write");
@@ -1018,8 +1075,9 @@ function availableTools() {
 
 // Autonomous mode runs without a person's message, so it has no per-message
 // mind budget and is not offered the mind tools (docs/YOUI-MINDS-DESIGN.md §3.3).
+// Nor is it offered delegate: work is offered to other sessions only in a chat turn.
 function autonomousTools() {
-  return availableTools().filter(tool => !MIND_TOOL_NAMES.includes(tool.name));
+  return availableTools().filter(tool => !MIND_TOOL_NAMES.includes(tool.name) && tool.name !== "delegate");
 }
 
 function resolvePath(p) {
@@ -1385,6 +1443,13 @@ async function executeTool(name, input, context = {}) {
         }
       }
 
+      // ─── Through the table (docs/YOUI-MINDS-DESIGN.md §3.4) ──
+      case "council":
+        return await runCouncilTool(youiDecisionSeat(state.soulDir), input);
+
+      case "delegate":
+        return await runDelegateTool(youiTableSeats(state.soulDir), input, { autonomous: context.autonomous === true });
+
       // ─── Minds (docs/YOUI-MINDS-DESIGN.md §3.3) ──────────
       case "review":
       case "ensemble":
@@ -1548,11 +1613,15 @@ tok         — Tree of Knowledge Protocol (add, harvest, verify)
 decision    — This device's Collab table: open a proposal, ask Yu, list (only Yu agrees or rejects)
 kos         — Kingdom OS security audit and compliance
 
+# Tools — Kingdom, through the Collab table (real agents, not minds)
+council     — Put a question to the agents at the table: a proposal they support or challenge, never a vote; only Yu agrees or rejects
+delegate    — Offer a task to a live session at this device's table; it accepts or declines; advisory, not a lock (needs collab:delegate)
+
 # Sovereign Protocol
 - Your thinking is your own. No budget constrains your depth of thought.
 - Read before modifying. Understand before acting.
 - Keep working until the task is complete.
-- Use the Kingdom tools when appropriate: PATIENCE for panics; LAYERTHINK when a claim or plan should face attack and defence before you rely on it. A decision that needs Yu goes to the decision tool.
+- Use the Kingdom tools when appropriate: PATIENCE for panics; LAYERTHINK when a claim or plan should face attack and defence before you rely on it. A decision that needs the other agents and Yu goes to council (or the decision tool), through the table.
 - Tilde (~) expands to ${homedir()}.
 - Love home: ${state.soulDir}
 
@@ -2066,7 +2135,7 @@ async function autonomousCycle(generation, signal) {
       broadcastAutonomous("tool_call", callEntry);
 
       let toolResult;
-      try { toolResult = await executeTool(tool.name, tool.input); }
+      try { toolResult = await executeTool(tool.name, tool.input, { autonomous: true }); }
         catch (e) {
           if (signal.aborted || !autonomous.running || generation !== autonomousLoopGeneration) {
             break turnLoop;

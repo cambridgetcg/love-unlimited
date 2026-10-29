@@ -4,9 +4,11 @@
 // as a credential-bound Collab session, through the installed Collab MCP
 // server over stdio. Their `decision` tool opens proposals, asks Yu
 // something (a report addressed to Yu's inbox), and reads where proposals
-// stand. Nothing here records a person's act: only Yu agrees or rejects, with
-// Touch ID on the desk's own page. This replaces the old Kingdom Decision
-// Queue (tools/decision.py, decisions/queue.json), whose history stays readable.
+// stand; `council` (table-tools.mjs) opens its proposals through the same
+// openProposal below. Nothing here records a person's act: only Yu agrees or
+// rejects, with Touch ID on the desk's own page. This replaces the old Kingdom
+// Decision Queue (tools/decision.py, decisions/queue.json), whose history
+// stays readable.
 
 import { spawn } from "child_process";
 import crypto from "crypto";
@@ -24,15 +26,18 @@ function mcpEntry(env) {
 
 /** One stdio MCP client to the Collab server, with one bound session. */
 export class DecisionSeat {
-  constructor({ env = process.env, root, actor = "youi" } = {}) {
+  constructor({ env = process.env, root, actor = "youi", role = "youi chat agents" } = {}) {
     this.env = env;
     this.root = root;
     this.actor = actor;
+    this.role = role;
     this.child = null;
     this.nextId = 1;
     this.pending = new Map();
     this.ready = null;
     this.workspaceId = null;
+    this.sessionId = null;
+    this.closing = null;
   }
 
   start() {
@@ -68,21 +73,27 @@ export class DecisionSeat {
           }
         }
       });
-      this.child.once("exit", () => {
-        for (const waiter of this.pending.values()) waiter({ error: { message: "The Collab server exited" } });
+      const child = this.child;
+      const gone = message => {
+        if (this.child !== child) return;
+        for (const waiter of this.pending.values()) waiter({ error: { message } });
         this.pending.clear();
         this.ready = null;
         this.child = null;
-      });
-      this.child.once("error", () => {});
+      };
+      child.once("exit", () => gone("The Collab server exited"));
+      // A runtime or bundle that cannot start fails the call now, not at its timeout.
+      child.once("error", error => gone(`The Collab server could not start (${error.code || error.message})`));
+      child.stdin.on("error", () => {});
       await this.request("initialize", {
         protocolVersion: "2025-06-18",
         capabilities: {},
         clientInfo: { name: "youi-decision-seat", version: "1" },
       });
       this.notify("notifications/initialized");
-      const started = await this.tool("collab_session_start", { root_path: this.root, actor: this.actor, role: "youi chat agents" });
+      const started = await this.tool("collab_session_start", { root_path: this.root, actor: this.actor, role: this.role });
       this.workspaceId = started.workspace.id;
+      this.sessionId = started.session.id;
       return this;
     })();
     this.ready.catch(() => { this.ready = null; });
@@ -121,13 +132,29 @@ export class DecisionSeat {
     return content;
   }
 
+  /** Ends the session and stops the server; resolves once it has exited. */
   close() {
-    if (!this.child) return;
-    this.tool("collab_session_end", { reason: "YOUI server stopped" }).catch(() => {}).finally(() => this.child?.kill());
+    const child = this.child;
+    if (!child) return Promise.resolve();
+    this.closing ??= (async () => {
+      // A lease this seat still holds is a delegate offer nobody accepted yet.
+      // Ending the session releases it and the offer lapses, instead of leaving
+      // the task claimed by a seat that has gone.
+      await this.tool("collab_session_end", { reason: "YOUI server stopped", release_leases: true }).catch(() => {});
+      const exited = new Promise(resolve => {
+        if (this.child !== child) resolve();
+        else child.once("exit", resolve).once("error", resolve);
+      });
+      child.kill();
+      await exited;
+      this.closing = null;
+    })();
+    return this.closing;
   }
 }
 
-const POSITION = {
+/** The agents' position under consent/v1, in words. */
+export const POSITION = {
   open: "agents talking", challenged: "challenged", consented: "agents consented",
   split: "agents split", lapsed: "lapsed", withdrawn: "withdrawn", superseded: "superseded",
 };
@@ -168,15 +195,32 @@ export async function runDecisionTool(seat, input = {}) {
   const question = input.recommendation
     ? `${input.question}\nRecommendation: ${input.recommendation}`
     : String(input.question);
+  const proposal = await openProposal(seat, {
+    question,
+    criteria: input.criteria || input.context || "As argued in the question.",
+    extent: input.extent,
+    known_conflicts: input.known_conflicts,
+    topic: input.topic,
+  }, key);
+  return `DECISION: opened proposal ${proposal.proposal.id} on this device's table. `
+    + "The agents settle it first; then Yu agrees or rejects with Touch ID in the decision room.";
+}
+
+/**
+ * Opens a proposal on this seat's table: the decision tool's queue and council
+ * both come here. Returns the proposal's consent status as Collab reports it,
+ * with its terms and the snapshot of voices taken at open.
+ */
+export async function openProposal(seat, { question, criteria, extent, known_conflicts, topic }, key = `youi-${crypto.randomUUID()}`) {
+  await seat.start();
   const { proposal } = await seat.tool("collab_proposal_open", {
     workspace_id: seat.workspaceId,
     idempotency_key: key,
-    question,
-    criteria: String(input.criteria || input.context || "As argued in the question."),
-    extent: String(input.extent),
-    ...(input.known_conflicts ? { known_conflicts: String(input.known_conflicts) } : {}),
-    ...(input.topic ? { topic: String(input.topic) } : {}),
+    question: String(question),
+    criteria: String(criteria),
+    extent: String(extent),
+    ...(known_conflicts ? { known_conflicts: String(known_conflicts) } : {}),
+    ...(topic ? { topic: String(topic) } : {}),
   });
-  return `DECISION: opened proposal ${proposal.proposal.id} on this device's table. `
-    + "The agents settle it first; then Yu agrees or rejects with Touch ID in the decision room.";
+  return proposal;
 }

@@ -52,6 +52,25 @@ Their `decision` tool opens a proposal (`queue`: question, criteria, extent),
 asks Yu something (`ask`: a report in Yu's inbox) or lists where proposals
 stand (`list`). No agent can agree or reject for Yu; `resolve` says so.
 
+Two Kingdom tools reach the agents at the table
+(`youi-web/table-tools.mjs`; design: [YOUI-MINDS-DESIGN.md](YOUI-MINDS-DESIGN.md) §3.4):
+
+- **`council`** opens a proposal on the same table (`open`) and reads where it
+  stands (`status`). The other agents support or challenge it; nothing is
+  decided by a vote, and only Yu agrees or rejects here, with Touch ID. It
+  needs `decisions:write` to open and `decisions:read` to read.
+- **`delegate`** offers a task to a live session at this device's table: it
+  lists the sessions (`seats`, as the Seats tab does), creates and claims a
+  task and offers it to one session (`offer`), and reads whether it was
+  accepted (`status`). The session accepts or declines in its own session;
+  the offer is advisory coordination, not a lock or authority. YOUI takes one
+  more seat in each other workspace it offers in, and stopping YOUI releases
+  any task nobody accepted. It needs `collab:delegate`, which no profile
+  includes. Grant it with `YOUI_CAPABILITIES`; that list replaces the
+  profile, so name the `safe` capabilities you keep as well
+  (`youi-web/server.mjs`, `SAFE_CAPABILITIES`). It is not offered in
+  autonomous mode, and another device's table is not reachable yet.
+
 The old Kingdom Decision Queue (`tools/decision.py`, `decisions/queue.json`)
 let any local process add, resolve or delete a decision without Yu. Its write
 paths now refuse with a pointer here; `list`, `resolved`, `check` and its
@@ -85,5 +104,8 @@ In YOUI's terminal, `/decisions` prints what waits on you at this table.
   journal could rewrite it unless its head is witnessed elsewhere.
 - Touch ID's prompt names only "localhost": act only on a page you opened.
 - Proposals do not cross devices; each table settles its own.
+- Each seat YOUI has started is a live voice in its workspace until YOUI
+  stops, so a proposal there that YOUI does not answer waits for its deadline
+  rather than closing early on every other voice's support.
 - Not tested yet: a real Touch ID ceremony, Safari, a phone, or a real SSH
   forced command between two Macs.

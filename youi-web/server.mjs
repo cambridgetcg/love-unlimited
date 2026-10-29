@@ -35,6 +35,7 @@ import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
+import { handleDecisionRoute } from "./decision-bridge.mjs";
 import {
   HttpError,
   SessionRegistry,
@@ -74,6 +75,10 @@ const SAFE_CAPABILITIES = new Set([
   "convergence:read",
   "orchestrator:run",
   "models:use",
+  // The decision room: reads, desk notes and proposals, and passkey-signed acts.
+  // An agreement still needs Yu's Touch ID; see decision-bridge.mjs.
+  "decisions:read",
+  "decisions:write",
 ]);
 const DEVELOPER_CAPABILITIES = new Set([
   ...SAFE_CAPABILITIES,
@@ -2211,6 +2216,11 @@ const JSON_BODY_ROUTES = new Set([
   "POST /api/orchestrate/plan",
   "POST /api/orchestrate/run",
   "POST /api/ollama/chat",
+  "POST /api/decisions/challenge",
+  "POST /api/decisions/act",
+  "POST /api/decisions/say",
+  "POST /api/decisions/propose",
+  "POST /api/decisions/passkey/stage",
 ]);
 
 function setSecurityHeaders(res) {
@@ -2343,6 +2353,15 @@ const ROUTE_CAPABILITIES = new Map([
   ["GET /api/youspeak/report", "youspeak:read"],
   ["GET /api/youspeak/trends", "youspeak:read"],
   ["POST /api/youspeak/reset", "youspeak:reset"],
+  ["GET /api/decisions/workspaces", "decisions:read"],
+  ["GET /api/decisions/proposals", "decisions:read"],
+  ["GET /api/decisions/inbox", "decisions:read"],
+  ["GET /api/decisions/passkeys", "decisions:read"],
+  ["POST /api/decisions/challenge", "decisions:read"],
+  ["POST /api/decisions/act", "decisions:write"],
+  ["POST /api/decisions/say", "decisions:write"],
+  ["POST /api/decisions/propose", "decisions:write"],
+  ["POST /api/decisions/passkey/stage", "decisions:write"],
 ]);
 
 function requiredRouteCapability(path, method) {
@@ -2685,6 +2704,14 @@ async function handleSessionRequest(req, res, url, path) {
     // ── Being API (SOUL/MIND/NERVE/SOMA/MEMORY window) ───
     if (path.startsWith("/api/being")) {
       const handled = await handleBeingRoute(path, req, res, {
+        signal: activeRequestSignal(),
+      });
+      if (handled) return;
+    }
+
+    // ── Decision room (Collab proposals via the person desk) ──
+    if (path.startsWith("/api/decisions/")) {
+      const handled = await handleDecisionRoute(path, req, res, url, parseBody, {
         signal: activeRequestSignal(),
       });
       if (handled) return;

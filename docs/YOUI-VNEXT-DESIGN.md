@@ -108,8 +108,10 @@ The candidate implementation layered on that baseline currently provides:
 
   `safe` expands to `chat`, `status:read`, `sessions:manage`,
   `settings:write`, `instances:read`, `memory:read`, `being:read`,
-  `youspeak:read`, `convergence:read`, `orchestrator:run`, and `models:use`.
-  `developer` adds `tools:filesystem:read`, `tools:filesystem:write`,
+  `youspeak:read`, `convergence:read`, `orchestrator:run`, `models:use`,
+  `decisions:read`, and `decisions:write` (the decision room in
+  [YOUI-DECISIONS.md](YOUI-DECISIONS.md); an agreement there still needs a
+  Touch ID passkey). `developer` adds `tools:filesystem:read`, `tools:filesystem:write`,
   `git:read`, `git:commit`, `memory:write`, and `youspeak:reset`.
 - YOUI Web binds only `127.0.0.1`; `ALLOW_LAN=1` fails startup. Supported
   cross-device browser access is an authenticated SSH tunnel to that loopback

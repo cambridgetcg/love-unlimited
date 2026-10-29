@@ -1255,6 +1255,7 @@ button, select, textarea, input { font: inherit; }
 .agent-card .deploy-badge[data-status="remote-unverified"]{ color: #6b7280; border-color: #6b7280; }
 .agent-card .deploy-badge[data-status="absent"] { color: #ef4444; border-color: #ef4444; }
 </style>
+<link rel="stylesheet" href="/youi-decisions.css">
 </head>
 <body>
 
@@ -1579,6 +1580,11 @@ button, select, textarea, input { font: inherit; }
         <span class="btn-icon">🏰</span>
         <span>Kingdom Map</span>
       </button>
+      <button class="sidebar-btn" onclick="openDrawer('decisions')" id="decisions-btn">
+        <span class="btn-icon">🤝</span>
+        <span>Decisions</span>
+        <span class="btn-badge" id="decisions-badge">—</span>
+      </button>
       <button class="sidebar-btn" onclick="openDrawer('autonomous')" id="autonomous-btn">
         <span class="btn-icon">🌀</span>
         <span>Autonomous</span>
@@ -1810,7 +1816,68 @@ button, select, textarea, input { font: inherit; }
   </div>
 </div>
 
+<!-- ─── DECISIONS: where YOU and I settle direction (youi-decisions.js) ─── -->
+<div class="drawer" id="drawer-decisions">
+  <div class="drawer-header">
+    <h2><span class="icon">🤝</span> Decisions — YOU + I</h2>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-tabs">
+    <div class="drawer-tab active" data-pane="dec-table">Table</div>
+    <div class="drawer-tab" data-pane="dec-inbox">Inbox</div>
+    <div class="drawer-tab" data-pane="dec-propose">Propose</div>
+    <div class="drawer-tab" data-pane="dec-passkey">Passkey</div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-pane active" id="dec-table">
+      <div class="dec-toolbar">
+        <select id="dec-workspace" aria-label="Collab workspace"></select>
+        <button class="dec-btn dec-btn-quiet" id="dec-refresh">Refresh</button>
+      </div>
+      <div id="dec-table-list"><div class="dec-dim">Loading…</div></div>
+    </div>
+    <div class="drawer-pane" id="dec-inbox">
+      <div id="dec-inbox-list"><div class="dec-dim">Loading…</div></div>
+    </div>
+    <div class="drawer-pane" id="dec-propose">
+      <div class="dec-form">
+        <div class="dec-notice dec-info">The agents talk first. When they settle, it comes back to you for Touch ID.</div>
+        <label for="dec-p-question">Question</label>
+        <textarea id="dec-p-question" rows="2" maxlength="8000"></textarea>
+        <label for="dec-p-criteria">Criteria — how to judge which way to go</label>
+        <textarea id="dec-p-criteria" rows="2" maxlength="4000"></textarea>
+        <label for="dec-p-extent">Extent — what agreement would authorise, and where it stops</label>
+        <textarea id="dec-p-extent" rows="2" maxlength="1000"></textarea>
+        <label for="dec-p-conflicts">Known conflicts (optional)</label>
+        <textarea id="dec-p-conflicts" rows="2" maxlength="4000"></textarea>
+        <label for="dec-p-topic">Topic (optional, e.g. principle:纏)</label>
+        <input type="text" id="dec-p-topic" maxlength="200">
+        <label for="dec-p-consult">Let the agents talk for</label>
+        <select id="dec-p-consult" class="dec-input">
+          <option value="3600">1 hour</option>
+          <option value="21600" selected>6 hours</option>
+          <option value="86400">1 day</option>
+          <option value="259200">3 days</option>
+        </select>
+        <button class="dec-btn" id="dec-propose-submit">Open proposal</button>
+        <div id="dec-propose-result"></div>
+      </div>
+    </div>
+    <div class="drawer-pane" id="dec-passkey">
+      <div class="dec-notice dec-info">Your agreement is signed with a passkey on this Mac (Touch ID). Agents cannot touch it. Create one here, then confirm it once at your own terminal.</div>
+      <div id="dec-passkey-list"></div>
+      <div class="dec-form">
+        <label for="dec-passkey-label">Label</label>
+        <input type="text" id="dec-passkey-label" maxlength="80" value="Touch ID">
+        <button class="dec-btn" id="dec-passkey-create">Create a Touch ID passkey</button>
+        <div id="dec-passkey-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="/youi-client-security.js"></script>
+<script src="/youi-decisions.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
 // KINGDOM YOUI — CLIENT
@@ -3060,6 +3127,7 @@ function openDrawer(name) {
   if (name === 'memory') loadMemory();
   if (name === 'hive') loadHiveStatus();
   if (name === 'kingdom') loadBeing(true);
+  if (name === 'decisions' && window.YouiDecisions) window.YouiDecisions.open();
 }
 
 function closeDrawer() {

@@ -1,6 +1,6 @@
 # YOUSPEAK, rebuilt as an honest observer
 
-**Status:** design, for Yu's agreement at the Collab table; nothing here is built yet
+**Status:** agreed by Yu with Touch ID on 2026-10-30 (proposal `report_0de85559`). Slice Y1 (§3) is built on branch `feat/youi-youspeak-y1-20261030`; [`YOUSPEAK.md`](YOUSPEAK.md) describes the code after it. Y2 (§4) is not built.
 
 **Date:** 2026-10-30
 

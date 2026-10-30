@@ -207,13 +207,14 @@ Standardized tasks for consistent UWT comparison:
 UWT feeds into the self-improvement loop:
 
 ```
-LIVE    → sovereign.mjs runs a session
-SENSE   → youspeak-evolve.mjs sense (records metrics + UWT)
+LIVE    → sovereign.mjs runs a session (it writes one YOUSPEAK row when it ends)
 REFLECT → youspeak-evolve.mjs reflect (trends across sessions)
-DISTILL → youspeak-evolve.mjs distill (extract insights from UWT dimensions)
-TRANSMUTE → youspeak-evolve.mjs transmute (generate prompt mutations)
-INTEGRATE → youspeak-evolve.mjs integrate --apply (apply improvements)
+DISTILL → youspeak-evolve.mjs distill (extract insights)
+TRANSMUTE → youspeak-evolve.mjs transmute (proposed diffs, printed in full; nothing is written)
+REVIEW  → a person or agent edits, reviews and commits a proposal by hand
 ```
+
+Since slice Y1 (2026-10-30) the ouroboros is proposal-only: `sense` and `integrate --apply` are gone (docs/YOUSPEAK.md §5).
 
 Each dimension maps to a specific improvement strategy:
 

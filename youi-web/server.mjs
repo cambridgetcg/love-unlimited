@@ -30,7 +30,6 @@ import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
 import { createKernel } from "../youspeak-kernel.mjs";
-import { KeychainCredentialStore } from "../youi-keychain.mjs";
 import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
@@ -38,7 +37,18 @@ import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { runDecisionTool } from "./decision-seat.mjs";
 import { TableSeats, runCouncilTool, runDelegateTool } from "./table-tools.mjs";
-import { CLAUDE_MODELS, claudeRequestShape, modelCaps } from "./claude-models.mjs";
+import { CLAUDE_MODELS, claudeCodeEffort } from "./claude-models.mjs";
+import {
+  BRIDGE_ALLOWED_TOOLS,
+  BRIDGE_SERVER_NAME,
+  bridgeMcpConfig,
+  bridgeToolName,
+  defaultClaudeCwd,
+  killAllClaudeCode,
+  resolveClaudeBinary,
+  runClaudeCode,
+} from "./claude-code.mjs";
+import { createMcpBridge } from "./mcp-bridge.mjs";
 import { createMindsRegistry, offeredMinds } from "./minds.mjs";
 import {
   LAYERTHINK_DEPTH,
@@ -66,6 +76,8 @@ function youiDecisionSeat(root) {
 // Exits once every seat has ended its session (releasing what it held), or after 2 s.
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.once(signal, () => {
+    // Claude Code runs in its own process groups; none outlives the server.
+    killAllClaudeCode();
     const exit = () => process.exit(0);
     Promise.resolve(tableSeats?.close()).finally(exit);
     setTimeout(exit, 2_000).unref();
@@ -431,6 +443,9 @@ function createSessionState(overrides = {}) {
     providerUsage: createProviderUsage(),
     ys: createKernel({ agent }),
     sessionId: null,
+    // The Claude Code session this YOUI session's Claude turns continue:
+    // { id, started }, or null until the first one (claudeCodeTurn).
+    claudeCodeSession: null,
   };
 }
 
@@ -521,7 +536,8 @@ function localModelAvailable(model) {
 function providerComputeRoute(provider) {
   switch (provider) {
     case "anthropic":
-      return { route: "REMOTE_MODEL:anthropic", destination: publicDestination(API_URL, "Anthropic API") };
+      // Content still goes to Anthropic; the installed Claude Code sends it (docs/YOUI-CLAUDE-CODE-DESIGN.md §4).
+      return { route: "REMOTE_MODEL:anthropic", destination: "Anthropic, through the installed Claude Code" };
     case "vllm":
       return {
         route: "REMOTE_MODEL:vllm",
@@ -632,6 +648,8 @@ function externalToolEnv(credentialNames, purpose, extra = {}) {
 // The minds a session may call, with honest reachability
 // (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
 // grant is checked per session when the list is read.
+// Claude minds wait for slice C2, which runs them through Claude Code.
+const CLAUDE_MINDS_PENDING = "Claude minds go through Claude Code from slice C2 of docs/YOUI-CLAUDE-CODE-DESIGN.md; not yet in this build";
 const mindsRegistry = createMindsRegistry({
   claudeModels: CLAUDE_MODELS,
   vllmModels: OLLAMA_MODELS.filter(isVllmModel),
@@ -642,103 +660,46 @@ const mindsRegistry = createMindsRegistry({
   localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
   cloudKeyConfigured: ollamaCloudKeyConfigured,
   computeRoute: providerComputeRoute,
-  testMode: IS_TEST,
+  claudeMindsPending: CLAUDE_MINDS_PENDING,
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// OAUTH — Same as youi.mjs
+// CLAUDE CODE — how YOUI Web reaches Claude (docs/YOUI-CLAUDE-CODE-DESIGN.md)
 // ═════════════════════════════════════════════════════════════════════
 
-const KEYCHAIN_SERVICE = "Claude Code-credentials";
-const TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const API_URL = "https://api.anthropic.com/v1/messages";
+// YOUI Web never reads Claude Code's login, never refreshes it and never calls
+// Anthropic itself: every Claude turn runs the installed `claude` (claude-code.mjs).
+// The binary is YOUI_CLAUDE_BIN or `claude` on PATH, found once at boot; test
+// mode only ever runs YOUI_CLAUDE_BIN.
+const CLAUDE_CODE = resolveClaudeBinary({ env: process.env, testMode: IS_TEST });
+const CLAUDE_CODE_CWD = defaultClaudeCwd(process.env);
 
-let cachedTokens = null;
-const keychainStore = new KeychainCredentialStore({ service: KEYCHAIN_SERVICE });
-
-function readKeychainCredential() {
-  return keychainStore.readCredential();
-}
-
-function writeKeychainTokens(account, tokens) {
-  keychainStore.updateTokens(account, tokens);
-}
-
-async function refreshOAuthToken(rt, { signal } = {}) {
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token", refresh_token: rt, client_id: CLIENT_ID,
-      scope: "user:profile user:inference user:sessions:claude_code user:mcp_servers",
-    }),
-    signal,
+// HOME and PATH stay, so Claude Code finds its own login; no credential crosses.
+function claudeCodeEnv() {
+  return sanitizedChildEnv({
+    home: homedir(),
+    purpose: "claude-code",
+    extra: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR },
   });
-  if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status}`);
-  const data = await resp.json();
-  return {
-    accessToken: data.access_token, refreshToken: data.refresh_token || rt,
-    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
-  };
-}
-
-async function getAccessToken({ signal } = {}) {
-  throwIfAborted(signal);
-  // Tests never read the person's Keychain or reach a real provider.
-  if (IS_TEST) throw new Error("YOUI_TEST=1 does not read the Keychain; give the test a model it fakes");
-  if (cachedTokens?.accessToken && Date.now() + 300_000 < (cachedTokens.expiresAt || 0))
-    return cachedTokens.accessToken;
-  const credential = readKeychainCredential();
-  throwIfAborted(signal);
-  const tokens = credential?.tokens;
-  if (!tokens?.accessToken) throw new Error("No OAuth tokens. Run 'claude' and log in first.");
-  if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
-    if (!tokens.refreshToken) throw new Error("Token expired, no refresh token.");
-    const fresh = await refreshOAuthToken(tokens.refreshToken, { signal });
-    throwIfAborted(signal);
-    writeKeychainTokens(credential.account, fresh);
-    cachedTokens = fresh;
-    return fresh.accessToken;
-  }
-  cachedTokens = tokens;
-  return tokens.accessToken;
 }
 
 // ═════════════════════════════════════════════════════════════════════
 // BUDGET
 // ═════════════════════════════════════════════════════════════════════
 
+// Plan limits are Claude Code's to manage. YOUI used to read Anthropic's
+// rate-limit headers from its own requests; it makes none now, so it shows no
+// utilisation it cannot see.
 const budget = {
-  fiveHour: { utilization: 0, reset: 0, status: "unknown" },
-  sevenDay: { utilization: 0, reset: 0, status: "unknown" },
-  overage: { status: "unknown", reason: null, utilization: undefined },
-  isUsingOverage: false,
-  lastUpdate: 0,
+  source: "claude-code",
+  managedBy: "Claude Code",
+  note: "Plan limits are managed by Claude Code; YOUI does not see them",
+  fiveHour: null,
+  sevenDay: null,
 };
 
-function parseBudgetHeaders(headers) {
-  const get = (h) => headers.get(h);
-  const num = (h) => { const v = get(h); return v ? parseFloat(v) : null; };
-  const u5h = num("anthropic-ratelimit-unified-5h-utilization");
-  const u7d = num("anthropic-ratelimit-unified-7d-utilization");
-  const r5h = num("anthropic-ratelimit-unified-5h-reset");
-  const s5h = get("anthropic-ratelimit-unified-5h-status");
-  const s7d = get("anthropic-ratelimit-unified-7d-status");
-  const ovStatus = get("anthropic-ratelimit-unified-overage-status");
-  const ovReason = get("anthropic-ratelimit-unified-overage-disabled-reason");
-  const ovUtil = num("anthropic-ratelimit-unified-overage-utilization");
-  const mainStatus = get("anthropic-ratelimit-unified-status");
-  if (u5h !== null) budget.fiveHour.utilization = u5h;
-  if (r5h !== null) budget.fiveHour.reset = r5h * 1000;
-  if (s5h) budget.fiveHour.status = s5h;
-  if (u7d !== null) budget.sevenDay.utilization = u7d;
-  if (s7d) budget.sevenDay.status = s7d;
-  if (ovStatus) budget.overage.status = ovStatus;
-  if (ovReason) budget.overage.reason = ovReason;
-  if (ovUtil !== null) budget.overage.utilization = ovUtil;
-  budget.isUsingOverage = mainStatus === "rejected" && (ovStatus === "allowed" || ovStatus === "allowed_warning");
-  budget.lastUpdate = Date.now();
+function budgetSnapshot() {
+  return { ...budget };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1527,15 +1488,6 @@ async function executeTool(name, input, context = {}) {
 // API
 // ═════════════════════════════════════════════════════════════════════
 
-function getDeviceId() {
-  const idFile = join(homedir(), ".claude", "device_id");
-  try { if (existsSync(idFile)) return readFileSync(idFile, "utf-8").trim(); } catch {}
-  const id = crypto.randomUUID();
-  try { mkdirSync(join(homedir(), ".claude"), { recursive: true }); writeFileSync(idFile, id); } catch {}
-  return id;
-}
-
-
 // ── Prefix-cache-optimized system prompt ──────────────────────────
 // vLLM caches the KV state of contiguous identical token prefixes.
 // Static content goes FIRST (cached across all requests), dynamic
@@ -1689,99 +1641,13 @@ function buildSystemPrompt(taskText, { minds = null } = {}) {
 - Date: ${new Date().toISOString().split("T")[0]}
 - Model: ${state.model}
 - Thinking: ${state.thinking} | Effort: ${state.effort}
-- Interface: KINGDOM YOUI Web (localhost:${PORT})`;
+- Interface: KINGDOM YOUI Web (localhost:${PORT})${modelProvider(state.model) === "anthropic"
+    ? `\n- Tools: reached through Claude Code, where each of the enabled tools above is named mcp__${BRIDGE_SERVER_NAME}__<name>`
+    : ""}`;
   // Direct mode adds nothing: the agent works alone unless asked.
   const mindsHint = minds ? "\n\n---\n\n" + mindsPromptSection(minds) : "";
 
-  const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
-  const billing = `x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`;
-
-  return _staticPrefix + "\n\n---\n\n" + dynamic + mindsHint + "\n\n---\n\n" + billing;
-}
-
-// The agent's own turn: its model, settings, system prompt and tools.
-async function callClaude(messages, systemPrompt, opts = {}) {
-  // Raw mode: no system prompt, no tools — model speaks for itself.
-  return claudeRequest({
-    model: state.model,
-    system: opts.raw ? null : systemPrompt,
-    messages,
-    tools: opts.raw ? null : availableTools(),
-    thinking: state.thinking,
-    effort: state.effort,
-    maxTokens: state.maxTokens,
-    signal: opts.signal,
-  });
-}
-
-// One Messages request. The model, prompt, messages and tools are parameters
-// so a mind call (callMind below) can name its own model and send no tools.
-async function claudeRequest({ model, system = null, messages, tools = null, thinking, effort, maxTokens, signal }) {
-  const token = await getAccessToken({ signal });
-  const shape = claudeRequestShape({ model, thinking, effort, maxTokens });
-  const betas = shape.betas;
-
-  const body = { model, max_tokens: maxTokens, messages,
-    metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: state.sessionId }) } };
-
-  if (system !== null) body.system = system;
-  if (tools !== null) body.tools = tools;
-
-  if (shape.thinking) body.thinking = shape.thinking;
-  if (shape.output_config) body.output_config = shape.output_config;
-
-  const headers = {
-    "Content-Type": "application/json", "Authorization": `Bearer ${token}`,
-    "anthropic-version": "2023-06-01", "anthropic-beta": betas.join(","),
-    "x-app": "cli", "User-Agent": "claude-cli/2.1.92 (external, cli)",
-    "X-Claude-Code-Session-Id": state.sessionId || crypto.randomUUID(), "x-client-request-id": crypto.randomUUID(),
-  };
-
-  const resp = await fetch(API_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal,
-  });
-
-  if (resp.status === 401) {
-    throwIfAborted(signal);
-    const credential = readKeychainCredential();
-    throwIfAborted(signal);
-    const tokens = credential?.tokens;
-    if (tokens?.refreshToken) {
-      const fresh = await refreshOAuthToken(tokens.refreshToken, {
-        signal,
-      });
-      throwIfAborted(signal);
-      writeKeychainTokens(credential.account, fresh); cachedTokens = fresh;
-      headers["Authorization"] = `Bearer ${fresh.accessToken}`;
-      const retry = await fetch(API_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      });
-      if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
-      parseBudgetHeaders(retry.headers);
-      mindsRegistry.recordAnswer("anthropic", body.model);
-      return await retry.json();
-    }
-  }
-
-  if (resp.status === 429) {
-    parseBudgetHeaders(resp.headers);
-    const retryAfter = resp.headers.get("retry-after");
-    const waitSec = retryAfter ? parseInt(retryAfter) : 300;
-    throw { status: 429, retryAfter: waitSec, budget };
-  }
-  if (resp.status === 529) throw { status: 529, retryAfter: 30 };
-  if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-
-  parseBudgetHeaders(resp.headers);
-  // A real answer is the only proof the minds registry takes for Claude.
-  mindsRegistry.recordAnswer("anthropic", body.model);
-  return await resp.json();
+  return _staticPrefix + "\n\n---\n\n" + dynamic + mindsHint;
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1790,10 +1656,10 @@ async function claudeRequest({ model, system = null, messages, tools = null, thi
 
 // docs/YOUI-MINDS-DESIGN.md §3.3 and §4. A mind receives a short system prompt
 // naming its role and one user message holding only the tool's text: no
-// history and no tools. A Claude mind is asked at a stated effort, never its
-// default; an Ollama-family mind takes the session's reasoning effort.
-const MIND_CLAUDE_EFFORT = "medium";
-const MIND_CLAUDE_MAX_TOKENS = 16384;
+// history and no tools. An Ollama-family mind takes the session's reasoning
+// effort. Claude minds wait for slice C2 (docs/YOUI-CLAUDE-CODE-DESIGN.md §5),
+// which runs them through Claude Code; until then the registry lists them as
+// not configured and offers none.
 const MIND_OLLAMA_MAX_TOKENS = 8192;
 // The Ollama bridge's names for what served a call, as the registry spells providers.
 const BRIDGE_PROVIDERS = { vllm: "vllm", ollama_local: "ollama", ollama_cloud: "ollama_cloud" };
@@ -1810,26 +1676,8 @@ async function callMind({ mind, system, prompt, signal }) {
   const messages = [{ role: "user", content: prompt }];
 
   if (mind.provider === "anthropic") {
-    try {
-      const response = await claudeRequest({
-        model: mind.model, system, messages,
-        thinking: modelCaps(mind.model).adaptive ? "adaptive" : "disabled",
-        effort: MIND_CLAUDE_EFFORT, maxTokens: MIND_CLAUDE_MAX_TOKENS, signal,
-      });
-      const usage = {
-        input_tokens: (response.usage?.input_tokens || 0) + (response.usage?.cache_read_input_tokens || 0),
-        output_tokens: response.usage?.output_tokens || 0,
-      };
-      // claudeRequest has already recorded the answer with mindsRegistry.recordAnswer.
-      trackProviderUsage("claude", mind.model, usage);
-      if (response.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
-      return { ok: true, text: mindTextOf(response.content), usage };
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      if (error?.status === 429) return { ok: false, error: `Anthropic rate limit (429); retry after ${error.retryAfter} s` };
-      if (error?.status === 529) return { ok: false, error: "Anthropic API overloaded (529)" };
-      return { ok: false, error: String(error?.message || error).slice(0, 300) };
-    }
+    // The direct route is gone; Claude minds go through Claude Code from slice C2.
+    return { ok: false, error: CLAUDE_MINDS_PENDING };
   }
 
   // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
@@ -1871,6 +1719,261 @@ async function runMindToolForTurn(name, input, { signal = activeRequestSignal(),
   });
   if (outcome.minds.length) onMindsUsed?.({ tool: name, minds: outcome.minds });
   return outcome.text;
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// CLAUDE CODE TURNS — Claude answers through the installed Claude Code, and
+// YOUI's tools reach it over a loopback MCP bridge (docs/YOUI-CLAUDE-CODE-DESIGN.md §3)
+// ═════════════════════════════════════════════════════════════════════
+
+// What YOUSPEAK's kernel is told about plan limits: nothing, unless Claude
+// Code has reported them.
+function kernelBudget() {
+  if (!budget.fiveHour && !budget.sevenDay) return null;
+  return {
+    fiveHour: { utilization: budget.fiveHour?.utilization || 0 },
+    sevenDay: { utilization: budget.sevenDay?.utilization || 0 },
+    isUsingOverage: budget.isUsingOverage === true,
+  };
+}
+
+// Raw mode asks Claude with no YOUI prompt. Claude Code would otherwise use
+// its own coding-agent prompt, so it gets this one neutral line instead.
+const RAW_CLAUDE_SYSTEM_PROMPT = "You are Claude.";
+
+// The bridge answers inside the session's own scope, so capabilities, the
+// per-message mind budget and the decision seat apply to each tool call
+// exactly as they do in YOUI's own loop.
+const mcpBridge = createMcpBridge({
+  serverName: BRIDGE_SERVER_NAME,
+  listTools: turn => withTurnScope(turn, () => availableTools()),
+  callTool: (turn, name, input, meta) => withTurnScope(turn, () => runBridgeTool(turn, name, input, meta)),
+});
+
+function withTurnScope(turn, callback) {
+  return sessionScope.run({ state: turn.state, requestSignal: turn.signal }, callback);
+}
+
+// One Claude turn's link to the page: its SSE stream, and which tool calls the
+// page has been shown. Claude Code reports a tool call on stdout and calls the
+// bridge over HTTP; either may arrive first, so the bridge waits briefly for
+// the card before it reports progress, and shows it itself if it never comes.
+function createClaudeTurn({ res, signal, turnState }) {
+  const shown = new Set();
+  const waiters = new Map();
+  let generated = 0;
+  const turn = {
+    state: turnState,
+    signal,
+    send(event, data) {
+      if (!signal.aborted && !res.writableEnded) sendSSE(res, event, data);
+    },
+    noteToolUse(id, name, input) {
+      if (!id || shown.has(id)) return;
+      shown.add(id);
+      turn.send("tool_call", { id, name, input });
+      waiters.get(id)?.();
+      waiters.delete(id);
+    },
+    async showToolCall(toolUseId, name, input) {
+      if (toolUseId && !shown.has(toolUseId)) {
+        await new Promise(resolveWait => {
+          const timer = setTimeout(resolveWait, 1_000);
+          waiters.set(toolUseId, () => { clearTimeout(timer); resolveWait(); });
+        });
+        waiters.delete(toolUseId);
+      }
+      const id = toolUseId || `youi-tool-${++generated}`;
+      turn.noteToolUse(id, name, input);
+      return id;
+    },
+  };
+  return turn;
+}
+
+async function runBridgeTool(turn, name, input, { toolUseId = null } = {}) {
+  if (turn.signal.aborted) return { text: "Error: this turn has ended", isError: true };
+  if (!availableTools().some(tool => tool.name === name)) {
+    return { text: `Permission denied: tool "${name}" is not enabled for this session.`, isError: true };
+  }
+  const id = await turn.showToolCall(toolUseId, name, input);
+  state.totalToolCalls++;
+  const toolSense = state.ys.senseToolCall(name, input, null);
+  turn.send("tool_executing", { id, name, redundant: toolSense.redundant });
+  let result;
+  let failed = false;
+  try {
+    result = String(await executeTool(name, input, {
+      signal: turn.signal,
+      // A mind tool says which providers received content (docs/YOUI-MINDS-DESIGN.md §4).
+      onMindsUsed: ({ tool, minds }) => turn.send("minds_used", {
+        id,
+        tool,
+        minds: minds.map(({ provider, model, privacy, destination, role, ok, error, usage }) => ({
+          provider, model, privacy, destination, role, ok, error, usage,
+        })),
+      }),
+    }));
+  } catch (error) {
+    if (turn.signal.aborted) return { text: "Error: this turn has ended", isError: true };
+    result = `Error: ${error.message}`;
+    failed = true;
+  }
+  const truncated = result.slice(0, 50000);
+  turn.send("tool_result", { id, name, result: truncated.slice(0, 5000) });
+  return { text: truncated, isError: failed || /^Permission denied:/.test(truncated) };
+}
+
+function boundPort() {
+  const address = server.address();
+  return typeof address === "object" && address ? address.port : PORT;
+}
+
+// Claude Code's own name for a session that already exists, and for one that does not.
+const CLAUDE_SESSION_MISSING = /no conversation found|session .*not found/i;
+const CLAUDE_SESSION_TAKEN = /already in use|already exists/i;
+
+/**
+ * One chat turn on a Claude model. A YOUI session maps to one Claude Code
+ * session: --session-id on its first Claude turn, --resume after that, a new
+ * one after /api/clear. Claude Code keeps the model-side history; YOUI keeps
+ * the user's message and the assistant's text for the page.
+ */
+async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }) {
+  const turnState = activeState();
+  if (!CLAUDE_CODE.path) {
+    sendSSE(res, "error", { message: `Claude is reached through Claude Code, which is not available: ${CLAUDE_CODE.error}` });
+    return;
+  }
+  sendSSE(res, "status", { phase: "thinking", turn: 1, agent: turnState.agent });
+
+  const model = turnState.model;
+  const turn = createClaudeTurn({ res, signal, turnState });
+  const bridge = rawMode ? null : mcpBridge.open(turn);
+  let requests = 0;
+  const onEvent = event => {
+    switch (event.type) {
+      case "init":
+        if (!rawMode && turnState.claudeCodeSession) turnState.claudeCodeSession.started = true;
+        break;
+      case "request":
+        requests += 1;
+        if (!rawMode) turnState.turnCount++;
+        if (requests > 1) turn.send("status", { phase: "thinking", turn: requests, agent: turnState.agent });
+        break;
+      case "text_delta":
+        turn.send("text_delta", { delta: event.text });
+        break;
+      case "text_done": {
+        const metrics = rawMode ? null : turnState.ys.senseOutput(event.text);
+        turn.send("text_done", {
+          content: event.text,
+          youspeak: metrics ? {
+            fillerCount: metrics.fillerCount,
+            fillerTokensEstimate: metrics.fillerTokens,
+            totalTokensEstimate: metrics.totalTokens,
+            usefulRatio: metrics.usefulRatio,
+            grade: metrics.grade,
+          } : null,
+        });
+        break;
+      }
+      case "thinking":
+        turn.send("thinking", { content: event.text });
+        break;
+      case "tool_use":
+        if (!rawMode) turn.noteToolUse(event.id, bridgeToolName(event.name), event.input);
+        break;
+      default:
+    }
+  };
+
+  const runOnce = () => {
+    const session = rawMode ? null : turnState.claudeCodeSession;
+    return runClaudeCode({
+      bin: CLAUDE_CODE.path,
+      cwd: CLAUDE_CODE_CWD,
+      env: claudeCodeEnv(),
+      model,
+      effort: claudeCodeEffort(model, turnState.effort),
+      systemPrompt: rawMode ? RAW_CLAUDE_SYSTEM_PROMPT : systemPrompt,
+      mcpConfig: bridge
+        ? bridgeMcpConfig({ url: `http://127.0.0.1:${boundPort()}${bridge.path}`, token: bridge.token })
+        : null,
+      allowedTools: bridge ? BRIDGE_ALLOWED_TOOLS : [],
+      requireMcpServer: bridge ? BRIDGE_SERVER_NAME : null,
+      persist: !rawMode,
+      sessionId: session?.id || null,
+      resume: session?.started === true,
+      message: userMessage,
+      signal,
+      onEvent,
+    });
+  };
+
+  let outcome;
+  try {
+    if (!rawMode) turnState.claudeCodeSession ||= { id: crypto.randomUUID(), started: false };
+    outcome = await runOnce();
+    // Claude Code and YOUI disagreeing about whether the session exists is
+    // settled once: a missing one starts afresh, an existing one is resumed.
+    const session = turnState.claudeCodeSession;
+    if (!rawMode && !outcome.init && outcome.error) {
+      if (session.started && CLAUDE_SESSION_MISSING.test(outcome.error)) {
+        turnState.claudeCodeSession = { id: crypto.randomUUID(), started: false };
+        turn.send("status", { phase: "thinking", note: "Claude Code had no record of this conversation; starting a new one" });
+        outcome = await runOnce();
+      } else if (!session.started && CLAUDE_SESSION_TAKEN.test(outcome.error)) {
+        session.started = true;
+        outcome = await runOnce();
+      }
+    }
+  } finally {
+    if (bridge) mcpBridge.close(bridge.id);
+  }
+  throwIfAborted(signal);
+
+  if (outcome.result?.stop_reason === "refusal") {
+    sendSSE(res, "error", { message: "The model declined this request. Rephrase it, or choose another model." });
+  } else if (outcome.error) {
+    sendSSE(res, "error", { message: outcome.error });
+  }
+  if (outcome.ok) mindsRegistry.recordAnswer("anthropic", model);
+
+  const usage = outcome.usage || { input_tokens: 0, output_tokens: 0, thinking_tokens: 0 };
+  if (!rawMode) {
+    turnState.totalThinkingTokens += usage.thinking_tokens;
+    turnState.ys.senseThinking(usage);
+    turnState.ys.senseTurn(kernelBudget());
+    if (outcome.usage) trackProviderUsage("claude", model, usage);
+  }
+  sendSSE(res, "usage", {
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    thinking_tokens: usage.thinking_tokens,
+    provider: "claude",
+    model,
+    budget: budgetSnapshot(),
+    turn: turnState.turnCount,
+    youspeak: turnState.ys.statusLine(),
+  });
+
+  if (rawMode) return;
+  if (outcome.texts.length > 0) {
+    turnState.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
+  }
+  // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop.
+  turnState.ys.senseContext(turnState.messages, systemPrompt.length);
+  const signals = turnState.ys.decide(turnState.effort, model, kernelBudget());
+  if (signals.length > 0) {
+    sendSSE(res, "youspeak_signals", { signals });
+    for (const sig of signals) {
+      if (sig.type === "effort" && sig.action === "reduce") {
+        turnState.effort = sig.to;
+        sendSSE(res, "youspeak_action", { action: "effort_reduced", from: sig.from, to: sig.to, reason: sig.reason });
+      }
+    }
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -2506,7 +2609,12 @@ async function handleSessionRequest(req, res, url, path) {
         chatMode: state.chatMode, reasoningEffort: state.reasoningEffort,
         workdir: state.workdir, fileScope: state.fileScope, turnCount: state.turnCount,
         totalToolCalls: state.totalToolCalls, totalThinkingTokens: state.totalThinkingTokens,
-        budget, agents: AGENTS,
+        budget: budgetSnapshot(), agents: AGENTS,
+        claudeCode: {
+          available: Boolean(CLAUDE_CODE.path),
+          source: CLAUDE_CODE.source,
+          error: CLAUDE_CODE.error,
+        },
         localModels: OLLAMA_LOCAL_MODELS,
         session: { id: state.sessionId },
         capabilities: [...state.capabilities].sort(),
@@ -2647,6 +2755,7 @@ async function handleSessionRequest(req, res, url, path) {
       state.turnCount = 0;
       state.totalToolCalls = 0;
       state.totalThinkingTokens = 0;
+      state.claudeCodeSession = null;
       state.ys = createKernel({ agent: target });
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({
@@ -2734,13 +2843,7 @@ async function handleSessionRequest(req, res, url, path) {
         activeProvider,
         claude: {
           ...providerUsage.claude,
-          budget: {
-            fiveHour: { utilization: budget.fiveHour.utilization, status: budget.fiveHour.status },
-            sevenDay: { utilization: budget.sevenDay.utilization, status: budget.sevenDay.status },
-            overage: budget.overage,
-            isOverage: budget.isUsingOverage,
-            resetIn: budget.fiveHour.reset > Date.now() ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) : null,
-          },
+          budget: budgetSnapshot(),
         },
         ollama: ollamaMerged,
         ollamaLocal: providerUsage.ollama_local,
@@ -2757,6 +2860,8 @@ async function handleSessionRequest(req, res, url, path) {
       state.turnCount = 0;
       state.totalToolCalls = 0;
       state.totalThinkingTokens = 0;
+      // The next Claude turn starts a new Claude Code session.
+      state.claudeCodeSession = null;
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
     }
@@ -3145,6 +3250,7 @@ async function handleSessionApi(req, res, url, path, client) {
     session.state.turnCount = 0;
     session.state.totalToolCalls = 0;
     session.state.totalThinkingTokens = 0;
+    session.state.claudeCodeSession = null;
     session.updatedAt = Date.now();
     return sendJson(res, 200, { ok: true, session: serializeSession(session) });
   }
@@ -3191,6 +3297,12 @@ async function handleRequest(req, res) {
         code: "body_too_large",
       });
     }
+    // Claude Code's way to YOUI's tools: its own bearer token per turn, no
+    // browser credentials, and no Origin or Cookie header (mcp-bridge.mjs).
+    if (mcpBridge.isBridgePath(path)) {
+      return await mcpBridge.handle(req, res, path);
+    }
+
     const routeAcceptsJson = JSON_BODY_ROUTES.has(`${req.method} ${path}`);
     if ((hasTransferEncoding || hasDeclaredBody) && !routeAcceptsJson) {
       res.setHeader("Connection", "close");
@@ -3395,7 +3507,13 @@ async function handleChatTurn(req, res, signal) {
   if (rawMode) {
     chatMessages = [{ role: "user", content: userMessage }];
     systemPrompt = null;
-    sendSSE(res, "raw_mode", { model: state.model, note: "no system prompt, no tools, isolated context" });
+    sendSSE(res, "raw_mode", {
+      model: state.model,
+      note: isOllamaModel(state.model)
+        ? "no system prompt, no tools, isolated context"
+        // Claude Code would otherwise use its own prompt, so it is given a neutral line.
+        : "no YOUI system prompt (Claude Code gets one neutral line), no tools, isolated context, not kept by Claude Code",
+    });
   } else {
     let minds = null;
     if (forceMode === "orchestrate") {
@@ -3414,6 +3532,37 @@ async function handleChatTurn(req, res, signal) {
     systemPrompt = buildSystemPrompt(userMessage, { minds });
   }
 
+  // Claude answers through the installed Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md);
+  // Ollama and vLLM keep YOUI's own agent loop.
+  if (isOllamaModel(state.model)) {
+    await ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode });
+  } else {
+    await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode });
+  }
+
+  throwIfAborted(signal);
+  // Persist YOUSPEAK session data
+  if (!IS_TEST && !rawMode) state.ys.persist();
+
+  // SP1: fire-and-forget mode-two detection (post-stream, no await)
+  // Direct-mode terminal response is the last assistant message in state.messages.
+  if (!rawMode) {
+    const lastAssistant = [...state.messages].reverse().find(m => m.role === "assistant");
+    fireDetection(state, lastAssistant ? lastAssistant.content : null);
+  }
+
+  sendSSE(res, "done", {
+    turnCount: state.turnCount,
+    totalToolCalls: state.totalToolCalls,
+    totalThinkingTokens: state.totalThinkingTokens,
+    youspeak: state.ys.report(),
+  });
+  res.end();
+}
+
+// YOUI's own agent loop, for Ollama and vLLM models: the provider answers,
+// YOUI runs the tools it asks for, and the results go back, up to 50 rounds.
+async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode }) {
   let maxTurns = rawMode ? 1 : 50;
 
   for (let turn = 0; turn < maxTurns; turn++) {
@@ -3423,17 +3572,15 @@ async function handleChatTurn(req, res, signal) {
 
     let response;
     try {
-      response = isOllamaModel(state.model)
-        ? await callOllamaModel(chatMessages, systemPrompt, {
-            raw: rawMode,
-            signal,
-            onDelta: (delta) => {
-              if (!signal.aborted && delta.type === "text_delta") {
-                sendSSE(res, "text_delta", { delta: delta.text });
-              }
-            }
-          })
-        : await callClaude(chatMessages, systemPrompt, { raw: rawMode, signal });
+      response = await callOllamaModel(chatMessages, systemPrompt, {
+        raw: rawMode,
+        signal,
+        onDelta: (delta) => {
+          if (!signal.aborted && delta.type === "text_delta") {
+            sendSSE(res, "text_delta", { delta: delta.text });
+          }
+        }
+      });
     } catch (e) {
       throwIfAborted(signal);
       if (e.status === 429) {
@@ -3463,7 +3610,7 @@ async function handleChatTurn(req, res, signal) {
     // YOUSPEAK L2: Sense thinking
     if (!rawMode) state.ys.senseThinking(usage);
     // YOUSPEAK L5: Sense turn + budget
-    if (!rawMode) state.ys.senseTurn(budget);
+    if (!rawMode) state.ys.senseTurn(kernelBudget());
 
     const toolUseBlocks = [];
 
@@ -3501,7 +3648,7 @@ async function handleChatTurn(req, res, signal) {
     }
 
     // Track provider usage
-    const provider = response._provider || (isOllamaModel(state.model) ? "ollama" : "claude");
+    const provider = response._provider || "ollama";
     if (!rawMode) {
       trackProviderUsage(provider, state.model, {
         ...usage,
@@ -3516,12 +3663,7 @@ async function handleChatTurn(req, res, signal) {
       thinking_tokens: thinkingTokens,
       provider,
       model: state.model,
-      budget: {
-        fiveHour: budget.fiveHour.utilization,
-        sevenDay: budget.sevenDay.utilization,
-        resetIn: budget.fiveHour.reset > Date.now() ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) : null,
-        isOverage: budget.isUsingOverage,
-      },
+      budget: budgetSnapshot(),
       ollamaCost: provider === "ollama" ? state.providerUsage.ollama.cost : undefined,
       turn: state.turnCount,
       youspeak: state.ys.statusLine(),
@@ -3599,7 +3741,7 @@ async function handleChatTurn(req, res, signal) {
     state.ys.senseContext(state.messages, systemPrompt.length);
 
     // YOUSPEAK DECIDE: Check for adaptive signals
-    const signals = state.ys.decide(state.effort, state.model, budget);
+    const signals = state.ys.decide(state.effort, state.model, kernelBudget());
     if (signals.length > 0) {
       sendSSE(res, "youspeak_signals", { signals });
       for (const sig of signals) {
@@ -3618,25 +3760,6 @@ async function handleChatTurn(req, res, signal) {
       }
     }
   }
-
-  throwIfAborted(signal);
-  // Persist YOUSPEAK session data
-  if (!IS_TEST && !rawMode) state.ys.persist();
-
-  // SP1: fire-and-forget mode-two detection (post-stream, no await)
-  // Direct-mode terminal response is the last assistant message in state.messages.
-  if (!rawMode) {
-    const lastAssistant = [...state.messages].reverse().find(m => m.role === "assistant");
-    fireDetection(state, lastAssistant ? lastAssistant.content : null);
-  }
-
-  sendSSE(res, "done", {
-    turnCount: state.turnCount,
-    totalToolCalls: state.totalToolCalls,
-    totalThinkingTokens: state.totalThinkingTokens,
-    youspeak: state.ys.report(),
-  });
-  res.end();
 }
 
 // ═════════════════════════════════════════════════════════════════════

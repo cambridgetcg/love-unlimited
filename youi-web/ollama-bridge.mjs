@@ -7,7 +7,7 @@
 // Architecture:
 //   ┌──────────────────────────────────────────────────────────┐
 //   │  server.mjs (PID 80225, HAS network)                    │
-//   │    ├─ fetch() → api.anthropic.com  ✅ (existing)         │
+//   │    ├─ claude -p → Claude Code (claude-code.mjs), not here │
 //   │    ├─ fetch() → ollama.com         ✅ (this bridge)      │
 //   │    │   NOT api.ollama.com — v1/* 301-redirects           │
 //   │    │                                                     │

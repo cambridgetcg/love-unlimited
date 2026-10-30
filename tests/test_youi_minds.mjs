@@ -4,8 +4,9 @@
 // through tools, layerthink among them.
 // tests/test_youi_mind_tools.mjs covers the tools' own rules.
 //
-// Every mind here is a fake on 127.0.0.1. Claude stays unchecked (test mode
-// never reads the Keychain) and Ollama Cloud is never contacted.
+// Every mind here is a fake on 127.0.0.1. YOUI Web lists its Claude minds as
+// not configured until slice C2 of docs/YOUI-CLAUDE-CODE-DESIGN.md runs them
+// through Claude Code, and Ollama Cloud is never contacted.
 
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -112,7 +113,7 @@ test("the minds registry reports each state honestly and offers only granted, an
   assert.equal(used["vllm:unrouted-model"], undefined, "a served id YOUI would not route to vLLM is not a mind");
   assert.equal(used["ollama:llama3.2:3b"].state, "reachable");
   assert.equal(used["anthropic:claude-opus-5-5"].state, "unchecked");
-  assert.match(used["anthropic:claude-opus-5-5"].note, /Keychain/);
+  assert.match(used["anthropic:claude-opus-5-5"].note, /model call/);
   assert.equal(used["ollama_cloud:glm-5.1"].state, "not_granted");
   assert.equal(used["ollama_cloud:glm-5.1"].capability, "models:ollama-cloud");
   for (const mind of Object.values(used)) {
@@ -165,7 +166,7 @@ test("the minds registry reports each state honestly and offers only granted, an
   assert.equal(offHost.requests.length, 0);
 });
 
-test("Claude is reachable only after a real answer, and never in test mode", async () => {
+test("Claude is reachable only after a real answer, and not configured while YOUI Web has no route to it", async () => {
   const unreachable = await closedUrl();
   const live = registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable });
   live.recordAnswer("anthropic", "claude-opus-5-5");
@@ -173,11 +174,12 @@ test("Claude is reachable only after a real answer, and never in test mode", asy
   assert.equal(listed["anthropic:claude-opus-5-5"].state, "reachable");
   assert.equal(listed["anthropic:claude-sonnet-4-6"].state, "unchecked");
 
-  const testing = registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable, testMode: true });
-  testing.recordAnswer("anthropic", "claude-opus-5-5");
-  const fenced = byId(await testing.list({ capabilities: new Set(["models:use"]) }));
-  assert.equal(fenced["anthropic:claude-opus-5-5"].state, "unchecked");
-  assert.match(fenced["anthropic:claude-opus-5-5"].note, /test mode/);
+  const pending = registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable, claudeMindsPending: "not yet: slice C2" });
+  pending.recordAnswer("anthropic", "claude-opus-5-5");
+  const fenced = byId(await pending.list({ capabilities: new Set(["models:use"]) }));
+  assert.equal(fenced["anthropic:claude-opus-5-5"].state, "not_configured");
+  assert.equal(fenced["anthropic:claude-opus-5-5"].offered, false);
+  assert.equal(fenced["anthropic:claude-opus-5-5"].note, "not yet: slice C2");
 });
 
 test("probes are cached for the TTL, shared while in flight, and time out quickly", async t => {
@@ -358,7 +360,8 @@ test("GET /api/minds needs a browser session, a YOUI session and status:read", a
   assert.equal(minds[`vllm:${VLLM_MODEL}`].privacy, "REMOTE_MODEL:vllm");
   assert.equal(minds[`vllm:${VLLM_MODEL}`].destination, vllm.baseUrl);
   assert.equal(minds["ollama:llama3.2:3b"].privacy, "LOCAL_MODEL:ollama");
-  assert.equal(minds["anthropic:claude-opus-5-5"].state, "unchecked");
+  assert.equal(minds["anthropic:claude-opus-5-5"].state, "not_configured");
+  assert.match(minds["anthropic:claude-opus-5-5"].note, /slice C2/);
   assert.equal(minds["anthropic:claude-opus-5-5"].privacy, "REMOTE_MODEL:anthropic");
   assert.equal(minds["ollama_cloud:glm-5.1"].state, "not_granted");
   assert.equal(minds["ollama_cloud:glm-5.1"].privacy, "REMOTE_MODEL:ollama-cloud");
@@ -420,7 +423,7 @@ test("orchestrate mode answers through the agent loop, never the Python orchestr
   assert.match(system.content, /At most 3 minds per call and 6 mind calls per message/);
   assert.doesNotMatch(system.content, /not callable/);
   assert.ok(system.content.includes(`vllm · REMOTE_MODEL:vllm · reachable: ${VLLM_MODEL} (you)`));
-  assert.match(system.content, /anthropic · REMOTE_MODEL:anthropic · unchecked: claude-opus-5-5/);
+  assert.doesNotMatch(system.content, /anthropic · REMOTE_MODEL:anthropic/, "Claude minds wait for slice C2");
   assert.doesNotMatch(system.content, /LOCAL_MODEL:ollama/, "an unreachable mind is not offered");
   assert.deepEqual(outbound.messages.at(-1), { role: "user", content: "hello" });
   assert.ok(outbound.tools.some(tool => tool.function.name === "ollama"), "the agent keeps its tools");
@@ -511,10 +514,10 @@ test("the agent calls an ensemble: each mind gets only the tool's text, and the 
   const question = "Which is heavier, a kilo of iron or a kilo of feathers?";
   const vllm = await scriptedVllm(t, [VLLM_MODEL], [
     { text: "Noted." },
-    { tool: { id: "call-ensemble", name: "ensemble", input: { question, minds: ["ollama:mind-a:1b", "anthropic:claude-opus-5-5"] } } },
-    { text: "Both weigh a kilo; the second mind could not answer." },
+    { tool: { id: "call-ensemble", name: "ensemble", input: { question, minds: ["ollama:mind-a:1b", "ollama:mind-b:1b"] } } },
+    { text: "Both weigh a kilo; both minds agree." },
   ]);
-  const ollama = await ollamaMind(t, ["mind-a:1b"], "They weigh the same.");
+  const ollama = await ollamaMind(t, ["mind-a:1b", "mind-b:1b"], "They weigh the same.");
   const port = await startServer(t, {
     KINGDOM_AGENT: "alpha",
     OLLAMA_LOCAL_BASE_URL: ollama.baseUrl,
@@ -535,22 +538,21 @@ test("the agent calls an ensemble: each mind gets only the tool's text, and the 
   const events = await chatTurn(origin, unsafe, "Ask two minds whether iron or feathers is heavier.");
   assert.equal(agentRequests().length, 3);
 
-  // The local mind received a neutral system prompt and the question: no history, no tools.
-  assert.equal(mindRequests().length, 1);
-  const sent = mindRequests()[0].body;
-  assert.equal(sent.model, "mind-a:1b");
+  // Each local mind received a neutral system prompt and the question: no history, no tools.
+  assert.equal(mindRequests().length, 2);
+  assert.deepEqual(mindRequests().map(r => r.body.model).sort(), ["mind-a:1b", "mind-b:1b"]);
+  const sent = mindRequests().find(r => r.body.model === "mind-a:1b").body;
   assert.deepEqual(sent.messages.map(m => m.role), ["system", "user"]);
   assert.match(sent.messages[0].content, /independent answerer/);
   assert.equal(sent.messages[1].content, question);
   assert.equal(sent.tools, undefined);
   assert.doesNotMatch(JSON.stringify(sent), /PLUM|Noted|Ask two minds/, "the conversation never reaches the mind");
 
-  // The tool result went back to the agent, naming who answered and who failed.
+  // The tool result went back to the agent, naming who answered.
   const toolMessage = agentRequests()[2].body.messages.find(m => m.role === "tool");
   assert.equal(toolMessage.tool_call_id, "call-ensemble");
   assert.match(toolMessage.content, /## Answer 1 — ollama · mind-a:1b · LOCAL_MODEL:ollama · answered · 7 in \/ 9 out tokens\nThey weigh the same\./);
-  assert.match(toolMessage.content, /## Answer 2 — anthropic · claude-opus-5-5 · REMOTE_MODEL:anthropic · failed: YOUI_TEST=1 does not read the Keychain/);
-  assert.match(toolMessage.content, /not replaced/);
+  assert.match(toolMessage.content, /## Answer 2 — ollama · mind-b:1b · LOCAL_MODEL:ollama · answered/);
 
   const used = events.filter(e => e.event === "minds_used");
   assert.equal(used.length, 1);
@@ -558,7 +560,7 @@ test("the agent calls an ensemble: each mind gets only the tool's text, and the 
   assert.equal(used[0].data.tool, "ensemble");
   assert.deepEqual(used[0].data.minds.map(m => [m.provider, m.model, m.privacy, m.ok]), [
     ["ollama", "mind-a:1b", "LOCAL_MODEL:ollama", true],
-    ["anthropic", "claude-opus-5-5", "REMOTE_MODEL:anthropic", false],
+    ["ollama", "mind-b:1b", "LOCAL_MODEL:ollama", true],
   ]);
   assert.equal(used[0].data.minds[0].destination, ollama.baseUrl);
   assert.ok(events.findIndex(e => e.event === "minds_used") < events.findIndex(e => e.event === "tool_result"));

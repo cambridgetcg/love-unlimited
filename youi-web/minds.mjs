@@ -14,7 +14,7 @@
 //
 // Probes are GET /api/tags (local Ollama) and GET /v1/models (vLLM), about
 // 1 s each, cached for about a minute. The registry never calls a model,
-// never reads the Keychain and never contacts Ollama Cloud to find out.
+// never reads a credential and never contacts Ollama Cloud to find out.
 // Only granted minds that are reachable or unchecked are offered.
 
 export const MIND_STATES = Object.freeze([
@@ -44,7 +44,8 @@ function probeError(error, timeoutMs) {
  * @param {() => boolean} options.cloudKeyConfigured  whether OLLAMA_API_KEY is set
  * @param {(provider: string) => {route: string, destination: string|null}} options.computeRoute
  *   the server's privacy labels, so each label is spelt in one place
- * @param {boolean} [options.testMode]      YOUI_TEST: Claude stays unchecked
+ * @param {string|null} [options.claudeMindsPending]  when set, Claude minds are
+ *   not_configured with this note: YOUI Web has no route to Claude for them yet
  */
 export function createMindsRegistry({
   claudeModels = [],
@@ -56,7 +57,7 @@ export function createMindsRegistry({
   localEndpointIsLoopback = true,
   cloudKeyConfigured = () => false,
   computeRoute,
-  testMode = false,
+  claudeMindsPending = null,
   probeTimeoutMs = MIND_PROBE_TIMEOUT_MS,
   cacheTtlMs = MIND_CACHE_TTL_MS,
   fetchImpl = globalThis.fetch,
@@ -124,16 +125,14 @@ export function createMindsRegistry({
   function anthropicMinds(granted) {
     return claudeModels.map(model => {
       if (!granted) return entry("anthropic", model, "models:use", "not_granted", "needs models:use");
-      if (testMode) {
-        return entry("anthropic", model, "models:use", "unchecked", "test mode never reads the Keychain");
-      }
+      if (claudeMindsPending) return entry("anthropic", model, "models:use", "not_configured", claudeMindsPending);
       const answeredAt = answers.get(`anthropic:${model}`);
       if (answeredAt && now() - answeredAt < cacheTtlMs) {
         return entry("anthropic", model, "models:use", "reachable", "answered a call in this process", answeredAt);
       }
       return entry(
         "anthropic", model, "models:use", "unchecked",
-        "not probed: probing would read the Keychain; the first call proves it",
+        "not probed: probing would mean a model call; the first call proves it",
       );
     });
   }

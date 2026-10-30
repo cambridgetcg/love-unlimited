@@ -584,6 +584,8 @@ function serverEnv(t, agent, capabilities) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const env = {
     ...process.env, PORT: "0", YOUI_TEST: "1", TRUTH_DETECTOR_ENABLED: "0", AUTONOMOUS: "0", OLLAMA_API_KEY: "",
+    // No Claude Code, whatever the shell exports, and a scratch directory for it.
+    YOUI_CLAUDE_BIN: "", YOUI_CLAUDE_CWD: join(dir, "claude-code-cwd"),
     KINGDOM_AGENT: "alpha", OLLAMA_VLLM_BASE_URL: agent.baseUrl, OLLAMA_LOCAL_BASE_URL: "http://127.0.0.1:9",
     YOUI_COLLAB_MCP: join(dir, "no-collab-mcp"), YOUI_COLLAB_DB: join(dir, "collab.sqlite"),
     AGENTOOL_COLLAB_DB: join(dir, "collab.sqlite"),

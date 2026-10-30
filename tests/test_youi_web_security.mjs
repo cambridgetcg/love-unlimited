@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { SessionRegistry } from "../youi-web/security.mjs";
 
@@ -232,6 +235,13 @@ function within(promise, milliseconds, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// No Claude Code, whatever the shell exports, and a scratch directory for it.
+function noClaudeCode(t) {
+  const claudeCwd = mkdtempSync(join(tmpdir(), "youi-security-claude-cwd-"));
+  t?.after(() => rmSync(claudeCwd, { recursive: true, force: true }));
+  return { YOUI_CLAUDE_BIN: "", YOUI_CLAUDE_CWD: claudeCwd };
+}
+
 async function startServer(t, extraEnv = {}) {
   const child = spawn(process.execPath, ["youi-web/server.mjs"], {
     cwd: REPO_ROOT,
@@ -242,6 +252,7 @@ async function startServer(t, extraEnv = {}) {
       YOUI_MAX_BODY_BYTES: "1024",
       TRUTH_DETECTOR_ENABLED: "0",
       AUTONOMOUS: "0",
+      ...noClaudeCode(t),
       ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -272,13 +283,14 @@ async function startServer(t, extraEnv = {}) {
   return server;
 }
 
-test("YOUI Web refuses direct LAN mode and directs operators to SSH tunnels", async () => {
+test("YOUI Web refuses direct LAN mode and directs operators to SSH tunnels", async t => {
   const child = spawn(process.execPath, ["youi-web/server.mjs"], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       ALLOW_LAN: "1",
       YOUI_TEST: "1",
+      ...noClaudeCode(t),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -37,16 +37,22 @@ import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { runDecisionTool } from "./decision-seat.mjs";
 import { TableSeats, runCouncilTool, runDelegateTool } from "./table-tools.mjs";
-import { CLAUDE_MODELS, claudeCodeEffort } from "./claude-models.mjs";
+import { CLAUDE_CODE_FLOOR_VERSION, CLAUDE_MODELS, claudeCodeEffort, claudeCodeMinVersion } from "./claude-models.mjs";
 import {
   BRIDGE_ALLOWED_TOOLS,
   BRIDGE_SERVER_NAME,
   bridgeMcpConfig,
   bridgeToolName,
+  claudeCodeSpend,
+  claudeCodeTranscriptDir,
+  compareVersions,
   defaultClaudeCwd,
   killAllClaudeCode,
+  readClaudeVersion,
   resolveClaudeBinary,
   runClaudeCode,
+  sweepStaleClaudeScratch,
+  transcriptPreamble,
 } from "./claude-code.mjs";
 import { createMcpBridge } from "./mcp-bridge.mjs";
 import { createMindsRegistry, offeredMinds } from "./minds.mjs";
@@ -330,21 +336,35 @@ const OLLAMA_DEFAULT_PRICE = { input: 0.20, output: 0.60 };
 
 function createProviderUsage() {
   return {
-    claude: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, turns: 0, cost: 0 },
-    ollama: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
-    ollama_local: { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} },
+    claude: { inputTokens: 0, outputTokens: 0, thinkingTokens: 0, turns: 0, mindCalls: 0, failedMindCalls: 0, cost: 0, byModel: {} },
+    ollama: { inputTokens: 0, outputTokens: 0, turns: 0, mindCalls: 0, cost: 0, byModel: {} },
+    ollama_local: { inputTokens: 0, outputTokens: 0, turns: 0, mindCalls: 0, cost: 0, byModel: {} },
     sessionStart: Date.now(),
   };
 }
 
-function trackProviderUsage(provider, model, usage) {
+/**
+ * Adds one call to the session's usage. `mind` counts it as a call to another
+ * mind rather than one of the agent's turns, and `failed` as one that gave no
+ * answer. For Claude, `usage.cost_usd` is what the call added (claudeCodeSpend),
+ * and `byModel`, when Claude Code stated it per model, is used as stated:
+ * every model the call reached, with its own tokens and cost.
+ */
+function trackProviderUsage(provider, model, usage, { mind = false, failed = false, byModel = null } = {}) {
   const providerUsage = state.providerUsage;
-  const u = providerUsage[provider] || (providerUsage[provider] = { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0, byModel: {} });
+  const u = providerUsage[provider] || (providerUsage[provider] = { inputTokens: 0, outputTokens: 0, turns: 0, mindCalls: 0, cost: 0, byModel: {} });
   u.inputTokens += usage.input_tokens || 0;
   u.outputTokens += usage.output_tokens || 0;
-  u.turns++;
+  if (mind) {
+    u.mindCalls = (u.mindCalls || 0) + 1;
+    if (failed) u.failedMindCalls = (u.failedMindCalls || 0) + 1;
+  } else {
+    u.turns++;
+  }
   if (provider === "claude") {
     u.thinkingTokens = (u.thinkingTokens || 0) + (usage.thinking_tokens || 0);
+    // What this call added to Claude Code's running total_cost_usd.
+    u.cost += usage.cost_usd || 0;
   } else if (provider === "ollama_local" || provider === "vllm") {
     // Self-hosted models are free — no cost tracking
   } else {
@@ -356,15 +376,28 @@ function trackProviderUsage(provider, model, usage) {
   }
   // Per-model tracking
   if (!u.byModel) u.byModel = {};
-  if (!u.byModel[model]) u.byModel[model] = { inputTokens: 0, outputTokens: 0, turns: 0, cost: 0 };
-  u.byModel[model].inputTokens += usage.input_tokens || 0;
-  u.byModel[model].outputTokens += usage.output_tokens || 0;
-  u.byModel[model].turns++;
+  const slot = name => (u.byModel[name] ||= { inputTokens: 0, outputTokens: 0, turns: 0, mindCalls: 0, cost: 0 });
+  const entry = slot(model);
+  if (mind) entry.mindCalls = (entry.mindCalls || 0) + 1;
+  else entry.turns++;
+  if (provider === "claude" && byModel) {
+    for (const [name, figures] of Object.entries(byModel)) {
+      const target = slot(name);
+      target.inputTokens += figures.inputTokens || 0;
+      target.outputTokens += figures.outputTokens || 0;
+      target.cost += figures.costUsd || 0;
+    }
+    return;
+  }
+  entry.inputTokens += usage.input_tokens || 0;
+  entry.outputTokens += usage.output_tokens || 0;
   if (provider === "ollama_local") {
-    u.byModel[model].cost += 0; // free!
-  } else if (provider !== "claude") {
+    entry.cost += 0; // free!
+  } else if (provider === "claude") {
+    entry.cost += usage.cost_usd || 0;
+  } else {
     const pricing = OLLAMA_PRICING[model] || OLLAMA_DEFAULT_PRICE;
-    u.byModel[model].cost += ((usage.input_tokens || 0) / 1_000_000) * pricing.input + ((usage.output_tokens || 0) / 1_000_000) * pricing.output;
+    entry.cost += ((usage.input_tokens || 0) / 1_000_000) * pricing.input + ((usage.output_tokens || 0) / 1_000_000) * pricing.output;
   }
 }
 
@@ -443,8 +476,10 @@ function createSessionState(overrides = {}) {
     providerUsage: createProviderUsage(),
     ys: createKernel({ agent }),
     sessionId: null,
-    // The Claude Code session this YOUI session's Claude turns continue:
-    // { id, started }, or null until the first one (claudeCodeTurn).
+    // The Claude Code conversation this YOUI session's Claude turns continue,
+    // or null until the first one (claudeCodeTurn): { id, started, seen,
+    // spend }, where `seen` is how many of `messages` Claude Code has seen and
+    // `spend` the last running totals its result stated (claudeCodeSpend).
     claudeCodeSession: null,
   };
 }
@@ -570,9 +605,13 @@ function modelProvider(model) {
 
 function runtimePrivacyBoundary() {
   const provider = modelProvider(state.model);
+  const sends = ["prompt", "selected session context", "system prompt"];
+  // A Claude turn also carries, as text, the turns of this session Claude has
+  // not received: local-model turns included (claudeCodeTurn).
+  if (provider === "anthropic") sends.push("earlier turns Claude has not received, including Ollama and vLLM turns, as text");
   const direct = provider === "ollama_cloud" && !hasCapability("models:ollama-cloud")
     ? { route: "BLOCKED:ollama-cloud-capability-required", destination: null, sends: [] }
-    : { ...providerComputeRoute(provider), sends: ["prompt", "selected session context", "system prompt"] };
+    : { ...providerComputeRoute(provider), sends };
 
   return {
     activeMode: state.chatMode,
@@ -592,8 +631,16 @@ function runtimePrivacyBoundary() {
         && hasCapability("models:cloud-fallback"),
       note: "Local Ollama never falls back to cloud without both explicit capabilities.",
     },
+    // Yu's decision (2026-10-30): carry, and say so.
+    switchToClaude: "When this session switches to a Claude model, the next Claude turn carries the turns Claude has not"
+      + " received (local Ollama and vLLM turns included) into Claude as text: they go to Anthropic, and Claude Code"
+      + " stores them in its transcript. The page shows a notice before anything is sent.",
     retention: {
       browserSession: "process memory; expires after 12 hours idle; no transcript persistence by the session registry",
+      claudeCode: `Claude Code keeps YOUI's Claude conversations, tool results included, as transcripts in ${claudeCodeTranscriptDir(CLAUDE_CODE_CWD, process.env)}`
+        + "; when a session switches to Claude, the turns Claude has not received, local-model (Ollama, vLLM) turns included,"
+        + " are carried into Claude as text, so they go to Anthropic and are kept in those transcripts too"
+        + "; /api/clear and session clear start a new conversation without deleting the old transcript; raw mode and Claude minds are not kept",
       localMetrics: "YOUSPEAK may persist aggregate session metrics; explicit memory tools write only when granted",
       remoteProvider: "provider policy applies; YOUI does not guarantee provider-side deletion or training exclusion",
     },
@@ -645,34 +692,24 @@ function externalToolEnv(credentialNames, purpose, extra = {}) {
   });
 }
 
-// The minds a session may call, with honest reachability
-// (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
-// grant is checked per session when the list is read.
-// Claude minds wait for slice C2, which runs them through Claude Code.
-const CLAUDE_MINDS_PENDING = "Claude minds go through Claude Code from slice C2 of docs/YOUI-CLAUDE-CODE-DESIGN.md; not yet in this build";
-const mindsRegistry = createMindsRegistry({
-  claudeModels: CLAUDE_MODELS,
-  vllmModels: OLLAMA_MODELS.filter(isVllmModel),
-  cloudModels: OLLAMA_MODELS.filter(model => !isVllmModel(model)),
-  isVllmModel,
-  localBaseUrl: OLLAMA_LOCAL_BASE_URL,
-  vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
-  localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
-  cloudKeyConfigured: ollamaCloudKeyConfigured,
-  computeRoute: providerComputeRoute,
-  claudeMindsPending: CLAUDE_MINDS_PENDING,
-});
-
 // ═════════════════════════════════════════════════════════════════════
 // CLAUDE CODE — how YOUI Web reaches Claude (docs/YOUI-CLAUDE-CODE-DESIGN.md)
 // ═════════════════════════════════════════════════════════════════════
 
-// YOUI Web never reads Claude Code's login, never refreshes it and never calls
-// Anthropic itself: every Claude turn runs the installed `claude` (claude-code.mjs).
-// The binary is YOUI_CLAUDE_BIN or `claude` on PATH, found once at boot; test
-// mode only ever runs YOUI_CLAUDE_BIN.
+// YOUI Web's chat turns and minds never read Claude Code's login, never
+// refresh it and never call Anthropic themselves: every Claude turn and Claude
+// mind runs the installed `claude` (claude-code.mjs). Two routes stay outside
+// this (docs/YOUI-CLAUDE-CODE-DESIGN.md §4): /api/orchestrate/run, whose
+// Python orchestrator uses an Anthropic API key, and the truth detector
+// service, when TRUTH_DETECTOR_ENABLED=1.
+// The binary is YOUI_CLAUDE_BIN, `claude` on PATH or ~/.local/bin/claude,
+// found once at boot; test mode only ever runs YOUI_CLAUDE_BIN.
 const CLAUDE_CODE = resolveClaudeBinary({ env: process.env, testMode: IS_TEST });
 const CLAUDE_CODE_CWD = defaultClaudeCwd(process.env);
+// A YOUI that crashed or was killed mid-turn left its turn's scratch files
+// (sweepStaleClaudeScratch says exactly which it removes). A test server
+// sweeps only when a test asks, with its own TMPDIR.
+if (!IS_TEST || process.env.YOUI_TEST_SWEEP_SCRATCH === "1") sweepStaleClaudeScratch();
 
 // HOME and PATH stay, so Claude Code finds its own login; no credential crosses.
 function claudeCodeEnv() {
@@ -683,23 +720,104 @@ function claudeCodeEnv() {
   });
 }
 
+// `claude --version`, read at most once a minute and shared by the minds
+// registry and chat turns; it is never a model call.
+// A test may shorten it (YOUI_TEST_CLAUDE_VERSION_TTL_MS), to change versions between turns.
+const CLAUDE_VERSION_TTL_MS = (() => {
+  const configured = Number.parseInt(process.env.YOUI_TEST_CLAUDE_VERSION_TTL_MS || "", 10);
+  return IS_TEST && Number.isFinite(configured) && configured >= 0 ? configured : 60_000;
+})();
+let claudeVersionCache = null; // { at, promise }
+function claudeCodeVersion() {
+  const now = Date.now();
+  if (!claudeVersionCache || now - claudeVersionCache.at >= CLAUDE_VERSION_TTL_MS) {
+    const entry = { at: now, settled: claudeVersionCache?.settled || null, promise: null };
+    entry.promise = readClaudeVersion(CLAUDE_CODE.path, { env: claudeCodeEnv() }).then(result => {
+      entry.settled = result;
+      // A failed read is not kept, so the next turn asks again.
+      if (!result.ok && claudeVersionCache === entry) claudeVersionCache = null;
+      return result;
+    });
+    claudeVersionCache = entry;
+  }
+  return claudeVersionCache.promise;
+}
+function lastClaudeVersion() {
+  return claudeVersionCache?.settled || null;
+}
+
+// The minds a session may call, with honest reachability
+// (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
+// grant is checked per session when the list is read.
+const mindsRegistry = createMindsRegistry({
+  claudeModels: CLAUDE_MODELS,
+  vllmModels: OLLAMA_MODELS.filter(isVllmModel),
+  cloudModels: OLLAMA_MODELS.filter(model => !isVllmModel(model)),
+  isVllmModel,
+  localBaseUrl: OLLAMA_LOCAL_BASE_URL,
+  vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
+  localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
+  cloudKeyConfigured: ollamaCloudKeyConfigured,
+  computeRoute: providerComputeRoute,
+  // Claude minds go through Claude Code; its version is read, never a model call.
+  claudeCodeMissing: CLAUDE_CODE.path ? null : CLAUDE_CODE.error,
+  readClaudeVersion: () => claudeCodeVersion(),
+  claudeMinVersion: claudeCodeMinVersion,
+  compareVersions,
+});
+
 // ═════════════════════════════════════════════════════════════════════
 // BUDGET
 // ═════════════════════════════════════════════════════════════════════
 
 // Plan limits are Claude Code's to manage. YOUI used to read Anthropic's
-// rate-limit headers from its own requests; it makes none now, so it shows no
-// utilisation it cannot see.
+// rate-limit headers from its own requests; it makes none now. What it shows
+// is what Claude Code itself reports in its stream (rate_limit_event), and
+// nothing until it has; cost and tokens come from each result event.
 const budget = {
   source: "claude-code",
   managedBy: "Claude Code",
-  note: "Plan limits are managed by Claude Code; YOUI does not see them",
-  fiveHour: null,
+  note: "Plan limits are managed by Claude Code; it has not reported them in this process yet",
+  fiveHour: null,   // { utilization, status, resetsAt } as Claude Code last reported it
   sevenDay: null,
+  status: null,
+  isUsingOverage: false,
+  reportedAt: null,
 };
 
+function noteClaudeRateLimit(info) {
+  if (!info || typeof info !== "object") return;
+  const windows = info.unifiedWindows || {};
+  const window = value => (value && typeof value.utilization === "number"
+    ? { utilization: value.utilization, status: value.status || null, resetsAt: value.resetsAt ? value.resetsAt * 1000 : null }
+    : null);
+  const fiveHour = window(windows.five_hour);
+  const sevenDay = window(windows.seven_day);
+  budget.fiveHour = fiveHour || budget.fiveHour;
+  budget.sevenDay = sevenDay || budget.sevenDay;
+  budget.status = typeof info.status === "string" ? info.status : budget.status;
+  budget.isUsingOverage = info.isUsingOverage === true;
+  // The panel claims figures only once Claude Code has stated a window.
+  if (fiveHour || sevenDay) {
+    budget.reportedAt = Date.now();
+    budget.note = "As Claude Code last reported it";
+  }
+}
+
+// The page's shape: utilisation as fractions, or null when Claude Code has not said.
 function budgetSnapshot() {
-  return { ...budget };
+  const resetsAt = budget.fiveHour?.resetsAt || 0;
+  return {
+    source: budget.source,
+    managedBy: budget.managedBy,
+    note: budget.note,
+    fiveHour: budget.fiveHour ? budget.fiveHour.utilization : null,
+    sevenDay: budget.sevenDay ? budget.sevenDay.utilization : null,
+    status: budget.status,
+    isOverage: budget.isUsingOverage,
+    resetIn: resetsAt > Date.now() ? Math.round((resetsAt - Date.now()) / 60000) : null,
+    reportedAt: budget.reportedAt ? new Date(budget.reportedAt).toISOString() : null,
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1657,15 +1775,58 @@ function buildSystemPrompt(taskText, { minds = null } = {}) {
 // docs/YOUI-MINDS-DESIGN.md §3.3 and §4. A mind receives a short system prompt
 // naming its role and one user message holding only the tool's text: no
 // history and no tools. An Ollama-family mind takes the session's reasoning
-// effort. Claude minds wait for slice C2 (docs/YOUI-CLAUDE-CODE-DESIGN.md §5),
-// which runs them through Claude Code; until then the registry lists them as
-// not configured and offers none.
+// effort. A Claude mind runs through Claude Code at a stated effort, never its
+// default (docs/YOUI-CLAUDE-CODE-DESIGN.md §3.1).
+const MIND_CLAUDE_EFFORT = "medium";
 const MIND_OLLAMA_MAX_TOKENS = 8192;
 // The Ollama bridge's names for what served a call, as the registry spells providers.
 const BRIDGE_PROVIDERS = { vllm: "vllm", ollama_local: "ollama", ollama_cloud: "ollama_cloud" };
 
 function mindTextOf(content) {
   return (content || []).filter(block => block.type === "text").map(block => block.text).join("\n").trim();
+}
+
+// One Claude mind call: its role prompt and the tool's text, with no tools, no
+// MCP and no saved session, so nothing of this conversation or of YOUI's tools
+// reaches it. Each run is its own Claude Code session, so its result's running
+// total is the call's cost. A run that is stopped (the turn ends, or the call
+// times out) counts as a failed call with no tokens.
+async function callClaudeMind({ mind, system, prompt, signal }) {
+  if (!CLAUDE_CODE.path) return { ok: false, error: `Claude Code is not available: ${CLAUDE_CODE.error}` };
+  let outcome;
+  try {
+    outcome = await runClaudeCode({
+      bin: CLAUDE_CODE.path,
+      cwd: CLAUDE_CODE_CWD,
+      env: claudeCodeEnv(),
+      model: mind.model,
+      effort: claudeCodeEffort(mind.model, MIND_CLAUDE_EFFORT),
+      systemPrompt: system,
+      persist: false,
+      message: prompt,
+      signal,
+      onEvent: event => { if (event.type === "rate_limit") noteClaudeRateLimit(event.info); },
+    });
+  } catch (error) {
+    trackProviderUsage("claude", mind.model, { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, { mind: true, failed: true });
+    if (signal?.aborted) throw error;
+    return { ok: false, error: String(error?.message || error).slice(0, 300) };
+  }
+  const answered = outcome.ok && outcome.result?.stop_reason !== "refusal";
+  const spend = outcome.result ? claudeCodeSpend(outcome.result, null, { oneOff: true }) : null;
+  const usage = outcome.usage
+    ? { input_tokens: outcome.usage.input_tokens, output_tokens: outcome.usage.output_tokens, cost_usd: spend?.costUsd || 0 }
+    : { input_tokens: 0, output_tokens: 0 };
+  trackProviderUsage("claude", mind.model, outcome.usage ? { ...outcome.usage, cost_usd: spend?.costUsd || 0 } : usage, {
+    mind: true,
+    failed: !answered,
+    byModel: spend?.byModel || null,
+  });
+  if (outcome.result?.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
+  if (!outcome.ok) return { ok: false, error: String(outcome.error || "Claude Code gave no answer").slice(0, 300), usage };
+  // A real answer is the only proof the minds registry takes for Claude.
+  mindsRegistry.recordAnswer("anthropic", mind.model);
+  return { ok: true, text: outcome.text, usage };
 }
 
 async function callMind({ mind, system, prompt, signal }) {
@@ -1675,10 +1836,7 @@ async function callMind({ mind, system, prompt, signal }) {
   }
   const messages = [{ role: "user", content: prompt }];
 
-  if (mind.provider === "anthropic") {
-    // The direct route is gone; Claude minds go through Claude Code from slice C2.
-    return { ok: false, error: CLAUDE_MINDS_PENDING };
-  }
+  if (mind.provider === "anthropic") return callClaudeMind({ mind, system, prompt, signal });
 
   // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
   // an Ollama Cloud mind, or a "local" endpoint off this device, may take a
@@ -1697,7 +1855,7 @@ async function callMind({ mind, system, prompt, signal }) {
   });
   const usage = { input_tokens: result.usage?.input_tokens || 0, output_tokens: result.usage?.output_tokens || 0 };
   if (!result.ok) return { ok: false, error: String(result.error || `status ${result.status}`).slice(0, 300), usage };
-  if (result._provider) trackProviderUsage(result._provider, mind.model, usage);
+  if (result._provider) trackProviderUsage(result._provider, mind.model, usage, { mind: true });
   const served = BRIDGE_PROVIDERS[result._provider];
   // The bridge serves an installed model locally even when the mind is listed for Ollama Cloud.
   const servedBy = served && served !== mind.provider
@@ -1747,7 +1905,7 @@ const RAW_CLAUDE_SYSTEM_PROMPT = "You are Claude.";
 const mcpBridge = createMcpBridge({
   serverName: BRIDGE_SERVER_NAME,
   listTools: turn => withTurnScope(turn, () => availableTools()),
-  callTool: (turn, name, input, meta) => withTurnScope(turn, () => runBridgeTool(turn, name, input, meta)),
+  callTool: (turn, name, input, meta) => turn.track(() => withTurnScope(turn, () => runBridgeTool(turn, name, input, meta))),
 });
 
 function withTurnScope(turn, callback) {
@@ -1758,13 +1916,23 @@ function withTurnScope(turn, callback) {
 // page has been shown. Claude Code reports a tool call on stdout and calls the
 // bridge over HTTP; either may arrive first, so the bridge waits briefly for
 // the card before it reports progress, and shows it itself if it never comes.
+// It also keeps the bridge calls in flight: once the turn is closing no new
+// call starts, and the turn ends only when the running ones have (settle()).
+const BRIDGE_TURN_ENDED = { text: "Error: this turn has ended", isError: true };
 function createClaudeTurn({ res, signal, turnState }) {
   const shown = new Set();
   const waiters = new Map();
+  const inFlight = new Set();
   let generated = 0;
+  // A Stop ends the wait for a tool card at once.
+  signal.addEventListener("abort", () => {
+    for (const wake of waiters.values()) wake();
+    waiters.clear();
+  }, { once: true });
   const turn = {
     state: turnState,
     signal,
+    closing: false,
     send(event, data) {
       if (!signal.aborted && !res.writableEnded) sendSSE(res, event, data);
     },
@@ -1776,7 +1944,7 @@ function createClaudeTurn({ res, signal, turnState }) {
       waiters.delete(id);
     },
     async showToolCall(toolUseId, name, input) {
-      if (toolUseId && !shown.has(toolUseId)) {
+      if (toolUseId && !shown.has(toolUseId) && !signal.aborted) {
         await new Promise(resolveWait => {
           const timer = setTimeout(resolveWait, 1_000);
           waiters.set(toolUseId, () => { clearTimeout(timer); resolveWait(); });
@@ -1787,16 +1955,37 @@ function createClaudeTurn({ res, signal, turnState }) {
       turn.noteToolUse(id, name, input);
       return id;
     },
+    // Runs one bridge call, unless the turn is already closing.
+    track(run) {
+      if (turn.closing) return Promise.resolve(BRIDGE_TURN_ENDED);
+      const call = Promise.resolve().then(run);
+      const settled = call.then(() => {}, () => {});
+      inFlight.add(settled);
+      settled.then(() => inFlight.delete(settled));
+      return call;
+    },
+    // No new calls; wait, at most `limitMs`, for the ones still running.
+    async settle(limitMs) {
+      turn.closing = true;
+      if (inFlight.size === 0) return true;
+      let timer;
+      const limit = new Promise(resolveLimit => { timer = setTimeout(() => resolveLimit(false), limitMs); });
+      const done = await Promise.race([Promise.all([...inFlight]).then(() => true), limit]);
+      clearTimeout(timer);
+      return done;
+    },
   };
   return turn;
 }
 
 async function runBridgeTool(turn, name, input, { toolUseId = null } = {}) {
-  if (turn.signal.aborted) return { text: "Error: this turn has ended", isError: true };
+  if (turn.signal.aborted || turn.closing) return BRIDGE_TURN_ENDED;
   if (!availableTools().some(tool => tool.name === name)) {
     return { text: `Permission denied: tool "${name}" is not enabled for this session.`, isError: true };
   }
   const id = await turn.showToolCall(toolUseId, name, input);
+  // The wait for the card can outlast a Stop; nothing runs after one.
+  if (turn.signal.aborted || turn.closing) return BRIDGE_TURN_ENDED;
   state.totalToolCalls++;
   const toolSense = state.ys.senseToolCall(name, input, null);
   turn.send("tool_executing", { id, name, redundant: toolSense.redundant });
@@ -1815,7 +2004,7 @@ async function runBridgeTool(turn, name, input, { toolUseId = null } = {}) {
       }),
     }));
   } catch (error) {
-    if (turn.signal.aborted) return { text: "Error: this turn has ended", isError: true };
+    if (turn.signal.aborted) return BRIDGE_TURN_ENDED;
     result = `Error: ${error.message}`;
     failed = true;
   }
@@ -1829,31 +2018,157 @@ function boundPort() {
   return typeof address === "object" && address ? address.port : PORT;
 }
 
-// Claude Code's own name for a session that already exists, and for one that does not.
+// Claude Code's own name for a session that already exists, and for one that
+// does not. For an unknown --resume, 2.1.314 writes "No conversation found
+// with session ID: <id>" both on stderr and in an error result's `errors`
+// on stdout (checked live on 2026-10-30); YOUI reads both, all of stderr it
+// kept (8,000 characters) and the result's text.
 const CLAUDE_SESSION_MISSING = /no conversation found|session .*not found/i;
 const CLAUDE_SESSION_TAKEN = /already in use|already exists/i;
+// The ceiling on model requests in one message, as YOUI's own loop has (Ollama, vLLM).
+const CLAUDE_TURN_MAX_TURNS = 50;
+// A turn that has not finished by then is stopped, with an error on the page:
+// 15 minutes, or YOUI_CLAUDE_TURN_TIMEOUT_MS between 1 second and 6 hours
+// (anything else, which a timer could not honour, is the default).
+const CLAUDE_TURN_TIMEOUT_RANGE_MS = { min: 1_000, max: 6 * 60 * 60_000 };
+const CLAUDE_TURN_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.YOUI_CLAUDE_TURN_TIMEOUT_MS || "");
+  return Number.isInteger(configured)
+    && configured >= CLAUDE_TURN_TIMEOUT_RANGE_MS.min
+    && configured <= CLAUDE_TURN_TIMEOUT_RANGE_MS.max
+    ? configured
+    : 15 * 60_000;
+})();
+// How long a closing turn waits for bridge tool calls still running: long
+// enough for one Collab request (decision-seat.mjs gives each 20 s), since
+// decision, council and delegate do not take the turn's signal.
+const BRIDGE_SETTLE_MS = 25_000;
+
+function newClaudeCodeSession() {
+  return { id: crypto.randomUUID(), started: false, seen: 0, spend: null };
+}
+
+// Which model wrote an assistant message that another model answered (an
+// Ollama or vLLM turn), so a carried transcript and its notice can name it.
+const messageModels = new WeakMap();
+
+function claudeUsageTotals(turnState) {
+  const claude = turnState.providerUsage.claude;
+  return {
+    inputTokens: claude.inputTokens,
+    outputTokens: claude.outputTokens,
+    thinkingTokens: claude.thinkingTokens || 0,
+    turns: claude.turns,
+    mindCalls: claude.mindCalls || 0,
+    failedMindCalls: claude.failedMindCalls || 0,
+    cost: claude.cost,
+  };
+}
+
+// What the page is told, before anything is sent, when a Claude turn carries
+// earlier turns of the chat into Claude as text.
+function carryNotice(seed, reason) {
+  const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const from = seed?.models?.length ? ` (turns answered by ${seed.models.join(", ")})` : "";
+  const carried = seed ? `${plural(seed.included, "earlier message")} of this chat${from}` : null;
+  const omitted = seed?.omitted ? ` (${plural(seed.omitted, "older message")} left out)` : "";
+  const consequence = "they go to Anthropic, and Claude Code stores them";
+  // Said before the run, so it says what is being done, not what has happened.
+  let message;
+  if (reason === "missing") {
+    message = "Claude Code had no record of this conversation. Starting a new Claude conversation"
+      + (carried ? `, carrying ${carried} into it as text${omitted}; ${consequence}.` : ".");
+  } else if (reason === "new") {
+    message = `Starting a new Claude conversation, carrying ${carried} into it as text${omitted}; ${consequence}.`;
+  } else {
+    message = `Carrying ${carried} into Claude as text${omitted}; ${consequence}.`;
+  }
+  return {
+    kind: "claude_carry",
+    reason,
+    carried: seed?.included || 0,
+    omitted: seed?.omitted || 0,
+    models: seed?.models || [],
+    message,
+  };
+}
 
 /**
  * One chat turn on a Claude model. A YOUI session maps to one Claude Code
- * session: --session-id on its first Claude turn, --resume after that, a new
- * one after /api/clear. Claude Code keeps the model-side history; YOUI keeps
- * the user's message and the assistant's text for the page.
+ * conversation: --session-id on its first Claude turn, --resume after that.
+ * Claude Code keeps the model-side history; YOUI keeps the user's message and
+ * the assistant's text for the page, and how many of those messages Claude
+ * Code has received (`seen`, advanced only by a run Claude Code took: its
+ * init event).
+ *
+ * Turns Claude Code has not received (an Ollama or vLLM model answered them,
+ * or a turn ended before its message was sent) are carried as a fenced, text-
+ * only transcript in front of the person's message, in the same resumed
+ * conversation (Yu, 2026-10-30: carry, and say so). Only when Claude Code has
+ * lost the conversation does a new one start with the whole chat carried
+ * (bounded). The page is told before anything is sent. /api/clear also starts
+ * a new conversation.
+ *
+ * Returns { answered }: true only for a turn that ended with a real answer
+ * and no error, the only kind the truth detector is given.
  */
 async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }) {
   const turnState = activeState();
+  const unanswered = { answered: false };
   if (!CLAUDE_CODE.path) {
     sendSSE(res, "error", { message: `Claude is reached through Claude Code, which is not available: ${CLAUDE_CODE.error}` });
-    return;
+    return unanswered;
+  }
+  const model = turnState.model;
+  // The version is read at most once a minute. One YOUI cannot read is
+  // refused like one that is too old: below the 2.1.299 floor, Claude Code
+  // would send the contents of any file named by an "@path" in the message
+  // (claude-models.mjs), so the check fails closed.
+  const version = await claudeCodeVersion();
+  throwIfAborted(signal);
+  const minimum = claudeCodeMinVersion(model);
+  if (!version.ok) {
+    sendSSE(res, "error", {
+      message: `YOUI could not read the Claude Code version (${version.error}), so it will not run ${model}; check that \`claude --version\` answers`,
+    });
+    return unanswered;
+  }
+  if (compareVersions(version.version, minimum) < 0) {
+    sendSSE(res, "error", {
+      message: `Claude Code ${version.version} is older than ${minimum}, which ${model} needs through YOUI; update Claude Code (claude update)`,
+    });
+    return unanswered;
   }
   sendSSE(res, "status", { phase: "thinking", turn: 1, agent: turnState.agent });
 
-  const model = turnState.model;
-  const turn = createClaudeTurn({ res, signal, turnState });
+  // The turn's own signal: Stop (the request's signal), the turn limit or the
+  // end of the turn aborts the bridge tools and minds it started.
+  const turnAbort = new AbortController();
+  const endTurn = reason => {
+    if (!turnAbort.signal.aborted) turnAbort.abort(reason);
+  };
+  const onRequestAbort = () => endTurn(signal.reason instanceof Error ? signal.reason : new Error("Browser chat turn cancelled"));
+  if (signal.aborted) onRequestAbort();
+  else signal.addEventListener("abort", onRequestAbort, { once: true });
+
+  const turn = createClaudeTurn({ res, signal: turnAbort.signal, turnState });
   const bridge = rawMode ? null : mcpBridge.open(turn);
+
+  // Messages before this one.
+  const prior = rawMode ? 0 : turnState.messages.length - 1;
+  if (!rawMode) {
+    const current = turnState.claudeCodeSession;
+    // A count past the history cannot be resumed truthfully; start again.
+    if (!current || current.seen > prior) turnState.claudeCodeSession = newClaudeCodeSession();
+  }
+  // Whether Claude Code took a run's message (its init event).
+  let received = false;
+
   let requests = 0;
   const onEvent = event => {
     switch (event.type) {
       case "init":
+        received = true;
         if (!rawMode && turnState.claudeCodeSession) turnState.claudeCodeSession.started = true;
         break;
       case "request":
@@ -1884,12 +2199,26 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       case "tool_use":
         if (!rawMode) turn.noteToolUse(event.id, bridgeToolName(event.name), event.input);
         break;
+      case "rate_limit":
+        noteClaudeRateLimit(event.info);
+        break;
       default:
     }
   };
 
-  const runOnce = () => {
+  // `reason`: "missing" when Claude Code lost the conversation and a new one starts.
+  const runOnce = (reason = null) => {
     const session = rawMode ? null : turnState.claudeCodeSession;
+    const kind = !session ? null : reason === "missing" ? "missing" : session.started ? "carry" : "new";
+    // What Claude Code has not received: the whole chat for a new conversation
+    // (seen is 0), else only the turns since it last took a message.
+    const seed = session && prior > session.seen
+      ? transcriptPreamble(turnState.messages.slice(session.seen, prior), {
+          kind: kind === "carry" ? "carry" : "new",
+          modelOf: message => messageModels.get(message),
+        })
+      : null;
+    const notice = seed || kind === "missing" ? carryNotice(seed, kind) : null;
     return runClaudeCode({
       bin: CLAUDE_CODE.path,
       cwd: CLAUDE_CODE_CWD,
@@ -1903,65 +2232,117 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       allowedTools: bridge ? BRIDGE_ALLOWED_TOOLS : [],
       requireMcpServer: bridge ? BRIDGE_SERVER_NAME : null,
       persist: !rawMode,
+      maxTurns: rawMode ? null : CLAUDE_TURN_MAX_TURNS,
+      timeoutMs: CLAUDE_TURN_TIMEOUT_MS,
+      onTimeout: () => endTurn(new Error("The Claude turn reached its time limit")),
       sessionId: session?.id || null,
       resume: session?.started === true,
-      message: userMessage,
+      message: seed ? `${seed.text}${userMessage}` : userMessage,
+      // Said on the page before the message (and what it carries) is sent.
+      beforeSend: notice ? () => turn.send("notice", notice) : null,
       signal,
       onEvent,
     });
   };
+  // Whether a run's failure says Claude Code lost, or already has, this conversation.
+  const sessionTrouble = (outcome, pattern) => !outcome.setupFailed && !outcome.init
+    && pattern.test(`${outcome.error || ""}\n${outcome.stderr || ""}`);
 
   let outcome;
   try {
-    if (!rawMode) turnState.claudeCodeSession ||= { id: crypto.randomUUID(), started: false };
     outcome = await runOnce();
     // Claude Code and YOUI disagreeing about whether the session exists is
-    // settled once: a missing one starts afresh, an existing one is resumed.
+    // settled once: a missing one starts afresh with the chat carried, an
+    // existing one is resumed with the turns it has not received. A turn that
+    // has already ended (its time limit) retries nothing.
     const session = turnState.claudeCodeSession;
-    if (!rawMode && !outcome.init && outcome.error) {
-      if (session.started && CLAUDE_SESSION_MISSING.test(outcome.error)) {
-        turnState.claudeCodeSession = { id: crypto.randomUUID(), started: false };
-        turn.send("status", { phase: "thinking", note: "Claude Code had no record of this conversation; starting a new one" });
-        outcome = await runOnce();
-      } else if (!session.started && CLAUDE_SESSION_TAKEN.test(outcome.error)) {
+    if (!rawMode && outcome.error && !turnAbort.signal.aborted) {
+      if (session.started && sessionTrouble(outcome, CLAUDE_SESSION_MISSING)) {
+        turnState.claudeCodeSession = newClaudeCodeSession();
+        outcome = await runOnce("missing");
+      } else if (!session.started && sessionTrouble(outcome, CLAUDE_SESSION_TAKEN)) {
         session.started = true;
         outcome = await runOnce();
       }
     }
+  } catch (error) {
+    if (signal.aborted) {
+      // Stopped after its result: its cost and completed texts are kept below, then the stop goes on.
+      if (!error?.claudeCodeOutcome) throw error;
+      outcome = error.claudeCodeOutcome;
+    } else {
+      // runClaudeCode reports its own failures; anything else still reaches the page.
+      outcome = { ok: false, texts: [], text: "", usage: null, result: null, error: `Claude Code turn failed: ${String(error?.message || error).slice(0, 300)}` };
+    }
   } finally {
+    // No new tool call starts now; the tools still running are told the turn
+    // has ended, and the turn (and chatInFlight) lasts until they have, or
+    // BRIDGE_SETTLE_MS has passed.
+    turn.closing = true;
     if (bridge) mcpBridge.close(bridge.id);
+    endTurn(new Error("The Claude turn has ended"));
+    signal.removeEventListener("abort", onRequestAbort);
+    await turn.settle(BRIDGE_SETTLE_MS);
+    // Only a run Claude Code took counts its message (and what it carried) as received.
+    const session = rawMode ? null : turnState.claudeCodeSession;
+    if (session && received) session.seen = turnState.messages.length;
   }
-  throwIfAborted(signal);
 
-  if (outcome.result?.stop_reason === "refusal") {
-    sendSSE(res, "error", { message: "The model declined this request. Rephrase it, or choose another model." });
-  } else if (outcome.error) {
-    sendSSE(res, "error", { message: outcome.error });
-  }
-  if (outcome.ok) mindsRegistry.recordAnswer("anthropic", model);
-
+  // Claude Code states running totals; what this turn added is counted even
+  // when Stop came after its result. Raw mode keeps no session, so its total is the run's own.
+  const session = rawMode ? null : turnState.claudeCodeSession;
+  const spend = outcome.result ? claudeCodeSpend(outcome.result, session?.spend || null, { oneOff: rawMode }) : null;
+  if (session && spend) session.spend = spend.next;
   const usage = outcome.usage || { input_tokens: 0, output_tokens: 0, thinking_tokens: 0 };
-  if (!rawMode) {
-    turnState.totalThinkingTokens += usage.thinking_tokens;
-    turnState.ys.senseThinking(usage);
-    turnState.ys.senseTurn(kernelBudget());
-    if (outcome.usage) trackProviderUsage("claude", model, usage);
+  if (!rawMode && outcome.usage) {
+    trackProviderUsage("claude", model, { ...usage, cost_usd: spend?.costUsd || 0 }, { byModel: spend?.byModel || null });
   }
-  sendSSE(res, "usage", {
+  // The text blocks the model completed are kept when the turn ends in an
+  // error result, the turn limit or a crash, and on Stop once the result had
+  // arrived; a block still streaming at the end is not, nor is anything on a
+  // Stop before the result. The runner never includes Claude Code's own error
+  // or refusal messages in them.
+  if (!rawMode && outcome.texts.length > 0) {
+    turnState.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
+    if (session && received) session.seen = turnState.messages.length;
+  }
+  const usageEvent = () => ({
     input_tokens: usage.input_tokens,
     output_tokens: usage.output_tokens,
     thinking_tokens: usage.thinking_tokens,
     provider: "claude",
     model,
+    // What this turn added to Claude Code's running total, and this session's Claude usage so far.
+    cost_usd: spend?.costUsd ?? null,
+    claudeCost: turnState.providerUsage.claude.cost,
+    claudeUsage: claudeUsageTotals(turnState),
     budget: budgetSnapshot(),
     turn: turnState.turnCount,
     youspeak: turnState.ys.statusLine(),
   });
-
-  if (rawMode) return;
-  if (outcome.texts.length > 0) {
-    turnState.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
+  if (signal.aborted) {
+    // Stopped after its result: the page, if it still listens, gets the turn's usage before the stop.
+    if (outcome.result && !res.destroyed && !res.writableEnded) sendSSE(res, "usage", usageEvent());
+    throwIfAborted(signal);
   }
+
+  const refused = outcome.result?.stop_reason === "refusal";
+  if (refused) {
+    sendSSE(res, "error", { message: "The model declined this request. Rephrase it, or choose another model." });
+  } else if (outcome.error) {
+    sendSSE(res, "error", { message: outcome.error });
+  }
+  const answered = outcome.ok === true && !outcome.error && !refused;
+  if (answered) mindsRegistry.recordAnswer("anthropic", model);
+
+  if (!rawMode) {
+    turnState.totalThinkingTokens += usage.thinking_tokens;
+    turnState.ys.senseThinking(usage);
+    turnState.ys.senseTurn(kernelBudget());
+  }
+  sendSSE(res, "usage", usageEvent());
+
+  if (rawMode) return { answered };
   // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop.
   turnState.ys.senseContext(turnState.messages, systemPrompt.length);
   const signals = turnState.ys.decide(turnState.effort, model, kernelBudget());
@@ -1974,6 +2355,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       }
     }
   }
+  return { answered };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -2614,6 +2996,10 @@ async function handleSessionRequest(req, res, url, path) {
           available: Boolean(CLAUDE_CODE.path),
           source: CLAUDE_CODE.source,
           error: CLAUDE_CODE.error,
+          // The last `claude --version` read (none until a turn or the minds list needs it).
+          version: lastClaudeVersion()?.version || null,
+          floorVersion: CLAUDE_CODE_FLOOR_VERSION,
+          minVersion: claudeCodeMinVersion(state.model),
         },
         localModels: OLLAMA_LOCAL_MODELS,
         session: { id: state.sessionId },
@@ -3534,10 +3920,25 @@ async function handleChatTurn(req, res, signal) {
 
   // Claude answers through the installed Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md);
   // Ollama and vLLM keep YOUI's own agent loop.
+  let detect = true;
   if (isOllamaModel(state.model)) {
-    await ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode });
+    // Which model answered, so a later Claude turn that carries these turns can name it.
+    const turnModel = state.model;
+    const before = state.messages.length;
+    try {
+      await ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode });
+    } finally {
+      if (!rawMode) {
+        for (const message of state.messages.slice(before)) {
+          if (message?.role === "assistant") messageModels.set(message, turnModel);
+        }
+      }
+    }
   } else {
-    await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode });
+    // A Claude turn keeps the text blocks the model completed even when it ends
+    // in an error (claudeCodeTurn says when), but only an answer that ended
+    // without an error goes to the truth detector.
+    detect = (await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }))?.answered === true;
   }
 
   throwIfAborted(signal);
@@ -3546,9 +3947,9 @@ async function handleChatTurn(req, res, signal) {
 
   // SP1: fire-and-forget mode-two detection (post-stream, no await)
   // Direct-mode terminal response is the last assistant message in state.messages.
-  if (!rawMode) {
-    const lastAssistant = [...state.messages].reverse().find(m => m.role === "assistant");
-    fireDetection(state, lastAssistant ? lastAssistant.content : null);
+  if (!rawMode && detect) {
+    const last = state.messages.at(-1);
+    if (last?.role === "assistant") fireDetection(state, last.content);
   }
 
   sendSSE(res, "done", {

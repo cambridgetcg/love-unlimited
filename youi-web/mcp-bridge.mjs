@@ -2,9 +2,9 @@
 // (docs/YOUI-CLAUDE-CODE-DESIGN.md §3.2).
 //
 // Each Claude turn opens one bridge turn: a path /mcp/<turn id> on YOUI's own
-// loopback listener and a one-time bearer token, both random, bound to that
-// YOUI session and that turn. Closing the turn forgets them, so the token is
-// refused afterwards. The server routes /mcp/* here after its loopback and
+// loopback listener and a per-turn bearer token, both random, bound to that
+// YOUI session and that turn. The token is valid for any number of requests
+// until the turn ends; closing the turn forgets it, so it is refused afterwards. The server routes /mcp/* here after its loopback and
 // Host checks and before any browser handling: no cookie, CSRF token or page
 // lease ever reaches this endpoint, and a request carrying an Origin or Cookie
 // header (a browser) is refused.

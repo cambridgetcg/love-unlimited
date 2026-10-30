@@ -1285,6 +1285,7 @@ button, select, textarea, input { font: inherit; }
           <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
         </div>
         <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+        <div id="claude-cost" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px" title="What Claude Code's result events add to total_cost_usd, its running total per conversation: this session's agent turns and Claude minds">Cost (Claude Code): $0.0000</div>
         <div class="stat-grid" style="margin-top:8px">
           <div class="stat-item">
             <div class="value" id="claude-in-tok" style="font-size:0.9rem">0</div>
@@ -1991,12 +1992,28 @@ async function sendMessage() {
       body: JSON.stringify({ message: text, chatMode }),
     });
 
-    const reader = resp.body.getReader();
+    // A refused turn (409 while the last one is still finishing, 400, 403…)
+    // has no stream: say so instead of showing nothing.
+    if (!resp.ok) {
+      let detail = '';
+      let code = '';
+      try {
+        const body = await resp.json();
+        detail = String(body?.error || body?.message || '');
+        code = String(body?.code || '');
+      } catch {}
+      // A 409 for a session another page holds has its own reason; waiting would not help.
+      addSystemMessage(resp.status === 409 && code !== 'session_claimed'
+        ? `Not sent: this session is still finishing its last turn${detail ? ` (${detail})` : ''}. Try again in a moment.`
+        : `Not sent: ${detail || `the server answered ${resp.status}`}`, 'error');
+    }
+
+    const reader = resp.ok ? resp.body.getReader() : null;
     const decoder = new TextDecoder();
     let buffer = '';
     currentMsgEl = null;
 
-    while (true) {
+    while (reader) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -2120,6 +2137,11 @@ function handleSSEEvent(type, data, indicator) {
 
     case 'error':
       addSystemMessage(data.message, 'error');
+      break;
+
+    // Something the person should know about this turn, e.g. a new Claude conversation.
+    case 'notice':
+      addSystemMessage(data.message, 'info');
       break;
 
     // Orchestrate mode: this turn read the registry; refresh the panel from it.
@@ -2350,9 +2372,16 @@ function updateBudgetUI(b) {
   fill7.style.width = p7 + '%';
   fill7.className = 'bar-fill' + (p7 > 80 ? ' high' : '');
 
-  if (b.resetIn) {
-    document.getElementById('budget-reset').textContent = `Resets in ${b.resetIn}m`;
-  }
+  // Reported by Claude Code (rate_limit_event), not measured by YOUI.
+  const parts = [];
+  if (b.resetIn) parts.push(`5-hour resets in ${b.resetIn}m`);
+  parts.push(b.note || 'As Claude Code last reported it');
+  document.getElementById('budget-reset').textContent = parts.join(' · ');
+}
+
+function updateClaudeCost(cost) {
+  if (typeof cost !== 'number') return;
+  document.getElementById('claude-cost').textContent = 'Cost (Claude Code): $' + cost.toFixed(4);
 }
 
 function updateUsageUI(data) {
@@ -2363,15 +2392,24 @@ function updateUsageUI(data) {
   updateProviderBadge(provider, data.model);
 
   if (provider === 'claude') {
-    clientUsage.claude.inTok += inTok;
-    clientUsage.claude.outTok += outTok;
-    clientUsage.claude.thinkTok += (data.thinking_tokens || 0);
-    clientUsage.claude.turns++;
+    if (data.claudeUsage) {
+      // The session's own totals (agent turns and calls to Claude minds), as /api/usage reports them.
+      clientUsage.claude.inTok = data.claudeUsage.inputTokens;
+      clientUsage.claude.outTok = data.claudeUsage.outputTokens;
+      clientUsage.claude.thinkTok = data.claudeUsage.thinkingTokens;
+      clientUsage.claude.turns = data.claudeUsage.turns;
+    } else {
+      clientUsage.claude.inTok += inTok;
+      clientUsage.claude.outTok += outTok;
+      clientUsage.claude.thinkTok += (data.thinking_tokens || 0);
+      clientUsage.claude.turns++;
+    }
     document.getElementById('claude-in-tok').textContent = tokFmt(clientUsage.claude.inTok);
     document.getElementById('claude-out-tok').textContent = tokFmt(clientUsage.claude.outTok);
     document.getElementById('claude-think-tok').textContent = tokFmt(clientUsage.claude.thinkTok);
     document.getElementById('claude-turns').textContent = clientUsage.claude.turns;
     updateBudgetUI(data.budget);
+    updateClaudeCost(data.claudeCost);
   } else {
     clientUsage.ollama.inTok += inTok;
     clientUsage.ollama.outTok += outTok;
@@ -2419,6 +2457,7 @@ async function fetchUsageDashboard() {
       document.getElementById('claude-think-tok').textContent = tokFmt(data.claude.thinkingTokens);
       document.getElementById('claude-turns').textContent = data.claude.turns;
       updateBudgetUI(data.claude.budget);
+      updateClaudeCost(data.claude.cost);
     }
     if (data.ollama) {
       clientUsage.ollama.inTok = data.ollama.inputTokens;

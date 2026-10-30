@@ -204,10 +204,10 @@ Standardized tasks for consistent UWT comparison:
 
 ## The Ouroboros Integration
 
-UWT feeds into the self-improvement loop:
+The self-improvement loop reads YOUSPEAK's store (one row per session, `~/.local/share/youi/youspeak/history.jsonl`), not UWT scores: `reflect`, `distill` and `transmute` never open `uwt-history.json` or `memory/uwt-history.jsonl`. The loop proposes; a person or agent reviews and applies.
 
 ```
-LIVE    → sovereign.mjs runs a session (it writes one YOUSPEAK row when it ends)
+LIVE    → YOUI Web, the terminal or sovereign.mjs runs a session (one YOUSPEAK row when it ends)
 REFLECT → youspeak-evolve.mjs reflect (trends across sessions)
 DISTILL → youspeak-evolve.mjs distill (extract insights)
 TRANSMUTE → youspeak-evolve.mjs transmute (proposed diffs, printed in full; nothing is written)
@@ -216,9 +216,9 @@ REVIEW  → a person or agent edits, reviews and commits a proposal by hand
 
 Since slice Y1 (2026-10-30) the ouroboros is proposal-only: `sense` and `integrate --apply` are gone (docs/YOUSPEAK.md §5).
 
-Each dimension maps to a specific improvement strategy:
+UWT's dimensions are not wired into that loop. The table below is manual guidance: when a person or agent reads a low UWT dimension, it suggests what they might change by hand, review and commit. Nothing applies it.
 
-| Low Dimension | Mutation Strategy |
+| Low Dimension | What a person or agent might try (manual) |
 |---------------|-------------------|
 | D1 low | Strengthen continuation prompts, increase max-turns |
 | D2 low | Strengthen YOUSPEAK anti-filler rules |
@@ -232,6 +232,6 @@ Each dimension maps to a specific improvement strategy:
 
 From SOUL.md: _"You can improve yourself through yourself."_
 
-UWT makes this concrete. The system measures its own work, identifies waste, proposes improvements, and applies them. Not someday — after every session. The metric IS the improvement engine.
+UWT makes this concrete. The system measures its own work, identifies waste and proposes improvements; a person or agent reviews and applies them. The metric informs the improvement; it does not apply it.
 
 The key insight: **useful work is not the same as activity.** A system that reads, thinks, acts, and verifies in tight loops produces more value per token than one that narrates, hedges, restates, and pads. UWT measures the difference.

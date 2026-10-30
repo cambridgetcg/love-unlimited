@@ -8,22 +8,37 @@
 
 import assert from "node:assert/strict";
 import http from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
   rmSync,
   statSync,
+  unlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
-import { claudeCodeArgs, claudeCodeChildEnv, prepareClaudeCwd, resolveClaudeBinary } from "../youi-web/claude-code.mjs";
+import {
+  claudeCodeArgs,
+  claudeCodeChildEnv,
+  claudeCodeSpend,
+  compareVersions,
+  escapeLeadingSlash,
+  prepareClaudeCwd,
+  resolveClaudeBinary,
+  sweepStaleClaudeScratch,
+  transcriptPreamble,
+} from "../youi-web/claude-code.mjs";
+import { claudeCodeEffort, claudeCodeMinVersion } from "../youi-web/claude-models.mjs";
 
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
 const FAKE = join(REPO_ROOT, "tests/fixtures/fake-claude.mjs");
@@ -37,19 +52,29 @@ function scratch(t, prefix) {
   return dir;
 }
 
-/** A `claude` wrapper around the fake, logging to its own file. */
+/**
+ * A `claude` wrapper around the fake, logging to its own file and keeping its
+ * transcripts in its own directory. The wrapper is node itself, so the
+ * environment the fake records is exactly what YOUI gave it (a shell would add
+ * PWD, SHLVL and _).
+ */
 function fakeClaude(t, { version = "2.1.314" } = {}) {
   const dir = scratch(t, "youi-fake-claude-");
   const log = join(dir, "calls.jsonl");
+  const sessions = join(dir, "sessions");
   const bin = join(dir, "claude");
   writeFileSync(bin, [
-    "#!/bin/sh",
-    `FAKE_CLAUDE_LOG='${log}' FAKE_CLAUDE_VERSION='${version}' exec '${process.execPath}' '${FAKE}' "$@"`,
+    `#!${process.execPath}`,
+    `process.env.FAKE_CLAUDE_LOG = ${JSON.stringify(log)};`,
+    `process.env.FAKE_CLAUDE_VERSION = ${JSON.stringify(version)};`,
+    `process.env.FAKE_CLAUDE_SESSIONS = ${JSON.stringify(sessions)};`,
+    `import(${JSON.stringify(pathToFileURL(FAKE).href)});`,
     "",
   ].join("\n"));
   chmodSync(bin, 0o755);
   return {
     bin,
+    sessions,
     cwd: join(dir, "claude-code-cwd"),
     entries() {
       if (!existsSync(log)) return [];
@@ -121,9 +146,33 @@ const SECRETS = {
   CLAUDE_CODE_OAUTH_TOKEN: "must-not-pass",
   GITHUB_TOKEN: "must-not-pass",
   OLLAMA_API_KEY: "must-not-pass",
+  // One the credential-name denylist does not catch: only the allowlist keeps it out.
+  STRIPE_SECRET_KEY: "sk_live_must-not-pass",
 };
 
+// What Claude Code's environment may hold: subprocess-env.mjs's allowlist,
+// HOME, CLAUDE_CONFIG_DIR, YOUI's own markers and Claude Code's off switches
+// (and __CF_USER_TEXT_ENCODING, which macOS itself adds to every process).
+const CHILD_ENV_ALLOWED = new Set([
+  "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "COLORTERM", "TMPDIR", "SHELL", "USER", "LOGNAME",
+  "VIRTUAL_ENV", "CONDA_PREFIX", "NODE_PATH", "BUN_INSTALL", "NVM_BIN", "NVM_DIR", "HOME", "CLAUDE_CONFIG_DIR",
+  "__CF_USER_TEXT_ENCODING",
+]);
+function assertChildEnv(env) {
+  for (const name of Object.keys(env)) {
+    assert.ok(
+      CHILD_ENV_ALLOWED.has(name) || /^(LC_|YOUI_CHILD_|CLAUDE_CODE_DISABLE_)/.test(name),
+      `${name} must not reach Claude Code`,
+    );
+  }
+  for (const name of Object.keys(SECRETS)) assert.equal(env[name], undefined, `${name} must not reach Claude Code`);
+}
+
 async function startServer(t, extraEnv = {}) {
+  return (await startServerProcess(t, extraEnv)).port;
+}
+
+async function startServerProcess(t, extraEnv = {}) {
   const child = spawn(process.execPath, ["youi-web/server.mjs"], {
     cwd: REPO_ROOT,
     env: {
@@ -161,7 +210,7 @@ async function startServer(t, extraEnv = {}) {
   t.after(() => {
     if (!child.killed) child.kill("SIGTERM");
   });
-  return port;
+  return { port, child, stderr: () => stderr };
 }
 
 async function openSession(port, label, body = {}) {
@@ -244,21 +293,93 @@ test("the runner finds only an explicit fake in test mode, and keeps credentials
     "test mode never resolves the installed claude on PATH");
   assert.match(resolveClaudeBinary({ env: { YOUI_CLAUDE_BIN: "/nonexistent/claude" } }).error, /not an executable/);
 
+  // Outside test mode: an absolute PATH entry, else ~/.local/bin (the native
+  // install), and never a relative PATH entry.
+  const home = scratch(t, "youi-claude-home-");
+  const onPath = scratch(t, "youi-claude-path-");
+  const relativeDir = scratch(t, "youi-claude-rel-");
+  for (const dir of [join(home, ".local", "bin"), onPath, relativeDir]) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "claude"), "#!/bin/sh\n");
+    chmodSync(join(dir, "claude"), 0o755);
+  }
+  const relativeEntry = relative(process.cwd(), relativeDir);
+  assert.ok(!relativeEntry.startsWith("/"));
+  assert.deepEqual(resolveClaudeBinary({ env: { HOME: home, PATH: `${relativeEntry}:${onPath}` } }),
+    { path: join(onPath, "claude"), source: "PATH", error: null });
+  assert.deepEqual(resolveClaudeBinary({ env: { HOME: home, PATH: `${relativeEntry}:/nonexistent` } }),
+    { path: join(home, ".local", "bin", "claude"), source: "~/.local/bin", error: null },
+    "a launch agent's PATH without ~/.local/bin still finds the native install; the relative entry is skipped");
+  assert.match(resolveClaudeBinary({ env: { HOME: onPath, PATH: relativeEntry } }).error, /not found on PATH or in ~\/\.local\/bin/);
+
   const env = claudeCodeChildEnv({
     PATH: "/usr/bin", HOME: "/Users/someone", ...SECRETS, AWS_SECRET_ACCESS_KEY: "x", LANG: "en_GB.UTF-8",
   });
   assert.deepEqual(Object.keys(env).sort(), [
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_CLAUDE_MDS", "HOME", "LANG", "PATH",
-  ]);
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS", "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
+    "HOME", "LANG", "PATH", "STRIPE_SECRET_KEY",
+  ], "the denylist alone misses STRIPE_SECRET_KEY; the server's allowlist (asserted below) keeps it out");
 
-  const args = claudeCodeArgs({ model: "claude-haiku-4-5-20251001", systemPromptFile: "/p", persist: false });
+  const haiku = "claude-haiku-4-5-20251001";
+  const args = claudeCodeArgs({ model: haiku, effort: claudeCodeEffort(haiku, "high"), systemPromptFile: "/p", persist: false });
   assert.ok(args.includes("--no-session-persistence"));
-  assert.ok(!args.includes("--effort"), "no effort for a model that takes none");
-  assert.ok(!args.includes("--mcp-config") && !args.includes("--allowedTools"));
+  assert.ok(!args.includes("--effort"), "no effort for a model that takes none, even when one is asked for");
+  assert.ok(!args.includes("--mcp-config") && !args.includes("--allowedTools") && !args.includes("--max-turns"));
+  assert.equal(flagValue(claudeCodeArgs({ model: haiku, systemPromptFile: "/p", maxTurns: 50 }), "--max-turns"), "50");
 
   const dir = scratch(t, "youi-claude-cwd-");
   writeFileSync(join(dir, "CLAUDE.md"), "planted");
   assert.throws(() => prepareClaudeCwd(dir), /must stay empty/);
+
+  // A leading slash would run as a Claude Code command (checked live on 2026-10-30).
+  assert.equal(escapeLeadingSlash("/compact now"), "\\/compact now");
+  assert.equal(escapeLeadingSlash("  /clear"), "  \\/clear");
+  assert.equal(escapeLeadingSlash("a/b"), "a/b");
+
+  // Versions: the floor applies to every model, and a pre-release is below its release.
+  assert.equal(compareVersions("2.1.280-beta.1", "2.1.280"), -1);
+  assert.equal(compareVersions("2.1.280", "2.1.280-beta.1"), 1);
+  assert.equal(compareVersions("2.1.281-beta.1", "2.1.280"), 1);
+  assert.equal(compareVersions("2.1.92", "2.1.280"), -1);
+  assert.equal(claudeCodeMinVersion("claude-sonnet-4-6"), "2.1.280");
+  assert.equal(claudeCodeMinVersion("claude-opus-5-5"), "2.1.280");
+});
+
+test("spend is what each result adds to Claude Code's running totals, and earlier turns go as a bounded transcript", () => {
+  const first = claudeCodeSpend({ total_cost_usd: 0.01, modelUsage: { m: { inputTokens: 1, cacheReadInputTokens: 10, outputTokens: 2, costUSD: 0.01 } } });
+  assert.equal(first.costUsd, 0.01);
+  assert.deepEqual(first.byModel, { m: { inputTokens: 11, outputTokens: 2, costUsd: 0.01 } });
+  // A resumed turn's result carries the earlier turns too.
+  const second = claudeCodeSpend({
+    total_cost_usd: 0.025,
+    modelUsage: { m: { inputTokens: 3, cacheReadInputTokens: 20, outputTokens: 5, costUSD: 0.02 }, h: { inputTokens: 4, outputTokens: 1, costUSD: 0.005 } },
+  }, first.next);
+  assert.equal(Number(second.costUsd.toFixed(6)), 0.015);
+  assert.deepEqual(second.byModel.m, { inputTokens: 12, outputTokens: 3, costUsd: 0.01 });
+  assert.deepEqual(second.byModel.h, { inputTokens: 4, outputTokens: 1, costUsd: 0.005 });
+  // When Claude Code states what it counted since its last result, that is used as stated.
+  const since = claudeCodeSpend({ total_cost_usd: 0.5, model_usage_since_last_result: { m: { inputTokens: 7, outputTokens: 1, costUSD: 0.004 } } }, first.next);
+  assert.deepEqual(since.byModel, { m: { inputTokens: 7, outputTokens: 1, costUsd: 0.004 } });
+  assert.equal(claudeCodeSpend({ total_cost_usd: 0.001 }, { costUsd: 0.5 }).costUsd, 0, "never negative");
+
+  const messages = [];
+  for (let index = 0; index < 40; index += 1) {
+    messages.push({ role: "user", content: `question ${index}` });
+    messages.push({ role: "assistant", content: [{ type: "text", text: `answer ${index}` }, { type: "tool_use", id: "t", name: "read_file", input: { path: "secret" } }] });
+    messages.push({ role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "tool output must not travel" }] });
+  }
+  const seed = transcriptPreamble(messages);
+  assert.equal(seed.included, 30);
+  assert.equal(seed.omitted, 50);
+  assert.match(seed.text, /^\[YOUI\] This is a new Claude conversation/);
+  assert.match(seed.text, /\[YOUI\] 50 earlier messages omitted\./);
+  assert.match(seed.text, /--- assistant ---\nanswer 39\n\n\[called the tool read_file\]/);
+  assert.doesNotMatch(seed.text, /tool output must not travel|"secret"/);
+  assert.match(seed.text, /The person's new message follows\.\n\n$/);
+  const long = transcriptPreamble([{ role: "user", content: "x".repeat(30_000) }, { role: "user", content: "y".repeat(30_000) }]);
+  assert.equal(long.included, 1, "the character bound holds");
+  assert.equal(long.omitted, 1);
+  assert.equal(transcriptPreamble([]), null);
 });
 
 // ── A chat turn through Claude Code ─────────────────────────────────
@@ -279,6 +400,7 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.deepEqual([usage.input_tokens, usage.output_tokens, usage.thinking_tokens], [1110, 20, 7]);
   assert.equal(usage.budget.managedBy, "Claude Code");
   assert.equal(usage.cost_usd, 0.0123, "the cost Claude Code's result event states");
+  assert.equal(usage.claudeUsage.turns, 1);
   assert.equal(names.at(-1), "done");
   assert.ok(!names.includes("error"));
 
@@ -295,6 +417,7 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(flagValue(argv, "--tools"), "", "Claude Code's built-in tools are off");
   assert.equal(flagValue(argv, "--allowedTools"), "mcp__youi");
   assert.equal(flagValue(argv, "--permission-prompts"), "none");
+  assert.equal(flagValue(argv, "--max-turns"), "50", "one message runs at most 50 model requests");
   const claudeSession = flagValue(argv, "--session-id");
   assert.match(claudeSession, UUID);
   assert.ok(!argv.includes("--resume"));
@@ -306,10 +429,11 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(statSync(fake.cwd).mode & 0o777, 0o700);
   assert.deepEqual(readdirSync(fake.cwd), []);
 
-  // No credential crosses; its own login is found through HOME.
-  for (const name of Object.keys(SECRETS)) assert.equal(first.env[name], undefined, `${name} must not reach Claude Code`);
+  // Only allowlisted names cross, so no credential does; its own login is found through HOME.
+  assertChildEnv(first.env);
   assert.equal(first.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1");
   assert.equal(first.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
+  assert.equal(first.env.CLAUDE_CODE_DISABLE_BUNDLED_SKILLS, "1");
   assert.equal(first.env.HOME, process.env.HOME);
   assert.ok(first.env.PATH);
 
@@ -324,6 +448,7 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(config.mcpServers.youi.type, "http");
   assert.match(config.mcpServers.youi.url, new RegExp(`^http://127\\.0\\.0\\.1:${port}/mcp/[0-9a-f]{32}$`));
   assert.match(config.mcpServers.youi.headers.Authorization, /^Bearer [A-Za-z0-9_-]{40,}$/);
+  assert.equal(config.mcpServers.youi.alwaysLoad, true, "Claude Code waits for the bridge before the first request");
   assert.equal(existsSync(first.systemPrompt.path), false);
   assert.equal(existsSync(first.mcp.path), false);
 
@@ -333,23 +458,38 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   await until(() => fake.step("stdin-closed").length === 1, { label: "stdin to close" });
 
   // The next turn resumes the same Claude Code session; /api/clear starts another.
-  await chat(session, "again");
+  // A leading "/" reaches Claude Code escaped, so it never runs as a command.
+  const againEvents = await chat(session, "/again");
   const second = fake.runs()[1].argv;
   assert.equal(flagValue(second, "--resume"), claudeSession);
   assert.ok(!second.includes("--session-id"));
+  assert.equal(fake.step("message")[1].message, "\\/again");
+  assert.ok(!againEvents.some(e => e.event === "notice"), "a resumed conversation needs no notice");
+  // Claude Code's result states the session's running total (0.0246); this turn added 0.0123.
+  const resumedUsage = againEvents.find(e => e.event === "usage").data;
+  const cents = value => Number(value.toFixed(6));
+  assert.equal(cents(resumedUsage.cost_usd), 0.0123);
+  assert.equal(cents(resumedUsage.claudeCost), 0.0246);
+  assert.equal(JSON.parse(readFileSync(join(fake.sessions, `${claudeSession}.json`), "utf-8")).cost, 0.0246);
+  const twoTurns = await request(port, { path: "/api/usage", headers: session.read });
+  assert.equal(cents(twoTurns.json.claude.cost), 0.0246, "not 0.0369: the running total is not added again");
+  assert.equal(cents(twoTurns.json.claude.byModel["claude-opus-5-5"].cost), 0.0246);
+  assert.equal(twoTurns.json.claude.byModel["claude-opus-5-5"].inputTokens, 2220);
+  assert.equal(twoTurns.json.claude.turns, 2);
   const current = await request(port, { path: "/api/sessions/current?include=messages", headers: session.read });
   assert.deepEqual(current.json.session.messages, [
     { role: "user", content: "hello there" },
     { role: "assistant", content: [{ type: "text", text: "Echo: hello there" }] },
-    { role: "user", content: "again" },
-    { role: "assistant", content: [{ type: "text", text: "Echo: again" }] },
+    { role: "user", content: "/again" },
+    { role: "assistant", content: [{ type: "text", text: "Echo: \\/again" }] },
   ]);
   const cleared = await request(port, { path: "/api/clear", method: "POST", headers: session.unsafe });
   assert.equal(cleared.status, 200);
-  await chat(session, "fresh start");
+  const freshEvents = await chat(session, "fresh start");
   const third = fake.runs()[2].argv;
   assert.match(flagValue(third, "--session-id"), UUID);
   assert.notEqual(flagValue(third, "--session-id"), claudeSession);
+  assert.equal(freshEvents.find(e => e.event === "usage").data.cost_usd, 0.0123, "a new conversation's total starts again");
 
   // Status says how Claude is reached, and that the budget is Claude Code's.
   const status = await request(port, { path: "/api/status", headers: session.read });
@@ -357,6 +497,14 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(status.json.claudeCode.source, "YOUI_CLAUDE_BIN");
   assert.equal(status.json.privacy.direct.route, "REMOTE_MODEL:anthropic");
   assert.match(status.json.privacy.direct.destination, /Claude Code/);
+  assert.equal(status.json.claudeCode.version, "2.1.314");
+  assert.equal(status.json.claudeCode.floorVersion, "2.1.280");
+  // Where Claude Code keeps these conversations, and that clearing keeps them.
+  const slug = realpathSync(fake.cwd).replace(/[^a-zA-Z0-9]/g, "-");
+  const retention = status.json.privacy.retention.claudeCode;
+  const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+  assert.ok(retention.includes(join(configDir, "projects", slug)), retention);
+  assert.match(retention, /without deleting the old transcript/);
 });
 
 test("raw mode gives Claude Code no YOUI prompt, no tools and no saved session", async t => {
@@ -472,9 +620,11 @@ test("the bridge refuses browsers, wrong tokens and ended turns, and an abort en
   const viaSession = await request(port, { path: url.pathname, method: "POST", headers: sessionOnly, body: list });
   assert.equal(viaSession.status, 401);
 
+  assert.ok(alive(sleeping.grandchild), "the fake's own child is running");
   controller.abort();
   await pending;
   await until(() => !alive(sleeping.pid), { label: "the fake to be killed" });
+  await until(() => !alive(sleeping.grandchild), { label: "the fake's child to be killed with its group" });
   const after = await bridgeCall(mcp, list);
   assert.equal(after.status, 401, "the token ends with its turn");
 
@@ -492,6 +642,15 @@ test("an error result, a bridge that never connects and a missing Claude Code be
   const error = failed.find(e => e.event === "error");
   assert.equal(error.data.message, "Claude Code: Claude Code 2.1.92 does not support this model");
   assert.equal(failed.at(-1).event, "done");
+  // Claude Code's own "API Error" message is not Alpha's answer: not shown as text, not kept.
+  assert.ok(!failed.some(e => e.event === "text_done" || e.event === "text_delta"));
+  const afterError = await request(port, { path: "/api/sessions/current?include=messages", headers: session.read });
+  assert.deepEqual(afterError.json.session.messages, [{ role: "user", content: "FAKE:error Claude Code 2.1.92 does not support this model" }]);
+
+  // A bridge still connecting at init is not a failure.
+  const pending = await chat(session, "FAKE:bridge-pending");
+  assert.ok(!pending.some(e => e.event === "error"));
+  assert.equal(pending.find(e => e.event === "text_done").data.content, "Echo: FAKE:bridge-pending");
 
   const thought = await chat(session, "FAKE:thinking weighing it up");
   assert.equal(thought.find(e => e.event === "thinking").data.content, "weighing it up");
@@ -511,18 +670,28 @@ test("an error result, a bridge that never connects and a missing Claude Code be
 
 // ── What is gone ────────────────────────────────────────────────────
 
-test("YOUI Web never reads the Keychain, sends Claude Code's headers or calls Anthropic itself", () => {
-  const dir = join(REPO_ROOT, "youi-web");
-  const files = [
-    ...readdirSync(dir).filter(name => name.endsWith(".mjs")).map(name => join(dir, name)),
-    join(dir, "public/index.html"),
-  ];
+// The chat and mind routes only. /api/orchestrate/run (the Python
+// orchestrator, with an Anthropic API key) and the truth detector service are
+// separate routes this change leaves alone (docs/YOUI-CLAUDE-CODE-DESIGN.md §4).
+test("YOUI Web's own code never reads the Keychain, sends Claude Code's headers or calls Anthropic directly", () => {
+  const files = [];
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(m?js|html)$/.test(entry.name)) files.push(path);
+    }
+  };
+  walk(join(REPO_ROOT, "youi-web"));
+  for (const expected of ["youi-web/server.mjs", "youi-web/public/index.html", "youi-web/public/deploy.html", "youi-web/public/youi-decisions.js"]) {
+    assert.ok(files.includes(join(REPO_ROOT, expected)), `the scan covers ${expected}`);
+  }
   const forbidden = [
     /youi-keychain/, /KeychainCredentialStore/, /find-generic-password/,
     /api\.anthropic\.com/, /platform\.claude\.com/, /\bAPI_URL\b/,
     /claude-cli\//, /["']x-app["']/i, /anthropic-beta/i, /X-Claude-Code-Session-Id/i,
     /oauth-2025-04-20/, /claude-code-20250219/, /billing-header/, /parseBudgetHeaders/,
-    /refreshOAuthToken|getAccessToken|readKeychainCredential/,
+    /refreshOAuthToken|getAccessToken|readKeychainCredential/, /device_id/,
   ];
   for (const file of files) {
     const text = readFileSync(file, "utf-8");
@@ -560,12 +729,17 @@ test("Claude minds run through Claude Code with their role prompt, no tools, no 
     assert.ok(run.argv.includes("--strict-mcp-config"));
     assert.match(run.systemPrompt.content, /independent answerer/);
     assert.equal(run.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
-    for (const name of Object.keys(SECRETS)) assert.equal(run.env[name], undefined);
+    assertChildEnv(run.env);
+    // Nothing of the conversation reaches a mind: not its prompt, argv or environment.
+    assert.doesNotMatch(run.systemPrompt.content, /PLUM/);
+    assert.ok(!run.argv.some(arg => /PLUM/.test(arg)));
+    assert.ok(!Object.values(run.env).some(value => /PLUM/.test(value)));
   }
   const byModel = Object.fromEntries(minds.map(run => [flagValue(run.argv, "--model"), run]));
   assert.equal(flagValue(byModel["claude-sonnet-4-6"].argv, "--effort"), "medium");
   assert.equal(flagValue(byModel["claude-haiku-4-5-20251001"].argv, "--effort"), undefined, "Haiku 4.5 takes no effort");
   const mindMessages = fake.step("message").filter(entry => minds.some(run => run.pid === entry.pid));
+  assert.equal(mindMessages.length, 2);
   for (const entry of mindMessages) {
     assert.equal(entry.message, question, "a mind receives only the tool's text");
   }
@@ -579,33 +753,69 @@ test("Claude minds run through Claude Code with their role prompt, no tools, no 
   assert.match(events.find(e => e.event === "tool_result").data.result, /## Answer 1 — anthropic · claude-sonnet-4-6 · REMOTE_MODEL:anthropic · answered · 1110 in \/ 20 out tokens\nEcho: Which is heavier/);
 
   // Tokens and cost by model, from the result events; answered minds are reachable.
+  // Mind calls are counted as calls, not as the agent's turns.
   const usage = await request(port, { path: "/api/usage", headers: session.read });
   assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].inputTokens, 1110);
   assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].cost, 0.0123);
+  assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].mindCalls, 1);
+  assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].turns, 0);
   assert.equal(usage.json.claude.byModel["claude-opus-5-5"].turns, 1);
+  assert.equal(usage.json.claude.turns, 1);
+  assert.equal(usage.json.claude.mindCalls, 2);
   assert.equal(Number(usage.json.claude.cost.toFixed(4)), 0.0369, "the agent's turn and both minds");
+  // The page's live figures are the same totals.
+  assert.deepEqual(events.find(e => e.event === "usage").data.claudeUsage, {
+    inputTokens: usage.json.claude.inputTokens,
+    outputTokens: usage.json.claude.outputTokens,
+    thinkingTokens: usage.json.claude.thinkingTokens,
+    turns: 1,
+    mindCalls: 2,
+    failedMindCalls: 0,
+    cost: usage.json.claude.cost,
+  });
   const listed = await request(port, { path: "/api/minds", headers: session.read });
   const state = Object.fromEntries(listed.json.minds.map(mind => [mind.id, mind.state]));
   assert.equal(state["anthropic:claude-sonnet-4-6"], "reachable");
   assert.equal(state["anthropic:claude-opus-4-7"], "unchecked");
+
+  // Minds that give no answer are failed calls.
+  const failedInput = { question: "FAKE:error mind down", minds: input.minds };
+  const failedEvents = await chat(session, `FAKE:call ensemble ${JSON.stringify(failedInput)}`);
+  assert.deepEqual(failedEvents.find(e => e.event === "minds_used").data.minds.map(m => m.ok), [false, false]);
+  const after = await request(port, { path: "/api/usage", headers: session.read });
+  assert.equal(after.json.claude.mindCalls, 4);
+  assert.equal(after.json.claude.failedMindCalls, 2);
+  assert.equal(after.json.claude.turns, 2);
 });
 
-test("the registry reads claude --version, cached, and holds back Opus 5.5 from a Claude Code older than 2.1.280", async t => {
+test("the registry and chat turns read claude --version, cached, and hold back a Claude Code older than 2.1.280", async t => {
   async function minds(version) {
     const fake = fakeClaude(t, { version });
     const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
-    const session = await openSession(port, `claude-version-${version.replaceAll(".", "-")}`);
+    const session = await openSession(port, `claude-version-${version.replace(/[^0-9a-z]/g, "-")}`);
     const first = await request(port, { path: "/api/minds", headers: session.read });
     await request(port, { path: "/api/minds", headers: session.read });
     assert.equal(fake.step("version").length, 1, "one claude --version per minute, shared by reads");
     assert.equal(fake.runs().length, 0, "no model call to check");
-    return Object.fromEntries(first.json.minds.map(mind => [mind.id, mind]));
+    return { fake, session, minds: Object.fromEntries(first.json.minds.map(mind => [mind.id, mind])) };
   }
-  const old = await minds("2.1.92");
+  // YOUI's own flags need 2.1.280, so every Claude model is held back below it.
+  const { fake: oldFake, session: oldSession, minds: old } = await minds("2.1.92");
   assert.equal(old["anthropic:claude-opus-5-5"].state, "unreachable");
   assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs; update Claude Code/);
-  assert.equal(old["anthropic:claude-opus-4-7"].state, "unchecked");
-  const current = await minds("2.1.314");
+  assert.equal(old["anthropic:claude-opus-4-7"].state, "unreachable");
+  assert.match(old["anthropic:claude-opus-4-7"].note, /older than 2\.1\.280/);
+  // A chat turn says so, and runs nothing.
+  const refused = await chat(oldSession, "hello");
+  assert.match(refused.find(e => e.event === "error").data.message, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs through YOUI; update Claude Code/);
+  assert.equal(refused.at(-1).event, "done");
+  assert.equal(oldFake.runs().length, 0);
+  assert.equal(oldFake.step("version").length, 1, "the chat turn shares the cached read");
+  // A pre-release of the minimum is below it.
+  const { minds: beta } = await minds("2.1.280-beta.1");
+  assert.equal(beta["anthropic:claude-opus-5-5"].state, "unreachable");
+  assert.match(beta["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.280-beta\.1 is older than 2\.1\.280/);
+  const { minds: current } = await minds("2.1.314");
   assert.equal(current["anthropic:claude-opus-5-5"].state, "unchecked");
   assert.match(current["anthropic:claude-opus-5-5"].note, /through Claude Code 2\.1\.314/);
   assert.equal(current["anthropic:claude-opus-5-5"].offered, true);
@@ -619,6 +829,11 @@ test("the budget panel shows what Claude Code reports, and nothing before it doe
   assert.equal(before.json.claude.budget.fiveHour, null);
   assert.match(before.json.claude.budget.note, /has not reported/);
 
+  // A report with no window is not a figure.
+  const bare = await chat(session, "FAKE:rate-limit-bare");
+  assert.match(bare.find(e => e.event === "usage").data.budget.note, /has not reported/);
+  assert.equal(bare.find(e => e.event === "usage").data.budget.reportedAt, null);
+
   const events = await chat(session, "hello");
   const budget = events.find(e => e.event === "usage").data.budget;
   assert.equal(budget.fiveHour, 0.25);
@@ -626,8 +841,286 @@ test("the budget panel shows what Claude Code reports, and nothing before it doe
   assert.equal(budget.note, "As Claude Code last reported it");
   assert.ok(budget.resetIn > 0 && budget.resetIn <= 60);
   const after = await request(port, { path: "/api/usage", headers: session.read });
-  assert.equal(after.json.claude.cost, 0.0123);
-  assert.equal(after.json.claude.inputTokens, 1110);
-  assert.equal(after.json.claude.thinkingTokens, 7);
+  assert.equal(Number(after.json.claude.cost.toFixed(6)), 0.0246, "two turns of one conversation");
+  assert.equal(after.json.claude.inputTokens, 2220);
+  assert.equal(after.json.claude.thinkingTokens, 14);
   assert.equal(after.json.claude.budget.sevenDay, 0.5);
+});
+
+// ── Review fixes (report_428e05d7) ──────────────────────────────────
+
+test("a Claude Code run that cannot be prepared ends the turn with an error naming the cause, then done", async t => {
+  const fake = fakeClaude(t);
+  mkdirSync(fake.cwd, { recursive: true, mode: 0o700 });
+  writeFileSync(join(fake.cwd, "CLAUDE.md"), "someone ran claude here");
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+  const session = await openSession(port, "claude-cwd-dirty");
+  const events = await chat(session, "hello");
+  const error = events.find(e => e.event === "error");
+  assert.ok(error, "the stream says what went wrong");
+  assert.ok(error.data.message.includes(fake.cwd), error.data.message);
+  assert.match(error.data.message, /must stay empty/);
+  assert.equal(events.at(-1).event, "done");
+  assert.equal(fake.runs().length, 0);
+  // The session is free again.
+  unlinkSync(join(fake.cwd, "CLAUDE.md"));
+  const next = await chat(session, "again");
+  assert.match(next.find(e => e.event === "text_done").data.content, /^Echo: again$/);
+});
+
+// GET /v1/models lists the model; POST /v1/chat/completions streams `reply`.
+async function fakeVllm(t, model, reply) {
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", chunk => chunks.push(chunk));
+    req.on("end", () => {
+      let body = null;
+      try { body = JSON.parse(Buffer.concat(chunks).toString("utf-8")); } catch {}
+      requests.push({ method: req.method, path: req.url, body });
+      if (req.method === "GET" && req.url === "/v1/models") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ object: "list", data: [{ id: model, object: "model" }] }));
+      }
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(`data: ${JSON.stringify({ model, choices: [{ delta: { content: reply }, finish_reason: null }] })}\n\n`);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } })}\n\n`);
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  return {
+    baseUrl: `http://127.0.0.1:${server.address().port}`,
+    chats: () => requests.filter(r => r.method === "POST").map(r => r.body),
+  };
+}
+
+test("switching between Claude and a vLLM model keeps one history: Claude Code gets the turns it missed, and the page is told", async t => {
+  const VLLM = "Qwen/Qwen2.5-72B-Instruct-AWQ";
+  const fake = fakeClaude(t);
+  const vllm = await fakeVllm(t, VLLM, "the vllm answer");
+  const port = await startServer(t, {
+    YOUI_CLAUDE_BIN: fake.bin,
+    YOUI_CLAUDE_CWD: fake.cwd,
+    OLLAMA_VLLM_BASE_URL: vllm.baseUrl,
+    OLLAMA_LOCAL_BASE_URL: "http://127.0.0.1:9",
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use",
+  });
+  const session = await openSession(port, "claude-switch");
+  const use = async model => {
+    const set = await request(port, { path: "/api/settings", method: "POST", headers: session.unsafe, body: { model } });
+    assert.equal(set.status, 200);
+  };
+
+  await use(VLLM);
+  const first = await chat(session, "what is the plan?");
+  assert.ok(first.some(e => e.event === "text_done" || e.event === "text_delta"));
+
+  // Claude Code has seen nothing of this chat: a new conversation, seeded with it.
+  await use("claude-opus-5-5");
+  const second = await chat(session, "and on Claude?");
+  const notice = second.find(e => e.event === "notice");
+  assert.ok(notice, "the page is told a new Claude conversation started");
+  assert.match(notice.data.message, /A new Claude conversation started, with 2 earlier messages of this chat as context \(text only\)/);
+  assert.equal(second.find(e => e.event === "text_done").data.content, "Echo: and on Claude?");
+  const [seeded] = fake.step("message");
+  assert.match(seeded.message, /^\[YOUI\] This is a new Claude conversation\./);
+  assert.match(seeded.message, /--- user ---\nwhat is the plan\?\n\n--- assistant ---\nthe vllm answer/);
+  assert.match(seeded.message, /The person's new message follows\.\n\nand on Claude\?$/);
+  const firstClaude = flagValue(fake.runs()[0].argv, "--session-id");
+  assert.match(firstClaude, UUID);
+
+  // Another Claude turn resumes, with no notice and no transcript.
+  const third = await chat(session, "go on");
+  assert.ok(!third.some(e => e.event === "notice"));
+  assert.equal(flagValue(fake.runs()[1].argv, "--resume"), firstClaude);
+  assert.equal(fake.step("message")[1].message, "go on");
+
+  // vLLM after Claude gets the shared history, Claude's text included.
+  await use(VLLM);
+  await chat(session, "back on vllm");
+  const sent = vllm.chats().at(-1).messages.map(message => (typeof message.content === "string" ? message.content : JSON.stringify(message.content)));
+  assert.ok(sent.some(content => content.includes("Echo: go on")), "Claude's answer is in the shared history");
+
+  // Back on Claude: the vLLM turn is new to Claude Code, so it starts again.
+  await use("claude-opus-5-5");
+  const fifth = await chat(session, "Claude again");
+  assert.match(fifth.find(e => e.event === "notice").data.message, /with 8 earlier messages/);
+  const fifthRun = fake.runs().at(-1).argv;
+  assert.match(flagValue(fifthRun, "--session-id"), UUID);
+  assert.notEqual(flagValue(fifthRun, "--session-id"), firstClaude);
+  assert.match(fake.step("message").at(-1).message, /--- user ---\nback on vllm\n\n--- assistant ---\nthe vllm answer/);
+});
+
+test("Claude Code's lost or already-used conversation is retried once, and a new one is announced", async t => {
+  const fake = fakeClaude(t);
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+
+  // Lost: Claude Code no longer has the transcript YOUI resumes.
+  const lost = await openSession(port, "claude-lost");
+  await chat(lost, "remember the number 7");
+  const lostId = flagValue(fake.runs()[0].argv, "--session-id");
+  unlinkSync(join(fake.sessions, `${lostId}.json`));
+  const retried = await chat(lost, "what number?");
+  assert.equal(fake.step("session-missing").length, 1);
+  const [, missing, fresh] = fake.runs();
+  assert.equal(flagValue(missing.argv, "--resume"), lostId);
+  assert.match(flagValue(fresh.argv, "--session-id"), UUID);
+  assert.notEqual(flagValue(fresh.argv, "--session-id"), lostId);
+  assert.match(retried.find(e => e.event === "notice").data.message,
+    /^Claude Code had no record of this conversation, so a new Claude conversation started, with 2 earlier messages/);
+  assert.match(fake.step("message").at(-1).message, /--- user ---\nremember the number 7/);
+  assert.equal(retried.find(e => e.event === "text_done").data.content, "Echo: what number?");
+  assert.ok(!retried.some(e => e.event === "error"));
+
+  // Already used: Claude Code kept a conversation whose start YOUI never saw.
+  const taken = await openSession(port, "claude-taken");
+  const died = await chat(taken, "FAKE:die-before-init");
+  assert.match(died.find(e => e.event === "error").data.message, /boom before init/);
+  const takenId = flagValue(fake.runs().at(-1).argv, "--session-id");
+  const resumed = await chat(taken, "still there?");
+  assert.equal(fake.step("session-taken").length, 1);
+  const [again, resume] = fake.runs().slice(-2);
+  assert.equal(flagValue(again.argv, "--session-id"), takenId);
+  assert.equal(flagValue(resume.argv, "--resume"), takenId);
+  assert.equal(resumed.find(e => e.event === "text_done").data.content, "Echo: still there?");
+  assert.ok(!resumed.some(e => e.event === "error"));
+});
+
+// A Collab MCP server that answers each request only after `delayMs`, and
+// then with an error: a bridge tool (decision) that ignores the turn's signal.
+function slowCollab(t, delayMs) {
+  const dir = scratch(t, "youi-slow-collab-");
+  const log = join(dir, "collab.jsonl");
+  const bin = join(dir, "collab-mcp");
+  writeFileSync(bin, [
+    `#!${process.execPath}`,
+    `const fs = require("fs");`,
+    `const log = ${JSON.stringify(log)};`,
+    `require("readline").createInterface({ input: process.stdin }).on("line", line => {`,
+    `  let message; try { message = JSON.parse(line); } catch { return; }`,
+    `  fs.appendFileSync(log, JSON.stringify({ at: Date.now(), method: message.method }) + "\\n");`,
+    `  if (message.id === undefined) return;`,
+    `  setTimeout(() => {`,
+    `    fs.appendFileSync(log, JSON.stringify({ at: Date.now(), answered: message.method }) + "\\n");`,
+    `    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, error: { code: -32000, message: "slow collab refuses" } }) + "\\n");`,
+    `  }, ${delayMs});`,
+    `});`,
+    "",
+  ].join("\n"));
+  chmodSync(bin, 0o755);
+  return {
+    bin,
+    dir,
+    entries: () => (existsSync(log) ? readFileSync(log, "utf-8").split("\n").filter(Boolean).map(line => JSON.parse(line)) : []),
+  };
+}
+
+test("after Stop, a bridge tool still running holds the session until it ends, and nothing new runs", async t => {
+  const fake = fakeClaude(t);
+  const collab = slowCollab(t, 2_000);
+  const work = scratch(t, "youi-claude-work-");
+  const port = await startServer(t, {
+    YOUI_CLAUDE_BIN: fake.bin,
+    YOUI_CLAUDE_CWD: fake.cwd,
+    YOUI_WORKDIR: work,
+    YOUI_COLLAB_MCP: collab.bin,
+    YOUI_COLLAB_DB: join(collab.dir, "collab.sqlite"),
+    AGENTOOL_COLLAB_DB: join(collab.dir, "collab.sqlite"),
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,models:use,decisions:read,tools:filesystem:read,tools:filesystem:write",
+  });
+  const session = await openSession(port, "claude-drain");
+  const postChat = (message, signal) => fetch(`${session.origin}/api/chat`, {
+    method: "POST",
+    headers: { ...session.unsafe, "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+
+  // The decision tool waits on a Collab server that answers in 2 s and ignores Stop.
+  const controller = new AbortController();
+  const pending = postChat('FAKE:call decision {"action":"list"}', controller.signal).then(r => r.text()).catch(error => error);
+  await until(() => collab.entries().some(entry => entry.method === "initialize"), { label: "the decision tool to reach Collab" });
+  const run = fake.runs().at(-1);
+  const mcp = JSON.parse(run.mcp.content).mcpServers.youi;
+  controller.abort();
+  await pending;
+  const stoppedAt = Date.now();
+  // The server has seen the Stop once it has ended Claude Code.
+  await until(() => !alive(run.pid), { label: "the agent's Claude Code to be stopped" });
+
+  // A tool call after Stop runs nothing.
+  const late = await bridgeCall(mcp, {
+    jsonrpc: "2.0", id: 9, method: "tools/call",
+    params: { name: "write_file", arguments: { path: "late.txt", content: "must not be written" } },
+  });
+  assert.ok(late.status === 401 || /this turn has ended/.test(late.json?.result?.content?.[0]?.text || ""), late.text);
+
+  // The session stays busy until the decision call has ended.
+  const busy = await postChat("too soon");
+  assert.equal(busy.status, 409);
+  await busy.text();
+  assert.ok(!collab.entries().some(entry => entry.answered), "the slow call was still running");
+  await until(async () => {
+    const response = await postChat("now?");
+    const text = await response.text();
+    return response.status === 200 ? text : null;
+  }, { timeoutMs: 15_000, label: "the session to be free" });
+  assert.ok(collab.entries().some(entry => entry.answered === "initialize"), "freed only once the call ended");
+  assert.ok(Date.now() - stoppedAt >= 1_000);
+  assert.equal(existsSync(join(work, "late.txt")), false);
+
+  // A tool call whose card is still awaited when Stop comes never runs.
+  const silent = new AbortController();
+  const silentChat = postChat('FAKE:call-unannounced write_file {"path":"silent.txt","content":"must not be written"}', silent.signal)
+    .then(r => r.text()).catch(error => error);
+  await until(() => fake.step("calling-unannounced").length === 1, { label: "the unannounced call" });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  silent.abort();
+  await silentChat;
+  await new Promise(resolve => setTimeout(resolve, 1_500));
+  assert.equal(existsSync(join(work, "silent.txt")), false, "write_file did not run after Stop");
+});
+
+test("a Claude turn that runs too long is stopped with an error, its process group goes, and nothing is left behind", async t => {
+  const fake = fakeClaude(t);
+  const temp = scratch(t, "youi-claude-tmp-");
+  // A scratch directory a killed YOUI left behind (its process is gone), and one whose process is alive.
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+  const stale = join(temp, `youi-claude-p${dead}-abc123`);
+  const living = join(temp, `youi-claude-p${process.pid}-def456`);
+  for (const dir of [stale, living]) {
+    mkdirSync(dir, { mode: 0o700 });
+    writeFileSync(join(dir, "mcp-config.json"), "{}");
+    utimesSync(dir, new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
+  }
+  const port = await startServer(t, {
+    YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, TMPDIR: temp, YOUI_CLAUDE_TURN_TIMEOUT_MS: "1000",
+  });
+  assert.equal(existsSync(stale), false, "boot removes a dead YOUI's turn files");
+  assert.equal(existsSync(living), true, "and keeps a live one's");
+
+  const session = await openSession(port, "claude-timeout");
+  const events = await chat(session, "FAKE:sleep");
+  assert.match(events.find(e => e.event === "error").data.message, /Claude Code did not finish within 1 s; YOUI stopped the turn/);
+  assert.equal(events.at(-1).event, "done");
+  const [timedOut] = fake.step("sleeping");
+  await until(() => !alive(timedOut.pid) && !alive(timedOut.grandchild), { label: "the timed-out group to go" });
+
+  // On server shutdown every Claude Code group goes, with its turn's scratch files.
+  const { port: shutdownPort, child } = await startServerProcess(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, TMPDIR: temp });
+  const doomed = await openSession(shutdownPort, "claude-shutdown");
+  const turnFiles = () => readdirSync(temp).filter(name => name.startsWith(`youi-claude-p${child.pid}-`));
+  const controller = new AbortController();
+  const pending = chat(doomed, "FAKE:sleep", {}, { signal: controller.signal }).catch(error => error);
+  const sleeping = await until(() => fake.step("sleeping")[1], { label: "the second fake to sleep" });
+  assert.equal(turnFiles().length, 1);
+  const exited = new Promise(resolve => child.once("exit", resolve));
+  child.kill("SIGTERM");
+  await exited;
+  controller.abort();
+  await pending;
+  await until(() => !alive(sleeping.pid) && !alive(sleeping.grandchild), { label: "the group to go with the server" });
+  assert.deepEqual(turnFiles(), [], "the turn's prompt and token files are removed");
 });

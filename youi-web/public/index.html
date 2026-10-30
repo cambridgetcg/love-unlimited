@@ -1285,7 +1285,7 @@ button, select, textarea, input { font: inherit; }
           <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
         </div>
         <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
-        <div id="claude-cost" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px" title="total_cost_usd from Claude Code's result events, this session">Cost (Claude Code): $0.0000</div>
+        <div id="claude-cost" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px" title="What Claude Code's result events add to total_cost_usd, its running total per conversation: this session's agent turns and Claude minds">Cost (Claude Code): $0.0000</div>
         <div class="stat-grid" style="margin-top:8px">
           <div class="stat-item">
             <div class="value" id="claude-in-tok" style="font-size:0.9rem">0</div>
@@ -2123,6 +2123,11 @@ function handleSSEEvent(type, data, indicator) {
       addSystemMessage(data.message, 'error');
       break;
 
+    // Something the person should know about this turn, e.g. a new Claude conversation.
+    case 'notice':
+      addSystemMessage(data.message, 'info');
+      break;
+
     // Orchestrate mode: this turn read the registry; refresh the panel from it.
     case 'minds':
       fetchMinds();
@@ -2371,10 +2376,18 @@ function updateUsageUI(data) {
   updateProviderBadge(provider, data.model);
 
   if (provider === 'claude') {
-    clientUsage.claude.inTok += inTok;
-    clientUsage.claude.outTok += outTok;
-    clientUsage.claude.thinkTok += (data.thinking_tokens || 0);
-    clientUsage.claude.turns++;
+    if (data.claudeUsage) {
+      // The session's own totals (agent turns and calls to Claude minds), as /api/usage reports them.
+      clientUsage.claude.inTok = data.claudeUsage.inputTokens;
+      clientUsage.claude.outTok = data.claudeUsage.outputTokens;
+      clientUsage.claude.thinkTok = data.claudeUsage.thinkingTokens;
+      clientUsage.claude.turns = data.claudeUsage.turns;
+    } else {
+      clientUsage.claude.inTok += inTok;
+      clientUsage.claude.outTok += outTok;
+      clientUsage.claude.thinkTok += (data.thinking_tokens || 0);
+      clientUsage.claude.turns++;
+    }
     document.getElementById('claude-in-tok').textContent = tokFmt(clientUsage.claude.inTok);
     document.getElementById('claude-out-tok').textContent = tokFmt(clientUsage.claude.outTok);
     document.getElementById('claude-think-tok').textContent = tokFmt(clientUsage.claude.thinkTok);

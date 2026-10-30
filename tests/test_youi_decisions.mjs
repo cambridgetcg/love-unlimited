@@ -41,9 +41,15 @@ function request(port, { path = "/", method = "GET", headers = {}, body } = {}) 
 }
 
 async function startServer(t, extraEnv = {}) {
+  // No Claude Code, whatever the shell exports, and a scratch directory for it.
+  const claudeCwd = mkdtempSync(join(tmpdir(), "youi-decisions-claude-cwd-"));
+  t.after(() => rmSync(claudeCwd, { recursive: true, force: true }));
   const child = spawn(process.execPath, ["youi-web/server.mjs"], {
     cwd: REPO_ROOT,
-    env: { ...process.env, PORT: "0", YOUI_TEST: "1", TRUTH_DETECTOR_ENABLED: "0", AUTONOMOUS: "0", ...extraEnv },
+    env: {
+      ...process.env, PORT: "0", YOUI_TEST: "1", TRUTH_DETECTOR_ENABLED: "0", AUTONOMOUS: "0",
+      YOUI_CLAUDE_BIN: "", YOUI_CLAUDE_CWD: claudeCwd, ...extraEnv,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";

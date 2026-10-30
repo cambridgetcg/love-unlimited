@@ -189,7 +189,7 @@ test("Claude is reachable only after a real answer, and gated on the installed C
   assert.equal(missing["anthropic:claude-opus-5-5"].note, "claude not on PATH");
   assert.equal(checks, 0);
 
-  // Too old for Opus 5.5, fine for the rest.
+  // Too old for YOUI's own flags (2.1.280), so too old for every Claude model.
   let clock = 1_000_000;
   const old = registry({
     localBaseUrl: unreachable, vllmBaseUrl: unreachable, now: () => clock,
@@ -199,8 +199,8 @@ test("Claude is reachable only after a real answer, and gated on the installed C
   assert.equal(oldList["anthropic:claude-opus-5-5"].state, "unreachable");
   assert.equal(oldList["anthropic:claude-opus-5-5"].offered, false);
   assert.match(oldList["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs/);
-  assert.equal(oldList["anthropic:claude-sonnet-4-6"].state, "unchecked");
-  assert.match(oldList["anthropic:claude-sonnet-4-6"].note, /through Claude Code 2\.1\.92/);
+  assert.equal(oldList["anthropic:claude-sonnet-4-6"].state, "unreachable");
+  assert.match(oldList["anthropic:claude-sonnet-4-6"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-sonnet-4-6 needs/);
   old.recordAnswer("anthropic", "claude-opus-5-5");
   assert.equal(byId(await old.list({ capabilities: new Set(["models:use"]) }))["anthropic:claude-opus-5-5"].state, "unreachable",
     "an answer does not outrank a version below the minimum");
@@ -317,6 +317,9 @@ function sessionHeaders(browser, credential, { origin, unsafe = false } = {}) {
 }
 
 async function startServer(t, extraEnv = {}) {
+  // No Claude Code, whatever the shell exports, and a scratch directory for it.
+  const claudeCwd = mkdtempSync(join(tmpdir(), "youi-minds-claude-cwd-"));
+  t.after(() => rmSync(claudeCwd, { recursive: true, force: true }));
   const child = spawn(process.execPath, ["youi-web/server.mjs"], {
     cwd: REPO_ROOT,
     env: {
@@ -326,6 +329,8 @@ async function startServer(t, extraEnv = {}) {
       TRUTH_DETECTOR_ENABLED: "0",
       AUTONOMOUS: "0",
       OLLAMA_API_KEY: "",
+      YOUI_CLAUDE_BIN: "",
+      YOUI_CLAUDE_CWD: claudeCwd,
       ...extraEnv,
     },
     stdio: ["ignore", "pipe", "pipe"],

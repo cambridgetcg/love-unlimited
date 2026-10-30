@@ -46,7 +46,7 @@ if [ -d "$YOUI_WEB" ] && [ "$PLATFORM" = "macos" ]; then
     <key>StandardOutPath</key><string>${HOME_DIR}/youi-web-stdout.log</string>
     <key>StandardErrorPath</key><string>${HOME_DIR}/youi-web-stderr.log</string>
     <key>EnvironmentVariables</key><dict>
-        <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PATH</key><string>${HOME_DIR}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key><string>${HOME_DIR}</string>
         <key>LOVE_DIR</key><string>${LOVE_DIR}</string>
         <key>LOVE_HOME</key><string>${LOVE_DIR}</string>

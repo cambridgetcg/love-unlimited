@@ -6,20 +6,33 @@
 // on: `--effort`. Opus 5.5 always thinks and takes effort as its only control;
 // Haiku 4.5 takes no effort at all; Sonnet 4.6 stops at high.
 
+import { compareVersions } from "./claude-code.mjs";
+
 export const CLAUDE_MODELS = [
   "claude-opus-5-5", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
 ];
 
+// The oldest Claude Code YOUI runs at all, for the flags every run passes
+// (--system-prompt-file, --system-prompt-snapshot, --permission-prompts,
+// --max-turns, --strict-mcp-config with an http server). Which release first
+// had each of them was not established: 2.1.314 has them all, and the
+// changelog it carries goes back only to 2.1.300. 2.1.280 is the oldest
+// release known to be in use with YOUI's route (Opus 5.5's minimum), so it is
+// the floor until someone checks an older one.
+export const CLAUDE_CODE_FLOOR_VERSION = "2.1.280";
+
 // The oldest Claude Code that serves each model, where there is one. Opus 5.5
-// needs 2.1.280 ("claude_code_version_too_old" below it, 2026-10-30); the
-// others have no stated minimum. YOUI only reads `claude --version` to check:
-// it never sends or raises a version itself.
+// needs 2.1.280 ("claude_code_version_too_old" below it, 2026-10-30). YOUI
+// only reads `claude --version` to check: it never sends or raises a version
+// itself.
 const CLAUDE_CODE_MIN_VERSION = {
   "claude-opus-5-5": "2.1.280",
 };
 
+/** The oldest Claude Code that can run `model` for YOUI: the floor, or the model's own minimum if later. */
 export function claudeCodeMinVersion(model) {
-  return CLAUDE_CODE_MIN_VERSION[String(model)] || null;
+  const own = CLAUDE_CODE_MIN_VERSION[String(model)];
+  return own && compareVersions(own, CLAUDE_CODE_FLOOR_VERSION) > 0 ? own : CLAUDE_CODE_FLOOR_VERSION;
 }
 
 export function modelCaps(model) {

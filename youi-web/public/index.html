@@ -1384,6 +1384,7 @@ button, select, textarea, input { font: inherit; }
       </div>
       <div id="ys-detail" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
       <div id="ys-signals" style="font-size:0.7rem;color:var(--gold,#f0c040);margin-top:2px"></div>
+      <div id="ys-store" style="font-size:0.7rem;color:var(--red);margin-top:2px"></div>
     </div>
 
     <!-- Kingdom drawers -->
@@ -2123,8 +2124,9 @@ function handleSSEEvent(type, data, indicator) {
       updateYouspeakSignals(data.signals);
       break;
 
-    case 'youspeak_action':
-      addSystemMessage(`YOUSPEAK: ${data.action} — ${data.reason}`, 'info');
+    // YOUSPEAK suggests and never acts: nothing was changed; the person or the agent decides.
+    case 'youspeak_suggestion':
+      addSystemMessage(`YOUSPEAK suggestion: ${data.reason}. ${data.suggestion || ''}`.trim(), 'info');
       break;
 
     case 'rate_limit':
@@ -2482,8 +2484,8 @@ let ysAccum = { totalOutput: 0, totalFiller: 0, blocks: 0 };
 
 function updateYouspeakUI(metrics) {
   if (!metrics) return;
-  ysAccum.totalOutput += metrics.totalTokensEstimate;
-  ysAccum.totalFiller += metrics.fillerTokensEstimate;
+  ysAccum.totalOutput += Number(metrics.totalTokensEstimate) || 0;
+  ysAccum.totalFiller += Number(metrics.fillerTokensEstimate) || 0;
   ysAccum.blocks++;
 
   const ratio = ysAccum.totalOutput > 0
@@ -2506,10 +2508,19 @@ function updateYouspeakUI(metrics) {
     `${ysAccum.blocks} blocks | ${ysAccum.totalOutput} tok out | ${ysAccum.totalFiller} filler`;
 }
 
+// The current signals, as suggestions: the reason shows, and what could be done is in the tooltip.
 function updateYouspeakSignals(signals) {
   const el = document.getElementById('ys-signals');
-  if (!el || !signals?.length) { if (el) el.textContent = ''; return; }
-  el.textContent = signals.map(s => `⚡ ${s.reason}`).join(' | ');
+  if (!el || !signals?.length) { if (el) { el.textContent = ''; el.title = ''; } return; }
+  el.textContent = 'Suggestions: ' + signals.map(s => `⚡ ${s.reason}`).join(' | ');
+  el.title = signals.map(s => s.suggestion).filter(Boolean).join('\n');
+}
+
+// A corrupt or partial store is reported, never reset.
+function updateYouspeakStore(store) {
+  const el = document.getElementById('ys-store');
+  if (!el) return;
+  el.textContent = store?.warnings?.length ? `⚠ ${store.warnings.join(' ')}` : '';
 }
 
 function updateYouspeakLayers(data) {
@@ -2546,7 +2557,14 @@ async function fetchYouspeakStats() {
   try {
     const resp = await fetch('/api/youspeak');
     const data = await resp.json();
-    if (data.usefulRatio !== undefined) {
+    updateYouspeakStore(data.store);
+    // No output yet: no ratio and no grade.
+    if (data.usefulRatio === null) {
+      document.getElementById('ys-ratio').textContent = '—';
+      document.getElementById('ys-grade').textContent = '—';
+      document.getElementById('ys-grade').style.color = '';
+      updateYouspeakLayers(data);
+    } else if (typeof data.usefulRatio === 'number') {
       const ratio = Math.round(data.usefulRatio * 100);
       const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
       const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';

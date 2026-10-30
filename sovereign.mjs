@@ -1098,8 +1098,8 @@ ${toolList.join(", ")}
 // ═════════════════════════════════════════════════════════════════════
 //
 // TIER 3 (YOUSPEAK Kernel) is now wired directly into the main loop via
-// createKernel(). The kernel handles L1-L5 sensing, DECIDE signals,
-// context pruning, reporting, and cross-session persistence.
+// createKernel(). The kernel handles L1-L5 sensing, DECIDE signals (shown as
+// suggestions, never applied), reporting, and one history row per run.
 // The old inline `efficiency` object has been replaced.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -1158,7 +1158,7 @@ async function main() {
   const startTime = Date.now();
 
   // ── YOUSPEAK Kernel — sensory organ for the session ──
-  const ys = createKernel({ agent: config.model });
+  const ys = createKernel({ agent: config.model, route: "sovereign", model: config.model });
   let ysSignals = [];
 
   // Ctrl+C saves state
@@ -1381,7 +1381,7 @@ async function main() {
   if (config.trackEfficiency) {
     const ysReport = ys.report();
     print(`\n${S.cyan}── YOUSPEAK Kernel Report ──${S.reset}`);
-    print(`  Grade:           ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio * 100)}% useful)`);
+    print(`  Grade:           ${ysReport.output.grade ?? "—"} (${ysReport.output.usefulRatio === null ? "no output" : `${Math.round(ysReport.output.usefulRatio * 100)}% useful`})`);
     print(`  Output tokens:   ${ysReport.output.totalTokens.toLocaleString()} (${ysReport.output.fillerTokens} filler)`);
     print(`  Text blocks:     ${ysReport.output.textBlocks}`);
     print(`  Thinking:        ${ysReport.thinking.totalTokens.toLocaleString()} tokens (${ysReport.thinking.avgRatio}x avg ratio)`);
@@ -1398,11 +1398,13 @@ async function main() {
       }
     }
 
-    // Persist session to unified history (youspeak-history.json)
-    const persisted = ys.persist();
-    if (persisted) {
-      print(`\n${S.green}✓ Session persisted to youspeak-history.json${S.reset}`);
+    // One row for this run in YOUSPEAK's store (not the tracked youspeak-history.json)
+    const ended = ys.endSession({ reason: "run-end", model: config.model });
+    if (ended.written) {
+      print(`\n${S.green}✓ YOUSPEAK row written to ${ys.historyPath}${S.reset}`);
       log(`YOUSPEAK_KERNEL: ${JSON.stringify(ysReport)}`);
+    } else {
+      print(`\n${S.dim}YOUSPEAK row not written (${ended.error || ended.skipped})${S.reset}`);
     }
   }
 

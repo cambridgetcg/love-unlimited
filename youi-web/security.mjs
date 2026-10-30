@@ -153,9 +153,13 @@ export class SessionRegistry {
     maxClients = 32,
     maxSessionsPerClient = 24,
     now = () => Date.now(),
+    // Called once for each session removed (deleted, evicted or expired), with
+    // a reason; it must not throw, and its errors are ignored.
+    onSessionEnd = null,
   }) {
     if (typeof stateFactory !== "function") throw new TypeError("stateFactory is required");
     this.stateFactory = stateFactory;
+    this.onSessionEnd = typeof onSessionEnd === "function" ? onSessionEnd : null;
     this.clientTtlMs = clientTtlMs;
     this.sessionTtlMs = sessionTtlMs;
     this.pageLeaseTtlMs = pageLeaseTtlMs;
@@ -177,7 +181,7 @@ export class SessionRegistry {
       if (!oldest) {
         throw new HttpError(503, "All browser clients have active work", "client_capacity");
       }
-      this.deleteClient(oldest);
+      this.deleteClient(oldest, { reason: "evicted" });
     }
     const timestamp = this.now();
     const client = {
@@ -198,19 +202,23 @@ export class SessionRegistry {
     const client = this.clientsByToken.get(token);
     if (!client) return null;
     if (this.now() - client.lastSeen > this.clientTtlMs) {
-      if (this.deleteClient(client)) return null;
+      if (this.deleteClient(client, { reason: "expired" })) return null;
     }
     client.lastSeen = this.now();
     return client;
   }
 
-  deleteClient(client, { force = false } = {}) {
+  deleteClient(client, { force = false, reason = "client_closed" } = {}) {
     if (!force && [...client.sessionIds]
       .map(id => this.sessionsById.get(id))
       .some(session => sessionIsBusy(session))) {
       return false;
     }
-    for (const id of client.sessionIds) this.sessionsById.delete(id);
+    for (const id of client.sessionIds) {
+      const session = this.sessionsById.get(id);
+      this.sessionsById.delete(id);
+      this.notifySessionEnd(session, reason);
+    }
     this.clientsByToken.delete(client.token);
     return true;
   }
@@ -225,7 +233,7 @@ export class SessionRegistry {
       if (!oldest) {
         throw new HttpError(409, "All browser sessions have active work", "session_capacity");
       }
-      this.deleteSession(client, oldest.id);
+      this.deleteSession(client, oldest.id, { reason: "evicted" });
     }
     const timestamp = this.now();
     const token = randomOpaqueId();
@@ -253,7 +261,7 @@ export class SessionRegistry {
     if (!session || session.ownerId !== client.id) return null;
     if (this.now() - session.lastSeen > this.sessionTtlMs) {
       if (!sessionIsBusy(session)) {
-        this.deleteSession(client, id);
+        this.deleteSession(client, id, { reason: "expired" });
         return null;
       }
     }
@@ -310,7 +318,7 @@ export class SessionRegistry {
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
-  deleteSession(client, id, { force = false } = {}) {
+  deleteSession(client, id, { force = false, reason = "closed" } = {}) {
     const session = this.sessionsById.get(id);
     if (!session || session.ownerId !== client.id) return false;
     if (!force && sessionIsBusy(session)) return false;
@@ -319,22 +327,31 @@ export class SessionRegistry {
     if (client.defaultSessionId === id) {
       client.defaultSessionId = client.sessionIds.values().next().value || null;
     }
+    this.notifySessionEnd(session, reason);
     return true;
+  }
+
+  notifySessionEnd(session, reason) {
+    if (!session || !this.onSessionEnd) return;
+    try { this.onSessionEnd(session, reason); } catch {}
   }
 
   cleanup() {
     const timestamp = this.now();
     for (const client of [...this.clientsByToken.values()]) {
       if (timestamp - client.lastSeen > this.clientTtlMs) {
-        this.deleteClient(client);
+        this.deleteClient(client, { reason: "expired" });
       }
     }
     for (const session of [...this.sessionsById.values()]) {
       if (timestamp - session.lastSeen <= this.sessionTtlMs) continue;
       if (sessionIsBusy(session)) continue;
       const client = [...this.clientsByToken.values()].find(item => item.id === session.ownerId);
-      if (client) this.deleteSession(client, session.id);
-      else this.sessionsById.delete(session.id);
+      if (client) this.deleteSession(client, session.id, { reason: "expired" });
+      else {
+        this.sessionsById.delete(session.id);
+        this.notifySessionEnd(session, "expired");
+      }
     }
   }
 }

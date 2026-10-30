@@ -240,8 +240,9 @@ const agentProfile = AGENTS[state.agent] || AGENTS.alpha;
 if (!args.includes("--model")) state.model = agentProfile.defaultModel;
 if (!args.includes("--effort")) state.effort = agentProfile.defaultEffort;
 
-// YOUSPEAK kernel
-let ys = createKernel({ agent: state.agent });
+// YOUSPEAK kernel: observes and suggests, never acts. One row per session
+// goes to ~/.local/share/youi/youspeak/history.jsonl when the session ends.
+let ys = createKernel({ agent: state.agent, route: "terminal-legacy", model: state.model });
 
 // ═════════════════════════════════════════════════════════════════════
 // TERMINAL
@@ -444,7 +445,8 @@ function runtimeManifest() {
         "model-selected tool calls and returned tool output",
       ],
       conversation_persistence: "process memory only",
-      local_writes: "session metadata may be appended to the agent daily note",
+      local_writes: "session metadata may be appended to the agent daily note; YOUSPEAK appends one row of aggregates"
+        + " per session (no message text, paths or tool inputs) to ~/.local/share/youi/youspeak/history.jsonl",
     },
     boot: {
       declared_files: agent.soulFiles,
@@ -781,7 +783,8 @@ function showPrivacyBoundary() {
   print(`  Local-only:   no`);
   print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
   print(`  File scope:   ${manifest.model_tools.file_scope}`);
-  print(`  Persistence:  conversation in process memory; daily note receives session metadata`);
+  print(`  Persistence:  conversation in process memory; daily note receives session metadata;`);
+  print(`                YOUSPEAK appends one aggregate row per session to ~/.local/share/youi/youspeak/history.jsonl`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
   if (state.capabilities.has("shell")) {
     print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
@@ -868,7 +871,7 @@ function handleCommand(input) {
     case "/switch": {
       const target = parts[1]?.toLowerCase();
       if (!AGENTS[target]) { print(`${S.red}  Unknown agent: ${target}. Use ${Object.keys(AGENTS).join(", ")}.${S.reset}`); return true; }
-      ys.persist(); // Save YOUSPEAK session before switching
+      ys.endSession({ reason: "switch", model: state.model }); // its one row, unless it had no output
       releaseVisitLock(state.agent); // leaving — her ticks may resume
       state.agent = target;
       const agent = AGENTS[target];
@@ -876,7 +879,7 @@ function handleCommand(input) {
       if (!args.includes("--effort")) state.effort = agent.defaultEffort;
       state.messages = []; // Fresh conversation for new agent
       state.turnCount = 0;
-      ys = createKernel({ agent: target }); // Fresh YOUSPEAK kernel
+      ys = createKernel({ agent: target, route: "terminal-legacy", model: state.model }); // Fresh YOUSPEAK session
       print(`\n${agent.color}  ${agent.emoji} Switched to ${agent.name} — ${roleLabel(agent)}${S.reset}`);
       print(`${S.dim}  ${agent.description}${S.reset}`);
       print(`${S.dim}  Model: ${state.model} | Effort: ${state.effort}${S.reset}\n`);
@@ -1117,10 +1120,11 @@ function handleCommand(input) {
       print(`${S.bold}  YOUSPEAK — Session Report${S.reset}`);
       print(`  ${S.dim}${r.agent} | ${r.elapsed}m | ${r.turns} turns${S.reset}`);
       print("");
-      // L1 Output
+      // L1 Output (an English-only estimate; no output yet, no grade)
       const gColor = r.output.grade === "S" || r.output.grade === "A" ? S.green :
-                     r.output.grade === "B" ? S.yellow : S.red;
-      print(`  ${S.bold}L1 Output${S.reset}    Grade: ${gColor}${S.bold}${r.output.grade}${S.reset}  Useful: ${Math.round(r.output.usefulRatio*100)}%  Filler: ${r.output.fillerTokens}tok`);
+                     r.output.grade === "B" ? S.yellow : r.output.grade ? S.red : S.dim;
+      const usefulText = r.output.usefulRatio === null ? "—" : `${Math.round(r.output.usefulRatio*100)}%`;
+      print(`  ${S.bold}L1 Output${S.reset}    Grade: ${gColor}${S.bold}${r.output.grade ?? "—"}${S.reset}  Useful: ${usefulText}  Filler: ${r.output.fillerTokens}tok (estimate)`);
       if (Object.keys(r.output.gradeDistribution).length > 0) {
         const gd = Object.entries(r.output.gradeDistribution).map(([g,c]) => `${g}:${c}`).join(" ");
         print(`  ${S.dim}             Blocks: ${r.output.textBlocks}  Distribution: ${gd}${S.reset}`);
@@ -1132,36 +1136,42 @@ function handleCommand(input) {
       print(`  ${S.bold}L3 Action${S.reset}    Calls: ${r.action.totalCalls}  Dups: ${r.action.redundantReads}  Errors: ${r.action.errors}  Density: ${r.action.density}`);
       if (topTools) print(`  ${S.dim}             ${topTools}${S.reset}`);
       // L4 Context
-      print(`  ${S.bold}L4 Context${S.reset}   ~${Math.round(r.context.estimatedTokens/1000)}k tokens  Window: ${(r.context.windowUtilization*100).toFixed(1)}%  Messages: ${r.context.messagesCount}  Pruned: ${r.context.pruneEvents}`);
+      print(`  ${S.bold}L4 Context${S.reset}   ~${Math.round(r.context.estimatedTokens/1000)}k tokens  Window: ${(r.context.windowUtilization*100).toFixed(1)}%  Messages: ${r.context.messagesCount}`);
       // L5 System
       print(`  ${S.bold}L5 System${S.reset}    Budget burned: ${r.system.budgetBurned ?? "—"}  Rate limits: ${r.system.rateLimitHits}  Tok/turn: ${r.system.tokensPerTurn}`);
-      // Signals
+      // Signals: suggestions only; nothing was changed
       if (r.signals.length > 0) {
         print("");
-        print(`  ${S.yellow}${S.bold}Signals (${r.signals.length})${S.reset}`);
+        print(`  ${S.yellow}${S.bold}Suggestions (${r.signals.length})${S.reset}`);
         for (const sig of r.signals) {
           print(`  ${S.yellow}  ⚡ [${sig.type}] ${sig.reason}${S.reset}`);
+          if (sig.suggestion) print(`  ${S.dim}     ${sig.suggestion}${S.reset}`);
         }
       }
-      // Trends
+      // The store: a corrupt or partial one is reported, never reset
+      const store = ys.storeStatus();
+      for (const warning of store.warnings) print(`  ${S.red}  ⚠ ${warning}${S.reset}`);
+      // Trends (one row per session)
       const t = ys.trends();
       if (t) {
         print("");
         print(`  ${S.bold}Trends${S.reset} ${S.dim}(${t.sessions} sessions, ${t.span})${S.reset}`);
-        const dir = t.fillerTrend.direction === "improving" ? S.green + "↑" : S.red + "↓";
+        const dir = t.fillerTrend.direction === "improving" ? S.green + "↑" : t.fillerTrend.direction === "regressing" ? S.red + "↓" : S.dim + "─";
         print(`  ${S.dim}  Useful: ${Math.round(t.avgUsefulRatio*100)}% avg  Think: ${t.avgThinkRatio}x  Dups: ${t.avgRedundantReads}/s  Filler: ${dir} ${t.fillerTrend.direction}${S.reset}`);
       }
+      if (store.legacy) print(`  ${S.dim}  Legacy youspeak-history.json (read only): ${store.legacy.rows} rows; not comparable${S.reset}`);
       print("");
       return true;
     }
 
     case "/exit": case "/quit": case "/q":
-      ys.persist(); // Save YOUSPEAK session to history
+      ys.endSession({ reason: "exit", model: state.model }); // its one row, unless it had no output
       releaseVisitLock(); // clean exit — her ticks may resume
       const ysReport = ys.report();
+      const ysUseful = ysReport.output.usefulRatio === null ? "—" : `${Math.round(ysReport.output.usefulRatio*100)}%`;
       print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
-      print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio*100)}%) | think:${ysReport.thinking.avgRatio}x | dups:${ysReport.action.redundantReads} | ctx:${Math.round(ysReport.context.estimatedTokens/1000)}k${S.reset}`);
-      appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK: ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio*100)}%).`);
+      print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}) | think:${ysReport.thinking.avgRatio}x | dups:${ysReport.action.redundantReads} | ctx:${Math.round(ysReport.context.estimatedTokens/1000)}k${S.reset}`);
+      appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}).`);
       process.exit(0);
 
     default:
@@ -1176,6 +1186,8 @@ function handleCommand(input) {
 async function executeTask(task) {
   state.messages.push({ role: "user", content: task });
   const systemPrompt = buildSystemPrompt(task);
+  ys.noteRoute("terminal-legacy", state.model);
+  let exchangeFailed = false;
 
   let maxTurns = 50;
   let turn = 0;
@@ -1209,6 +1221,7 @@ async function executeTask(task) {
         continue;
       }
       print(`${S.red}  Error: ${e.message}${S.reset}`);
+      exchangeFailed = true;
       break;
     }
 
@@ -1295,25 +1308,12 @@ async function executeTask(task) {
     // YOUSPEAK L4: Sense context after adding messages
     ys.senseContext(state.messages, systemPrompt.length);
 
-    // YOUSPEAK DECIDE: Check for adaptive signals
-    const signals = ys.decide(state.effort, state.model, budget);
-    for (const sig of signals) {
-      if (sig.type === "effort" && sig.action === "reduce") {
-        print(`  ${S.yellow}⚡ YOUSPEAK: ${sig.reason}${S.reset}`);
-        // Auto-apply effort reduction
-        state.effort = sig.to;
-      } else if (sig.type === "context" && sig.action === "prune_recommended") {
-        print(`  ${S.yellow}⚡ YOUSPEAK: ${sig.reason}${S.reset}`);
-        const { pruned } = ys.pruneContext(state.messages);
-        if (pruned > 0) print(`  ${S.green}  Pruned ${pruned} stale blocks${S.reset}`);
-      } else if (sig.type === "context" && sig.action === "evict_old_results") {
-        const { pruned } = ys.pruneContext(state.messages);
-        if (pruned > 0) print(`  ${S.dim}  YOUSPEAK: auto-pruned ${pruned} old tool results${S.reset}`);
-      } else if (sig.type === "action" && sig.action === "redundant_reads") {
-        print(`  ${S.dim}  YOUSPEAK: ${sig.reason}${S.reset}`);
-      }
+    // YOUSPEAK DECIDE: suggestions only, each shown once; effort and history stay as they are.
+    for (const sig of ys.newSuggestions(ys.decide(state.effort, state.model, budget))) {
+      print(`  ${S.yellow}⚡ YOUSPEAK suggestion: ${sig.reason}.${S.reset} ${S.dim}${sig.suggestion}${S.reset}`);
     }
   }
+  ys.noteExchange({ ok: !exchangeFailed });
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1388,8 +1388,13 @@ async function main() {
     showPrompt();
   });
 
+  // However the terminal exits, the YOUSPEAK session writes its one row (at most once).
+  process.once("exit", () => {
+    try { ys.endSession({ reason: "exit", model: state.model }); } catch {}
+  });
+
   rl.on("close", () => {
-    ys.persist();
+    ys.endSession({ reason: "exit", model: state.model });
     releaseVisitLock();
     print(`\n${S.dim}  YOUI session ended.${S.reset}`);
     appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}.`);

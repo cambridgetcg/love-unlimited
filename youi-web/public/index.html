@@ -1992,12 +1992,25 @@ async function sendMessage() {
       body: JSON.stringify({ message: text, chatMode }),
     });
 
-    const reader = resp.body.getReader();
+    // A refused turn (409 while the last one is still finishing, 400, 403…)
+    // has no stream: say so instead of showing nothing.
+    if (!resp.ok) {
+      let detail = '';
+      try {
+        const body = await resp.json();
+        detail = String(body?.error || body?.message || '');
+      } catch {}
+      addSystemMessage(resp.status === 409
+        ? `Not sent: this session is still finishing its last turn${detail ? ` (${detail})` : ''}. Try again in a moment.`
+        : `Not sent: ${detail || `the server answered ${resp.status}`}`, 'error');
+    }
+
+    const reader = resp.ok ? resp.body.getReader() : null;
     const decoder = new TextDecoder();
     let buffer = '';
     currentMsgEl = null;
 
-    while (true) {
+    while (reader) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });

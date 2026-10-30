@@ -34,7 +34,7 @@ import { resolve, join, basename } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
 import crypto from "crypto";
-import { createKernel } from "./youspeak-kernel.mjs";
+import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
 import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
@@ -240,9 +240,23 @@ const agentProfile = AGENTS[state.agent] || AGENTS.alpha;
 if (!args.includes("--model")) state.model = agentProfile.defaultModel;
 if (!args.includes("--effort")) state.effort = agentProfile.defaultEffort;
 
-// YOUSPEAK kernel: observes and suggests, never acts. One row per session
-// goes to ~/.local/share/youi/youspeak/history.jsonl when the session ends.
-let ys = createKernel({ agent: state.agent, route: "terminal-legacy", model: state.model });
+// YOUSPEAK kernel: observes and suggests, never acts. One row per session goes
+// to its store (YOUSPEAK_HISTORY_PATH, or ~/.local/share/youi/youspeak/history.jsonl)
+// when the session ends. Its suggestions name the terminal's own commands.
+const newYouspeakKernel = agent => createKernel({ agent, route: "terminal-legacy", surface: "terminal", model: state.model });
+let ys = newYouspeakKernel(state.agent);
+// Whether a task is running: /switch waits for it, so one task is never split across two sessions.
+let taskRunning = false;
+
+// Ends the YOUSPEAK session (its one row, unless it had no output or only
+// failed). A row that could not be written is said, in one dim line.
+function endYouspeak(reason) {
+  const outcome = ys.endSession({ reason, model: state.model });
+  if (outcome.error) {
+    print(`${S.dim}  YOUSPEAK row not written (${outcome.error})${S.reset}`);
+  }
+  return outcome;
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // TERMINAL
@@ -446,7 +460,7 @@ function runtimeManifest() {
       ],
       conversation_persistence: "process memory only",
       local_writes: "session metadata may be appended to the agent daily note; YOUSPEAK appends one row of aggregates"
-        + " per session (no message text, paths or tool inputs) to ~/.local/share/youi/youspeak/history.jsonl",
+        + ` per session (no message text, paths or tool inputs) to ${ys.historyPath || "nowhere (no store)"}`,
     },
     boot: {
       declared_files: agent.soulFiles,
@@ -784,7 +798,7 @@ function showPrivacyBoundary() {
   print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
   print(`  File scope:   ${manifest.model_tools.file_scope}`);
   print(`  Persistence:  conversation in process memory; daily note receives session metadata;`);
-  print(`                YOUSPEAK appends one aggregate row per session to ~/.local/share/youi/youspeak/history.jsonl`);
+  print(`                YOUSPEAK appends one aggregate row per session to ${ys.historyPath || "nowhere (no store)"}`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
   if (state.capabilities.has("shell")) {
     print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
@@ -871,7 +885,8 @@ function handleCommand(input) {
     case "/switch": {
       const target = parts[1]?.toLowerCase();
       if (!AGENTS[target]) { print(`${S.red}  Unknown agent: ${target}. Use ${Object.keys(AGENTS).join(", ")}.${S.reset}`); return true; }
-      ys.endSession({ reason: "switch", model: state.model }); // its one row, unless it had no output
+      if (taskRunning) { print(`${S.yellow}  A task is running; /switch when it has finished.${S.reset}`); return true; }
+      endYouspeak("switch"); // its one row, unless it had no output
       releaseVisitLock(state.agent); // leaving — her ticks may resume
       state.agent = target;
       const agent = AGENTS[target];
@@ -879,7 +894,7 @@ function handleCommand(input) {
       if (!args.includes("--effort")) state.effort = agent.defaultEffort;
       state.messages = []; // Fresh conversation for new agent
       state.turnCount = 0;
-      ys = createKernel({ agent: target, route: "terminal-legacy", model: state.model }); // Fresh YOUSPEAK session
+      ys = newYouspeakKernel(target); // Fresh YOUSPEAK session
       print(`\n${agent.color}  ${agent.emoji} Switched to ${agent.name} — ${roleLabel(agent)}${S.reset}`);
       print(`${S.dim}  ${agent.description}${S.reset}`);
       print(`${S.dim}  Model: ${state.model} | Effort: ${state.effort}${S.reset}\n`);
@@ -1165,7 +1180,7 @@ function handleCommand(input) {
     }
 
     case "/exit": case "/quit": case "/q":
-      ys.endSession({ reason: "exit", model: state.model }); // its one row, unless it had no output
+      endYouspeak("exit"); // its one row, unless it had no output
       releaseVisitLock(); // clean exit — her ticks may resume
       const ysReport = ys.report();
       const ysUseful = ysReport.output.usefulRatio === null ? "—" : `${Math.round(ysReport.output.usefulRatio*100)}%`;
@@ -1184,6 +1199,15 @@ function handleCommand(input) {
 // ═════════════════════════════════════════════════════════════════════
 
 async function executeTask(task) {
+  taskRunning = true;
+  try {
+    await runTask(task);
+  } finally {
+    taskRunning = false;
+  }
+}
+
+async function runTask(task) {
   state.messages.push({ role: "user", content: task });
   const systemPrompt = buildSystemPrompt(task);
   ys.noteRoute("terminal-legacy", state.model);
@@ -1309,7 +1333,8 @@ async function executeTask(task) {
     ys.senseContext(state.messages, systemPrompt.length);
 
     // YOUSPEAK DECIDE: suggestions only, each shown once; effort and history stay as they are.
-    for (const sig of ys.newSuggestions(ys.decide(state.effort, state.model, budget))) {
+    // It runs after each tool round, as in YOUI Web's Ollama/vLLM loop.
+    for (const sig of ys.newSuggestions(ys.decide(state.effort, state.model, budget, { route: "terminal-legacy" }))) {
       print(`  ${S.yellow}⚡ YOUSPEAK suggestion: ${sig.reason}.${S.reset} ${S.dim}${sig.suggestion}${S.reset}`);
     }
   }
@@ -1388,13 +1413,14 @@ async function main() {
     showPrompt();
   });
 
-  // However the terminal exits, the YOUSPEAK session writes its one row (at most once).
-  process.once("exit", () => {
-    try { ys.endSession({ reason: "exit", model: state.model }); } catch {}
-  });
+  // However the terminal exits — /exit, Ctrl+C or EOF (the input closes), a
+  // closed window or dropped SSH session (SIGHUP), SIGTERM, or an uncaught
+  // error — the open YOUSPEAK session writes its one row (at most once).
+  // Only SIGKILL or power loss ends it with nothing written.
+  endSessionOnExit(reason => endYouspeak(reason));
 
   rl.on("close", () => {
-    ys.endSession({ reason: "exit", model: state.model });
+    endYouspeak("exit");
     releaseVisitLock();
     print(`\n${S.dim}  YOUI session ended.${S.reset}`);
     appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}.`);

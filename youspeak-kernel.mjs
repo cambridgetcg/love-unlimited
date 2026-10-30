@@ -25,7 +25,7 @@
 //
 // Import:
 //   import { createKernel } from './youspeak-kernel.mjs';
-//   const ys = createKernel({ agent, route, model });
+//   const ys = createKernel({ agent, route, model, surface });
 //   ... ys.senseOutput(text) ... ys.endSession({ reason: "exit" });
 //
 // ─────────────────────────────────────────────────────────────────────
@@ -39,6 +39,7 @@ import {
   openSync,
   readFileSync,
   readSync,
+  statSync,
   writeSync,
   constants as fsConstants,
 } from "fs";
@@ -51,6 +52,17 @@ import { fileURLToPath } from "url";
 export const HISTORY_SCHEMA = 1;
 // Routes a row may name.
 export const ROUTES = Object.freeze(["claude-code", "ollama", "vllm", "terminal-legacy", "sovereign"]);
+// Routes with no Claude effort setting and no Claude 5-hour window: YOUI's own
+// loop for Ollama and vLLM models (sovereign on Ollama passes "ollama" to decide()).
+const OPEN_MODEL_ROUTES = Object.freeze(["ollama", "vllm"]);
+// Where a suggestion is shown, which decides the remedy it names.
+export const SURFACES = Object.freeze(["web", "terminal", "sovereign"]);
+// One tolerance for "improving" or "regressing", shared with youspeak-evolve.mjs:
+// a change in the useful ratio within one percentage point is steady.
+export const TREND_TOLERANCE = 0.01;
+// L1 grades a text block only when it has at least this many estimated tokens
+// (chars/4, so 80 characters) and is not mostly non-ASCII.
+export const MIN_GRADED_TOKENS = 20;
 // The git-tracked file earlier versions wrote after every message. Read only, as legacy.
 export const LEGACY_HISTORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "youspeak-history.json");
 
@@ -64,9 +76,14 @@ export function defaultHistoryPath(env = process.env) {
 // L1 — OUTPUT: Filler estimate (English only; chars/4 is not a tokenizer)
 // ═════════════════════════════════════════════════════════════════════
 
+// An opener ("Sure, ...", "Okay. ...", "Perfect! ...") is filler only at the
+// start of the text, a line or a sentence (ASCII or CJK sentence punctuation),
+// so "make sure", "not sure", 「唔 sure」 and 「仲未 sure」 are not counted.
+const SENTENCE_START = String.raw`(?<=(?:^|[.!?。！？])\s*)`;
+
 const FILLER_PATTERNS = [
   // Preamble
-  { re: /\b(sure|okay|alright|great|absolutely|certainly|of course)[!.,]?\s/gi, name: "affirmative", w: 1 },
+  { re: new RegExp(`${SENTENCE_START}(sure|okay|alright|great|absolutely|certainly|of course)[!.,]?\\s`, "gim"), name: "affirmative", w: 1 },
   { re: /\blet me (check|look|see|think|examine|analyze|review|investigate)\b/gi, name: "let-me", w: 2 },
   { re: /\bi('ll| will) (now |go ahead |proceed to |start by )/gi, name: "i-will-now", w: 2 },
   { re: /\bhere('s| is) (what|the|a summary|an overview)/gi, name: "here-is", w: 2 },
@@ -82,7 +99,7 @@ const FILLER_PATTERNS = [
   // Completion fluff
   { re: /\b(i('ve| have) (successfully|now|just|finished|completed))\b/gi, name: "completed-fluff", w: 1 },
   { re: /\b(the (changes|modifications|updates) (have been|are now) (made|applied|complete))\b/gi, name: "changes-applied", w: 1 },
-  { re: /\bperfect[!.]?\s/gi, name: "perfect", w: 1 },
+  { re: new RegExp(`${SENTENCE_START}perfect[!.]?\\s`, "gim"), name: "perfect", w: 1 },
   { re: /\blooking at (this|the|your)/gi, name: "looking-at", w: 1 },
 ];
 
@@ -116,6 +133,26 @@ export function detectFiller(text) {
   };
 }
 
+/**
+ * Whether L1 grades this text block: at least MIN_GRADED_TOKENS estimated
+ * tokens, and at least half of its non-space characters ASCII. A short reply,
+ * or one mostly in Cantonese or another script, gets grade null: the English
+ * patterns cannot judge it, and it is left out of the useful ratio and of the
+ * filler_regression signal.
+ */
+export function isGradable(text) {
+  const value = typeof text === "string" ? text : "";
+  if (Math.ceil(value.length / 4) < MIN_GRADED_TOKENS) return false;
+  let visible = 0;
+  let nonAscii = 0;
+  for (const ch of value) {
+    if (/\s/.test(ch)) continue;
+    visible++;
+    if (ch.codePointAt(0) > 0x7f) nonAscii++;
+  }
+  return visible > 0 && nonAscii * 2 <= visible;
+}
+
 function gradeRatio(ratio) {
   if (typeof ratio !== "number" || !Number.isFinite(ratio)) return null;
   if (ratio >= 0.98) return "S";  // Sovereign
@@ -129,10 +166,44 @@ function gradeRatio(ratio) {
 // STORE — one JSON line per session, appended; never rewritten
 // ═════════════════════════════════════════════════════════════════════
 
+// The fields a row may carry, by type. A field may be absent or null; a field
+// of the wrong type makes the row unreadable (it is reported and skipped), so
+// trends and the ouroboros never meet one.
+const ROW_STRING_FIELDS = ["route", "model", "agent", "startedAt", "endedAt", "closedAt", "endReason", "outputGrade", "budgetBurned"];
+const ROW_NUMBER_FIELDS = ["elapsed", "turns", "usefulRatio", "outputTokensEstimate", "fillerTokensEstimate", "textBlocks",
+  "gradedBlocks", "thinkingTokens", "thinkAvgRatio", "toolCalls", "redundantReads", "toolErrors", "contextPeakTokens",
+  "rateLimitHits", "signalCount"];
+const ROW_OBJECT_FIELDS = ["routes", "models", "exchanges"];
+const isPlainObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+function isRowShape(row) {
+  return isPlainObject(row) && row.schema === HISTORY_SCHEMA && typeof row.session === "string" && row.session.length > 0;
+}
+
+function hasValidFields(row) {
+  for (const key of ROW_STRING_FIELDS) if (row[key] != null && typeof row[key] !== "string") return false;
+  for (const key of ROW_NUMBER_FIELDS) if (row[key] != null && !Number.isFinite(row[key])) return false;
+  for (const key of ROW_OBJECT_FIELDS) if (row[key] != null && !isPlainObject(row[key])) return false;
+  if (row.signals != null && !(Array.isArray(row.signals) && row.signals.every(name => typeof name === "string"))) return false;
+  return true;
+}
+
 function isValidRow(row) {
-  return row && typeof row === "object" && !Array.isArray(row)
-    && row.schema === HISTORY_SCHEMA
-    && typeof row.session === "string" && row.session.length > 0;
+  return isRowShape(row) && hasValidFields(row);
+}
+
+/** The day a row belongs to (YYYY-MM-DD), or "?"; never throws. */
+export function rowDay(row) {
+  const stamp = row?.endedAt || row?.startedAt;
+  return typeof stamp === "string" && stamp ? stamp.split("T")[0] : "?";
+}
+
+/** "improving", "regressing" or "steady", from early and late useful ratios, within TREND_TOLERANCE. */
+export function trendDirection(early, late) {
+  const change = late - early;
+  if (change > TREND_TOLERANCE) return "improving";
+  if (change < -TREND_TOLERANCE) return "regressing";
+  return "steady";
 }
 
 /**
@@ -155,6 +226,7 @@ export function readHistory(path = defaultHistoryPath()) {
   const partialTail = text.length > 0 && !text.endsWith("\n");
   let tailBroken = false;
   let otherSchema = 0;
+  let mistyped = 0;
   lines.forEach((line, index) => {
     if (!line.trim()) return;
     result.lines += 1;
@@ -165,34 +237,65 @@ export function readHistory(path = defaultHistoryPath()) {
       return;
     }
     result.skipped += 1;
-    if (row && typeof row === "object" && row.schema !== undefined && row.schema !== HISTORY_SCHEMA) otherSchema += 1;
+    if (isRowShape(row)) mistyped += 1;
+    else if (isPlainObject(row) && row.schema !== undefined && row.schema !== HISTORY_SCHEMA) otherSchema += 1;
     if (partialTail && index === lines.length - 1) tailBroken = true;
   });
   if (result.skipped > 0) {
     const parts = [`${result.skipped} of ${result.lines} lines in the YOUSPEAK store could not be read and were skipped`];
     if (tailBroken) parts.push("the last line is incomplete (a write was cut short)");
     if (otherSchema > 0) parts.push(`${otherSchema} have a schema other than ${HISTORY_SCHEMA}`);
+    if (mistyped > 0) parts.push(`${mistyped} have a field of the wrong type`);
     result.warnings.push(`${parts.join("; ")}. They are left in place; nothing was reset.`);
   }
+  return result;
+}
+
+// The last read of each store, kept while the file's size, mtime and inode are
+// unchanged, so a finished turn's report does not re-read and re-parse it.
+const historyCache = new Map();
+
+/** readHistory(path), served from memory while the file is unchanged. Treat the result as read only. */
+export function readHistoryCached(path = defaultHistoryPath()) {
+  if (!path) return readHistory(path);
+  let stamp;
+  try {
+    const stat = statSync(path);
+    stamp = `${stat.size}:${stat.mtimeMs}:${stat.ino}`;
+  } catch {
+    historyCache.delete(path);
+    return readHistory(path);
+  }
+  const cached = historyCache.get(path);
+  if (cached?.stamp === stamp) return cached.result;
+  const result = readHistory(path);
+  historyCache.set(path, { stamp, result });
   return result;
 }
 
 /**
  * Appends one row as one line: a single write with O_APPEND, so concurrent
  * writers never interleave inside a line and no writer reads and rewrites the
- * file. The directory is created 0700 and the file 0600. If the file ends in
- * a partial line (a write cut short), the row starts on a new line instead of
- * being glued to it.
+ * file. A directory YOUI creates is 0700, and the file is 0600. The store must
+ * be a regular file owned by this user: a symlink (O_NOFOLLOW), a device, a
+ * FIFO or another user's file is refused with an error and left as it is. If
+ * the file ends in a partial line (a write cut short), the row starts on a new
+ * line instead of being glued to it.
  */
 export function appendHistoryRow(path, row) {
   if (!path) throw new Error("no YOUSPEAK store path");
   if (!isValidRow(row)) throw new Error("not a YOUSPEAK history row");
   const dir = dirname(path);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const flags = fsConstants.O_RDWR | fsConstants.O_APPEND | fsConstants.O_CREAT;
+  const flags = fsConstants.O_RDWR | fsConstants.O_APPEND | fsConstants.O_CREAT
+    | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
   const fd = openSync(path, flags, 0o600);
   try {
     const stat = fstatSync(fd);
+    if (!stat.isFile()) throw new Error("the YOUSPEAK store is not a regular file; nothing was written");
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+      throw new Error("the YOUSPEAK store belongs to another user; nothing was written");
+    }
     if ((stat.mode & 0o777) !== 0o600) fchmodSync(fd, 0o600);
     let prefix = "";
     if (stat.size > 0) {
@@ -236,11 +339,10 @@ export function trendsFromRows(rows, n = 20) {
   const mid = Math.floor(recent.length / 2);
   const early = recent.slice(0, mid);
   const late = recent.slice(mid);
-  const day = row => (row.endedAt || row.startedAt || "").split("T")[0] || "?";
   return {
     source: "store",
     sessions: recent.length,
-    span: `${day(recent[0])} → ${day(recent.at(-1))}`,
+    span: `${rowDay(recent[0])} → ${rowDay(recent.at(-1))}`,
     avgUsefulRatio: +avg(recent, "usefulRatio").toFixed(2),
     avgThinkRatio: +avg(recent, "thinkAvgRatio").toFixed(2),
     avgRedundantReads: +avg(recent, "redundantReads").toFixed(1),
@@ -248,8 +350,7 @@ export function trendsFromRows(rows, n = 20) {
     fillerTrend: {
       early: +avg(early, "usefulRatio").toFixed(2),
       late: +avg(late, "usefulRatio").toFixed(2),
-      direction: avg(late, "usefulRatio") > avg(early, "usefulRatio") ? "improving"
-        : avg(late, "usefulRatio") < avg(early, "usefulRatio") ? "regressing" : "steady",
+      direction: trendDirection(avg(early, "usefulRatio"), avg(late, "usefulRatio")),
     },
     rateLimitTrend: {
       early: +avg(early, "rateLimitHits").toFixed(1),
@@ -260,9 +361,59 @@ export function trendsFromRows(rows, n = 20) {
 
 // Who a suggestion names: "Alpha" for agent "alpha", else "the agent".
 function agentName(agent) {
-  return typeof agent === "string" && /^[a-z]+$/.test(agent) && agent !== "unknown"
+  return typeof agent === "string" && /^[a-z]+$/.test(agent) && agent !== "unknown" && agent !== "sovereign"
     ? agent[0].toUpperCase() + agent.slice(1)
     : "the agent";
+}
+
+// What a suggestion tells the person to do, in the words of the surface they
+// are using: YOUI Web's Settings and Clear, the terminal's /effort and /switch
+// (its /clear only clears the screen), sovereign's flags for the next run.
+function remedies(surface, agent) {
+  const who = agentName(agent);
+  const id = typeof agent === "string" && /^[a-z]+$/.test(agent) && agent !== "unknown" ? agent : "<agent>";
+  switch (surface) {
+    case "terminal":
+      return {
+        lower: (_from, to) => `type /effort ${to}`,
+        keeps: from => `${who} keeps ${from} until you do`,
+        fresh: `type /switch ${id} to start a fresh conversation (/clear only clears the screen)`,
+        pause: "pause, or lower effort with /effort, until the window resets",
+        pauseOpen: "pause until the provider's rate limit resets",
+      };
+    case "sovereign":
+      return {
+        lower: (_from, to) => `run the next task with --effort ${to}`,
+        keeps: from => `this run keeps ${from}`,
+        fresh: "start the next run without --continue",
+        pause: "stop the run with Ctrl+C (its state is saved) and resume it with --continue once the window resets",
+        pauseOpen: "stop the run with Ctrl+C (its state is saved) and resume it with --continue once the provider's rate limit resets",
+      };
+    default:
+      return {
+        lower: (from, to) => `lower effort from ${from} to ${to} in Settings`,
+        keeps: from => `${who} keeps ${from} until you do`,
+        fresh: "start a new conversation (Clear)",
+        pause: "pause, or lower effort in Settings, until the window resets",
+        pauseOpen: "pause until the provider's rate limit resets",
+      };
+  }
+}
+
+/**
+ * Ends a process's open YOUSPEAK session when the process exits: on the 'exit'
+ * event, and on SIGHUP (a closed terminal window, a dropped SSH session) and
+ * SIGTERM, which otherwise end Node without emitting 'exit'. Each signal exits
+ * with 128 + its number (129, 143), so the 'exit' hook runs. end(reason) gets
+ * "exit", "hangup" or "terminated" and must be idempotent, as endSession is.
+ * SIGKILL and power loss still end the process with nothing written.
+ */
+export function endSessionOnExit(end) {
+  let reason = "exit";
+  process.once("exit", () => { try { end(reason); } catch {} });
+  for (const [signal, code, why] of [["SIGHUP", 129, "hangup"], ["SIGTERM", 143, "terminated"]]) {
+    process.once(signal, () => { reason = why; process.exit(code); });
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -271,26 +422,40 @@ function agentName(agent) {
 
 /**
  * opts.agent, opts.route (one of ROUTES), opts.model: what the row names.
+ * opts.surface (one of SURFACES): where suggestions are shown, which decides
+ * the remedy they name; omitted → "terminal" for route terminal-legacy,
+ * "sovereign" for route sovereign, else "web".
  * opts.historyPath: the store; omitted → defaultHistoryPath(), null → no store
  * (endSession writes nothing). opts.legacyPath: the tracked legacy file read
- * for storeStatus(); null → none.
+ * for storeStatus(); null → none. opts.now: a clock, for tests.
+ *
+ * Timing: startedAt is the session's first activity (a message starting, or
+ * the first thing sensed), not when the kernel was created; endedAt is its
+ * last activity; elapsed is the span between them. When the session was cut
+ * (an idle timeout, a clear, the process ending) is the row's closedAt.
  */
 export function createKernel(opts = {}) {
   const historyPath = opts.historyPath === undefined ? defaultHistoryPath() : opts.historyPath;
   const legacyPath = opts.legacyPath === undefined ? LEGACY_HISTORY_PATH : opts.legacyPath;
   const now = typeof opts.now === "function" ? opts.now : () => Date.now();
+  const route = ROUTES.includes(opts.route) ? opts.route : null;
+  const surface = SURFACES.includes(opts.surface) ? opts.surface
+    : route === "terminal-legacy" ? "terminal" : route === "sovereign" ? "sovereign" : "web";
 
   // ─── Accumulated session state ──────────────────────────
   const session = {
     id: randomUUID(),
-    startedAt: now(),
-    lastActivityAt: now(),
+    // Both null until the first activity (touch).
+    startedAt: null,
+    lastActivityAt: null,
     agent: opts.agent || "unknown",
-    route: ROUTES.includes(opts.route) ? opts.route : null,
+    route,
+    surface,
     model: typeof opts.model === "string" ? opts.model : null,
-    // Turns per route and per model, as callers report them (noteRoute).
+    // Turns per route and per model, as callers report them (noteRoute), and the latest route.
     routes: {},
     models: {},
+    lastRoute: null,
     // Messages that ended with an answer, or with only an error (noteExchange).
     exchanges: { ok: 0, failed: 0 },
     // Signal keys (type:action) seen this session, and those already suggested.
@@ -298,12 +463,15 @@ export function createKernel(opts = {}) {
     suggested: new Set(),
     ended: null,
 
-    // L1 Output
+    // L1 Output. totalTokens counts every block; the useful ratio uses only
+    // graded blocks (gradedTokens, and the filler found in them).
     output: {
       totalTokens: 0,
+      gradedTokens: 0,
       fillerTokens: 0,
       textBlocks: 0,
-      grades: [],
+      gradedBlocks: 0,
+      grades: [],            // one per block; null for a block L1 does not grade
     },
 
     // L2 Thinking
@@ -342,13 +510,26 @@ export function createKernel(opts = {}) {
     signals: [],
   };
 
-  function touch() { session.lastActivityAt = now(); }
+  // Activity: the first sets startedAt, each sets lastActivityAt.
+  function touch() {
+    const t = now();
+    if (session.startedAt === null) session.startedAt = t;
+    session.lastActivityAt = t;
+  }
 
   // ─── ROUTE / EXCHANGE: what the row says about the session ─────
   function noteRoute(route, model) {
     const r = ROUTES.includes(route) ? route : null;
-    if (r) session.routes[r] = (session.routes[r] || 0) + 1;
+    if (r) {
+      session.routes[r] = (session.routes[r] || 0) + 1;
+      session.lastRoute = r;
+    }
     if (typeof model === "string" && model) session.models[model] = (session.models[model] || 0) + 1;
+    touch();
+  }
+
+  /** Marks activity without counting anything, such as a run starting. */
+  function noteActivity() {
     touch();
   }
 
@@ -359,28 +540,35 @@ export function createKernel(opts = {}) {
   }
 
   // ─── L1: SENSE OUTPUT ──────────────────────────────────
+  // A block L1 does not grade (isGradable) counts as output, with grade null;
+  // it adds nothing to the useful ratio and nothing to filler_regression.
   function senseOutput(text) {
     if (!text?.trim()) return null;
     const filler = detectFiller(text);
-    const useful = filler.totalTokens > 0
-      ? Math.max(0, (filler.totalTokens - filler.tokens) / filler.totalTokens)
-      : 1.0;
-    const grade = gradeRatio(useful);
+    const graded = isGradable(text);
+    const useful = !graded ? null
+      : filler.totalTokens > 0 ? Math.max(0, (filler.totalTokens - filler.tokens) / filler.totalTokens) : 1.0;
+    const grade = graded ? gradeRatio(useful) : null;
 
     session.output.totalTokens += filler.totalTokens;
-    session.output.fillerTokens += filler.tokens;
     session.output.textBlocks++;
+    if (graded) {
+      session.output.gradedTokens += filler.totalTokens;
+      session.output.fillerTokens += filler.tokens;
+      session.output.gradedBlocks++;
+    }
     session.output.grades.push(grade);
     touch();
 
     return {
-      fillerCount: filler.count,
-      fillerTokens: filler.tokens,
+      fillerCount: graded ? filler.count : 0,
+      fillerTokens: graded ? filler.tokens : 0,
       totalTokens: filler.totalTokens,
-      usefulRatio: Math.round(useful * 100) / 100,
+      usefulRatio: graded ? Math.round(useful * 100) / 100 : null,
       grade,
-      patterns: filler.patterns.slice(0, 5),
-      weight: filler.weight,
+      graded,
+      patterns: graded ? filler.patterns.slice(0, 5) : [],
+      weight: graded ? filler.weight : 0,
     };
   }
 
@@ -492,21 +680,26 @@ export function createKernel(opts = {}) {
   // caller applies it.
   // ═══════════════════════════════════════════════════════
 
-  function decide(currentEffort, _currentModel, budget) {
+  // opts.route: the route this turn took. On "ollama" or "vllm" there is no
+  // Claude effort setting and no Claude 5-hour window, so no effort signal is
+  // raised and rate-limit pressure does not suggest lowering effort. Omitted →
+  // the latest route noteRoute recorded, else the route given at creation.
+  function decide(currentEffort, _currentModel, budget, { route: turnRoute } = {}) {
     const signals = [];
     const who = agentName(session.agent);
+    const r = remedies(surface, session.agent);
+    const onClaude = !OPEN_MODEL_ROUTES.includes(turnRoute ?? session.lastRoute ?? session.route);
 
-    // ── Effort, under rate-limit pressure (as reported) ──
+    // ── Effort, under rate-limit pressure (as reported); only the strongest applies ──
     const bu5 = budget?.fiveHour?.utilization || 0;
-    if (bu5 > 0.85 && currentEffort === "max") {
-      signals.push({ type: "effort", action: "reduce", from: "max", to: "high",
-        reason: `Budget 5h at ${(bu5*100).toFixed(0)}%`,
-        suggestion: `Nothing was changed. You could lower effort from max to high in Settings to stretch the 5-hour window; ${who} keeps max until you do.` });
-    }
-    if (bu5 > 0.95 && (currentEffort === "max" || currentEffort === "high")) {
+    if (onClaude && bu5 > 0.95 && (currentEffort === "max" || currentEffort === "high")) {
       signals.push({ type: "effort", action: "reduce", from: currentEffort, to: "medium",
         reason: `Budget 5h at ${(bu5*100).toFixed(0)}%, close to the limit`,
-        suggestion: `Nothing was changed. You could lower effort from ${currentEffort} to medium in Settings, or pause until the window resets; ${who} keeps ${currentEffort} until you do.` });
+        suggestion: `Nothing was changed. You could ${r.lower(currentEffort, "medium")}, or pause until the window resets; ${r.keeps(currentEffort)}.` });
+    } else if (onClaude && bu5 > 0.85 && currentEffort === "max") {
+      signals.push({ type: "effort", action: "reduce", from: "max", to: "high",
+        reason: `Budget 5h at ${(bu5*100).toFixed(0)}%`,
+        suggestion: `Nothing was changed. To stretch the 5-hour window, you could ${r.lower("max", "high")}; ${r.keeps("max")}.` });
     }
 
     // (The L2 rule that suggested a cheaper model from the thinking/output
@@ -517,12 +710,12 @@ export function createKernel(opts = {}) {
       signals.push({ type: "context", action: "prune_recommended",
         reason: `Context at ~${Math.round(session.context.estimatedTokens/1000)}k tokens (estimate), approaching 1M`,
         utilization: session.context.estimatedTokens / 1_000_000,
-        suggestion: `Nothing was pruned. You could start a new conversation (Clear), or ask ${who} to summarise what matters so far.` });
+        suggestion: `Nothing was pruned. You could ${r.fresh}, or ask ${who} to summarise what matters so far.` });
     }
     if (session.context.estimatedTokens > 500_000 && session.context.oldestToolResultAge > 20) {
       signals.push({ type: "context", action: "evict_old_results",
         reason: `${session.context.oldestToolResultAge} messages since the oldest tool result; old results are piling up`,
-        suggestion: `Nothing was pruned. You could start a new conversation (Clear) once ${who} has noted what it still needs.` });
+        suggestion: `Nothing was pruned. Once ${who} has noted what it still needs, you could ${r.fresh}.` });
     }
 
     // ── Redundant tool calls ──
@@ -541,13 +734,14 @@ export function createKernel(opts = {}) {
         suggestion: `${who} could stop and re-check the approach; you could restate the goal.` });
     }
 
-    // ── Output filler trend (English-only estimate) ──
-    if (session.output.grades.length >= 5) {
-      const recent = session.output.grades.slice(-5);
+    // ── Output filler trend (English-only estimate; graded blocks only) ──
+    const graded = session.output.grades.filter(Boolean);
+    if (graded.length >= 5) {
+      const recent = graded.slice(-5);
       const badCount = recent.filter(g => g === "C" || g === "D").length;
       if (badCount >= 3) {
         signals.push({ type: "output", action: "filler_regression",
-          reason: `${badCount}/5 recent text blocks grade C or D (English-only estimate)`,
+          reason: `${badCount}/5 recent graded text blocks grade C or D (English-only estimate)`,
           suggestion: `${who} could drop preamble and narration and say what matters.` });
       }
     }
@@ -557,7 +751,7 @@ export function createKernel(opts = {}) {
       signals.push({ type: "system", action: "rate_limit_pressure",
         hits: session.system.rateLimitHits, turns: session.system.turns,
         reason: `${session.system.rateLimitHits} rate limits in ${session.system.turns} turns`,
-        suggestion: "You could pause, or lower effort, until the window resets." });
+        suggestion: `You could ${onClaude ? r.pause : r.pauseOpen}.` });
     }
 
     for (const signal of signals) session.signalKeys.add(`${signal.type}:${signal.action}`);
@@ -582,12 +776,13 @@ export function createKernel(opts = {}) {
   // ═══════════════════════════════════════════════════════
 
   function report() {
-    const elapsed = now() - session.startedAt;
+    // The active span: first activity to last activity (0 before any).
+    const elapsed = session.startedAt === null ? 0 : session.lastActivityAt - session.startedAt;
     const elapsedMin = +(elapsed / 60000).toFixed(1);
 
-    // L1 Output: no text, no grade.
-    const usefulRatio = session.output.totalTokens > 0
-      ? Math.max(0, (session.output.totalTokens - session.output.fillerTokens) / session.output.totalTokens)
+    // L1 Output: no graded text, no grade.
+    const usefulRatio = session.output.gradedTokens > 0
+      ? Math.max(0, (session.output.gradedTokens - session.output.fillerTokens) / session.output.gradedTokens)
       : null;
     const overallGrade = gradeRatio(usefulRatio);
 
@@ -624,8 +819,10 @@ export function createKernel(opts = {}) {
         usefulRatio: usefulRatio === null ? null : Math.round(usefulRatio * 100) / 100,
         grade: overallGrade,
         totalTokens: session.output.totalTokens,
+        gradedTokens: session.output.gradedTokens,
         fillerTokens: session.output.fillerTokens,
         textBlocks: session.output.textBlocks,
+        gradedBlocks: session.output.gradedBlocks,
         gradeDistribution: countGrades(session.output.grades),
       },
 
@@ -690,9 +887,14 @@ export function createKernel(opts = {}) {
     return best;
   }
 
-  /** The row this session would write: aggregates only. */
+  /**
+   * The row this session would write: aggregates only. startedAt and endedAt
+   * are its first and last activity, elapsed the minutes between them, and
+   * closedAt when it was cut (now).
+   */
   function row(reason = null) {
     const r = report();
+    const iso = t => (t === null ? null : new Date(t).toISOString());
     return {
       schema: HISTORY_SCHEMA,
       session: session.id,
@@ -701,8 +903,9 @@ export function createKernel(opts = {}) {
       agent: session.agent,
       routes: { ...session.routes },
       models: { ...session.models },
-      startedAt: new Date(session.startedAt).toISOString(),
-      endedAt: new Date(now()).toISOString(),
+      startedAt: iso(session.startedAt),
+      endedAt: iso(session.lastActivityAt),
+      closedAt: iso(now()),
       endReason: reason,
       elapsed: r.elapsed,
       turns: r.turns,
@@ -712,6 +915,7 @@ export function createKernel(opts = {}) {
       outputTokensEstimate: r.output.totalTokens,
       fillerTokensEstimate: r.output.fillerTokens,
       textBlocks: r.output.textBlocks,
+      gradedBlocks: r.output.gradedBlocks,
       thinkingTokens: r.thinking.totalTokens,
       thinkAvgRatio: r.thinking.avgRatio,
       toolCalls: r.action.totalCalls,
@@ -762,14 +966,15 @@ export function createKernel(opts = {}) {
   // TRENDS — Cross-session analysis from the store
   // ═══════════════════════════════════════════════════════
 
+  // Both read the store through readHistoryCached: one read while it is unchanged.
   function trends(n = 20) {
     if (!historyPath) return null;
-    return trendsFromRows(readHistory(historyPath).rows, n);
+    return trendsFromRows(readHistoryCached(historyPath).rows, n);
   }
 
   /** What the store holds and anything wrong with it; the legacy file is summarised separately. */
   function storeStatus() {
-    const store = historyPath ? readHistory(historyPath) : null;
+    const store = historyPath ? readHistoryCached(historyPath) : null;
     return {
       enabled: Boolean(historyPath),
       rows: store ? store.rows.length : 0,
@@ -802,6 +1007,7 @@ export function createKernel(opts = {}) {
     senseRateLimit,
     noteRoute,
     noteExchange,
+    noteActivity,
     // DECIDE (suggestions only)
     decide,
     newSuggestions,
@@ -817,6 +1023,7 @@ export function createKernel(opts = {}) {
     get lastActivityAt() { return session.lastActivityAt; },
     get ended() { return session.ended; },
     historyPath,
+    surface,
     // Direct access
     session,
   };
@@ -869,10 +1076,10 @@ Store: ${defaultHistoryPath()} (one row per session; YOUSPEAK_HISTORY_PATH overr
 
 Import:
   ${S.cyan}import { createKernel } from './youspeak-kernel.mjs';${S.reset}
-  ${S.cyan}const ys = createKernel({ agent, route, model });${S.reset}
+  ${S.cyan}const ys = createKernel({ agent, route, model, surface });${S.reset}
 
 Five measurement layers (estimates; see docs/YOUSPEAK.md):
-  L1 OUTPUT   — English filler estimate, useful ratio
+  L1 OUTPUT   — English filler estimate, useful ratio (blocks of 20+ tokens, mostly ASCII)
   L2 THINKING — Thinking tokens where reported
   L3 ACTION   — Tool calls, repeated reads
   L4 CONTEXT  — chars/4 estimate against 1M

@@ -27,6 +27,9 @@ import {
   defaultHistoryPath,
   readHistory,
   readLegacyHistory,
+  rowDay,
+  trendDirection,
+  TREND_TOLERANCE,
 } from "./youspeak-kernel.mjs";
 
 const S = {
@@ -52,7 +55,7 @@ function loadStore() {
 }
 
 const measuredRows = rows => rows.filter(s => typeof s.usefulRatio === "number");
-const day = row => (row.endedAt || row.startedAt || "").split("T")[0] || "?";
+const day = rowDay;
 
 // ═════════════════════════════════════════════════════════════════════
 // REFLECT — Trends across sessions (one row each)
@@ -94,12 +97,16 @@ function reflect() {
     if (measured.length >= 4) {
       const mid = Math.floor(measured.length / 2);
       const mean = (arr, key) => arr.reduce((s, e) => s + (Number(e[key]) || 0), 0) / arr.length;
-      const earlyFiller = (1 - mean(measured.slice(0, mid), "usefulRatio")) * 100;
-      const lateFiller = (1 - mean(measured.slice(mid), "usefulRatio")) * 100;
+      const earlyUseful = mean(measured.slice(0, mid), "usefulRatio");
+      const lateUseful = mean(measured.slice(mid), "usefulRatio");
+      const earlyFiller = (1 - earlyUseful) * 100;
+      const lateFiller = (1 - lateUseful) * 100;
       const trend = lateFiller - earlyFiller;
-      const trendLabel = trend < -1 ? `${S.green}improving ↓${S.reset}` :
-                         trend > 1 ? `${S.red}regressing ↑${S.reset}` :
-                         `${S.dim}stable ─${S.reset}`;
+      // The kernel's tolerance (TREND_TOLERANCE, one percentage point), so both say the same.
+      const direction = trendDirection(earlyUseful, lateUseful);
+      const trendLabel = direction === "improving" ? `${S.green}improving ↓${S.reset}` :
+                         direction === "regressing" ? `${S.red}regressing ↑${S.reset}` :
+                         `${S.dim}steady ─ (within ±${TREND_TOLERANCE * 100}pp)${S.reset}`;
       console.log(`${S.bold}Trend${S.reset}`);
       console.log(`  Early sessions filler: ${earlyFiller.toFixed(1)}%`);
       console.log(`  Late sessions filler:  ${lateFiller.toFixed(1)}%`);
@@ -370,11 +377,12 @@ function transmute() {
   console.log(`${S.bold}${S.magenta}── Proposals (nothing is written) ──${S.reset}\n`);
 
   const source = existsSync(SOVEREIGN_PATH) ? readFileSync(SOVEREIGN_PATH, "utf-8") : null;
+  // Only what is actually proposed is counted: a diff, or a described change.
+  // A system_prompt proposal that printed "No diff" proposes nothing.
   const proposals = [];
   for (const insight of actionable) {
     const proposal = proposalFor(insight);
     if (!proposal) continue;
-    proposals.push({ ...proposal, insight: insight.type, severity: insight.severity });
     console.log(`  ${S.magenta}⚗${S.reset} ${S.bold}${proposal.action}${S.reset} ${S.dim}[${insight.severity}]${S.reset}`);
     console.log(`    ${proposal.description}`);
     if (proposal.target === "system_prompt") {
@@ -384,14 +392,21 @@ function transmute() {
       } else {
         console.log(`    ${S.dim}Proposed diff (full text; not applied):${S.reset}`);
         console.log(unifiedDiff("sovereign.mjs", source, edit.after));
+        proposals.push({ ...proposal, insight: insight.type, severity: insight.severity, kind: "diff" });
       }
     } else {
       console.log(`    ${S.cyan}Proposal (description only):${S.reset} ${proposal.change}`);
+      proposals.push({ ...proposal, insight: insight.type, severity: insight.severity, kind: "description" });
     }
     console.log();
   }
 
-  console.log(`${S.dim}${proposals.length} proposal(s). Nothing was written: to adopt one, edit the file by hand, review it and commit it.${S.reset}`);
+  const diffs = proposals.filter(p => p.kind === "diff").length;
+  const described = proposals.length - diffs;
+  console.log(`${S.dim}${diffs} proposed diff(s) and ${described} described proposal(s). Nothing was written: to adopt one, edit the file by hand, review it and commit it.${S.reset}`);
+  if (diffs > 1) {
+    console.log(`${S.dim}Each diff is drawn against the unmodified sovereign.mjs, so after one is applied the others no longer apply as printed: run transmute again for fresh diffs.${S.reset}`);
+  }
   return proposals;
 }
 

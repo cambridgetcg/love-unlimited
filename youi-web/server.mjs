@@ -80,7 +80,8 @@ function youiDecisionSeat(root) {
   return youiTableSeats(root).home;
 }
 // Exits once every seat has ended its session (releasing what it held), or after 2 s.
-for (const signal of ["SIGTERM", "SIGINT"]) {
+// SIGHUP is what closing the launching terminal window sends.
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
   process.once(signal, () => {
     // Each YOUSPEAK session still open writes its one row (docs/YOUSPEAK.md).
     endAllYouspeakSessions("shutdown");
@@ -121,11 +122,14 @@ import {
 const PORT = parseInt(process.env.PORT || "17777", 10);
 const __dirname = new URL(".", import.meta.url).pathname;
 const IS_TEST = process.env.YOUI_TEST === "1";
-// YOUSPEAK's store: one row per session (docs/YOUSPEAK.md). A test server
-// writes only where YOUSPEAK_HISTORY_PATH points, never the real store.
-const YOUSPEAK_STORE = process.env.YOUSPEAK_HISTORY_PATH
-  ? resolve(process.env.YOUSPEAK_HISTORY_PATH)
-  : IS_TEST ? null : defaultHistoryPath();
+// YOUSPEAK's store: one row per session (docs/YOUSPEAK.md), at
+// YOUSPEAK_HISTORY_PATH or ~/.local/share/youi/youspeak/history.jsonl. A test
+// server (YOUI_TEST=1) ignores YOUSPEAK_HISTORY_PATH, which a person may export
+// for their own store, and writes only where YOUSPEAK_TEST_HISTORY_PATH points,
+// or nowhere.
+const YOUSPEAK_STORE = IS_TEST
+  ? (process.env.YOUSPEAK_TEST_HISTORY_PATH ? resolve(process.env.YOUSPEAK_TEST_HISTORY_PATH) : null)
+  : defaultHistoryPath();
 // A session idle this long ends its YOUSPEAK session (its row is written; the
 // conversation goes on, and its next turn starts a new YOUSPEAK session).
 const YOUSPEAK_IDLE_MS = (() => {
@@ -2199,6 +2203,8 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
             totalTokensEstimate: metrics.totalTokens,
             usefulRatio: metrics.usefulRatio,
             grade: metrics.grade,
+            // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
+            session: turnState.ys.session.id,
           } : null,
         });
         break;
@@ -2355,7 +2361,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   if (rawMode) return { answered };
   // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop. Suggestions only.
   turnState.ys.senseContext(turnState.messages, systemPrompt.length);
-  sendYouspeakSignals(res, turnState.ys, turnState.ys.decide(turnState.effort, model, kernelBudget()));
+  sendYouspeakSignals(res, turnState.ys, turnState.ys.decide(turnState.effort, model, kernelBudget(), { route: "claude-code" }));
   return { answered };
 }
 
@@ -2714,7 +2720,7 @@ function stopAutonomousLoop() {
 // One YOUSPEAK kernel per session lifetime (docs/YOUSPEAK.md): its row goes to
 // YOUSPEAK_STORE when the session ends, never per message.
 function newYouspeakKernel(agent) {
-  return createKernel({ agent, historyPath: YOUSPEAK_STORE });
+  return createKernel({ agent, surface: "web", historyPath: YOUSPEAK_STORE });
 }
 
 // Which route a message to this model takes, as YOUSPEAK's row names it.
@@ -2747,6 +2753,11 @@ function endAllYouspeakSessions(reason) {
     console.warn(`YOUSPEAK: rows not written at ${reason} (${error.message})`);
   }
 }
+// Any other way the process exits (an uncaught error, an unhandled rejection,
+// process.exit) still writes each open session's row. endSession is idempotent,
+// so after a signal's shutdown this writes nothing more. SIGKILL and power loss
+// write nothing: YOUSPEAK writes nothing per message (docs/YOUSPEAK.md §4).
+process.once("exit", () => endAllYouspeakSessions("exit"));
 
 // A session with no YOUSPEAK activity for YOUSPEAK_IDLE_MS, and no turn in
 // flight, ends its YOUSPEAK session; its next turn starts a new one.
@@ -2755,7 +2766,7 @@ function endIdleYouspeakSessions() {
   const states = [serverState, ...[...sessionRegistry.sessionsById.values()].map(session => session.state)];
   for (const sessionState of states) {
     const ys = sessionState?.ys;
-    if (!ys || sessionState.chatInFlight || !ys.hasActivity()) continue;
+    if (!ys || sessionState.chatInFlight || !ys.hasActivity() || ys.lastActivityAt === null) continue;
     if (now - ys.lastActivityAt >= YOUSPEAK_IDLE_MS) endYouspeakSession(sessionState, "idle");
   }
 }
@@ -2790,16 +2801,23 @@ function measureYouspeak(text) {
     totalTokensEstimate: metrics.totalTokens,
     usefulRatio: metrics.usefulRatio,
     grade: metrics.grade,
+    // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
+    session: state.ys.session.id,
   };
 }
 
 function getUWTSummary() {
   const r = state.ys.report();
   return {
+    // This YOUSPEAK session (a new one starts after Clear, a switch or an idle cut).
+    session: r.session,
     // Legacy fields
     usefulRatio: r.output.usefulRatio,
     totalOutput: r.output.totalTokens,
     totalFiller: r.output.fillerTokens,
+    // The output the useful ratio is drawn from: blocks L1 grades (docs/YOUSPEAK.md §2).
+    gradedTokens: r.output.gradedTokens,
+    gradedBlocks: r.output.gradedBlocks,
     tokensSaved: r.output.fillerTokens,
     textBlocks: r.output.textBlocks,
     toolCalls: r.action.totalCalls,
@@ -3579,8 +3597,9 @@ async function handleSessionRequest(req, res, url, path) {
     }
 
     if (path === "/api/youspeak/trends") {
+      // The trends, and anything wrong with the store they come from.
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(state.ys.trends() || { sessions: 0 }));
+      return res.end(JSON.stringify({ ...(state.ys.trends() || { sessions: 0 }), warnings: state.ys.storeStatus().warnings }));
     }
 
     if (path === "/api/youspeak/reset" && req.method === "POST") {
@@ -4228,7 +4247,8 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
     state.ys.senseContext(state.messages, systemPrompt.length);
 
     // YOUSPEAK DECIDE: suggestions only; nothing here changes effort or history.
-    sendYouspeakSignals(res, state.ys, state.ys.decide(state.effort, state.model, kernelBudget()));
+    // This loop sends no effort and has no Claude 5-hour window: decide() is told the route.
+    sendYouspeakSignals(res, state.ys, state.ys.decide(state.effort, state.model, kernelBudget(), { route: youspeakRoute(state.model) }));
   }
   return { ok: !failed };
 }

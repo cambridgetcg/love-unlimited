@@ -1901,6 +1901,9 @@ async function switchAgent(name) {
       document.getElementById('effort-select').value = a.effort;
       updatePrivacyUI(data.privacy);
 
+      // A switch ends the YOUSPEAK session with the conversation.
+      resetYouspeakUI();
+
       // Add system message
       addSystemMessage(`Switched to ${a.emoji} ${a.name} — the ${a.role}`);
 
@@ -2480,17 +2483,42 @@ async function fetchUsageDashboard() {
 
 // ─── YOUSPEAK KERNEL UI ───────────────────────────────────
 
-let ysAccum = { totalOutput: 0, totalFiller: 0, blocks: 0 };
+// The tally of the current YOUSPEAK session only: `session` is its id, and a
+// new session (after Clear, a switch or an idle cut) starts a fresh tally.
+// Only blocks L1 grades count toward the ratio; the rest have grade null.
+let ysAccum = { session: null, totalOutput: 0, totalFiller: 0, blocks: 0 };
+
+// Back to the empty state of a new YOUSPEAK session: no ratio, no grade, no signals.
+function resetYouspeakUI(session = null) {
+  ysAccum = { session, totalOutput: 0, totalFiller: 0, blocks: 0 };
+  const set = (id, text) => { const el = document.getElementById(id); if (el) { el.textContent = text; el.style.color = ''; } };
+  set('ys-ratio', '—');
+  set('ys-grade', '—');
+  set('ys-saved', '0');
+  set('ys-detail', '');
+  set('ys-think', '—');
+  set('ys-tools', '0');
+  set('ys-ctx', '—');
+  const fill = document.getElementById('ys-fill');
+  if (fill) { fill.style.width = '0%'; fill.style.background = 'var(--green)'; }
+  updateYouspeakSignals([]);
+}
 
 function updateYouspeakUI(metrics) {
   if (!metrics) return;
-  ysAccum.totalOutput += Number(metrics.totalTokensEstimate) || 0;
-  ysAccum.totalFiller += Number(metrics.fillerTokensEstimate) || 0;
+  if (metrics.session && metrics.session !== ysAccum.session) resetYouspeakUI(metrics.session);
   ysAccum.blocks++;
+  if (metrics.grade) {
+    ysAccum.totalOutput += Number(metrics.totalTokensEstimate) || 0;
+    ysAccum.totalFiller += Number(metrics.fillerTokensEstimate) || 0;
+  }
+  if (ysAccum.totalOutput === 0) {
+    // Nothing graded yet (short replies, or mostly non-English): no ratio, no grade.
+    document.getElementById('ys-detail').textContent = `${ysAccum.blocks} blocks | none graded`;
+    return;
+  }
 
-  const ratio = ysAccum.totalOutput > 0
-    ? Math.round(((ysAccum.totalOutput - ysAccum.totalFiller) / ysAccum.totalOutput) * 100)
-    : 100;
+  const ratio = Math.round(((ysAccum.totalOutput - ysAccum.totalFiller) / ysAccum.totalOutput) * 100);
 
   const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
   const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';
@@ -2505,7 +2533,7 @@ function updateYouspeakUI(metrics) {
   fill.style.background = ratio >= 85 ? 'var(--green)' : ratio >= 70 ? 'var(--gold,#f0c040)' : 'var(--red)';
 
   document.getElementById('ys-detail').textContent =
-    `${ysAccum.blocks} blocks | ${ysAccum.totalOutput} tok out | ${ysAccum.totalFiller} filler`;
+    `${ysAccum.blocks} blocks | ${ysAccum.totalOutput} tok graded | ${ysAccum.totalFiller} filler`;
 }
 
 // The current signals, as suggestions: the reason shows, and what could be done is in the tooltip.
@@ -2558,6 +2586,11 @@ async function fetchYouspeakStats() {
     const resp = await fetch('/api/youspeak');
     const data = await resp.json();
     updateYouspeakStore(data.store);
+    // A new YOUSPEAK session since the last tally: start from empty, then take the server's figures.
+    if (data.session && data.session !== ysAccum.session) resetYouspeakUI(data.session);
+    ysAccum.totalOutput = Number(data.gradedTokens) || 0;
+    ysAccum.totalFiller = Number(data.totalFiller) || 0;
+    ysAccum.blocks = Number(data.textBlocks) || 0;
     // No output yet: no ratio and no grade.
     if (data.usefulRatio === null) {
       document.getElementById('ys-ratio').textContent = '—';
@@ -2680,6 +2713,8 @@ function handleCommand(text) {
 
 async function clearChat() {
   try { await fetch('/api/clear', { method: 'POST' }); } catch {}
+  // The cleared conversation's YOUSPEAK session ended with it.
+  resetYouspeakUI();
   const chat = document.getElementById('chat');
   chat.innerHTML = '';
   const a = AGENTS[currentAgent];

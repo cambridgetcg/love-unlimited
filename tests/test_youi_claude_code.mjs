@@ -36,6 +36,7 @@ import {
   parseClaudeVersion,
   prepareClaudeCwd,
   resolveClaudeBinary,
+  runClaudeCode,
   sweepStaleClaudeScratch,
   transcriptPreamble,
 } from "../youi-web/claude-code.mjs";
@@ -350,7 +351,7 @@ test("the runner finds only an explicit fake in test mode, and keeps credentials
   });
   assert.deepEqual(Object.keys(env).sort(), [
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS", "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
-    "HOME", "LANG", "PATH", "STRIPE_SECRET_KEY",
+    "CLAUDE_CODE_DISABLE_FILE_MENTIONS", "HOME", "LANG", "PATH", "STRIPE_SECRET_KEY",
   ], "the denylist alone misses STRIPE_SECRET_KEY; the server's allowlist (asserted below) keeps it out");
 
   const haiku = "claude-haiku-4-5-20251001";
@@ -368,6 +369,9 @@ test("the runner finds only an explicit fake in test mode, and keeps credentials
   assert.equal(escapeLeadingSlash("/compact now"), "\\/compact now");
   assert.equal(escapeLeadingSlash("  /clear"), "  \\/clear");
   assert.equal(escapeLeadingSlash("/plugin:command arg"), "\\/plugin:command arg");
+  // Claude Code's own names may start with "_" (its built-in /__remote-workflow does).
+  assert.equal(escapeLeadingSlash("/__remote-workflow"), "\\/__remote-workflow");
+  assert.equal(escapeLeadingSlash("/_x now"), "\\/_x now");
   assert.equal(escapeLeadingSlash("a/b"), "a/b");
   assert.equal(escapeLeadingSlash("/Users/me/app.py"), "/Users/me/app.py");
   assert.equal(escapeLeadingSlash("/Users/me/app.py please read it"), "/Users/me/app.py please read it");
@@ -407,7 +411,7 @@ test("spend is what each result adds to Claude Code's running totals, and earlie
   assert.deepEqual(since.byModel.m, { inputTokens: 7, outputTokens: 1, costUsd: 0.004 });
   assert.equal(Number(since.costUsd.toFixed(6)), 0.005);
   assert.equal(since.next.costUsd, 0.5);
-  // A total below the baseline, an error result or a crash's zeros never move the baseline,
+  // A total below the baseline or a crash's zeros never move the baseline,
   // so the next good result is not counted twice.
   const lower = claudeCodeSpend({ subtype: "success", total_cost_usd: 0.001 }, { costUsd: 0.5 });
   assert.equal(lower.costUsd, 0, "never negative");
@@ -415,12 +419,18 @@ test("spend is what each result adds to Claude Code's running totals, and earlie
   const zeroed = claudeCodeSpend({ subtype: "error_during_execution", is_error: true, total_cost_usd: 0, modelUsage: {} }, second.next);
   assert.equal(zeroed.costUsd, 0);
   assert.deepEqual(zeroed.next, second.next);
-  const errored = claudeCodeSpend({ subtype: "error_max_turns", is_error: true, total_cost_usd: 0.03, modelUsage: { m: { costUSD: 0.025 } } }, second.next);
-  assert.equal(errored.costUsd, 0, "left for the next result's running total");
-  assert.deepEqual(errored.next, second.next);
+  // An error result with a real total (here --max-turns) counts what it added and moves the baseline,
+  // whether or not the build states per-result figures, so nothing is lost or counted twice.
+  const errored = claudeCodeSpend({ subtype: "error_max_turns", is_error: true, total_cost_usd: 0.03, modelUsage: { m: { costUSD: 0.025 }, h: { costUSD: 0.005 } } }, second.next);
+  assert.equal(Number(errored.costUsd.toFixed(6)), 0.005, "the errored turn's own spend, counted at once");
+  assert.equal(errored.next.costUsd, 0.03);
   const third = claudeCodeSpend({ subtype: "success", total_cost_usd: 0.04, modelUsage: { m: { costUSD: 0.035 }, h: { costUSD: 0.005 } } }, errored.next);
-  assert.equal(Number(third.costUsd.toFixed(6)), 0.015, "the errored turn's spend is counted once, here");
-  // A run with no saved session (a mind) costs its own total, error or not.
+  assert.equal(Number(third.costUsd.toFixed(6)), 0.01, "not the errored turn's spend again");
+  // An error with per-result figures moves the baseline too, so a later build without them does not count it again.
+  const erroredSince = claudeCodeSpend({ subtype: "error_max_turns", is_error: true, total_cost_usd: 0.03, model_usage_since_last_result: { m: { costUSD: 0.005 } } }, second.next);
+  assert.equal(Number(erroredSince.costUsd.toFixed(6)), 0.005);
+  assert.equal(erroredSince.next.costUsd, 0.03);
+  // A run with no saved session (a mind, raw mode) costs its own total, error or not.
   assert.equal(claudeCodeSpend({ subtype: "error_max_turns", is_error: true, total_cost_usd: 0.002 }, null, { oneOff: true }).costUsd, 0.002);
 
   const messages = [];
@@ -761,6 +771,10 @@ test("an error result, a bridge that never connects and a missing Claude Code be
   const stray = await chat(session, "FAKE:null-line");
   assert.equal(stray.find(e => e.event === "text_done").data.content, "Echo: FAKE:null-line");
   assert.ok(!stray.some(e => e.event === "error"));
+  // An event with a field of the wrong type stops the turn with an error; the server lives on.
+  const malformed = await chat(session, "FAKE:bad-fields");
+  assert.match(malformed.find(e => e.event === "error").data.message, /printed an event YOUI could not read .*; the turn was stopped/);
+  assert.equal(malformed.at(-1).event, "done");
 
   const started = Date.now();
   const down = await chat(session, "FAKE:bridge-down");
@@ -1504,4 +1518,74 @@ test("through the bridge, mind calls stop at the per-message ceiling, and a Clau
   assert.equal(usage.json.claude.failedMindCalls, 2);
   const listed = await request(port, { path: "/api/minds", headers: session.read });
   assert.equal(listed.json.minds.find(mind => mind.id === "anthropic:claude-opus-4-7").state, "unchecked");
+});
+
+// ── Third fix round (report_428e05d7) ───────────────────────────────
+
+test("the page's notice is said before Claude Code can read the message", async t => {
+  const fake = fakeClaude(t);
+  // The run's scratch files go in a private temp directory, not the real one.
+  const temp = scratch(t, "youi-claude-test-tmp-");
+  const realTmp = process.env.TMPDIR;
+  process.env.TMPDIR = temp;
+  t.after(() => {
+    if (realTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = realTmp;
+  });
+  const sleep = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  let noticeAt = null;
+  const outcome = await runClaudeCode({
+    bin: fake.bin,
+    cwd: fake.cwd,
+    env: { PATH: process.env.PATH },
+    model: "claude-haiku-4-5-20251001",
+    systemPrompt: "test",
+    persist: false,
+    message: "hello",
+    // Holds the notice until the fake has started and is reading its stdin, and
+    // 300 ms more: a message already written would be read during that wait.
+    beforeSend: () => {
+      const deadline = Date.now() + 10_000;
+      while (fake.step("start").length === 0 && Date.now() < deadline) sleep(10);
+      sleep(300);
+      noticeAt = Date.now();
+    },
+  });
+  assert.equal(outcome.text, "Echo: hello");
+  const [read] = fake.step("message");
+  assert.ok(noticeAt !== null && read.at >= noticeAt,
+    `the fake read the message ${noticeAt - read.at} ms before the notice was said`);
+  assert.deepEqual(readdirSync(temp), [], "the run's scratch files are gone");
+});
+
+test("a Claude turn stopped after its result still counts its cost and keeps its text", async t => {
+  const fake = fakeClaude(t);
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+  const session = await openSession(port, "claude-stop-after-result");
+
+  // It answers and keeps running after stdin closes (YOUI would end it 5 s
+  // later); Stop comes in between, once the result has closed its stdin.
+  const controller = new AbortController();
+  const pending = chat(session, "FAKE:ignore-eof", {}, { signal: controller.signal }).catch(error => error);
+  await until(() => fake.step("stdin-closed")[0], { label: "the result, after which YOUI closes stdin" });
+  controller.abort();
+  await pending;
+  const usage = await until(async () => {
+    const response = await request(port, { path: "/api/usage", headers: session.read });
+    return response.json?.claude?.cost > 0 ? response.json : null;
+  }, { timeoutMs: 10_000, label: "the stopped turn's cost" });
+  assert.equal(Number(usage.claude.cost.toFixed(6)), 0.0123);
+  const messages = (await request(port, { path: "/api/sessions/current?include=messages", headers: session.read })).json.session.messages;
+  assert.deepEqual(messages.at(-1), { role: "assistant", content: [{ type: "text", text: "Echo: FAKE:ignore-eof" }] });
+});
+
+test("a Claude turn ended by its time limit retries nothing, even when Claude Code's stderr reads like a lost conversation", async t => {
+  const fake = fakeClaude(t);
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, YOUI_CLAUDE_TURN_TIMEOUT_MS: "1500" });
+  const session = await openSession(port, "claude-timeout-no-retry");
+  await chat(session, "hello");
+  const stalled = await chat(session, "FAKE:stall-missing");
+  assert.match(stalled.find(e => e.event === "error").data.message, /did not finish within 2 s; YOUI stopped the turn/);
+  assert.equal(fake.runs().length, 2, "no retry ran inside the ended turn");
+  assert.equal(stalled.at(-1).event, "done");
 });

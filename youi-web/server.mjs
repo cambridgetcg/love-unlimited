@@ -2242,9 +2242,10 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
     outcome = await runOnce();
     // Claude Code and YOUI disagreeing about whether the session exists is
     // settled once: a missing one starts afresh with the chat carried, an
-    // existing one is resumed with the turns it has not received.
+    // existing one is resumed with the turns it has not received. A turn that
+    // has already ended (its time limit) retries nothing.
     const session = turnState.claudeCodeSession;
-    if (!rawMode && outcome.error) {
+    if (!rawMode && outcome.error && !turnAbort.signal.aborted) {
       if (session.started && sessionTrouble(outcome, CLAUDE_SESSION_MISSING)) {
         turnState.claudeCodeSession = newClaudeCodeSession();
         outcome = await runOnce("missing");
@@ -2254,9 +2255,14 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       }
     }
   } catch (error) {
-    if (signal.aborted) throw error;
-    // runClaudeCode reports its own failures; anything else still reaches the page.
-    outcome = { ok: false, texts: [], text: "", usage: null, result: null, error: `Claude Code turn failed: ${String(error?.message || error).slice(0, 300)}` };
+    if (signal.aborted) {
+      // Stopped after its result: its cost and completed texts are kept below, then the stop goes on.
+      if (!error?.claudeCodeOutcome) throw error;
+      outcome = error.claudeCodeOutcome;
+    } else {
+      // runClaudeCode reports its own failures; anything else still reaches the page.
+      outcome = { ok: false, texts: [], text: "", usage: null, result: null, error: `Claude Code turn failed: ${String(error?.message || error).slice(0, 300)}` };
+    }
   } finally {
     // No new tool call starts now; the tools still running are told the turn
     // has ended, and the turn (and chatInFlight) lasts until they have, or
@@ -2272,21 +2278,42 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   }
 
   // Claude Code states running totals; what this turn added is counted even
-  // when Stop came after its result.
+  // when Stop came after its result. Raw mode keeps no session, so its total is the run's own.
   const session = rawMode ? null : turnState.claudeCodeSession;
-  const spend = outcome.result ? claudeCodeSpend(outcome.result, session?.spend || null) : null;
+  const spend = outcome.result ? claudeCodeSpend(outcome.result, session?.spend || null, { oneOff: rawMode }) : null;
   if (session && spend) session.spend = spend.next;
   const usage = outcome.usage || { input_tokens: 0, output_tokens: 0, thinking_tokens: 0 };
   if (!rawMode && outcome.usage) {
     trackProviderUsage("claude", model, { ...usage, cost_usd: spend?.costUsd || 0 }, { byModel: spend?.byModel || null });
   }
-  // The model's own text is kept whatever the turn's end (the runner never
-  // includes Claude Code's own error or refusal messages in it).
+  // The text blocks the model completed are kept when the turn ends in an
+  // error result, the turn limit or a crash, and on Stop once the result had
+  // arrived; a block still streaming at the end is not, nor is anything on a
+  // Stop before the result. The runner never includes Claude Code's own error
+  // or refusal messages in them.
   if (!rawMode && outcome.texts.length > 0) {
     turnState.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
     if (session && received) session.seen = turnState.messages.length;
   }
-  throwIfAborted(signal);
+  const usageEvent = () => ({
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    thinking_tokens: usage.thinking_tokens,
+    provider: "claude",
+    model,
+    // What this turn added to Claude Code's running total, and this session's Claude usage so far.
+    cost_usd: spend?.costUsd ?? null,
+    claudeCost: turnState.providerUsage.claude.cost,
+    claudeUsage: claudeUsageTotals(turnState),
+    budget: budgetSnapshot(),
+    turn: turnState.turnCount,
+    youspeak: turnState.ys.statusLine(),
+  });
+  if (signal.aborted) {
+    // Stopped after its result: the page, if it still listens, gets the turn's usage before the stop.
+    if (outcome.result && !res.destroyed && !res.writableEnded) sendSSE(res, "usage", usageEvent());
+    throwIfAborted(signal);
+  }
 
   const refused = outcome.result?.stop_reason === "refusal";
   if (refused) {
@@ -2302,20 +2329,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
     turnState.ys.senseThinking(usage);
     turnState.ys.senseTurn(kernelBudget());
   }
-  sendSSE(res, "usage", {
-    input_tokens: usage.input_tokens,
-    output_tokens: usage.output_tokens,
-    thinking_tokens: usage.thinking_tokens,
-    provider: "claude",
-    model,
-    // What this turn added to Claude Code's running total, and this session's Claude usage so far.
-    cost_usd: spend?.costUsd ?? null,
-    claudeCost: turnState.providerUsage.claude.cost,
-    claudeUsage: claudeUsageTotals(turnState),
-    budget: budgetSnapshot(),
-    turn: turnState.turnCount,
-    youspeak: turnState.ys.statusLine(),
-  });
+  sendSSE(res, "usage", usageEvent());
 
   if (rawMode) return { answered };
   // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop.
@@ -3910,8 +3924,9 @@ async function handleChatTurn(req, res, signal) {
       }
     }
   } else {
-    // A Claude turn keeps the model's own text whatever its end, but only an
-    // answer that ended without an error goes to the truth detector.
+    // A Claude turn keeps the text blocks the model completed even when it ends
+    // in an error (claudeCodeTurn says when), but only an answer that ended
+    // without an error goes to the truth detector.
     detect = (await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }))?.answered === true;
   }
 

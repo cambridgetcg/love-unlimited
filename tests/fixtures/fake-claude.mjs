@@ -39,8 +39,10 @@
 //   FAKE:bridge-pending        reports the bridge as still connecting in init
 //   FAKE:rate-limit-bare       a rate_limit_event with no windows
 //   FAKE:die-before-init       keeps the session, then exits 1 before init
+//   FAKE:stall-missing         says "No conversation found" on stderr, then hangs before init
 //   FAKE:thinking <text>       a thinking block before the answer
 //   FAKE:null-line             stdout lines that are JSON but not objects ("null", "42", "[]") before the answer
+//   FAKE:bad-fields            an assistant event whose content is a number, before the answer
 // and, with any of those, how the process ends:
 //   FAKE:ignore-eof            stays running after stdin closes (until killed)
 //   FAKE:slow-exit             on SIGTERM, waits 800 ms before exiting
@@ -260,6 +262,11 @@ async function answer(full) {
     process.stderr.write("boom before init\n");
     process.exit(1);
   }
+  if (has("stall-missing")) {
+    process.stderr.write(`No conversation found with session ID: ${sessionId}\n`);
+    log({ step: "stalling" });
+    await new Promise(() => {});
+  }
   const bridgeDown = Boolean(has("bridge-down"));
   const bridgePending = Boolean(has("bridge-pending"));
   const unconnected = bridgeDown || bridgePending;
@@ -280,6 +287,7 @@ async function answer(full) {
     return;
   }
   if (has("null-line")) process.stdout.write("null\n42\n[]\n");
+  if (has("bad-fields")) out({ type: "assistant", message: { id: "msg_bad", model, role: "assistant", content: 5 }, parent_tool_use_id: null });
   if (has("rate-limit-bare")) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed", isUsingOverage: false } });
   } else {

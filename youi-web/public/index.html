@@ -1996,11 +1996,14 @@ async function sendMessage() {
     // has no stream: say so instead of showing nothing.
     if (!resp.ok) {
       let detail = '';
+      let code = '';
       try {
         const body = await resp.json();
         detail = String(body?.error || body?.message || '');
+        code = String(body?.code || '');
       } catch {}
-      addSystemMessage(resp.status === 409
+      // A 409 for a session another page holds has its own reason; waiting would not help.
+      addSystemMessage(resp.status === 409 && code !== 'session_claimed'
         ? `Not sent: this session is still finishing its last turn${detail ? ` (${detail})` : ''}. Try again in a moment.`
         : `Not sent: ${detail || `the server answered ${resp.status}`}`, 'error');
     }

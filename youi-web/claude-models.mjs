@@ -13,12 +13,15 @@ export const CLAUDE_MODELS = [
 ];
 
 // The oldest Claude Code YOUI runs at all, for the flags every run passes
-// (--system-prompt-file, --system-prompt-snapshot, --permission-prompts,
-// --max-turns, --strict-mcp-config with an http server). Which release first
-// had each of them was not established: 2.1.314 has them all, and the
-// changelog it carries goes back only to 2.1.300. 2.1.280 is the oldest
-// release known to be in use with YOUI's route (Opus 5.5's minimum), so it is
-// the floor until someone checks an older one.
+// (docs/YOUI-CLAUDE-CODE-DESIGN.md §6.2). The changelog Claude Code caches
+// (~/.claude/cache/changelog.md, read 2026-10-30, entries back to 0.2.21)
+// dates the newest of them: --system-prompt-snapshot off in 2.1.267 and
+// --permission-prompts none in 2.1.259; the others it names are older. It
+// does not date CLAUDE_CODE_DISABLE_CLAUDE_MDS, CLAUDE_CODE_DISABLE_AUTO_MEMORY,
+// --no-session-persistence or model_usage_since_last_result. 2.1.280 is above
+// every dated flag and is Opus 5.5's minimum, so it is the floor.
+// CLAUDE_CODE_DISABLE_FILE_MENTIONS arrived later, in 2.1.299: on 2.1.280–2.1.298
+// an "@path" in a message is still read (claude-code.mjs).
 export const CLAUDE_CODE_FLOOR_VERSION = "2.1.280";
 
 // The oldest Claude Code that serves each model, where there is one. Opus 5.5

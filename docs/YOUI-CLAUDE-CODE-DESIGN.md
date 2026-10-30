@@ -1,6 +1,6 @@
 # YOUI reaches Claude through Claude Code
 
-**Status:** design, for Yu's agreement at the Collab table; nothing here is built yet
+**Status:** agreed by Yu at the Collab table on 2026-10-30 (proposal `report_428e05d7`); C1 is built (§6); C2 is not built yet
 
 **Date:** 2026-10-30
 
@@ -94,3 +94,44 @@ The minds registry checks `claude --version` without a model call:
 | C2 | Claude minds through the runner; the registry's Claude Code check; usage and budget from result events |
 
 Each slice is a draft PR. Tests use a fake `claude` executable that emits stream-json and calls the bridge, with no network and no Keychain.
+
+## 6. As built
+
+### C1 (`youi-web/claude-code.mjs`, `youi-web/mcp-bridge.mjs`, `youi-web/server.mjs`)
+
+The binary is `YOUI_CLAUDE_BIN`, else `claude` on `PATH`, found at boot; test mode (`YOUI_TEST=1`) only ever runs `YOUI_CLAUDE_BIN`. The working directory is `YOUI_CLAUDE_CWD`, default `~/.local/share/youi/claude-code/`, created 0700; a run refuses if anything is in it.
+
+An agent turn runs:
+
+```
+claude -p --input-format stream-json --output-format stream-json --include-partial-messages --verbose
+  --model <model> [--effort <effort>]
+  --system-prompt-file <0600 temp file> --system-prompt-snapshot off
+  --setting-sources project --strict-mcp-config --mcp-config <0600 temp file>
+  --tools "" --allowedTools mcp__youi --permission-prompts none
+  --session-id <uuid> | --resume <uuid>
+```
+
+- **Environment:** the allowlisted child environment with `HOME` and `PATH` kept, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`. No `ANTHROPIC_*` variable or other credential is passed.
+- **Why `CLAUDE_CODE_DISABLE_CLAUDE_MDS`:** a live check on 2026-10-30 from a working directory under the home directory found `~/.claude/CLAUDE.md` in the model's context (about 1,240 input tokens). With the variable set, the context held no CLAUDE.md.
+- **Why `--system-prompt-file` and snapshot off:** the prompt is long, so it goes in a file rather than on the command line. Each turn's prompt (mode, model, minds) is the one YOUI built for that turn; by default Claude Code would reuse the first turn's prompt.
+- **Effort:** `none` passes no `--effort`; a model without effort gets none; `max` becomes `high` where `max` is not accepted.
+- **Stdin:** one stream-json user line, closed after the `result` event; Claude Code then exits.
+- **Raw mode:** `--no-session-persistence`, no MCP config, no allowed tools, and the one-line system prompt `You are Claude.`, since Claude Code would otherwise use its own.
+- **Thinking:** Claude Code decides; effort is the control. The `thinking` setting is not passed on.
+
+The bridge is `POST /mcp/<turn id>` on YOUI's own listener, after the loopback and Host checks and before any browser handling:
+- it needs `Authorization: Bearer <token>`; the id and token are random per turn and stop working when the turn ends;
+- it refuses any request with an `Origin` or `Cookie` header;
+- it is POST only, with JSON responses, and implements `initialize`, notifications, `ping`, `tools/list` and `tools/call`; anything else, including Claude Code's `server/discover` probe, gets "method not found".
+
+`tools/list` is `availableTools()` for the session. `tools/call` runs `executeTool` inside the session's scope with the turn's abort signal. Claude Code passes its tool-use id in `_meta`, so the page's tool cards line up.
+
+Removed from YOUI Web:
+- the Keychain read and token refresh;
+- the direct Messages request and its headers and betas;
+- the device id written under `~/.claude`;
+- the billing line in the system prompt;
+- the rate-limit header parsing.
+
+The budget panel now says plan limits are managed by Claude Code. Until C2, Claude minds are listed as `not_configured`.

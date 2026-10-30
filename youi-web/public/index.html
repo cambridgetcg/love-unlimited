@@ -2325,6 +2325,18 @@ function updateProviderBadge(provider, model) {
 
 function updateBudgetUI(b) {
   if (!b) return;
+  // Claude is reached through Claude Code, which manages plan limits; YOUI
+  // shows no utilisation it has not been told.
+  if (b.fiveHour == null && b.sevenDay == null) {
+    for (const id of ['budget-5h-val', 'budget-7d-val']) document.getElementById(id).textContent = 'Claude Code';
+    for (const id of ['budget-5h-fill', 'budget-7d-fill']) {
+      const fill = document.getElementById(id);
+      fill.style.width = '0%';
+      fill.className = 'bar-fill';
+    }
+    document.getElementById('budget-reset').textContent = b.note || 'Plan limits are managed by Claude Code';
+    return;
+  }
   const p5 = Math.round((b.fiveHour || 0) * 100);
   const p7 = Math.round((b.sevenDay || 0) * 100);
   document.getElementById('budget-5h-val').textContent = p5 + '%';

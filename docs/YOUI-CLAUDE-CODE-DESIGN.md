@@ -1,6 +1,6 @@
 # YOUI reaches Claude through Claude Code
 
-**Status:** agreed by Yu at the Collab table on 2026-10-30 (proposal `report_428e05d7`); C1 and C2 are built (§6), as stacked local branches
+**Status:** agreed by Yu at the Collab table on 2026-10-30 (proposal `report_428e05d7`); C1 and C2 are built (§6), as stacked local branches, with the review's findings fixed on the C2 branch (§6.3)
 
 **Date:** 2026-10-30
 
@@ -30,6 +30,7 @@ These runs were headless (`claude -p`), from an empty working directory, with Cl
 - **Cost:** about US$0.0003 per run.
 - **Overhead:** 70–140 ms beyond the API time.
 - **Not usable:** `--bare` never reads OAuth, so it cannot use the subscription.
+- **Where the canary ran:** from a working directory outside the home directory. Under `~`, Claude Code's project walk reaches `~/.claude/CLAUDE.md` even with `--setting-sources project`, so the built runner also sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` (§6.1).
 
 ## 3. Shape
 
@@ -37,7 +38,9 @@ These runs were headless (`claude -p`), from an empty working directory, with Cl
 
 `youi-web/claude-code.mjs` runs `claude -p` once per agent turn.
 
-**Flags:**
+The flag list below is the plan as agreed; §6 is what was built and supersedes it (the prompt goes in `--system-prompt-file` with `--system-prompt-snapshot off`, the allowed-tools rule is `mcp__youi`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1` are set, and an agent turn passes `--max-turns 50`).
+
+**Flags (as planned):**
 - `--input-format stream-json --output-format stream-json --include-partial-messages --verbose`;
 - `--model <session model>`, `--effort <session effort>`;
 - `--system-prompt <Alpha's prompt>`;
@@ -47,6 +50,7 @@ These runs were headless (`claude -p`), from an empty working directory, with Cl
 
 **Conversation and events:**
 - A YOUI session maps to one Claude Code session: `--session-id <uuid>` on the first turn, `--resume <uuid>` after that. Claude Code keeps the model-side history; YOUI keeps its own for the page.
+- **Switching models.** YOUI keeps one history (`state.messages`) for every model, and records how much of it Claude Code has seen. A Claude turn resumes only when Claude Code has seen every earlier message. Otherwise (an Ollama or vLLM model answered in between, or Claude Code lost the conversation), it starts a new Claude Code conversation whose first message carries the earlier turns as a marked, text-only transcript (the last 30 messages within 40,000 characters, with a line saying how many older ones were left out), and the page shows a notice saying so. An Ollama or vLLM turn after Claude reads the same history, where Claude's turns are its text only: the tool calls and results inside Claude Code's turns are not carried.
 - Stream events become YOUI's SSE events: text deltas, thinking, tool calls, usage, cost.
 - Closing the browser ends the process group.
 
@@ -57,7 +61,7 @@ These runs were headless (`claude -p`), from an empty working directory, with Cl
 
 ### 3.2 YOUI's tools through a loopback MCP bridge
 
-YOUI serves an MCP endpoint on its own loopback listener for each turn. It is passed in `--mcp-config` as an `http` server, with a one-time bearer token that is bound to the YOUI session and expires with the turn.
+YOUI serves an MCP endpoint on its own loopback listener for each turn. It is passed in `--mcp-config` as an `http` server, with a per-turn bearer token that is bound to the YOUI session and is valid for any number of requests until the turn ends.
 
 Each tool call runs inside that session's scope, so nothing about tools changes:
 - capabilities, the per-message mind budget and the decision seat apply as they do today;
@@ -81,10 +85,12 @@ The minds registry checks `claude --version` without a model call:
 ## 4. Boundaries
 
 - Content still goes to Anthropic (`REMOTE_MODEL:anthropic`). Only the client changes.
-- Claude Code may store its own session transcripts for the dedicated working directory, as it does for any use; YOUI points at nothing else.
+- Claude Code keeps the transcripts of YOUI's Claude conversations, tool results included, under `~/.claude/projects/<the dedicated working directory's real path, with every non-alphanumeric character as "-">/` (by default `~/.claude/projects/-Users-<user>--local-share-youi-claude-code/`), as it does for any use. `/api/clear` starts a new conversation and leaves the old transcript there; YOUI deletes none. Raw mode and Claude minds are not kept. The privacy block (`/api/status` → `privacy.retention.claudeCode`) states the real path.
 - **Not changed here.**
   - The terminal (`youi.mjs`) still uses the old route. Moving it is a separate question, once terminal and web share one module.
   - Ollama and vLLM routes are unchanged.
+  - `/api/orchestrate/run` still runs the Python orchestrator (`adaptive/`), which calls Anthropic with an API key from the Keychain. That is an API-key route, not Claude Code's login.
+  - The truth detector (`TRUTH_DETECTOR_ENABLED=1`) is a separate service that still reads and refreshes the Claude Code credential and calls Anthropic with Claude Code's headers. Moving its judge to the Claude Code runner is open.
 
 ## 5. Slices
 
@@ -97,9 +103,9 @@ Each slice is a draft PR. Tests use a fake `claude` executable that emits stream
 
 ## 6. As built
 
-### C1 (`youi-web/claude-code.mjs`, `youi-web/mcp-bridge.mjs`, `youi-web/server.mjs`)
+### 6.1 C1 (`youi-web/claude-code.mjs`, `youi-web/mcp-bridge.mjs`, `youi-web/server.mjs`)
 
-The binary is `YOUI_CLAUDE_BIN`, else `claude` on `PATH`, found at boot; test mode (`YOUI_TEST=1`) only ever runs `YOUI_CLAUDE_BIN`. The working directory is `YOUI_CLAUDE_CWD`, default `~/.local/share/youi/claude-code/`, created 0700; a run refuses if anything is in it.
+The binary is `YOUI_CLAUDE_BIN`, else `claude` in an absolute `PATH` entry, else `~/.local/bin/claude` (the native installer's place, which a launch agent's `PATH` often lacks), found at boot; relative `PATH` entries are skipped. Test mode (`YOUI_TEST=1`) only ever runs `YOUI_CLAUDE_BIN`. The kingdom-os launch agent (`kingdom-os/modules/09-browser.sh`) puts `$HOME/.local/bin` first on its `PATH`. The working directory is `YOUI_CLAUDE_CWD`, default `~/.local/share/youi/claude-code/`, created 0700; a run refuses if anything is in it, and the page gets an error naming the directory.
 
 An agent turn runs:
 
@@ -108,20 +114,22 @@ claude -p --input-format stream-json --output-format stream-json --include-parti
   --model <model> [--effort <effort>]
   --system-prompt-file <0600 temp file> --system-prompt-snapshot off
   --setting-sources project --strict-mcp-config --mcp-config <0600 temp file>
-  --tools "" --allowedTools mcp__youi --permission-prompts none
+  --tools "" --allowedTools mcp__youi --permission-prompts none --max-turns 50
   --session-id <uuid> | --resume <uuid>
 ```
 
-- **Environment:** the allowlisted child environment with `HOME` and `PATH` kept, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`. No `ANTHROPIC_*` variable or other credential is passed.
+- **Environment:** the allowlisted child environment with `HOME` and `PATH` kept, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`. No `ANTHROPIC_*` variable or other credential is passed.
 - **Why `CLAUDE_CODE_DISABLE_CLAUDE_MDS`:** a live check on 2026-10-30 from a working directory under the home directory found `~/.claude/CLAUDE.md` in the model's context (about 1,240 input tokens). With the variable set, the context held no CLAUDE.md.
 - **Why `--system-prompt-file` and snapshot off:** the prompt is long, so it goes in a file rather than on the command line. Each turn's prompt (mode, model, minds) is the one YOUI built for that turn; by default Claude Code would reuse the first turn's prompt.
 - **Effort:** `none` passes no `--effort`; a model without effort gets none; `max` becomes `high` where `max` is not accepted.
-- **Stdin:** one stream-json user line, closed after the `result` event; Claude Code then exits.
+- **Stdin:** one stream-json user line, closed after the `result` event; Claude Code then exits. A message that starts with `/` is sent as `\/…`: Claude Code runs a leading `/` as a slash command (§6.3), and the model still reads the text.
+- **Limits:** `--max-turns 50` per message, as YOUI's own loop has, and a whole turn is stopped after 15 minutes (`YOUI_CLAUDE_TURN_TIMEOUT_MS`), with an error on the page.
 - **Raw mode:** `--no-session-persistence`, no MCP config, no allowed tools, and the one-line system prompt `You are Claude.`, since Claude Code would otherwise use its own.
 - **Thinking:** Claude Code decides; effort is the control. The `thinking` setting is not passed on.
 
 The bridge is `POST /mcp/<turn id>` on YOUI's own listener, after the loopback and Host checks and before any browser handling:
-- it needs `Authorization: Bearer <token>`; the id and token are random per turn and stop working when the turn ends;
+- it needs `Authorization: Bearer <token>`; the id and token are random per turn, the token is valid for any number of requests during the turn, and both stop working when the turn ends;
+- its mcp-config entry sets `alwaysLoad: true`, so Claude Code connects it before the first request instead of reporting it `pending`; only `failed` or `needs-auth` at init stops the run;
 - it refuses any request with an `Origin` or `Cookie` header;
 - it is POST only, with JSON responses, and implements `initialize`, notifications, `ping`, `tools/list` and `tools/call`; anything else, including Claude Code's `server/discover` probe, gets "method not found".
 
@@ -136,23 +144,50 @@ Removed from YOUI Web:
 
 The budget panel now says plan limits are managed by Claude Code. Until C2, Claude minds are listed as `not_configured`.
 
-### C2
+### 6.2 C2
 
 **Claude minds.** A Claude mind runs the same runner with:
 - `--no-session-persistence`, `--tools ""` and no MCP config;
 - the mind's role prompt and `--effort medium` (none for a model that takes no effort);
 - the mind's model.
 
-Its tokens and cost come from the result event, and a success is recorded with the registry.
+Its tokens and cost come from the result event, and a success is recorded with the registry. A mind call is counted as a call (`mindCalls`), not as one of the agent's turns; one that gives no answer, including one stopped by a timeout or the end of the turn, is also counted in `failedMindCalls`, with no tokens when it was stopped.
 
-**The registry.** `claude --version` is run with a 3-second timeout and cached for a minute, like the probes. It never makes a model call. Claude minds are:
+**The registry.** `claude --version` is run with a 3-second timeout and cached for a minute, shared by the registry and chat turns. It never makes a model call, and only Claude Code's own `<x.y.z>[-pre-release] (Claude Code)` line counts. Claude minds are:
 - `not_configured` when Claude Code is missing;
-- `unreachable` when the version cannot be read, or is below a model's minimum (`claude-opus-5-5` needs 2.1.280; others have none);
+- `unreachable` when the version cannot be read, or is below what the model needs: the floor for YOUI's own flags, 2.1.280, for every model, or the model's own minimum if later (`claude-opus-5-5` needs 2.1.280). A pre-release of the minimum is below it;
 - otherwise `unchecked` until a real answer, then `reachable`.
 
+A chat turn checks the same version first and, if it is too old for the session's model, ends with an error that names both versions. The floor is conservative: 2.1.314 has every flag YOUI passes, its embedded changelog reaches back only to 2.1.300, and when each flag first appeared was not established.
+
 **Usage and budget.**
-- Tokens and `total_cost_usd` from each result event go to the per-provider usage: the agent's turns and the minds, by model.
-- The usage event carries the turn's cost and the session's.
-- The 5-hour and 7-day figures are what Claude Code itself reports in its stream (`rate_limit_event`), labelled as such. Before it has reported them, the panel says Claude Code manages them.
+- `total_cost_usd` and `modelUsage` in a result are running totals for the Claude Code conversation, and a `--resume` continues from the totals its transcript saved (checked live, §6.3). YOUI records what each result adds: the total less the last total that conversation stated, never below zero. The baseline starts at zero whenever YOUI starts a conversation (first turn, `/api/clear`, `/api/switch`, a lost conversation, a reseed after a model switch). A mind runs without persistence, so its total is the call's cost.
+- By model, YOUI uses the per-model figures Claude Code states: `model_usage_since_last_result` when present, else `modelUsage` less the last one. The session's token totals are the main loop's `usage`, as the page shows them.
+- The usage event carries the turn's added cost (`cost_usd`), the session's Claude cost, and the session's Claude totals (`claudeUsage`), which the page shows, so live and reloaded figures agree.
+- The 5-hour and 7-day figures are what Claude Code itself reports in its stream (`rate_limit_event`), labelled as such. Until it has stated a window, the panel says Claude Code manages them.
 
 **Live check (2026-10-30, Claude Code 2.1.314).** One YOUI chat turn on Opus 5.5 at effort `low` answered "ready" through the bridge-connected Claude Code. It cost US$0.093 (11,648 input tokens, uncached).
+
+### 6.3 Review fixes (`report_428e05d7`)
+
+A review of C1 and C2 found three chat breakers and a set of smaller faults. All are fixed on the C2 branch; the C1 code they touch is changed there too.
+
+- **Setup failures reach the page (F1).** `runClaudeCode` rejects only on abort. A working directory that is not empty, a scratch file that cannot be written or a bad argument resolves with an error, and the turn sends it, then `done`.
+- **One history across models (F4).** See §3.1, "Switching models". The notice is a `notice` SSE event, which the page shows as a system line; the retry for a lost conversation uses it too, and seeds the new conversation the same way.
+- **Finding Claude Code (F5, F17).** See §6.1.
+- **Cost (F2, F20–F23).** See §6.2, "Usage and budget".
+- **Stop and the bridge (F3, F7, F9).** Each Claude turn keeps its bridge calls in flight. Once the turn is closing, the bridge starts no new call; the turn, and the session's lock on chat, lasts until the running calls end or 10 seconds pass. A call whose tool card is still awaited when Stop comes runs nothing. On Stop, the run waits up to 3 seconds for Claude Code's process group to go before the turn ends, so the next `--resume` does not meet the old process.
+- **Limits and process groups (F10, F11).** `--max-turns 50`, the 15-minute turn limit, and the whole process group is signalled whether or not its leader is still running, including when the leader exits.
+- **Claude Code's own messages (F12).** An assistant message Claude Code writes itself for an API error or a refusal is not stored as the answer or shown as text. An error result's text is not kept in the history, and the truth detector only gets an answer the turn produced.
+- **Scratch files (F8).** Shutdown removes the running turns' scratch directories with their processes. At boot, YOUI removes `youi-claude-p<pid>-*` directories in the temp directory that are older than its start, belong to this user and whose process is gone.
+- **Bridge connection (F13).** `alwaysLoad: true`, and only `failed` or `needs-auth` stops a run.
+- **Slash commands (F14).** `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1`, and a leading `/` is escaped (§6.1). Built-in commands such as `/clear` and `/compact` stay typable with that variable set, so the escape is what stops them. `--disable-slash-commands` exists in 2.1.314 but was not tried live.
+- **Retention and routes (F18, F19, F28).** §4.
+- **Versions (F15, F16).** §6.2, "The registry".
+- **Tests (F24–F27, F29).** The fake keeps a transcript per session and fails a reused `--session-id` or an unknown `--resume` the way Claude Code does, and both retries are tested. The child environment is checked against the allowlist, with a secret the name denylist misses. The fake starts a child of its own, which is checked to die on Stop, on the turn limit and on server shutdown. Servers in the other test files run with `YOUI_CLAUDE_BIN=""` and a scratch `YOUI_CLAUDE_CWD`.
+
+**Live checks (2026-10-30, Claude Code 2.1.314, Claude Haiku 5.5, from a scratch directory).** Two runs, YOUI's flags, `--max-turns 50` accepted:
+1. `--session-id`, "Reply with the single word: ready": answered "ready"; `total_cost_usd` 0.0001212, `modelUsage` and `model_usage_since_last_result` the same.
+2. `--resume` of that conversation, with the stream-json message `/context`: Claude Code ran `/context` itself (a context table, no model request, `num_turns` 0, `usage` all zero), and the result still stated `total_cost_usd` 0.0001212 and the same `modelUsage`, restored from the transcript, while `model_usage_since_last_result` was empty.
+
+Together they cost US$0.0001212. Not checked live: on which channel Claude Code reports an unknown `--resume` or a reused `--session-id` (YOUI matches the text on either).

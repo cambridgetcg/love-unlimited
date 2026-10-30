@@ -909,6 +909,19 @@ test("Claude minds run through Claude Code with their role prompt, no tools, no 
   assert.equal(after.json.claude.turns, 2);
 });
 
+test("a chat turn whose Claude Code version cannot be read is refused, and the failed read is not cached", async t => {
+  const fake = fakeClaude(t, { version: "not-a-version" });
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+  const session = await openSession(port, "claude-version-unreadable");
+  for (const message of ["@/etc/hosts what does it say?", "hello again"]) {
+    const events = await chat(session, message);
+    assert.match(events.find(e => e.event === "error").data.message, /could not read the Claude Code version/);
+    assert.equal(events.at(-1).event, "done");
+  }
+  assert.equal(fake.runs().length, 0, "no turn runs on an unreadable version");
+  assert.equal(fake.step("version").length, 2, "a failed read is not cached");
+});
+
 test("the registry and chat turns read claude --version, cached, and hold back a Claude Code older than 2.1.299", async t => {
   async function minds(version) {
     const fake = fakeClaude(t, { version });
@@ -923,7 +936,7 @@ test("the registry and chat turns read claude --version, cached, and hold back a
   // YOUI's floor is 2.1.299, so every Claude model is held back below it.
   const { fake: oldFake, session: oldSession, minds: old } = await minds("2.1.92");
   assert.equal(old["anthropic:claude-opus-5-5"].state, "unreachable");
-  assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-opus-5-5 needs; update Claude Code/);
+  assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-opus-5-5 needs through YOUI; update Claude Code/);
   assert.equal(old["anthropic:claude-opus-4-7"].state, "unreachable");
   assert.match(old["anthropic:claude-opus-4-7"].note, /older than 2\.1\.299/);
   // Between Opus 5.5's own minimum and the floor: still held back, because file mentions would be read.

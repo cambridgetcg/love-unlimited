@@ -734,6 +734,8 @@ function claudeCodeVersion() {
     const entry = { at: now, settled: claudeVersionCache?.settled || null, promise: null };
     entry.promise = readClaudeVersion(CLAUDE_CODE.path, { env: claudeCodeEnv() }).then(result => {
       entry.settled = result;
+      // A failed read is not kept, so the next turn asks again.
+      if (!result.ok && claudeVersionCache === entry) claudeVersionCache = null;
       return result;
     });
     claudeVersionCache = entry;
@@ -2118,11 +2120,20 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
     return unanswered;
   }
   const model = turnState.model;
-  // The version is read at most once a minute; an unreadable one is left to the run to report.
+  // The version is read at most once a minute. One YOUI cannot read is
+  // refused like one that is too old: below the 2.1.299 floor, Claude Code
+  // would send the contents of any file named by an "@path" in the message
+  // (claude-models.mjs), so the check fails closed.
   const version = await claudeCodeVersion();
   throwIfAborted(signal);
   const minimum = claudeCodeMinVersion(model);
-  if (version.ok && compareVersions(version.version, minimum) < 0) {
+  if (!version.ok) {
+    sendSSE(res, "error", {
+      message: `YOUI could not read the Claude Code version (${version.error}), so it will not run ${model}; check that \`claude --version\` answers`,
+    });
+    return unanswered;
+  }
+  if (compareVersions(version.version, minimum) < 0) {
     sendSSE(res, "error", {
       message: `Claude Code ${version.version} is older than ${minimum}, which ${model} needs through YOUI; update Claude Code (claude update)`,
     });

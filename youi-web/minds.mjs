@@ -168,7 +168,7 @@ export function createMindsRegistry({
       if (check && minimum && compareVersions(check.version, minimum) < 0) {
         return entry(
           "anthropic", model, "models:use", "unreachable",
-          `Claude Code ${check.version} is older than ${minimum}, which ${model} needs; update Claude Code`, check.at,
+          `Claude Code ${check.version} is older than ${minimum}, which ${model} needs through YOUI; update Claude Code`, check.at,
         );
       }
       const answeredAt = answers.get(`anthropic:${model}`);

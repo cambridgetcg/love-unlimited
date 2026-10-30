@@ -18,11 +18,12 @@ export const CLAUDE_MODELS = [
 // dates the newest of them: --system-prompt-snapshot off in 2.1.267 and
 // --permission-prompts none in 2.1.259; the others it names are older. It
 // does not date CLAUDE_CODE_DISABLE_CLAUDE_MDS, CLAUDE_CODE_DISABLE_AUTO_MEMORY,
-// --no-session-persistence or model_usage_since_last_result. 2.1.280 is above
-// every dated flag and is Opus 5.5's minimum, so it is the floor.
-// CLAUDE_CODE_DISABLE_FILE_MENTIONS arrived later, in 2.1.299: on 2.1.280–2.1.298
-// an "@path" in a message is still read (claude-code.mjs).
-export const CLAUDE_CODE_FLOOR_VERSION = "2.1.280";
+// --no-session-persistence or model_usage_since_last_result. The floor is
+// 2.1.299, where CLAUDE_CODE_DISABLE_FILE_MENTIONS arrived: below it Claude
+// Code reads a file named by an "@path" in a message and sends its contents
+// (claude-code.mjs), so an older build is held back rather than run. 2.1.299 is
+// also above every dated flag and Opus 5.5's own minimum.
+export const CLAUDE_CODE_FLOOR_VERSION = "2.1.299";
 
 // The oldest Claude Code that serves each model, where there is one. Opus 5.5
 // needs 2.1.280 ("claude_code_version_too_old" below it, 2026-10-30). YOUI

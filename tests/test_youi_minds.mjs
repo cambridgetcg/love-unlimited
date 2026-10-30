@@ -189,7 +189,7 @@ test("Claude is reachable only after a real answer, and gated on the installed C
   assert.equal(missing["anthropic:claude-opus-5-5"].note, "claude not on PATH");
   assert.equal(checks, 0);
 
-  // Too old for YOUI's own flags (2.1.280), so too old for every Claude model.
+  // Below YOUI's floor (2.1.299), so too old for every Claude model.
   let clock = 1_000_000;
   const old = registry({
     localBaseUrl: unreachable, vllmBaseUrl: unreachable, now: () => clock,
@@ -198,9 +198,9 @@ test("Claude is reachable only after a real answer, and gated on the installed C
   const oldList = byId(await old.list({ capabilities: new Set(["models:use"]) }));
   assert.equal(oldList["anthropic:claude-opus-5-5"].state, "unreachable");
   assert.equal(oldList["anthropic:claude-opus-5-5"].offered, false);
-  assert.match(oldList["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs/);
+  assert.match(oldList["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-opus-5-5 needs/);
   assert.equal(oldList["anthropic:claude-sonnet-4-6"].state, "unreachable");
-  assert.match(oldList["anthropic:claude-sonnet-4-6"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-sonnet-4-6 needs/);
+  assert.match(oldList["anthropic:claude-sonnet-4-6"].note, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-sonnet-4-6 needs/);
   old.recordAnswer("anthropic", "claude-opus-5-5");
   assert.equal(byId(await old.list({ capabilities: new Set(["models:use"]) }))["anthropic:claude-opus-5-5"].state, "unreachable",
     "an answer does not outrank a version below the minimum");

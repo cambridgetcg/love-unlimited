@@ -19,7 +19,7 @@
 // credential and never contacts Ollama Cloud to find out.
 //
 // Claude minds are not_configured when Claude Code is missing, unreachable
-// when its version is below what a model needs (Opus 5.5 needs 2.1.280) or
+// when its version is below what a model needs (every model needs YOUI's floor, 2.1.299) or
 // cannot be read, and otherwise unchecked until a real answer.
 // Only granted minds that are reachable or unchecked are offered.
 

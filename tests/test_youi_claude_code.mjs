@@ -389,8 +389,8 @@ test("the runner finds only an explicit fake in test mode, and keeps credentials
   assert.equal(compareVersions("2.1.280", "2.1.280-beta.1"), 1);
   assert.equal(compareVersions("2.1.281-beta.1", "2.1.280"), 1);
   assert.equal(compareVersions("2.1.92", "2.1.280"), -1);
-  assert.equal(claudeCodeMinVersion("claude-sonnet-4-6"), "2.1.280");
-  assert.equal(claudeCodeMinVersion("claude-opus-5-5"), "2.1.280");
+  assert.equal(claudeCodeMinVersion("claude-sonnet-4-6"), "2.1.299");
+  assert.equal(claudeCodeMinVersion("claude-opus-5-5"), "2.1.299");
 });
 
 test("spend is what each result adds to Claude Code's running totals, and earlier turns go as a bounded, fenced transcript", () => {
@@ -606,7 +606,7 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(status.json.privacy.direct.route, "REMOTE_MODEL:anthropic");
   assert.match(status.json.privacy.direct.destination, /Claude Code/);
   assert.equal(status.json.claudeCode.version, "2.1.314");
-  assert.equal(status.json.claudeCode.floorVersion, "2.1.280");
+  assert.equal(status.json.claudeCode.floorVersion, "2.1.299");
   // Where Claude Code keeps these conversations, and that clearing keeps them.
   const slug = realpathSync(fake.cwd).replace(/[^a-zA-Z0-9]/g, "-");
   const retention = status.json.privacy.retention.claudeCode;
@@ -909,7 +909,7 @@ test("Claude minds run through Claude Code with their role prompt, no tools, no 
   assert.equal(after.json.claude.turns, 2);
 });
 
-test("the registry and chat turns read claude --version, cached, and hold back a Claude Code older than 2.1.280", async t => {
+test("the registry and chat turns read claude --version, cached, and hold back a Claude Code older than 2.1.299", async t => {
   async function minds(version) {
     const fake = fakeClaude(t, { version });
     const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
@@ -920,22 +920,26 @@ test("the registry and chat turns read claude --version, cached, and hold back a
     assert.equal(fake.runs().length, 0, "no model call to check");
     return { fake, session, minds: Object.fromEntries(first.json.minds.map(mind => [mind.id, mind])) };
   }
-  // YOUI's own flags need 2.1.280, so every Claude model is held back below it.
+  // YOUI's floor is 2.1.299, so every Claude model is held back below it.
   const { fake: oldFake, session: oldSession, minds: old } = await minds("2.1.92");
   assert.equal(old["anthropic:claude-opus-5-5"].state, "unreachable");
-  assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs; update Claude Code/);
+  assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-opus-5-5 needs; update Claude Code/);
   assert.equal(old["anthropic:claude-opus-4-7"].state, "unreachable");
-  assert.match(old["anthropic:claude-opus-4-7"].note, /older than 2\.1\.280/);
+  assert.match(old["anthropic:claude-opus-4-7"].note, /older than 2\.1\.299/);
+  // Between Opus 5.5's own minimum and the floor: still held back, because file mentions would be read.
+  const { minds: mid } = await minds("2.1.290");
+  assert.equal(mid["anthropic:claude-opus-5-5"].state, "unreachable");
+  assert.match(mid["anthropic:claude-opus-5-5"].note, /older than 2\.1\.299/);
   // A chat turn says so, and runs nothing.
   const refused = await chat(oldSession, "hello");
-  assert.match(refused.find(e => e.event === "error").data.message, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs through YOUI; update Claude Code/);
+  assert.match(refused.find(e => e.event === "error").data.message, /Claude Code 2\.1\.92 is older than 2\.1\.299, which claude-opus-5-5 needs through YOUI; update Claude Code/);
   assert.equal(refused.at(-1).event, "done");
   assert.equal(oldFake.runs().length, 0);
   assert.equal(oldFake.step("version").length, 1, "the chat turn shares the cached read");
   // A pre-release of the minimum is below it.
-  const { minds: beta } = await minds("2.1.280-beta.1");
+  const { minds: beta } = await minds("2.1.299-beta.1");
   assert.equal(beta["anthropic:claude-opus-5-5"].state, "unreachable");
-  assert.match(beta["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.280-beta\.1 is older than 2\.1\.280/);
+  assert.match(beta["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.299-beta\.1 is older than 2\.1\.299/);
   const { minds: current } = await minds("2.1.314");
   assert.equal(current["anthropic:claude-opus-5-5"].state, "unchecked");
   assert.match(current["anthropic:claude-opus-5-5"].note, /through Claude Code 2\.1\.314/);
@@ -1165,7 +1169,7 @@ test("a turn that never sent its message leaves it unseen: the next Claude turn 
   // A return before the run: Claude Code is too old for the model.
   fake.setVersion("2.1.92");
   const old = await chat(session, "three");
-  assert.match(old.find(e => e.event === "error").data.message, /older than 2\.1\.280/);
+  assert.match(old.find(e => e.event === "error").data.message, /older than 2\.1\.299/);
   fake.setVersion("2.1.314");
   assert.equal(fake.runs().length, 1, "neither turn ran Claude Code");
 

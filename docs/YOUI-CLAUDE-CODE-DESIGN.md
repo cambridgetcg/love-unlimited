@@ -79,7 +79,7 @@ Budget figures that came from Anthropic's rate-limit headers now come from Claud
 
 The minds registry checks `claude --version` without a model call:
 - Claude minds are `not_configured` when Claude Code is missing.
-- They are `unreachable` when its version is below the minimum. Every Claude model needs at least 2.1.280, the floor for YOUI's own flags (§6.2), and a model can name a later minimum of its own.
+- They are `unreachable` when its version is below the minimum. Every Claude model needs at least 2.1.299, YOUI's floor (§6.2), and a model can name a later minimum of its own.
 - Otherwise they are `unchecked`, until the first answer.
 
 ## 4. Boundaries
@@ -120,7 +120,7 @@ claude -p --input-format stream-json --output-format stream-json --include-parti
 ```
 
 - **Environment:** the allowlisted child environment with `HOME` and `PATH` kept, plus `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1` and `CLAUDE_CODE_DISABLE_FILE_MENTIONS=1`. No `ANTHROPIC_*` variable or other credential is passed.
-- **Why `CLAUDE_CODE_DISABLE_FILE_MENTIONS`:** without it, Claude Code reads a file named by an `@path` token anywhere in the message, carried chat text included, and sends its contents to Anthropic, past YOUI's `read_file` gate and the carry notice. With it, the model gets only the path, which it cannot read with `--tools ""`. Checked live (§6.5). Claude Code's changelog adds the variable in 2.1.299, so on 2.1.280–2.1.298 it does nothing.
+- **Why `CLAUDE_CODE_DISABLE_FILE_MENTIONS`:** without it, Claude Code reads a file named by an `@path` token anywhere in the message, carried chat text included, and sends its contents to Anthropic, past YOUI's `read_file` gate and the carry notice. With it, the model gets only the path, which it cannot read with `--tools ""`. Checked live (§6.5). Claude Code's changelog adds the variable in 2.1.299, so YOUI's floor is 2.1.299 and an older Claude Code is held back.
 - **Why `CLAUDE_CODE_DISABLE_CLAUDE_MDS`:** a live check on 2026-10-30 from a working directory under the home directory found `~/.claude/CLAUDE.md` in the model's context (about 1,240 input tokens). With the variable set, the context held no CLAUDE.md.
 - **Why `--system-prompt-file` and snapshot off:** the prompt is long, so it goes in a file rather than on the command line. Each turn's prompt (mode, model, minds) is the one YOUI built for that turn; by default Claude Code would reuse the first turn's prompt.
 - **Effort:** `none` passes no `--effort`; a model without effort gets none; `max` becomes `high` where `max` is not accepted.
@@ -157,12 +157,12 @@ Its tokens and cost come from the result event, and a success is recorded with t
 
 **The registry.** `claude --version` is run with a 3-second timeout and cached for a minute, shared by the registry and chat turns. It never makes a model call. Only Claude Code's own line counts: `<x.y.z>[-pre-release] (Claude Code)` at the start of a line, optionally followed on that line by more words (a later build's ` (native)`). Claude minds are:
 - `not_configured` when Claude Code is missing;
-- `unreachable` when the version cannot be read, or is below what the model needs: the floor for YOUI's own flags, 2.1.280, for every model, or the model's own minimum if later (`claude-opus-5-5` needs 2.1.280). A pre-release of the minimum is below it;
+- `unreachable` when the version cannot be read, or is below what the model needs: YOUI's floor, 2.1.299, for every model, or the model's own minimum if later (`claude-opus-5-5`'s own minimum, 2.1.280, is below the floor). A pre-release of the minimum is below it;
 - otherwise `unchecked` until a real answer, then `reachable`.
 
 A chat turn checks the same version first and, if it is too old for the session's model, ends with an error that names both versions. A chat turn whose version cannot be read goes ahead and lets the run report what is wrong, while the registry lists Claude minds as `unreachable`.
 
-**Why 2.1.280.** The changelog Claude Code caches at `~/.claude/cache/changelog.md` (read 2026-10-30; its newest entry is 2.1.312) dates the newest of YOUI's flags it names: `--system-prompt-snapshot off` was added in 2.1.267, and `--permission-prompts none` in 2.1.259. The others it names are older (`alwaysLoad` in 2.1.121, `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS` in 2.1.169). It does not mention `CLAUDE_CODE_DISABLE_CLAUDE_MDS`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `--no-session-persistence` or `model_usage_since_last_result`, so when those arrived is not known from it. The binaries on the Air show that `model_usage_since_last_result` is absent from 2.1.303–2.1.307 and present in 2.1.311, 2.1.312 and 2.1.314. 2.1.280 is above every dated flag; it is also the version Anthropic's API named for Opus 5.5 (§1). `CLAUDE_CODE_DISABLE_FILE_MENTIONS` came later, in 2.1.299 (§6.1); the floor was not raised for it.
+**Why 2.1.299.** The changelog Claude Code caches at `~/.claude/cache/changelog.md` (read 2026-10-30; its newest entry is 2.1.312) dates the newest of YOUI's flags it names: `--system-prompt-snapshot off` was added in 2.1.267, and `--permission-prompts none` in 2.1.259. The others it names are older (`alwaysLoad` in 2.1.121, `CLAUDE_CODE_DISABLE_BUNDLED_SKILLS` in 2.1.169). It does not mention `CLAUDE_CODE_DISABLE_CLAUDE_MDS`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `--no-session-persistence` or `model_usage_since_last_result`, so when those arrived is not known from it. The binaries on the Air show that `model_usage_since_last_result` is absent from 2.1.303–2.1.307 and present in 2.1.311, 2.1.312 and 2.1.314. `CLAUDE_CODE_DISABLE_FILE_MENTIONS` came in 2.1.299 (§6.1), and below it Claude Code sends the contents of any file named by an `@path` in a message, so the floor is 2.1.299. It is also above every dated flag and above 2.1.280, the version Anthropic's API named for Opus 5.5 (§1). Raised from 2.1.280 on 2026-10-30, after the live mention check.
 
 **Usage and budget.**
 - `total_cost_usd` and `modelUsage` in a result are running totals for the Claude Code conversation, and a `--resume` continues from the totals its transcript saved (checked live, §6.5). When a result states `model_usage_since_last_result` (2.1.311 and later), YOUI counts the sum of its `costUSD` and its figures by model, as stated. Otherwise (2.1.303–2.1.307, and older builds) it counts what the result adds: the running total less the last total that conversation stated (by model, `modelUsage` less the last one).

@@ -31,8 +31,8 @@
 // named by an "@path" token in the message (carried chat text included) and
 // sending its contents: checked live on 2026-10-30 with 2.1.314, an "@<file>"
 // reached the model as the file's text without it and as an unread path with
-// it. Its changelog adds the variable in 2.1.299, so it does nothing on
-// 2.1.280–2.1.298. A message whose first word looks like a slash command
+// it. Its changelog adds the variable in 2.1.299, which is why YOUI's floor is
+// 2.1.299 (claude-models.mjs). A message whose first word looks like a slash command
 // ("/compact …") is sent as "\/…", because Claude Code runs a leading "/" in a
 // stream-json user message as a slash command (checked live on 2026-10-30:
 // "/context" ran locally and reached no model). A path such as

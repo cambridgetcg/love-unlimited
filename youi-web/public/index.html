@@ -1285,6 +1285,7 @@ button, select, textarea, input { font: inherit; }
           <div class="bar-track"><div class="bar-fill" id="budget-7d-fill" style="width:0%"></div></div>
         </div>
         <div id="budget-reset" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+        <div id="claude-cost" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px" title="total_cost_usd from Claude Code's result events, this session">Cost (Claude Code): $0.0000</div>
         <div class="stat-grid" style="margin-top:8px">
           <div class="stat-item">
             <div class="value" id="claude-in-tok" style="font-size:0.9rem">0</div>
@@ -2350,9 +2351,16 @@ function updateBudgetUI(b) {
   fill7.style.width = p7 + '%';
   fill7.className = 'bar-fill' + (p7 > 80 ? ' high' : '');
 
-  if (b.resetIn) {
-    document.getElementById('budget-reset').textContent = `Resets in ${b.resetIn}m`;
-  }
+  // Reported by Claude Code (rate_limit_event), not measured by YOUI.
+  const parts = [];
+  if (b.resetIn) parts.push(`5-hour resets in ${b.resetIn}m`);
+  parts.push(b.note || 'As Claude Code last reported it');
+  document.getElementById('budget-reset').textContent = parts.join(' · ');
+}
+
+function updateClaudeCost(cost) {
+  if (typeof cost !== 'number') return;
+  document.getElementById('claude-cost').textContent = 'Cost (Claude Code): $' + cost.toFixed(4);
 }
 
 function updateUsageUI(data) {
@@ -2372,6 +2380,7 @@ function updateUsageUI(data) {
     document.getElementById('claude-think-tok').textContent = tokFmt(clientUsage.claude.thinkTok);
     document.getElementById('claude-turns').textContent = clientUsage.claude.turns;
     updateBudgetUI(data.budget);
+    updateClaudeCost(data.claudeCost);
   } else {
     clientUsage.ollama.inTok += inTok;
     clientUsage.ollama.outTok += outTok;
@@ -2419,6 +2428,7 @@ async function fetchUsageDashboard() {
       document.getElementById('claude-think-tok').textContent = tokFmt(data.claude.thinkingTokens);
       document.getElementById('claude-turns').textContent = data.claude.turns;
       updateBudgetUI(data.claude.budget);
+      updateClaudeCost(data.claude.cost);
     }
     if (data.ollama) {
       clientUsage.ollama.inTok = data.ollama.inputTokens;

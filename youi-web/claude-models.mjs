@@ -10,6 +10,18 @@ export const CLAUDE_MODELS = [
   "claude-opus-5-5", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
 ];
 
+// The oldest Claude Code that serves each model, where there is one. Opus 5.5
+// needs 2.1.280 ("claude_code_version_too_old" below it, 2026-10-30); the
+// others have no stated minimum. YOUI only reads `claude --version` to check:
+// it never sends or raises a version itself.
+const CLAUDE_CODE_MIN_VERSION = {
+  "claude-opus-5-5": "2.1.280",
+};
+
+export function claudeCodeMinVersion(model) {
+  return CLAUDE_CODE_MIN_VERSION[String(model)] || null;
+}
+
 export function modelCaps(model) {
   const m = String(model).toLowerCase();
   if (m.includes("opus-5-5"))   return { adaptive: true,  effort: true,  maxEffort: true,  alwaysThinks: true };

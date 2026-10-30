@@ -4,9 +4,11 @@
 // through tools, layerthink among them.
 // tests/test_youi_mind_tools.mjs covers the tools' own rules.
 //
-// Every mind here is a fake on 127.0.0.1. YOUI Web lists its Claude minds as
-// not configured until slice C2 of docs/YOUI-CLAUDE-CODE-DESIGN.md runs them
-// through Claude Code, and Ollama Cloud is never contacted.
+// Every mind here is a fake on 127.0.0.1. Claude minds go through Claude Code
+// (docs/YOUI-CLAUDE-CODE-DESIGN.md); these servers run in test mode with no
+// YOUI_CLAUDE_BIN, so their Claude minds are not configured, and
+// tests/test_youi_claude_code.mjs runs them through a fake. Ollama Cloud is
+// never contacted.
 
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -16,6 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { MIND_STATES, createMindsRegistry, offeredMinds } from "../youi-web/minds.mjs";
+import { compareVersions } from "../youi-web/claude-code.mjs";
+import { claudeCodeMinVersion } from "../youi-web/claude-models.mjs";
 
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
 const VLLM_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ";
@@ -166,7 +170,7 @@ test("the minds registry reports each state honestly and offers only granted, an
   assert.equal(offHost.requests.length, 0);
 });
 
-test("Claude is reachable only after a real answer, and not configured while YOUI Web has no route to it", async () => {
+test("Claude is reachable only after a real answer, and gated on the installed Claude Code's version", async () => {
   const unreachable = await closedUrl();
   const live = registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable });
   live.recordAnswer("anthropic", "claude-opus-5-5");
@@ -174,12 +178,56 @@ test("Claude is reachable only after a real answer, and not configured while YOU
   assert.equal(listed["anthropic:claude-opus-5-5"].state, "reachable");
   assert.equal(listed["anthropic:claude-sonnet-4-6"].state, "unchecked");
 
-  const pending = registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable, claudeMindsPending: "not yet: slice C2" });
-  pending.recordAnswer("anthropic", "claude-opus-5-5");
-  const fenced = byId(await pending.list({ capabilities: new Set(["models:use"]) }));
-  assert.equal(fenced["anthropic:claude-opus-5-5"].state, "not_configured");
-  assert.equal(fenced["anthropic:claude-opus-5-5"].offered, false);
-  assert.equal(fenced["anthropic:claude-opus-5-5"].note, "not yet: slice C2");
+  // Missing Claude Code: not configured, and nothing is run.
+  let checks = 0;
+  const readClaudeVersion = version => async () => { checks += 1; return { ok: true, version, error: null }; };
+  const missing = byId(await registry({
+    localBaseUrl: unreachable, vllmBaseUrl: unreachable,
+    claudeCodeMissing: "claude not on PATH", readClaudeVersion: readClaudeVersion("2.1.314"),
+  }).list({ capabilities: new Set(["models:use"]) }));
+  assert.equal(missing["anthropic:claude-opus-5-5"].state, "not_configured");
+  assert.equal(missing["anthropic:claude-opus-5-5"].note, "claude not on PATH");
+  assert.equal(checks, 0);
+
+  // Too old for Opus 5.5, fine for the rest.
+  let clock = 1_000_000;
+  const old = registry({
+    localBaseUrl: unreachable, vllmBaseUrl: unreachable, now: () => clock,
+    readClaudeVersion: readClaudeVersion("2.1.92"), claudeMinVersion: claudeCodeMinVersion, compareVersions,
+  });
+  const oldList = byId(await old.list({ capabilities: new Set(["models:use"]) }));
+  assert.equal(oldList["anthropic:claude-opus-5-5"].state, "unreachable");
+  assert.equal(oldList["anthropic:claude-opus-5-5"].offered, false);
+  assert.match(oldList["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs/);
+  assert.equal(oldList["anthropic:claude-sonnet-4-6"].state, "unchecked");
+  assert.match(oldList["anthropic:claude-sonnet-4-6"].note, /through Claude Code 2\.1\.92/);
+  old.recordAnswer("anthropic", "claude-opus-5-5");
+  assert.equal(byId(await old.list({ capabilities: new Set(["models:use"]) }))["anthropic:claude-opus-5-5"].state, "unreachable",
+    "an answer does not outrank a version below the minimum");
+  assert.equal(checks, 1, "claude --version is cached like the probes");
+  clock += 61_000;
+  await old.list({ capabilities: new Set(["models:use"]) });
+  assert.equal(checks, 2, "and read again after the TTL");
+
+  const current = byId(await registry({
+    localBaseUrl: unreachable, vllmBaseUrl: unreachable,
+    readClaudeVersion: readClaudeVersion("2.1.314"), claudeMinVersion: claudeCodeMinVersion, compareVersions,
+  }).list({ capabilities: new Set(["models:use"]) }));
+  assert.equal(current["anthropic:claude-opus-5-5"].state, "unchecked");
+  assert.equal(current["anthropic:claude-opus-5-5"].offered, true);
+
+  const broken = byId(await registry({
+    localBaseUrl: unreachable, vllmBaseUrl: unreachable,
+    readClaudeVersion: async () => ({ ok: false, version: null, error: "no answer within 3000 ms" }),
+  }).list({ capabilities: new Set(["models:use"]) }));
+  assert.equal(broken["anthropic:claude-opus-5-5"].state, "unreachable");
+  assert.match(broken["anthropic:claude-opus-5-5"].note, /claude --version: no answer within 3000 ms/);
+
+  // Not granted: nothing is run.
+  const before = checks;
+  await registry({ localBaseUrl: unreachable, vllmBaseUrl: unreachable, readClaudeVersion: readClaudeVersion("2.1.314") })
+    .list({ capabilities: new Set(["chat"]) });
+  assert.equal(checks, before);
 });
 
 test("probes are cached for the TTL, shared while in flight, and time out quickly", async t => {
@@ -361,7 +409,7 @@ test("GET /api/minds needs a browser session, a YOUI session and status:read", a
   assert.equal(minds[`vllm:${VLLM_MODEL}`].destination, vllm.baseUrl);
   assert.equal(minds["ollama:llama3.2:3b"].privacy, "LOCAL_MODEL:ollama");
   assert.equal(minds["anthropic:claude-opus-5-5"].state, "not_configured");
-  assert.match(minds["anthropic:claude-opus-5-5"].note, /slice C2/);
+  assert.match(minds["anthropic:claude-opus-5-5"].note, /never runs the installed Claude Code/);
   assert.equal(minds["anthropic:claude-opus-5-5"].privacy, "REMOTE_MODEL:anthropic");
   assert.equal(minds["ollama_cloud:glm-5.1"].state, "not_granted");
   assert.equal(minds["ollama_cloud:glm-5.1"].privacy, "REMOTE_MODEL:ollama-cloud");
@@ -423,7 +471,7 @@ test("orchestrate mode answers through the agent loop, never the Python orchestr
   assert.match(system.content, /At most 3 minds per call and 6 mind calls per message/);
   assert.doesNotMatch(system.content, /not callable/);
   assert.ok(system.content.includes(`vllm · REMOTE_MODEL:vllm · reachable: ${VLLM_MODEL} (you)`));
-  assert.doesNotMatch(system.content, /anthropic · REMOTE_MODEL:anthropic/, "Claude minds wait for slice C2");
+  assert.doesNotMatch(system.content, /anthropic · REMOTE_MODEL:anthropic/, "no Claude Code in this test, so no Claude mind is offered");
   assert.doesNotMatch(system.content, /LOCAL_MODEL:ollama/, "an unreachable mind is not offered");
   assert.deepEqual(outbound.messages.at(-1), { role: "user", content: "hello" });
   assert.ok(outbound.tools.some(tool => tool.function.name === "ollama"), "the agent keeps its tools");

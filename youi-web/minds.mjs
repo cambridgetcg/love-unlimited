@@ -13,8 +13,14 @@
 //   unchecked       not probed by design; the first real call proves it
 //
 // Probes are GET /api/tags (local Ollama) and GET /v1/models (vLLM), about
-// 1 s each, cached for about a minute. The registry never calls a model,
-// never reads a credential and never contacts Ollama Cloud to find out.
+// 1 s each, and `claude --version` for Claude minds, which go through the
+// installed Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md §3.4); each is
+// cached for about a minute. The registry never calls a model, never reads a
+// credential and never contacts Ollama Cloud to find out.
+//
+// Claude minds are not_configured when Claude Code is missing, unreachable
+// when its version is below what a model needs (Opus 5.5 needs 2.1.280) or
+// cannot be read, and otherwise unchecked until a real answer.
 // Only granted minds that are reachable or unchecked are offered.
 
 export const MIND_STATES = Object.freeze([
@@ -44,8 +50,12 @@ function probeError(error, timeoutMs) {
  * @param {() => boolean} options.cloudKeyConfigured  whether OLLAMA_API_KEY is set
  * @param {(provider: string) => {route: string, destination: string|null}} options.computeRoute
  *   the server's privacy labels, so each label is spelt in one place
- * @param {string|null} [options.claudeMindsPending]  when set, Claude minds are
- *   not_configured with this note: YOUI Web has no route to Claude for them yet
+ * @param {string|null} [options.claudeCodeMissing]  why Claude Code cannot be
+ *   run (no binary), or null when it can
+ * @param {() => Promise<{ok: boolean, version: string|null, error: string|null}>} [options.readClaudeVersion]
+ *   `claude --version`, parsed; never a model call
+ * @param {(model: string) => string|null} [options.claudeMinVersion]
+ * @param {(left: string, right: string) => number} [options.compareVersions]
  */
 export function createMindsRegistry({
   claudeModels = [],
@@ -57,7 +67,10 @@ export function createMindsRegistry({
   localEndpointIsLoopback = true,
   cloudKeyConfigured = () => false,
   computeRoute,
-  claudeMindsPending = null,
+  claudeCodeMissing = null,
+  readClaudeVersion = null,
+  claudeMinVersion = () => null,
+  compareVersions = (left, right) => String(left).localeCompare(String(right), undefined, { numeric: true }),
   probeTimeoutMs = MIND_PROBE_TIMEOUT_MS,
   cacheTtlMs = MIND_CACHE_TTL_MS,
   fetchImpl = globalThis.fetch,
@@ -97,6 +110,25 @@ export function createMindsRegistry({
     return pending;
   }
 
+  // `claude --version`, shared and cached like the HTTP probes.
+  function probeClaudeCode() {
+    const key = "claude --version";
+    const cached = probes.get(key);
+    if (cached?.pending) return cached.pending;
+    if (cached && now() - cached.at < cacheTtlMs) return Promise.resolve(cached);
+    const at = now();
+    const pending = Promise.resolve()
+      .then(() => readClaudeVersion())
+      .catch(error => ({ ok: false, version: null, error: error?.message || "failed" }))
+      .then(result => {
+        const settled = { at, ok: result.ok === true, version: result.version || null, error: result.error || null };
+        probes.set(key, settled);
+        return settled;
+      });
+    probes.set(key, { pending });
+    return pending;
+  }
+
   const probeLocal = () => probe(
     `${localBaseUrl}/api/tags`,
     data => (data?.models || []).map(model => model?.name || model?.model),
@@ -122,17 +154,31 @@ export function createMindsRegistry({
     };
   }
 
-  function anthropicMinds(granted) {
+  async function anthropicMinds(granted) {
+    if (!granted) return claudeModels.map(model => entry("anthropic", model, "models:use", "not_granted", "needs models:use"));
+    if (claudeCodeMissing) {
+      return claudeModels.map(model => entry("anthropic", model, "models:use", "not_configured", claudeCodeMissing));
+    }
+    const check = readClaudeVersion ? await probeClaudeCode() : null;
     return claudeModels.map(model => {
-      if (!granted) return entry("anthropic", model, "models:use", "not_granted", "needs models:use");
-      if (claudeMindsPending) return entry("anthropic", model, "models:use", "not_configured", claudeMindsPending);
+      if (check && !check.ok) {
+        return entry("anthropic", model, "models:use", "unreachable", `claude --version: ${check.error}`, check.at);
+      }
+      const minimum = claudeMinVersion(model);
+      if (check && minimum && compareVersions(check.version, minimum) < 0) {
+        return entry(
+          "anthropic", model, "models:use", "unreachable",
+          `Claude Code ${check.version} is older than ${minimum}, which ${model} needs; update Claude Code`, check.at,
+        );
+      }
       const answeredAt = answers.get(`anthropic:${model}`);
       if (answeredAt && now() - answeredAt < cacheTtlMs) {
         return entry("anthropic", model, "models:use", "reachable", "answered a call in this process", answeredAt);
       }
+      const through = check ? `through Claude Code ${check.version}` : "through Claude Code";
       return entry(
         "anthropic", model, "models:use", "unchecked",
-        "not probed: probing would mean a model call; the first call proves it",
+        `${through}; not probed, since probing would mean a model call; the first call proves it`, check?.at || null,
       );
     });
   }
@@ -191,8 +237,10 @@ export function createMindsRegistry({
      */
     async list({ capabilities = new Set() } = {}) {
       const granted = capabilities.has("models:use");
-      const [vllm, local] = await Promise.all([vllmMinds(granted), localMinds(capabilities)]);
-      const minds = [...anthropicMinds(granted), ...vllm, ...local, ...cloudMinds(capabilities)];
+      const [anthropic, vllm, local] = await Promise.all([
+        anthropicMinds(granted), vllmMinds(granted), localMinds(capabilities),
+      ]);
+      const minds = [...anthropic, ...vllm, ...local, ...cloudMinds(capabilities)];
       const probedAt = minds.map(mind => mind.checked_at).filter(Boolean).sort();
       return { minds, checked_at: probedAt[0] || null, cache_ttl_ms: cacheTtlMs };
     },

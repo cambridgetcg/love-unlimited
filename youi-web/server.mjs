@@ -37,14 +37,16 @@ import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
 import { runDecisionTool } from "./decision-seat.mjs";
 import { TableSeats, runCouncilTool, runDelegateTool } from "./table-tools.mjs";
-import { CLAUDE_MODELS, claudeCodeEffort } from "./claude-models.mjs";
+import { CLAUDE_MODELS, claudeCodeEffort, claudeCodeMinVersion } from "./claude-models.mjs";
 import {
   BRIDGE_ALLOWED_TOOLS,
   BRIDGE_SERVER_NAME,
   bridgeMcpConfig,
   bridgeToolName,
+  compareVersions,
   defaultClaudeCwd,
   killAllClaudeCode,
+  readClaudeVersion,
   resolveClaudeBinary,
   runClaudeCode,
 } from "./claude-code.mjs";
@@ -345,6 +347,8 @@ function trackProviderUsage(provider, model, usage) {
   u.turns++;
   if (provider === "claude") {
     u.thinkingTokens = (u.thinkingTokens || 0) + (usage.thinking_tokens || 0);
+    // Claude Code's result event states what the turn cost (total_cost_usd).
+    u.cost += usage.cost_usd || 0;
   } else if (provider === "ollama_local" || provider === "vllm") {
     // Self-hosted models are free — no cost tracking
   } else {
@@ -362,7 +366,9 @@ function trackProviderUsage(provider, model, usage) {
   u.byModel[model].turns++;
   if (provider === "ollama_local") {
     u.byModel[model].cost += 0; // free!
-  } else if (provider !== "claude") {
+  } else if (provider === "claude") {
+    u.byModel[model].cost += usage.cost_usd || 0;
+  } else {
     const pricing = OLLAMA_PRICING[model] || OLLAMA_DEFAULT_PRICE;
     u.byModel[model].cost += ((usage.input_tokens || 0) / 1_000_000) * pricing.input + ((usage.output_tokens || 0) / 1_000_000) * pricing.output;
   }
@@ -645,24 +651,6 @@ function externalToolEnv(credentialNames, purpose, extra = {}) {
   });
 }
 
-// The minds a session may call, with honest reachability
-// (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
-// grant is checked per session when the list is read.
-// Claude minds wait for slice C2, which runs them through Claude Code.
-const CLAUDE_MINDS_PENDING = "Claude minds go through Claude Code from slice C2 of docs/YOUI-CLAUDE-CODE-DESIGN.md; not yet in this build";
-const mindsRegistry = createMindsRegistry({
-  claudeModels: CLAUDE_MODELS,
-  vllmModels: OLLAMA_MODELS.filter(isVllmModel),
-  cloudModels: OLLAMA_MODELS.filter(model => !isVllmModel(model)),
-  isVllmModel,
-  localBaseUrl: OLLAMA_LOCAL_BASE_URL,
-  vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
-  localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
-  cloudKeyConfigured: ollamaCloudKeyConfigured,
-  computeRoute: providerComputeRoute,
-  claudeMindsPending: CLAUDE_MINDS_PENDING,
-});
-
 // ═════════════════════════════════════════════════════════════════════
 // CLAUDE CODE — how YOUI Web reaches Claude (docs/YOUI-CLAUDE-CODE-DESIGN.md)
 // ═════════════════════════════════════════════════════════════════════
@@ -683,23 +671,73 @@ function claudeCodeEnv() {
   });
 }
 
+// The minds a session may call, with honest reachability
+// (docs/YOUI-MINDS-DESIGN.md §3.2). Probes are shared by every session; the
+// grant is checked per session when the list is read.
+const mindsRegistry = createMindsRegistry({
+  claudeModels: CLAUDE_MODELS,
+  vllmModels: OLLAMA_MODELS.filter(isVllmModel),
+  cloudModels: OLLAMA_MODELS.filter(model => !isVllmModel(model)),
+  isVllmModel,
+  localBaseUrl: OLLAMA_LOCAL_BASE_URL,
+  vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
+  localEndpointIsLoopback: destinationIsLoopback(OLLAMA_LOCAL_BASE_URL),
+  cloudKeyConfigured: ollamaCloudKeyConfigured,
+  computeRoute: providerComputeRoute,
+  // Claude minds go through Claude Code; its version is read, never a model call.
+  claudeCodeMissing: CLAUDE_CODE.path ? null : CLAUDE_CODE.error,
+  readClaudeVersion: () => readClaudeVersion(CLAUDE_CODE.path, { env: claudeCodeEnv() }),
+  claudeMinVersion: claudeCodeMinVersion,
+  compareVersions,
+});
+
 // ═════════════════════════════════════════════════════════════════════
 // BUDGET
 // ═════════════════════════════════════════════════════════════════════
 
 // Plan limits are Claude Code's to manage. YOUI used to read Anthropic's
-// rate-limit headers from its own requests; it makes none now, so it shows no
-// utilisation it cannot see.
+// rate-limit headers from its own requests; it makes none now. What it shows
+// is what Claude Code itself reports in its stream (rate_limit_event), and
+// nothing until it has; cost and tokens come from each result event.
 const budget = {
   source: "claude-code",
   managedBy: "Claude Code",
-  note: "Plan limits are managed by Claude Code; YOUI does not see them",
-  fiveHour: null,
+  note: "Plan limits are managed by Claude Code; it has not reported them in this process yet",
+  fiveHour: null,   // { utilization, status, resetsAt } as Claude Code last reported it
   sevenDay: null,
+  status: null,
+  isUsingOverage: false,
+  reportedAt: null,
 };
 
+function noteClaudeRateLimit(info) {
+  if (!info || typeof info !== "object") return;
+  const windows = info.unifiedWindows || {};
+  const window = value => (value && typeof value.utilization === "number"
+    ? { utilization: value.utilization, status: value.status || null, resetsAt: value.resetsAt ? value.resetsAt * 1000 : null }
+    : null);
+  budget.fiveHour = window(windows.five_hour) || budget.fiveHour;
+  budget.sevenDay = window(windows.seven_day) || budget.sevenDay;
+  budget.status = typeof info.status === "string" ? info.status : budget.status;
+  budget.isUsingOverage = info.isUsingOverage === true;
+  budget.reportedAt = Date.now();
+  budget.note = "As Claude Code last reported it";
+}
+
+// The page's shape: utilisation as fractions, or null when Claude Code has not said.
 function budgetSnapshot() {
-  return { ...budget };
+  const resetsAt = budget.fiveHour?.resetsAt || 0;
+  return {
+    source: budget.source,
+    managedBy: budget.managedBy,
+    note: budget.note,
+    fiveHour: budget.fiveHour ? budget.fiveHour.utilization : null,
+    sevenDay: budget.sevenDay ? budget.sevenDay.utilization : null,
+    status: budget.status,
+    isOverage: budget.isUsingOverage,
+    resetIn: resetsAt > Date.now() ? Math.round((resetsAt - Date.now()) / 60000) : null,
+    reportedAt: budget.reportedAt ? new Date(budget.reportedAt).toISOString() : null,
+  };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1657,15 +1695,49 @@ function buildSystemPrompt(taskText, { minds = null } = {}) {
 // docs/YOUI-MINDS-DESIGN.md §3.3 and §4. A mind receives a short system prompt
 // naming its role and one user message holding only the tool's text: no
 // history and no tools. An Ollama-family mind takes the session's reasoning
-// effort. Claude minds wait for slice C2 (docs/YOUI-CLAUDE-CODE-DESIGN.md §5),
-// which runs them through Claude Code; until then the registry lists them as
-// not configured and offers none.
+// effort. A Claude mind runs through Claude Code at a stated effort, never its
+// default (docs/YOUI-CLAUDE-CODE-DESIGN.md §3.1).
+const MIND_CLAUDE_EFFORT = "medium";
 const MIND_OLLAMA_MAX_TOKENS = 8192;
 // The Ollama bridge's names for what served a call, as the registry spells providers.
 const BRIDGE_PROVIDERS = { vllm: "vllm", ollama_local: "ollama", ollama_cloud: "ollama_cloud" };
 
 function mindTextOf(content) {
   return (content || []).filter(block => block.type === "text").map(block => block.text).join("\n").trim();
+}
+
+// One Claude mind call: its role prompt and the tool's text, with no tools, no
+// MCP and no saved session, so nothing of this conversation or of YOUI's tools
+// reaches it.
+async function callClaudeMind({ mind, system, prompt, signal }) {
+  if (!CLAUDE_CODE.path) return { ok: false, error: `Claude Code is not available: ${CLAUDE_CODE.error}` };
+  let outcome;
+  try {
+    outcome = await runClaudeCode({
+      bin: CLAUDE_CODE.path,
+      cwd: CLAUDE_CODE_CWD,
+      env: claudeCodeEnv(),
+      model: mind.model,
+      effort: claudeCodeEffort(mind.model, MIND_CLAUDE_EFFORT),
+      systemPrompt: system,
+      persist: false,
+      message: prompt,
+      signal,
+      onEvent: event => { if (event.type === "rate_limit") noteClaudeRateLimit(event.info); },
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return { ok: false, error: String(error?.message || error).slice(0, 300) };
+  }
+  const usage = outcome.usage
+    ? { input_tokens: outcome.usage.input_tokens, output_tokens: outcome.usage.output_tokens, cost_usd: outcome.costUsd || 0 }
+    : { input_tokens: 0, output_tokens: 0 };
+  if (outcome.usage) trackProviderUsage("claude", mind.model, { ...outcome.usage, cost_usd: outcome.costUsd || 0 });
+  if (outcome.result?.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
+  if (!outcome.ok) return { ok: false, error: String(outcome.error || "Claude Code gave no answer").slice(0, 300), usage };
+  // A real answer is the only proof the minds registry takes for Claude.
+  mindsRegistry.recordAnswer("anthropic", mind.model);
+  return { ok: true, text: outcome.text, usage };
 }
 
 async function callMind({ mind, system, prompt, signal }) {
@@ -1675,10 +1747,7 @@ async function callMind({ mind, system, prompt, signal }) {
   }
   const messages = [{ role: "user", content: prompt }];
 
-  if (mind.provider === "anthropic") {
-    // The direct route is gone; Claude minds go through Claude Code from slice C2.
-    return { ok: false, error: CLAUDE_MINDS_PENDING };
-  }
+  if (mind.provider === "anthropic") return callClaudeMind({ mind, system, prompt, signal });
 
   // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
   // an Ollama Cloud mind, or a "local" endpoint off this device, may take a
@@ -1884,6 +1953,9 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       case "tool_use":
         if (!rawMode) turn.noteToolUse(event.id, bridgeToolName(event.name), event.input);
         break;
+      case "rate_limit":
+        noteClaudeRateLimit(event.info);
+        break;
       default:
     }
   };
@@ -1945,7 +2017,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
     turnState.totalThinkingTokens += usage.thinking_tokens;
     turnState.ys.senseThinking(usage);
     turnState.ys.senseTurn(kernelBudget());
-    if (outcome.usage) trackProviderUsage("claude", model, usage);
+    if (outcome.usage) trackProviderUsage("claude", model, { ...usage, cost_usd: outcome.costUsd || 0 });
   }
   sendSSE(res, "usage", {
     input_tokens: usage.input_tokens,
@@ -1953,6 +2025,9 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
     thinking_tokens: usage.thinking_tokens,
     provider: "claude",
     model,
+    // What Claude Code's result event says this turn cost, and this session so far.
+    cost_usd: outcome.costUsd,
+    claudeCost: turnState.providerUsage.claude.cost,
     budget: budgetSnapshot(),
     turn: turnState.turnCount,
     youspeak: turnState.ys.statusLine(),

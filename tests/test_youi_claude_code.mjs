@@ -1,5 +1,7 @@
-// YOUI reaches Claude through Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md),
-// slice C1: the runner, the loopback MCP bridge, and the direct route gone.
+// YOUI reaches Claude through Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md):
+// slice C1, the runner, the loopback MCP bridge and the direct route gone;
+// slice C2, Claude minds through the runner, the registry's version check,
+// and usage and budget from Claude Code's own events.
 //
 // Every `claude` here is tests/fixtures/fake-claude.mjs behind a wrapper; it
 // talks to nothing but YOUI's own bridge on 127.0.0.1. No Keychain is read.
@@ -276,7 +278,7 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.equal(usage.model, "claude-opus-5-5");
   assert.deepEqual([usage.input_tokens, usage.output_tokens, usage.thinking_tokens], [1110, 20, 7]);
   assert.equal(usage.budget.managedBy, "Claude Code");
-  assert.equal(usage.budget.fiveHour, null, "no utilisation YOUI cannot see");
+  assert.equal(usage.cost_usd, 0.0123, "the cost Claude Code's result event states");
   assert.equal(names.at(-1), "done");
   assert.ok(!names.includes("error"));
 
@@ -528,4 +530,104 @@ test("YOUI Web never reads the Keychain, sends Claude Code's headers or calls An
       assert.doesNotMatch(text, pattern, `${file.slice(REPO_ROOT.length)} must not contain ${pattern}`);
     }
   }
+});
+
+// ── Slice C2 ────────────────────────────────────────────────────────
+
+test("Claude minds run through Claude Code with their role prompt, no tools, no MCP and no saved session", async t => {
+  const fake = fakeClaude(t);
+  const port = await startServer(t, {
+    YOUI_CLAUDE_BIN: fake.bin,
+    YOUI_CLAUDE_CWD: fake.cwd,
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use,orchestrator:run",
+  });
+  const session = await openSession(port, "claude-minds");
+  const question = "Which is heavier, a kilo of iron or a kilo of feathers?";
+  const input = { question, minds: ["anthropic:claude-sonnet-4-6", "anthropic:claude-haiku-4-5-20251001"] };
+  const events = await chat(session, `My secret word is PLUM.\nFAKE:call ensemble ${JSON.stringify(input)}`);
+
+  // The agent's run, then one run per mind.
+  const [agent, ...minds] = fake.runs();
+  assert.equal(minds.length, 2);
+  assert.ok(agent.argv.includes("--mcp-config"));
+  for (const run of minds) {
+    assert.ok(run.argv.includes("--no-session-persistence"));
+    assert.equal(flagValue(run.argv, "--tools"), "");
+    for (const flag of ["--mcp-config", "--allowedTools", "--session-id", "--resume"]) {
+      assert.ok(!run.argv.includes(flag), `a mind gets no ${flag}`);
+    }
+    assert.equal(flagValue(run.argv, "--setting-sources"), "project");
+    assert.ok(run.argv.includes("--strict-mcp-config"));
+    assert.match(run.systemPrompt.content, /independent answerer/);
+    assert.equal(run.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
+    for (const name of Object.keys(SECRETS)) assert.equal(run.env[name], undefined);
+  }
+  const byModel = Object.fromEntries(minds.map(run => [flagValue(run.argv, "--model"), run]));
+  assert.equal(flagValue(byModel["claude-sonnet-4-6"].argv, "--effort"), "medium");
+  assert.equal(flagValue(byModel["claude-haiku-4-5-20251001"].argv, "--effort"), undefined, "Haiku 4.5 takes no effort");
+  const mindMessages = fake.step("message").filter(entry => minds.some(run => run.pid === entry.pid));
+  for (const entry of mindMessages) {
+    assert.equal(entry.message, question, "a mind receives only the tool's text");
+  }
+
+  const used = events.find(e => e.event === "minds_used").data;
+  assert.equal(used.id, "toolu_fake_1");
+  assert.deepEqual(used.minds.map(m => [m.provider, m.model, m.privacy, m.ok]), [
+    ["anthropic", "claude-sonnet-4-6", "REMOTE_MODEL:anthropic", true],
+    ["anthropic", "claude-haiku-4-5-20251001", "REMOTE_MODEL:anthropic", true],
+  ]);
+  assert.match(events.find(e => e.event === "tool_result").data.result, /## Answer 1 — anthropic · claude-sonnet-4-6 · REMOTE_MODEL:anthropic · answered · 1110 in \/ 20 out tokens\nEcho: Which is heavier/);
+
+  // Tokens and cost by model, from the result events; answered minds are reachable.
+  const usage = await request(port, { path: "/api/usage", headers: session.read });
+  assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].inputTokens, 1110);
+  assert.equal(usage.json.claude.byModel["claude-sonnet-4-6"].cost, 0.0123);
+  assert.equal(usage.json.claude.byModel["claude-opus-5-5"].turns, 1);
+  assert.equal(Number(usage.json.claude.cost.toFixed(4)), 0.0369, "the agent's turn and both minds");
+  const listed = await request(port, { path: "/api/minds", headers: session.read });
+  const state = Object.fromEntries(listed.json.minds.map(mind => [mind.id, mind.state]));
+  assert.equal(state["anthropic:claude-sonnet-4-6"], "reachable");
+  assert.equal(state["anthropic:claude-opus-4-7"], "unchecked");
+});
+
+test("the registry reads claude --version, cached, and holds back Opus 5.5 from a Claude Code older than 2.1.280", async t => {
+  async function minds(version) {
+    const fake = fakeClaude(t, { version });
+    const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+    const session = await openSession(port, `claude-version-${version.replaceAll(".", "-")}`);
+    const first = await request(port, { path: "/api/minds", headers: session.read });
+    await request(port, { path: "/api/minds", headers: session.read });
+    assert.equal(fake.step("version").length, 1, "one claude --version per minute, shared by reads");
+    assert.equal(fake.runs().length, 0, "no model call to check");
+    return Object.fromEntries(first.json.minds.map(mind => [mind.id, mind]));
+  }
+  const old = await minds("2.1.92");
+  assert.equal(old["anthropic:claude-opus-5-5"].state, "unreachable");
+  assert.match(old["anthropic:claude-opus-5-5"].note, /Claude Code 2\.1\.92 is older than 2\.1\.280, which claude-opus-5-5 needs; update Claude Code/);
+  assert.equal(old["anthropic:claude-opus-4-7"].state, "unchecked");
+  const current = await minds("2.1.314");
+  assert.equal(current["anthropic:claude-opus-5-5"].state, "unchecked");
+  assert.match(current["anthropic:claude-opus-5-5"].note, /through Claude Code 2\.1\.314/);
+  assert.equal(current["anthropic:claude-opus-5-5"].offered, true);
+});
+
+test("the budget panel shows what Claude Code reports, and nothing before it does", async t => {
+  const fake = fakeClaude(t);
+  const port = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd });
+  const session = await openSession(port, "claude-budget");
+  const before = await request(port, { path: "/api/usage", headers: session.read });
+  assert.equal(before.json.claude.budget.fiveHour, null);
+  assert.match(before.json.claude.budget.note, /has not reported/);
+
+  const events = await chat(session, "hello");
+  const budget = events.find(e => e.event === "usage").data.budget;
+  assert.equal(budget.fiveHour, 0.25);
+  assert.equal(budget.sevenDay, 0.5);
+  assert.equal(budget.note, "As Claude Code last reported it");
+  assert.ok(budget.resetIn > 0 && budget.resetIn <= 60);
+  const after = await request(port, { path: "/api/usage", headers: session.read });
+  assert.equal(after.json.claude.cost, 0.0123);
+  assert.equal(after.json.claude.inputTokens, 1110);
+  assert.equal(after.json.claude.thinkingTokens, 7);
+  assert.equal(after.json.claude.budget.sevenDay, 0.5);
 });

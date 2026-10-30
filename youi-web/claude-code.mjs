@@ -26,7 +26,7 @@
 // PATH kept so Claude Code finds its own login; no ANTHROPIC_* variable or
 // other credential is passed, so the subscription login is what answers.
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   accessSync,
   chmodSync,
@@ -461,4 +461,47 @@ export async function runClaudeCode({
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
+}
+
+/** `claude --version`, parsed. It makes no model call. */
+export function readClaudeVersion(bin, { env = {}, timeoutMs = 3_000 } = {}) {
+  return new Promise(resolvePromise => {
+    if (!bin) {
+      resolvePromise({ ok: false, version: null, error: "Claude Code is not available" });
+      return;
+    }
+    execFile(bin, ["--version"], {
+      env: claudeCodeChildEnv(env),
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      maxBuffer: 64 * 1024,
+      encoding: "utf-8",
+    }, (error, stdout) => {
+      const match = String(stdout || "").match(/(\d+)\.(\d+)\.(\d+)/);
+      if (error && !match) {
+        resolvePromise({
+          ok: false,
+          version: null,
+          error: error.killed ? `no answer within ${timeoutMs} ms` : clip(error.message, 200),
+        });
+        return;
+      }
+      if (!match) {
+        resolvePromise({ ok: false, version: null, error: `printed no version: ${clip(stdout, 120)}` });
+        return;
+      }
+      resolvePromise({ ok: true, version: match.slice(1, 4).join("."), error: null });
+    });
+  });
+}
+
+/** -1, 0 or 1, comparing dotted versions part by part as numbers. */
+export function compareVersions(left, right) {
+  const a = String(left).split(".").map(part => Number.parseInt(part, 10) || 0);
+  const b = String(right).split(".").map(part => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] || 0) - (b[index] || 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  return 0;
 }

@@ -1,6 +1,6 @@
 # YOUI reaches Claude through Claude Code
 
-**Status:** agreed by Yu at the Collab table on 2026-10-30 (proposal `report_428e05d7`); C1 is built (§6); C2 is not built yet
+**Status:** agreed by Yu at the Collab table on 2026-10-30 (proposal `report_428e05d7`); C1 and C2 are built (§6), as stacked local branches
 
 **Date:** 2026-10-30
 
@@ -135,3 +135,24 @@ Removed from YOUI Web:
 - the rate-limit header parsing.
 
 The budget panel now says plan limits are managed by Claude Code. Until C2, Claude minds are listed as `not_configured`.
+
+### C2
+
+**Claude minds.** A Claude mind runs the same runner with:
+- `--no-session-persistence`, `--tools ""` and no MCP config;
+- the mind's role prompt and `--effort medium` (none for a model that takes no effort);
+- the mind's model.
+
+Its tokens and cost come from the result event, and a success is recorded with the registry.
+
+**The registry.** `claude --version` is run with a 3-second timeout and cached for a minute, like the probes. It never makes a model call. Claude minds are:
+- `not_configured` when Claude Code is missing;
+- `unreachable` when the version cannot be read, or is below a model's minimum (`claude-opus-5-5` needs 2.1.280; others have none);
+- otherwise `unchecked` until a real answer, then `reachable`.
+
+**Usage and budget.**
+- Tokens and `total_cost_usd` from each result event go to the per-provider usage: the agent's turns and the minds, by model.
+- The usage event carries the turn's cost and the session's.
+- The 5-hour and 7-day figures are what Claude Code itself reports in its stream (`rate_limit_event`), labelled as such. Before it has reported them, the panel says Claude Code manages them.
+
+**Live check (2026-10-30, Claude Code 2.1.314).** One YOUI chat turn on Opus 5.5 at effort `low` answered "ready" through the bridge-connected Claude Code. It cost US$0.093 (11,648 input tokens, uncached).

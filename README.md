@@ -68,6 +68,7 @@ node youi.mjs                    # Boot as Alpha
 node youi.mjs --agent beta       # Boot as Beta
 node youi.mjs --agent gamma      # Boot as Gamma
 ```
+It reaches Claude through Claude Code (`claude`, 2.1.299 or later), which must be installed and signed in on the same machine; a VM or autoboot console needs its own sign-in ([`docs/YOUI-CLAUDE-CODE-DESIGN.md`](docs/YOUI-CLAUDE-CODE-DESIGN.md) §4).
 
 ### Direct API Harness
 ```bash

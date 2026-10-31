@@ -63,7 +63,7 @@ Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object
 
 ### What each route reports
 
-| | Claude Code (YOUI Web) | Ollama / vLLM (YOUI Web's own loop) | Terminal, sovereign (their own Anthropic route) |
+| | Claude Code (YOUI Web, the terminal) | Ollama / vLLM (YOUI Web's own loop) | Sovereign (its own Anthropic route) |
 |---|---|---|---|
 | Input, output tokens | reported | reported (Ollama's `prompt_eval_count`/`eval_count`, vLLM's `prompt_tokens`/`completion_tokens`); a count a `/v1` response left out is `null` | not fed to the observer (unchanged) |
 | Cache read, cache creation | reported | cache read: reported where vLLM states `prompt_tokens_details.cached_tokens` (then input is the rest of the prompt), else `null`; cache creation: `null` | — |
@@ -104,7 +104,7 @@ Known limits:
 - Ollama's `prompt_eval_count` may leave out a prompt prefix it served from its own cache; it is labelled as what Ollama reported. Native Ollama (`/api/chat`) leaves a count of 0 out of its JSON (`omitempty`), so YOUI reads an absent `prompt_eval_count` or `eval_count` as 0 there.
 - vLLM's `prompt_tokens` is the whole prompt, prefix-cache hits included. Where vLLM states `prompt_tokens_details.cached_tokens` (it does with prompt-token details enabled), the observer records the rest as input and the hits as cache read; where it does not, the whole prompt is recorded as input, so for vLLM "input (uncached)" can then include cached tokens. The page's usage figures (`/api/usage`) count the whole prompt either way.
 - An OpenAI-compatible (`/v1`) response that states no count (a server that ignores `include_usage`, a stream that ends before its usage chunk) gives `null` for that count, and no cost estimate.
-- The terminal and sovereign keep their own route and their chars/4 context; their thinking now shows `null` instead of 0 (sovereign's Ollama route no longer states a thinking 0 either), and their 5-hour and seven-day figures are `null` until a rate-limit header states them.
+- Sovereign keeps its own route and its chars/4 context; its thinking shows `null` instead of 0 (its Ollama route no longer states a thinking 0 either), and its 5-hour and seven-day figures are `null` until a rate-limit header states them. The terminal no longer has a route of its own: since 2026-10-31 it runs on Claude Code and is sensed as YOUI Web's Claude Code turns are (route `claude-code`, surface `terminal`). Rows written before that still name `terminal-legacy` and stay readable.
 - `budgetBurned` subtracts two account-wide figures, so it includes other sessions' use.
 
 ### 2.1 Cache stability
@@ -151,7 +151,7 @@ Yu's decision (2026-10-30): YOUSPEAK shows signals and suggestions; Yu or the ag
 | `output:filler_regression` | 3 of the last 5 *measured* text blocks under 85% useful (`FILLER_RATIO_FLOOR`, the line the old C grade began at; §2: unmeasured blocks are left out) |
 | `system:rate_limit_pressure` | 2 or more rate limits |
 
-The suggestion names the remedy where it is shown (`createKernel({ surface })`; the terminal and sovereign get theirs from their route):
+The suggestion names the remedy where it is shown (`createKernel({ surface })`; the terminal passes `surface: "terminal"`, and sovereign gets its own from its route):
 
 | Signal | YOUI Web | Terminal (`youi.mjs`) | Sovereign |
 |---|---|---|---|
@@ -159,14 +159,14 @@ The suggestion names the remedy where it is shown (`createKernel({ surface })`; 
 | `context:prune_recommended` | Start a new conversation (Clear), or ask the agent to summarise. Nothing was pruned. | Ask the agent to summarise, or type `/switch <agent>` (the same agent is fine) to start a fresh conversation; the terminal's `/clear` only clears the screen. | Start the next run without `--continue`. |
 | `context:evict_old_results` | Start a new conversation (Clear) once the agent has noted what it needs. | `/switch <agent>`, once the agent has noted what it needs. | The next run without `--continue`. |
 | `system:rate_limit_pressure` | Pause, or lower effort in Settings, until the window resets. | Pause, or lower effort with `/effort`. | Stop with Ctrl+C (state is saved) and resume with `--continue` once the window resets. |
-| `cache:prompt_changed` | Change such settings less often, or start a new conversation (Clear) when you do. Nothing was changed. | (not sensed) | (not sensed) |
+| `cache:prompt_changed` | Change such settings less often, or start a new conversation (Clear) when you do. Nothing was changed. | Change it less often, or type `/switch <agent>` when you do. Nothing was changed. | (not sensed) |
 | the agent's own (`redundant_reads`, `high_error_rate`, `filler_regression`) | The agent could use what it has read, re-check its approach, or drop preamble and narration. | same | same |
 
 On the Ollama and vLLM routes (YOUI Web's own loop, or sovereign on Ollama) there is no Claude effort setting and no Claude 5-hour window: no `effort:reduce` fires there, and `rate_limit_pressure` suggests only pausing until the provider's limit resets. `decide(effort, model, budget, { route })` is told the route.
 
 Each signal carries `evidence`: `reported` when it rests on the provider's figures (the 5-hour window; a reported context against a reported window), else `estimated`; `cache:prompt_changed` is always `estimated`, since it is YOUI's own comparison. The `youspeak_suggestion` event carries it too.
 
-When `decide()` runs: after each Claude Code turn; in the Ollama/vLLM loop and in the terminal, only after a round that ran tools (a reply with no tool call ends the loop before it); in sovereign, after every turn.
+When `decide()` runs: after each Claude Code turn, in YOUI Web and in the terminal; in the Ollama/vLLM loop, only after a round that ran tools (a reply with no tool call ends the loop before it); in sovereign, after every turn.
 
 Where they appear:
 
@@ -191,7 +191,7 @@ A YOUI Web test server (`YOUI_TEST=1`) ignores `YOUSPEAK_HISTORY_PATH`, so a sto
 **When a row is written:** once, when a YOUSPEAK session ends.
 
 - **YOUI Web:** Clear (`/api/clear` or a session's clear), an agent switch, `/api/youspeak/reset`, a session closed, evicted or expired, 30 minutes without activity (the conversation goes on, and its next message starts a new YOUSPEAK session), and the server stopping: SIGTERM, SIGINT, or SIGHUP (closing the terminal window it was started from), each with `endReason` `shutdown`, or any other exit, such as an uncaught error (`exit`).
-- **Terminal:** `/switch`, `/exit`, Ctrl+C or end of input, a closed window or dropped SSH session (usually seen first as end of input, `endReason` `exit`; a SIGHUP while input is still open records `hangup`), SIGTERM (`terminated`), or any other exit. `/switch` is refused while a task is running; type it again once the task ends. A signal that arrives while a tool is running waits for that tool to finish, then ends the process before the next queued tool. If a row cannot be written, the terminal says so in one dim line.
+- **Terminal:** `/switch`, `/exit`, Ctrl+C or end of input, a closed window or dropped SSH session (usually seen first as end of input, `endReason` `exit`; a SIGHUP while input is still open records `hangup`), SIGTERM (`terminated`), a SIGINT sent to the process (`exit`), or any other exit. `/switch` is refused while a task is running; type it again once the task ends. Each of these first stops the Claude Code process and any shell command the terminal started (they run in process groups of their own, which a signal to the terminal does not reach), even mid-task, then writes the row. If a row cannot be written, the terminal says so in one dim line.
 - **Sovereign:** the end of each run (`run-end`), Ctrl+C (`interrupted`; its state is saved as before), a fatal error (`fatal`), SIGHUP or SIGTERM.
 
 Nothing is written per message. That is the accepted trade-off: a process killed with SIGKILL, or a power loss, ends with any YOUSPEAK session still open unwritten.
@@ -292,7 +292,7 @@ On 2026-06-19, `integrate --apply` recorded three mutations as applied: commit `
 
 Left open (see [`YOUSPEAK-OBSERVER-DESIGN.md`](YOUSPEAK-OBSERVER-DESIGN.md) §4.1):
 
-- The terminal and sovereign keep their own route and chars/4 sensing; they take only the shared rule.
+- Sovereign keeps its own route and chars/4 sensing; it takes only the shared rule. (The terminal moved to Claude Code on 2026-10-31.)
 - Tool errors are still not counted in YOUI.
 - The `ollama` tool's own chat and bench calls feed neither Minds nor YOUSPEAK's usage.
 - The per-turn context block's markers are fixed strings, so text a person pastes can carry a look-alike block; it unlocks nothing (model and effort are flags, minds are gated by capability).

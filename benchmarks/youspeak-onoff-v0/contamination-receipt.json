@@ -1,5 +1,6 @@
 {
   "author_attestation": {
+    "check_patterns_changed_after_comparison": "The numeric check patterns were rewritten and the two Cantonese checks dropped after the comparison; no prompt's input changed.",
     "date": "2026-10-31",
     "kind": "project-authored-synthetic",
     "new_prompt_count": 72,

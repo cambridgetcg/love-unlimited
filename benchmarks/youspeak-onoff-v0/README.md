@@ -9,7 +9,7 @@ A paired test of whether the YOUSPEAK rule (`youspeak-rule.mjs`) changes what Cl
 | File | What |
 |---|---|
 | [`PREREGISTRATION.md`](PREREGISTRATION.md) | the question, the arms, the endpoints, the analysis, the caps, the stop rules and the limits |
-| [`data/prompts.jsonl`](data/prompts.jsonl) | 72 synthetic prompts, 12 in each of six strata (`factual`, `explanation`, `code`, `planning`, `emotional`, `cantonese`); 18 carry a `check` pattern |
+| [`data/prompts.jsonl`](data/prompts.jsonl) | 72 synthetic prompts, 12 in each of six strata (`factual`, `explanation`, `code`, `planning`, `emotional`, `cantonese`); 16 carry a `check` pattern, none in `cantonese` |
 | [`provenance.json`](provenance.json) | where the prompts came from, privacy and licence |
 | [`contamination-receipt.json`](contamination-receipt.json) | a lexical check of the prompts against the repository's private-context files |
 | [`onoff.mjs`](onoff.mjs) | the arms, the phases, the stop rules, the seeded order and the statistics |
@@ -29,7 +29,7 @@ node benchmarks/youspeak-onoff-v0/analyze.mjs --phase pilot --dry-run
 
 Without `--live`, the harness runs every prompt through `tests/fixtures/replay-claude.mjs`, which plays the recorded Claude Code stream and makes no network call; `--fake fake` uses `tests/fixtures/fake-claude.mjs` instead. Every answer in a dry run is the stand-in's, and its costs are the stand-in's figures, not spend.
 
-Raw outputs go to `~/.local/share/youi/onoff/<run-id>/<phase>/` (`<run-id>-dry-run` for a dry run), or under `--out` / `YOUI_ONOFF_DIR`; a directory inside the repository is refused. There:
+Raw outputs go to `~/.local/share/youi/onoff/<run-id>/<phase>/` (`<run-id>-dry-run` for a dry run), or under `--out` / `YOUI_ONOFF_DIR`; a directory inside the repository is refused. The caps and the rate-limit stops count every run under that directory (live runs together, dry runs together), so a new `--run-id` starts with the spend before it. There:
 
 - `plan.json`: the seed, the order, the caps and what the run was registered against;
 - `calls.jsonl`: one line per call, with the answer text, Claude Code's reported figures and its rate-limit reports (raw: never committed);
@@ -51,7 +51,7 @@ A phase that stopped is continued with `--resume`; after the main phase's interi
 
 ## Tests
 
-`tests/test_youspeak_onoff.mjs`, with stand-ins only: the arms differ only by the rule, every stop rule fires, the caps cannot be raised, the interim look and resuming behave as registered, the dry run completes and writes aggregates only, and nothing is written inside the repository.
+`tests/test_youspeak_onoff.mjs`, with stand-ins only: the arms differ only by the rule; every stop rule in PREREGISTRATION.md §8 fires (each cap, overage, status, both windows, an unreported report, a failed call, an unreported cost, a version change and an interruption); the caps cannot be raised and count every run under the output directory; rate-limit stops carry over to the next phase and run-id; the interim look and resuming behave as registered; the dry run completes and writes aggregates only; and nothing is written inside the repository. The live path (`--live` against the real Claude Code, the registration-dirty refusal) is not exercised by any test.
 
 ## Licence
 

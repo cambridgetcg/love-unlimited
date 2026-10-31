@@ -2,7 +2,7 @@
 
 **Status:** registered, not run. Written on 2026-10-31 as slice R0 of item 4 of proposal `report_18b095a6`, which Yu agreed with Touch ID. R0 is this document, the prompt set, the harness, the analysis script and their tests, and a dry run at $0. No model has been called for it. The live phases (§10) are a later step that Yu, or someone Yu asks, starts by hand.
 
-The registration is this directory as committed, together with `youspeak-rule.mjs` and `youi-web/claude-code.mjs`. A live run refuses while any of them has uncommitted changes. Each run records the commit, the SHA-256 of the prompt set, the rule, the base prompt and this file, and a resumed run refuses if any of them changed.
+The registration is this directory as committed, together with `youspeak-rule.mjs`, `youi-web/claude-code.mjs`, `youi-web/claude-models.mjs` (the version floor) and `youi-web/subprocess-env.mjs` (the environment in §3). A live run refuses while any of them has uncommitted changes. Each run records the commit and the SHA-256 of the prompt set, the rule, the base prompt and this file. A resumed run refuses if any of the four hashes changed, and a resumed live run also refuses if any registered path differs from the commit it began at.
 
 ## 1. The question
 
@@ -23,7 +23,7 @@ You are Claude, an AI assistant. Reply to the person's message.
 
 The base is not empty because Claude Code falls back to its own coding-agent prompt when the system prompt is empty, and the OFF arm would then differ in more than the rule. It says nothing about length or style.
 
-Everything else is the same in both arms: the model, the effort, the message, the Claude Code binary and version, the flags, the environment and the working directory. A test checks this against the stand-in's log (`tests/test_youspeak_onoff.mjs`).
+Everything else is the same in both arms: the model, the effort, the message, the Claude Code binary and version, the flags, the environment and the working directory. A test checks this against the stand-in's log (`tests/test_youspeak_onoff.mjs`). Claude Code updates itself, so the version is checked on every call: a call on a version other than the run's stops the run (§8), a pair whose two arms ran on different versions is not a pair (§6.1), and a resume on a new version is recorded in `plan.json` as a deviation.
 
 ## 3. Route and fixed settings
 
@@ -55,7 +55,7 @@ Calls run one at a time. Within a phase, the prompts run in a seeded order: shuf
 | `code` | writing, reading and debugging code; four with a check pattern | shorter for the mechanical ones |
 | `planning` | plans and status reports, four of them status summaries | shorter, most of all for status ("dense status") |
 | `emotional` | invented people in hard or happy moments, one poem | not shorter ("expand when it matters: emotional context") |
-| `cantonese` | Cantonese and code-switched prompts across the other kinds, two with a check pattern | mixed: shorter for the mechanical ones, not shorter for the feelings |
+| `cantonese` | Cantonese and code-switched prompts across the other kinds, none with a check pattern | mixed: shorter for the mechanical ones, not shorter for the feelings |
 
 These are the rule's claims, written down before any run so the result can be read against them. They are not hypotheses tested one by one for significance (§6.4).
 
@@ -67,8 +67,10 @@ These are the rule's claims, written down before any run so the result can be re
 | Secondary: output tokens | Claude Code's reported `output_tokens` for the call | reported per call |
 | Secondary: thinking tokens | Claude Code's reported thinking tokens, where it states them | reported per call |
 | Secondary: cost | Claude Code's reported cost at list price | reported per call |
-| Descriptive: checkable answers | whether the answer matches the prompt's check pattern (18 prompts) | estimated |
+| Descriptive: checkable answers | whether the answer matches the prompt's check pattern (16 prompts, none Cantonese) | estimated |
 | Descriptive: hedges | counts of the rule's English hedges ("probably", "unless", "might", "I think", "in most cases") outside the Cantonese stratum | estimated |
+
+A numeric check matches the number with no digit next to it, so "100°C" and "1024B" match and "1000" does not. The Cantonese stratum has no check patterns or hedge counts: beyond its lengths it is read by its reported tokens and the optional blind reading (§9).
 
 Visible length is counted in code points so that a Cantonese character counts once; the comparison is a ratio within one prompt, so the unit cancels. Whether reported `output_tokens` include thinking has not been checked live with thinking above zero, so output tokens and visible length are kept apart. By [`docs/YOUSPEAK.md`](../../docs/YOUSPEAK.md) §2, every figure the harness or the analysis computes (sums, means, ratios, intervals) is labelled estimated, even when its inputs are reported.
 
@@ -78,11 +80,11 @@ Visible length is counted in code points so that a Cantonese character counts on
 
 ### 6.1 Pairs
 
-A pair is one prompt's ON and OFF answers from the same attempt, both successful. If a run stops between the two arms of a prompt, a resumed run runs both arms of that prompt again, and the analysis uses the latest complete attempt.
+A pair is one prompt's ON and OFF answers from the same attempt, both successful and on the same Claude Code version. If a run stops between the two arms of a prompt, a resumed run runs both arms of that prompt again, and the analysis uses the latest complete attempt.
 
 ### 6.2 Paired differences
 
-For each pair and each length or token endpoint, d = ln((ON + 1) / (OFF + 1)). For each stratum and pooled over all pairs, the analysis reports n, the mean of d as a ratio exp(mean d), a 95% percentile bootstrap interval for it (10,000 resamples, seeded from the run's seed; the pooled interval resamples within each stratum), the SD of d, and how many pairs went each way. Thinking tokens use only pairs where both calls stated them. Cost is reported as the mean ON − OFF difference in US$ with the same kind of interval, and as the total spent.
+For each pair and each length or token endpoint, d = ln((ON + 1) / (OFF + 1)). For each stratum and pooled over all pairs, the analysis reports n, the mean of d as a ratio exp(mean d), a 95% percentile bootstrap interval for it (10,000 resamples, seeded from the run's seed; the pooled interval resamples within each stratum), the SD of d, and how many pairs went each way. Thinking tokens use only pairs where both calls stated them. Cost is reported as the mean ON − OFF difference in US$ with the same kind of interval (resampled within each stratum), and as the total spent.
 
 The pooled ratio of visible length, with its interval, is the one primary result. A ratio below 1 means ON answers were shorter.
 
@@ -94,7 +96,7 @@ The pilot runs all 72 pairs. Its SD of d for visible length (σ) sets the main p
 
 - There is no LLM judge. Judges favour longer answers, which is the very thing being measured.
 - Per-stratum intervals are not adjusted for there being six of them; they describe, and an interval that excludes 1 in one stratum is not by itself a finding.
-- The checkable answers can show only a gross loss: 18 prompts, matched by pattern.
+- The checkable answers can show only a gross loss: 16 prompts, matched by pattern.
 - The hedge counts are English only.
 
 ## 7. The interim look
@@ -110,15 +112,17 @@ If neither holds, the phase is resumed with `--resume --past-interim`. The look 
 
 Before every call the harness checks, and stops instead of calling, when:
 
-1. **a cap is reached:** the phase's reported spend has reached its cap (pilot US$1, main US$15), or the run's total over both phases has reached US$20, or the costliest call so far would carry either past its cap;
+1. **a cap is reached:** the phase's reported spend has reached its cap (pilot US$1, main US$15), or the total over both phases has reached US$20, or the costliest call so far would carry either past its cap;
 2. **overage:** any `rate_limit_event` of the previous call had `isUsingOverage` true;
 3. **status:** any of its reports had a `status` other than `allowed`, top-level or for either window;
 4. **five-hour window:** its five-hour utilisation passed 0.5;
 5. **seven-day window:** its seven-day utilisation passed 0.8.
 
-Because a rule that cannot be checked is not a pass, it also stops when the previous call reported no `rate_limit_event` or no utilisation for either window, failed, or reported no cost; and on Ctrl-C. It never retries a call.
+Because a rule that cannot be checked is not a pass, it also stops when the previous call reported no `rate_limit_event`, no utilisation for either window or no overage state, failed, reported no cost, or ran on another Claude Code version than the run's; and on Ctrl-C, SIGTERM or SIGHUP. It never retries a call. The very first call under an output directory has no earlier report to check.
 
-The caps can be lowered with `--cap-usd` and `--total-cap-usd`, never raised. Costs are Claude Code's list-price figures; on the subscription they are not a bill, and the real cost is the share of the five-hour and seven-day plan windows, which Alpha shares. A run that stopped can be resumed with `--resume`. A stop from a rate-limit report holds until the reset time that report names for the window behind it (the five-hour window for status and overage) has passed; with no reset time named, it holds.
+The caps and the rate-limit stops count every run under the output directory, not one `--run-id`: live runs together, dry runs together. A new `--run-id` starts with the spend and the stops before it; a different `--out` is a different ledger. A call whose cost went unreported (timed out, killed, or a result without a cost) counts against the caps at the costliest reported call beside it, so it is never counted as free; the summary says how many there were.
+
+The caps can be lowered with `--cap-usd` and `--total-cap-usd`, never raised, and a resume keeps a lower cap the run began with unless the flag names one again. Costs are Claude Code's list-price figures; on the subscription they are not a bill, and the real cost is the share of the five-hour and seven-day plan windows, which Alpha shares. A run that stopped can be resumed with `--resume`. A stop from a rate-limit report holds, in any phase or run of the ledger, until the reset time that report names for the window behind it (the five-hour window for status and overage) has passed; with no reset time named, it holds. It is judged from the ledger's latest call and its latest call whose reports could be read: a failed or interrupted call that reported nothing holds nothing by itself (the next call's own report is checked before the call after it), while a call that answered without any report holds.
 
 ## 9. Optional blind reading
 
@@ -145,6 +149,7 @@ The result is a suggestion. It changes nothing by itself: the rule stays as it i
 - **"No tool narration" cannot be tested here:** both arms run with no tools.
 - **One route, one moment:** single-turn messages, a neutral base instead of Alpha's own prompt, one Claude Code version, one date. Claude Code adds context of its own (the recorded stream reports 606 input tokens for a one-line system prompt and a one-line message), the same in both arms.
 - **Haiku 5.5 is not Alpha's model.** The pilot checks the plumbing and measures σ; it is not evidence about Opus 5.5.
+- **The effort flag and default thinking come from a cached model table.** That Haiku 5.5 thinks by default and both models accept `--effort high` has not been checked live. If Claude Code refuses the flag, the pilot stops on its first call (`call_failed`).
 - **The stop thresholds have not been seen with real values from this account.** The recorded stream's rate-limit values are synthetic (only their shape is real), and the windows are account-wide, so Yu's own use during a run can trip a stop.
 - **Sampling cannot be fixed** through Claude Code, so run-to-run noise is part of σ.
 - **The checks and hedge counts are crude:** patterns, and English hedges only.

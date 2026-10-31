@@ -177,6 +177,9 @@ const DEVELOPER_CAPABILITIES = new Set([
   "git:commit",
   "memory:write",
   "youspeak:reset",
+  // Ollama Cloud models, direct or through a signed-in local Ollama (Yu's
+  // signed decision, 2026-10-31). Cloud fallback stays out.
+  "models:ollama-cloud",
 ]);
 const KNOWN_CAPABILITIES = new Set([
   ...DEVELOPER_CAPABILITIES,

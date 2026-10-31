@@ -33,6 +33,7 @@ import crypto from "crypto";
 import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
 import { youspeakRule } from "./youspeak-rule.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
+import { KeychainCredentialStore } from "./youi-keychain.mjs";
 
 // This run's YOUSPEAK session, for the fatal-error path outside main().
 let runYouspeak = null;
@@ -199,19 +200,19 @@ const API_URL = "https://api.anthropic.com/v1/messages";
 
 let cachedTokens = null;
 
+// Read-only: the store tries the entry under your account name first, then the
+// one with an empty account name. The old sovereign re-added the entry under
+// an empty account name, so that one can be a stale copy.
+const keychain = new KeychainCredentialStore({
+  service: KEYCHAIN_SERVICE, command: "security", logger: message => log(message),
+});
+let tokensAccount = null;
+
 function readKeychainTokens() {
   try {
-    const result = spawnSync("security",
-      ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
-      { encoding: "utf-8", timeout: 5000 });
-    if (result.status !== 0) {
-      const err = (result.stderr || "").trim();
-      if (/could not be found|SecKeychainSearch/i.test(err)) return null;
-      log(`Keychain read failed: ${err || `exit ${result.status}`}`);
-      return null;
-    }
-    const data = JSON.parse(result.stdout.trim());
-    return data.claudeAiOauth || null;
+    const found = keychain.readCredential();
+    tokensAccount = found?.account ?? null;
+    return found?.tokens || null;
   } catch (e) {
     log(`Keychain read error: ${e.message}`);
     return null;
@@ -221,15 +222,18 @@ function readKeychainTokens() {
 // Sovereign only reads Claude Code's login. It used to refresh an expired
 // token and write the result back by deleting the Keychain entry and adding
 // it again; a failed add left Claude Code with no login at all. Refreshing
-// without writing back is no better: the refresh token rotates, so Claude
-// Code's stored one would stop working. So an expired token stops the run,
-// and Claude Code renews its own login.
+// without writing back is no better: the token endpoint can return a new
+// refresh token, which Claude Code would not have. So an expired token stops
+// the run, and Claude Code renews its own login.
 class SignInAgain extends Error {}
 
 function signInAgain(why) {
-  return new SignInAgain(`${why} Sovereign does not refresh or rewrite Claude Code's login.`
-    + " Sign in again with the claude CLI: run `claude` once (it refreshes its own login,"
-    + " or asks you to /login), then run sovereign again.");
+  const stale = tokensAccount === "" && keychain.accounts.length > 1
+    ? " The login was read from the entry with an empty account name, which an older sovereign may have"
+      + " left behind; Claude Code renews the entry under your account name."
+    : "";
+  return new SignInAgain(`${why}${stale} Sovereign does not refresh or rewrite Claude Code's login.`
+    + " Sign in again with the claude CLI: start `claude`, use /login if it asks, then run sovereign again.");
 }
 
 async function getAccessToken() {
@@ -238,9 +242,7 @@ async function getAccessToken() {
   }
 
   const tokens = readKeychainTokens();
-  if (!tokens?.accessToken) {
-    throw new Error("No OAuth tokens in Keychain. Run 'claude' and log in first.");
-  }
+  if (!tokens?.accessToken) throw signInAgain("Claude Code's login is not in the Keychain.");
 
   if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
     cachedTokens = null;
@@ -254,18 +256,26 @@ async function getAccessToken() {
 // --inspect: what sovereign does with Claude Code's login, without reading it.
 function runtimeManifest() {
   const provider = detectProvider(config.model);
+  const anthropic = provider === "anthropic";
+  const base = new URL(anthropic ? API_URL : config.ollamaBaseUrl);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname);
   return {
     protocol: "sovereign.runtime/0.1",
     surface: "sovereign",
     model: config.model,
-    provider: { id: provider, execution: "remote", transport: "https", local_only: false },
+    provider: {
+      id: provider, origin: base.origin, execution: loopback ? "local" : "remote",
+      transport: base.protocol.replace(/:$/, ""), local_only: loopback,
+    },
     claude_code_login: {
-      used_by_this_model: provider === "anthropic",
+      used_by_this_model: anthropic,
       reads: "Claude Code's login from the macOS Keychain (service \"Claude Code-credentials\")",
       refreshes_or_writes: false,
       on_expiry: "stops and asks you to sign in again with the claude CLI; a running task saves its state first",
-      client_headers: "sends Claude Code 2.1.92's client headers, billing line and device and account ids,"
-        + " so its requests present themselves as Claude Code 2.1.92",
+      client_headers: anthropic
+        ? "sends Claude Code 2.1.92's client headers, billing line and device and account ids,"
+          + " so its requests present themselves as Claude Code 2.1.92"
+        : null,
       until: "sovereign is moved off Claude Code's login",
       also_used_by: CLAUDE_CODE_LOGIN_ALSO_USED_BY,
       inventory: "docs/CLAUDE-CODE-LOGIN-USE.md",
@@ -282,6 +292,7 @@ const CLAUDE_CODE_LOGIN_ALSO_USED_BY = [
   "raw-chat/server.mjs",
   "subscription-harness.mjs",
   "training/scripts/soul/oauth_client.py",
+  "training/scripts/claude_mode_one_gen.py, eval_adapter.py, judge_gate.py (through tools/truth_detector)",
   "ainp.mjs",
   "docs/research/test-unlock.mjs, test-unlock2.mjs, test-429.mjs",
 ];

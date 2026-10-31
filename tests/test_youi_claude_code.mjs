@@ -631,10 +631,11 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
   assert.match(retention, /without deleting the old transcript/);
   // And that moving YOUI Web did not end the use of Claude Code's login elsewhere.
   const login = status.json.privacy.claudeCodeLogin;
-  assert.match(login.stillUsedBy, /^Moving YOUI Web did not end this use\. The terminal \(youi\.mjs\) and sovereign \(sovereign\.mjs\)/);
+  assert.match(login.stillUsedBy, /^Moving YOUI Web did not end the use of Claude Code's login\. The terminal \(youi\.mjs\) and sovereign \(sovereign\.mjs\)/);
   assert.match(login.stillUsedBy, /Claude Code 2\.1\.92's client headers until they are moved/);
-  assert.match(login.truthDetector, /Claude Code's login/);
+  assert.match(login.truthDetector, /Claude Code's login.*credential in argv/);
   assert.ok(login.otherFiles.includes("raw-chat/server.mjs"));
+  assert.ok(login.otherFiles.includes("training/scripts/judge_gate.py"));
   assert.equal(login.inventory, "docs/CLAUDE-CODE-LOGIN-USE.md");
 });
 

@@ -466,6 +466,7 @@ function runtimeManifest() {
         "raw-chat/server.mjs",
         "subscription-harness.mjs",
         "training/scripts/soul/oauth_client.py",
+        "training/scripts/claude_mode_one_gen.py, eval_adapter.py, judge_gate.py (through tools/truth_detector)",
         "ainp.mjs",
         "docs/research/test-unlock.mjs, test-unlock2.mjs, test-429.mjs",
       ],
@@ -817,6 +818,10 @@ function showPrivacyBoundary() {
   print(`  Persistence:  conversation in process memory; daily note receives session metadata;`);
   print(`                YOUSPEAK appends one aggregate row per session to ${ys.historyPath || "nowhere (no store)"}`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
+  const login = manifest.claude_code_login;
+  print(`  Login:        ${S.yellow}Claude Code's login${S.reset} from the Keychain, refreshed and written back;`);
+  print(`                ${login.client_headers}, until ${login.until}.`);
+  print(`                ${login.also_used_by.length} other files still use that login: see ${login.inventory}`);
   if (state.capabilities.has("shell")) {
     print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
   }

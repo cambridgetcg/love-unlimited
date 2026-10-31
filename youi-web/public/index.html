@@ -1959,7 +1959,9 @@ function updatePrivacyUI(privacy) {
   // Moving YOUI Web did not end the use of Claude Code's login elsewhere; say so under the route.
   element.replaceChildren(
     document.createTextNode(compute), document.createElement('br'),
-    document.createTextNode(`${login.stillUsedBy}. See ${login.inventory}.`));
+    document.createTextNode(`${login.stillUsedBy}. ${login.otherFiles?.length || 0} other files use it too.`
+      + (privacy.truthDetector?.enabled ? ` ${login.truthDetector[0].toUpperCase()}${login.truthDetector.slice(1)}.` : '')
+      + ` See ${login.inventory}.`));
 }
 
 function updateSettingsUI(data) {

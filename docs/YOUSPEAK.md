@@ -15,7 +15,7 @@ YOUSPEAK has two parts:
 
 ## 1. The rule
 
-The rule lives in one module, `youspeak-rule.mjs`. YOUI Web (`buildPrompt` in `youi-web/server.mjs`), the terminal (`youi.mjs`) and sovereign take it from there with `youspeakRule()`; none carries a copy of its own.
+The rule lives in one module, `youspeak-rule.mjs`. Every prompt built in code takes it from there with `youspeakRule()`: YOUI Web (`buildPrompt` in `youi-web/server.mjs`), the terminal (`youi.mjs`), sovereign, and the three unused harnesses (`harness.mjs`, `subscription-harness.mjs`, `stream.mjs`); none of them carries a copy of its own. The instances' `CLAUDE.md` files are outside it (below).
 
 ```
 # YOUSPEAK — the Discipline
@@ -24,7 +24,7 @@ Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creati
 - Zero-pad: no "sure", "let me check", "here's what I found"
 - Dense status: `Tests: 47/48 ✓` not "I ran the tests and 47 out of 48 passed"
 - No tool narration: don't announce tools. Call them. Let results speak.
-- Never compress doubt: "probably", "unless", "might", "I think" are sacred. When uncertain, expand.
+- Never compress doubt: "probably", "unless", "might", "I think", "in most cases" are sacred. When uncertain, expand.
 - Expand when it matters: teaching, uncertainty, creative work, emotional context
 ```
 
@@ -47,7 +47,9 @@ What it asks for:
 | `harness.mjs`, `subscription-harness.mjs` | `# YOUSPEAK Protocol` | Only the two opening lines: nothing about doubt. |
 | `stream.mjs` | none | The two opening lines run together, before its own CONTINUATION text: nothing about doubt. |
 
-The module keeps the web's five bullets (the fullest copy), adds "I think" and "When uncertain, expand" from the terminal and sovereign, and uses the terminal's "(key:value not prose)". `harness.mjs`, `subscription-harness.mjs` and `stream.mjs` are unused (nothing in the repository runs them); they import the module too, so they gained the doubt clause. The twelve `instances/*/CLAUDE.md` files still carry a two-line Markdown version, which an instance's Claude Code reads as text and which cannot import a module; they are left as they are.
+The module keeps the web's five bullets (the fullest copy), adds "I think" and "When uncertain, expand" from the terminal and sovereign and sovereign's "in most cases", and uses the terminal's "(key:value not prose)". `harness.mjs`, `subscription-harness.mjs` and `stream.mjs` are unused (nothing in the repository runs them); they import the module too, so they gained the doubt clause.
+
+**Outside the module.** Eleven `instances/*/CLAUDE.md` files (alpha, arbor, beta, crucible, gamma, herald, loom, nuance, psalm, tithe, vigil) keep a three-line Markdown copy of their own, without "When uncertain, expand" or the emotional-context clause, and a pointer to this document; `instances/asha/CLAUDE.md` points to the nuance primer instead. An instance's Claude Code reads them as text and cannot import a module, and some are live (`tools/build-runner.sh` runs `claude -p` from `instances/beta`). A change to `youspeak-rule.mjs`, and every diff the ouroboros proposes (§5), does not reach them; they are left as they are.
 
 No measurement shows how much the rule saves. The figures earlier versions of this document gave ("30–50% of the budget is filler", "200–500 tokens a turn saved") had nothing behind them. Measuring the rule's effect would need a real ON-vs-OFF test, which spends model calls; that is an open question for Yu.
 
@@ -55,29 +57,30 @@ No measurement shows how much the rule saves. The figures earlier versions of th
 
 ## 2. The observer: what it measures
 
-**Every figure carries an evidential label.** `reported` means the provider stated it: Claude Code's usage, cost, context window and rate-limit state, or the token counts Ollama and vLLM return. `estimated` means YOUI computed it itself: the L1 filler estimate, chars/4, YOUI's own counts (turns, tool calls), its price table for Ollama Cloud, or a window from its own table. A figure built from both is an estimate: a label may understate, never overstate. A figure nobody reported is `null`, never 0.
+**Every figure carries an evidential label.** `reported` means the provider stated it: Claude Code's usage, cost, context window, cache misses and rate-limit state, or the token counts Ollama and vLLM return. `estimated` means YOUI computed it itself: the L1 filler estimate, chars/4, YOUI's own counts (turns, tool calls), its comparison of system-prompt hashes, its price table for Ollama Cloud, or a window from its own table. A figure built from both is an estimate: a label may understate, never overstate. A figure nobody reported is `null`, never 0 (one exception, below: native Ollama leaves a zero count out, and YOUI reads that as 0).
 
-Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object naming each figure's label, and each row has one too (§4). `/api/youspeak` also gives `evidenceKey`, saying what the two labels mean. The page shows "reported" or "est." beside its figures, and `statusLine()` marks an estimate with `~`.
+Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object naming each figure's label, and each row has one too (§4). `/api/youspeak`'s older top-level fields (`usefulRatio`, `totalOutput`, `totalFiller`, `gradedTokens`, `gradedBlocks`, `textBlocks`, `toolCalls`, `actionDensity`) repeat L1 and L3 figures and are labelled in its top-level `evidence` (all estimates). Its `trends` (averages over the store's rows) carry no labels: their ratios and counts are YOUI's own, except `avgThinkRatio`, an average of reported thinking ratios. `/api/youspeak` also gives `evidenceKey`, saying what the two labels mean. There is no `tokensSaved`: the filler figure is `totalFiller`, an estimate of filler, and nothing measures a saving. The page shows "reported" or "est." beside its figures, and `statusLine()` and the page mark an estimate with `~`.
 
 ### What each route reports
 
 | | Claude Code (YOUI Web) | Ollama / vLLM (YOUI Web's own loop) | Terminal, sovereign (their own Anthropic route) |
 |---|---|---|---|
-| Input, output tokens | reported | reported (Ollama's `prompt_eval_count`/`eval_count`, vLLM's `prompt_tokens`/`completion_tokens`) | not fed to the observer (unchanged) |
-| Cache read, cache creation | reported | not reported: `null` | — |
+| Input, output tokens | reported | reported (Ollama's `prompt_eval_count`/`eval_count`, vLLM's `prompt_tokens`/`completion_tokens`); a count a `/v1` response left out is `null` | not fed to the observer (unchanged) |
+| Cache read, cache creation | reported | cache read: reported where vLLM states `prompt_tokens_details.cached_tokens` (then input is the rest of the prompt), else `null`; cache creation: `null` | — |
+| Cache misses | reported (0 when Claude Code's `diagnostics` name none) | `null` (no cache diagnostics) | `null` |
 | Thinking | reported where Claude Code states it | `null` unless the response states it | `null` (the route states none) |
-| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table; self-hosted is 0) | — |
+| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table; self-hosted is 0; `null` when the response stated no count) | — |
 | Context | reported: the latest request's input + cache read + cache creation | estimated: chars/4 | estimated: chars/4 |
 | Context window | reported (`modelUsage.<model>.contextWindow`), else YOUI's table (estimated) | unknown: `null` | YOUI's table (estimated) |
-| Rate-limit state | reported (`rate_limit_event`), else `null` | — | their own header reading (unchanged) |
+| Rate-limit state | reported (`rate_limit_event`), else `null` | — | their own header reading (unchanged); a window no header has stated yet (status `unknown`) is `null`, not 0% |
 
 ### Where the Claude Code figures come from
 
-From a live Claude Code 2.1.314 stream (Claude Haiku 5.5), recorded on 2026-10-31 and kept as the test fixture `tests/fixtures/claude-code-stream-2.1.314.jsonl` (and `…-resume.jsonl`, a `--resume` of it):
+From a live Claude Code 2.1.314 stream (Claude Haiku 5.5), recorded on 2026-10-31 and kept as the test fixture `tests/fixtures/claude-code-stream-2.1.314.jsonl` (and `…-resume.jsonl`, a `--resume` of it). Its paths, socket paths and message and request ids were scrubbed. Its `rate_limit_event` values are synthetic: only that event's shape (field names and nesting) is from the live stream, while the status, type, utilizations, thresholds, reset times and overage fields are one made-up, consistent set, because the repository is public and the recorded values were the account's own. The session id and event uuids are placeholders too. What it shows:
 
 - **Per request:** `stream_event` → `message_start.message.usage` with `input_tokens` (the uncached input), `cache_read_input_tokens`, `cache_creation_input_tokens`, `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}` and `output_tokens`; `message_delta.usage` repeats them with the final `output_tokens` and `output_tokens_details.thinking_tokens`. `message_start.message.diagnostics.cache_miss_reason` (`{ type, cache_missed_input_tokens }`) is present when the API saw a cache miss.
 - **Per result:** `usage` (the run's own, not cumulative), `total_cost_usd` and `modelUsage` (running totals for the Claude Code conversation), and, from 2.1.311, `model_usage_since_last_result`. A model entry holds `inputTokens`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `cacheCreationEphemeral5mInputTokens`, `cacheCreationEphemeral1hInputTokens`, `thinkingTokens`, `costUSD`, `contextWindow`, `maxOutputTokens`, `canonicalModel`, `provider` and `costBasis` (`"list"`).
-- **Rate limits:** `rate_limit_event.rate_limit_info` with `status`, `rateLimitType`, `utilization`, `resetsAt`, `isUsingOverage`, `overageStatus` and `unifiedWindows.{five_hour, seven_day}.{utilization, resetsAt, status}`.
+- **Rate limits:** `rate_limit_event.rate_limit_info` with `status`, `rateLimitType`, `utilization`, `resetsAt`, `surpassedThreshold`, `isUsingOverage`, `overageStatus`, `overageEnabled`, `overageDisabledReason` and `unifiedWindows.{five_hour, seven_day}.{utilization, resetsAt, status}` (a window may carry `surpassedThreshold`). The fixture's values for these are the synthetic set above.
 
 A turn's tokens and cost are C2's per-turn figures (`claudeCodeSpend`): `model_usage_since_last_result` where stated, else the running `modelUsage` less the last one; nothing re-derives the running totals. The cost is Claude Code's figure at list price (`costBasis: "list"`); on a subscription it is not a bill. `claudeCodeObservation()` in `youi-web/claude-code.mjs` turns a run into what the kernel is told (`senseUsage`).
 
@@ -86,20 +89,22 @@ A turn's tokens and cost are C2's per-turn figures (`claudeCodeSpend`): `model_u
 | Layer | What it measures | Label |
 |---|---|---|
 | Usage | Input (uncached), cache read, cache creation, output, thinking and cost, summed over the turns that reported them (`report().usage`; the latest turn in `usage.last`). | reported (Ollama/vLLM cost: estimated) |
-| L1 Output | 15 English regexes for filler phrases, each counted as 8 tokens, against `ceil(chars / 4)`. A text block is graded S (≥98% useful) to D (<70%) only when it has at least 20 estimated tokens and at least half of its non-space characters are ASCII; any other block gets grade `null` and stays out of the ratio and `filler_regression`. Openers count only at the start of a sentence. | estimated |
+| L1 Output | 15 English regexes for filler phrases, each counted as 8 tokens, against `ceil(chars / 4)`, giving a useful ratio. A text block is measured only when it has at least 20 estimated tokens and at least half of its non-space characters are ASCII; any other block has useful ratio `null` and stays out of the session's ratio and `filler_regression`. Openers count only at the start of a sentence. There is no letter grade (design §4): the ratio is shown as an estimate, with `~`. | estimated |
 | L2 Thinking | Thinking tokens and their share of output, only for turns whose provider stated them. With none stated, `totalTokens` and `avgRatio` are `null`. | reported |
 | L3 Action | Tool calls by name (bridge and table tools included), and `read_file` calls on a path already read. | estimated (YOUI's count) |
-| L4 Context | The latest context figure against the model's window, where known (§2 table). No window is assumed: a model YOUI does not know has window `null`, and no context signal fires for it. | reported or estimated |
-| L5 System | The rate-limit state as Claude Code last reported it in this session (`system.rateLimit`, else `null`), the 5-hour figure at the start and now, and 429s. | reported; `budgetBurned` estimated |
-| Cache | Whether the cached system prompt changed between turns of one Claude Code conversation (§2.1), and the cache misses Claude reported. | changes estimated, misses reported |
-| Minds | Calls to other minds (review, ensemble, decompose, pipeline, layerthink), failed calls, tokens and cost, apart from the agent's own turns. | reported (Ollama minds' cost: estimated) |
+| L4 Context | The latest context figure against the model's window, where known (§2 table). No window is assumed: a model YOUI does not know has window `null`, and no context signal fires for it. A message on another route or model drops the current figure until that turn reports or estimates its own; the peak is kept with the window it was against. | reported or estimated |
+| L5 System | The rate-limit state as Claude Code last reported it in this session (`system.rateLimit`, else `null`), the 5-hour figure at the start and now (`null` until some window is reported), and 429s. | reported; `budgetBurned` estimated |
+| Cache | Whether the cached system prompt changed between turns of one Claude Code conversation (§2.1), and the cache misses Claude reported (`null` on routes that report no cache diagnostics). | changes estimated, misses reported |
+| Minds | Calls to other minds (review, ensemble, decompose, pipeline, layerthink), failed calls, tokens and cost, apart from the agent's own turns. A call that fails, times out or is stopped counts as a failed call, with what its result reported if it had one (a Claude mind stopped after its result), else no tokens; it is counted in the YOUSPEAK session it began in. | reported (Ollama/vLLM minds' cost: estimated) |
 
 Known limits:
 
 - L1 is English only, chars/4 is not a tokenizer, and some hedges still count as filler (Y1's notes stand).
 - Tool errors are still never counted in YOUI (the result is not passed in); a mind or table tool counts as one tool call in L3, while its model usage goes to Minds.
-- Ollama's `prompt_eval_count` may leave out a prompt prefix it served from its own cache; it is labelled as what Ollama reported.
-- The terminal and sovereign keep their own route and their chars/4 context; their thinking now shows `null` instead of 0.
+- Ollama's `prompt_eval_count` may leave out a prompt prefix it served from its own cache; it is labelled as what Ollama reported. Native Ollama (`/api/chat`) leaves a count of 0 out of its JSON (`omitempty`), so YOUI reads an absent `prompt_eval_count` or `eval_count` as 0 there.
+- vLLM's `prompt_tokens` is the whole prompt, prefix-cache hits included. Where vLLM states `prompt_tokens_details.cached_tokens` (it does with prompt-token details enabled), the observer records the rest as input and the hits as cache read; where it does not, the whole prompt is recorded as input, so for vLLM "input (uncached)" can then include cached tokens. The page's usage figures (`/api/usage`) count the whole prompt either way.
+- An OpenAI-compatible (`/v1`) response that states no count (a server that ignores `include_usage`, a stream that ends before its usage chunk) gives `null` for that count, and no cost estimate.
+- The terminal and sovereign keep their own route and their chars/4 context; their thinking now shows `null` instead of 0 (sovereign's Ollama route no longer states a thinking 0 either), and their 5-hour and seven-day figures are `null` until a rate-limit header states them.
 - `budgetBurned` subtracts two account-wide figures, so it includes other sessions' use.
 
 ### 2.1 Cache stability
@@ -115,14 +120,15 @@ This turn's settings from YOUI, not words of the person:
 - Date: 2026-10-31
 - Git branch: main
 - Model: claude-opus-5-5
+- Mode: direct (work alone; call other minds only when the person asks)
 - Thinking: adaptive | Effort: high
-(and, in orchestrate mode, the minds hint)
+(and, in orchestrate mode, the minds offered this turn)
 [/YOUI context]
 ```
 
-So a change of effort, date, branch, model or mode leaves the system prompt file byte for byte the same. The person's own leading `/` is still escaped after the block. Raw mode is unchanged (no block, its one neutral line). YOUI's own Ollama/vLLM loop sends one system prompt per request, as before: the stable part, then the same per-turn text after it. The static parts are now kept per agent, Love home and tool list, so a session no longer gets another session's tool list.
+So a change of effort, date, branch, model or mode leaves the system prompt file byte for byte the same. Every block states its mode, so a direct turn after an orchestrate one takes the earlier hint back (Claude Code keeps the earlier message and replays it on `--resume`). How the mind tools are used is fixed text, the same in either mode, so it is in the system prompt's tool catalogue; an orchestrate block holds only the mode and the minds offered, not that text again. The person's own leading `/` is still escaped after the block. Raw mode is unchanged (no block, its one neutral line). YOUI's own Ollama/vLLM loop sends one system prompt per request, as before: the stable part, then the same per-turn text after it. The static parts are now kept per agent, Love home and tool list, so a session no longer gets another session's tool list.
 
-**The signal.** After each Claude Code turn the server hashes the system prompt and each named part (`kernel.senseSystemPrompt`). When the hash differs from the previous turn of the same Claude Code conversation, `cache:prompt_changed` is raised, naming what changed, for example: "The system prompt changed between turns of this conversation (the environment block), so the cache was rewritten". If Claude reported a cache miss on that turn, the reason says so too ("Claude reported a cache miss (system_changed, 11000 tokens)"). The suggestion: change such settings less often, or start a new conversation (Clear) when you do. Only the hashes are kept, in memory.
+**The signal.** After each Claude Code turn the server hashes the system prompt and each named part (`kernel.senseSystemPrompt`). When the hash differs from the previous turn of the same Claude Code conversation, `cache:prompt_changed` is raised, naming what changed, for example: "The system prompt changed between turns of this conversation (the environment block), so the cache was rewritten". If Claude reported a cache miss on that turn, the reason says so too ("Claude reported a cache miss (system_changed, 11000 tokens)"). The signal is labelled `estimated` either way: the change is YOUI's own comparison, and a reported miss can have another cause. The suggestion: change such settings less often, or start a new conversation (Clear) when you do. Only the hashes are kept, in memory.
 
 Not every miss is YOUI's: the recorded `--resume` reported `cache_miss_reason` `messages_changed` (554 tokens) with an identical system prompt. Misses are counted (`cache.misses`, reported) but raise no suggestion on their own.
 
@@ -142,7 +148,7 @@ Yu's decision (2026-10-30): YOUSPEAK shows signals and suggestions; Yu or the ag
 | `cache:prompt_changed` | the cached system prompt changed between turns of one Claude Code conversation, naming the parts that changed (§2.1) |
 | `action:redundant_reads` | more than 2 repeated reads |
 | `action:high_error_rate` | over 30% of more than 5 tool calls errored |
-| `output:filler_regression` | 3 of the last 5 *graded* text blocks grade C or D (§2: ungraded blocks are left out) |
+| `output:filler_regression` | 3 of the last 5 *measured* text blocks under 85% useful (`FILLER_RATIO_FLOOR`, the line the old C grade began at; §2: unmeasured blocks are left out) |
 | `system:rate_limit_pressure` | 2 or more rate limits |
 
 The suggestion names the remedy where it is shown (`createKernel({ surface })`; the terminal and sovereign get theirs from their route):
@@ -158,7 +164,7 @@ The suggestion names the remedy where it is shown (`createKernel({ surface })`; 
 
 On the Ollama and vLLM routes (YOUI Web's own loop, or sovereign on Ollama) there is no Claude effort setting and no Claude 5-hour window: no `effort:reduce` fires there, and `rate_limit_pressure` suggests only pausing until the provider's limit resets. `decide(effort, model, budget, { route })` is told the route.
 
-Each signal carries `evidence`: `reported` when it rests on the provider's figures (the 5-hour window; a reported context against a reported window; a cache miss Claude reported), else `estimated`. The `youspeak_suggestion` event carries it too.
+Each signal carries `evidence`: `reported` when it rests on the provider's figures (the 5-hour window; a reported context against a reported window), else `estimated`; `cache:prompt_changed` is always `estimated`, since it is YOUI's own comparison. The `youspeak_suggestion` event carries it too.
 
 When `decide()` runs: after each Claude Code turn; in the Ollama/vLLM loop and in the terminal, only after a round that ran tools (a reply with no tool call ends the loop before it); in sovereign, after every turn.
 
@@ -192,7 +198,7 @@ Nothing is written per message. That is the accepted trade-off: a process killed
 
 **What is skipped:** a session with no output (no text and no tool calls), and, in YOUI Web and the terminal, one whose messages only failed. (Sovereign does not report failed runs separately, so only its no-output rule applies.)
 
-**What a row holds** (schema 1), aggregates only:
+**What a row holds** (schema 2), aggregates only:
 
 - `schema`; `session`, a random id for this YOUSPEAK session, not the browser session's id
 - `route`: `claude-code`, `ollama`, `vllm`, `terminal-legacy` or `sovereign`, the one most turns took; `routes`: turns per route
@@ -201,17 +207,17 @@ Nothing is written per message. That is the accepted trade-off: a process killed
 - `endedAt`: its last activity; `elapsed`: the minutes from `startedAt` to `endedAt`, the active span
 - `closedAt`: when the session was cut (Clear, a switch, the idle timeout, the process ending), which for an idle end is 30 minutes or more after `endedAt`; `endReason`: why
 - `turns`, and `exchanges`: how many messages ended with an answer or only an error
-- `outputGrade` (`null` with no graded output), `usefulRatio` (over graded blocks only), `outputTokensEstimate` (all blocks), `fillerTokensEstimate`, `textBlocks`, `gradedBlocks`
+- `usefulRatio` (over measured blocks only; `null` with none), `outputTokensEstimate` (all blocks), `fillerTokensEstimate`, `textBlocks`, `gradedBlocks` (the measured ones); no grade
 - `thinkingTokens`, `thinkAvgRatio` (both `null` when no turn reported thinking), `toolCalls`, `redundantReads`, `toolErrors`
-- `contextPeakTokens` (reported or estimated) and `contextWindow` (`null` when unknown)
+- `contextPeakTokens` (reported or estimated) and `contextWindow`, the window that applied at the peak (`null` when unknown)
 - since Y2, what the provider reported for the agent's own turns: `usageTurns`, `inputTokens` (uncached), `cacheReadTokens`, `cacheCreationTokens`, `outputTokens`, `costUsd`
-- the cache: `promptChanges` (YOUI's comparison), `cacheMisses` (as Claude reported them)
+- the cache: `promptChanges` (YOUI's comparison), `cacheMisses` (as Claude reported them; `null` on routes with no cache diagnostics)
 - the minds, apart from the agent's turns: `mindCalls`, `mindFailedCalls`, `mindInputTokens` (uncached), `mindCacheReadTokens`, `mindCacheCreationTokens`, `mindOutputTokens`, `mindCostUsd`
 - `budgetBurned`, `rateLimitStatus`, `fiveHourUtilization`, `sevenDayUtilization` (the last state Claude Code reported), `rateLimitHits`
 - `signalCount`, and `signals`: the names of the signals seen, such as `effort:reduce`
 - `evidence`: each figure's label (`reported` or `estimated`), for every figure that is not `null`
 
-The schema stays 1: the Y2 fields are optional, and a Y1 row is still read. A row whose `evidence` holds anything but the two labels is reported and skipped, like any field of the wrong type.
+Schema 2 has no `outputGrade` (L1 is no longer graded). A schema 1 row (Y1's, which has one) is still read, and nothing reads its grade; the Y2 fields are optional. A row with any other schema, or whose `evidence` holds anything but the two labels, is reported and skipped, like any field of the wrong type.
 
 It never holds message text, file paths, tool inputs or prompt hashes.
 
@@ -244,8 +250,8 @@ node youspeak-evolve.mjs history     # the store's latest sessions, and the lega
 
 How proposals appear:
 
-- A change to the prompt rule is printed as a unified diff of `youspeak-rule.mjs` (its `YOUSPEAK_RULE`), the one module every surface takes the rule from, with the full text that would be added or removed. A reviewer sees exactly what would change. Each diff is drawn against the unmodified file, so once one is applied the others may no longer apply as printed; run `transmute` again for fresh ones. (Before Y2 the diffs were of `sovereign.mjs`, the only prompt they could reach.)
-- A proposal whose text is already in the rule prints "No diff" and is not counted: the summary counts the diffs and the described proposals only. The file-cache proposal (`add_cache_reminder`) prints "No diff" too, since the module already holds that line for sovereign.
+- A change to the prompt rule is printed as a unified diff of `youspeak-rule.mjs` (its `YOUSPEAK_RULE`), the one module every prompt built in code takes the rule from, with the full text that would be added or removed. It does not reach the eleven `instances/*/CLAUDE.md` copies (§1), and `transmute` says so under its diffs. A reviewer sees exactly what would change. Each diff is drawn against the unmodified file, so once one is applied the others may no longer apply as printed; run `transmute` again for fresh ones. (Before Y2 the diffs were of `sovereign.mjs`, the only prompt they could reach.)
+- A proposal whose text is already in the rule prints "No diff" and is not counted: the summary counts the diffs and the described proposals only. The file-cache proposal (`add_cache_reminder`) is described, not diffed: only sovereign's prompt has that line (`YOUSPEAK_FILE_CACHE_LINE`), YOUI Web and the terminal do not, and giving it to them means moving the line into `YOUSPEAK_RULE` and dropping sovereign's `fileCache` option in one reviewed change.
 - The context insight compares each row's context peak with its window, and only for rows whose window was known; no window is assumed.
 - Other proposals, such as pacing or narrower reads, are described in full. They would need a code change that someone writes and reviews on its own.
 - To adopt any proposal, a person or agent edits the file, reviews it and commits it.
@@ -275,18 +281,20 @@ On 2026-06-19, `integrate --apply` recorded three mutations as applied: commit `
 
 ## 6. Using it
 
-- **YOUI Web:** the YOUSPEAK panel in the sidebar: the L1 ratio (est.), L2–L4, and lines for usage, minds and the cache, each figure with "reported" or "est.". `GET /api/youspeak` gives the session's report (each section with its `evidence`), `evidenceKey`, the store's trends, and `store` (row count, warnings and the legacy summary). `GET /api/youspeak/trends` gives the trends with the store's `warnings`. `POST /api/youspeak/reset` ends the YOUSPEAK session (its row is written) and starts a new one.
-- **Terminal:** `/youspeak` (or `/ys`).
+- **YOUI Web:** the YOUSPEAK panel in the sidebar: the L1 ratio (est., with `~`; no grade), L2–L4, and lines for usage, minds and the cache, each figure with "reported" or "est.". The usage line's input is the uncached part, with cache read and write beside it; the minds line shows their input including cache, with its parts. `GET /api/youspeak` gives the session's report (each section with its `evidence`), `evidenceKey`, the store's trends, and `store` (row count, warnings and the legacy summary). `GET /api/youspeak/trends` gives the trends with the store's `warnings`. `POST /api/youspeak/reset` ends the YOUSPEAK session (its row is written) and starts a new one.
+- **Terminal:** `/youspeak` (or `/ys`). The exit line and the daily note give the useful ratio as an estimate, with no grade; so does sovereign's end-of-run report.
 - **Kernel CLI:** `node youspeak-kernel.mjs trends [n]`, read only.
 - **In code:** `createKernel({ agent, route, model, surface })`; the `sense*` functions, among them `senseUsage(figures)` for one turn's reported usage, `senseSystemPrompt({ conversation, hash, parts })`, `senseMind(figures)` and `senseRateLimitState(info)`; `decide(effort, model, budget, { route })` for signals, `newSuggestions()` to show each once, and `endSession({ reason })` to write the row. A process holding one session at a time calls `endSessionOnExit(reason => …endSession({ reason }))` so SIGHUP and SIGTERM still write it.
 
 ## 7. Tests and what is left
 
-`tests/test_youspeak_sensors.mjs` replays the recorded stream through the runner (`tests/fixtures/replay-claude.mjs`) and checks that the sensors read its real fields; the rest use the fake `claude` and a fake vLLM, with no network and no Keychain. `tests/fixtures/shift-date.mjs` moves the date between two turns of a test server.
+`tests/test_youspeak_sensors.mjs` replays the recorded stream through the runner (`tests/fixtures/replay-claude.mjs`) and checks that the sensors read its real fields, and that both fixtures' `rate_limit_info` is exactly the synthetic set; the rest use the fake `claude` (`FAKE:two-requests` gives a turn of two model requests) and local fakes of vLLM and Ollama, with no network and no Keychain. They cover a `/v1` stream with no usage chunk, vLLM's cached tokens, an error mid-stream, Ollama minds that answer, fail and are stopped, a direct turn after an orchestrate one, a mid-conversation model switch, and that no surface shows a grade. `tests/fixtures/shift-date.mjs` moves the date between two turns of a test server.
 
 Left open (see [`YOUSPEAK-OBSERVER-DESIGN.md`](YOUSPEAK-OBSERVER-DESIGN.md) §4.1):
 
-- The design says L1 is "no longer graded". Y2 keeps the S–D grade, labelled as an estimate; dropping it changes the terminal, sovereign and the page, and is left for a person to decide.
 - The terminal and sovereign keep their own route and chars/4 sensing; they take only the shared rule.
 - Tool errors are still not counted in YOUI.
+- The `ollama` tool's own chat and bench calls feed neither Minds nor YOUSPEAK's usage.
+- The per-turn context block's markers are fixed strings, so text a person pastes can carry a look-alike block; it unlocks nothing (model and effort are flags, minds are gated by capability).
+- `youspeak-audit.mjs` keeps its own grade scale for `sovereign.log` (§5); it is a separate, read-only tool.
 - The open questions for Yu in the design (§7) stand.

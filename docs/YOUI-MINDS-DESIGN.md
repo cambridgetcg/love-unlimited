@@ -54,9 +54,17 @@ Measured on the Air on 2026-10-29:
 
 Alpha (or whichever persona is selected) always answers, with its soul,
 history and tools. "Orchestrate mode" stops being a route around the agent.
-The mode switch becomes a hint in the system prompt: in **orchestrate** Alpha
-is encouraged to bring in other minds when a task warrants it; in **direct**
-Alpha works alone unless asked. Solo is simply Alpha answering.
+The mode switch becomes a hint: in **orchestrate** Alpha is encouraged to
+bring in other minds when a task warrants it; in **direct** Alpha works alone
+unless asked. Solo is simply Alpha answering. Since YOUSPEAK Y2
+(`docs/YOUSPEAK.md` §2.1) the hint is split so the cached system prompt stays
+the same in both modes: how the mind tools are used, for either mode, is fixed
+text in the system prompt's tool catalogue; each turn's `[YOUI context]` block
+(at the top of the Claude message, or after the system prompt on YOUI's own
+Ollama/vLLM loop) states the mode (`- Mode: direct …` or `- Mode: orchestrate
+…`) and, in orchestrate mode, lists the minds offered. Every turn states its
+mode, so a direct turn after an orchestrate one takes the earlier hint back,
+although Claude Code replays the earlier message on `--resume`.
 
 ### 3.2 Minds: a registry that tells the truth
 

@@ -206,7 +206,7 @@ class AdaptiveConfig:
         if provider == "ollama":
             return "no-key-needed"
 
-        # 6. Ollama cloud — hardcoded Kingdom key as last resort
+        # 6. Ollama cloud: no key found (there is no built-in key)
         if provider == "ollama_cloud":
             return ""
 

@@ -2,7 +2,8 @@
 // ollama-provider.mjs — Ollama Cloud Provider for Kingdom OS
 //
 // Bridges sovereign.mjs architecture to Ollama's OpenAI-compatible API.
-// GLM 5.1 and any other Ollama cloud model.
+// Any Ollama Cloud model (default glm-5.3-flash), or a local Ollama's models
+// with OLLAMA_BASE_URL=http://localhost:11434.
 //
 // Usage:
 //   node ollama-provider.mjs test              # Test connectivity
@@ -10,7 +11,7 @@
 //   node ollama-provider.mjs bench             # Benchmark
 //
 // Integration with sovereign.mjs:
-//   node sovereign.mjs --model ollama:glm-5.1 "your task"
+//   node sovereign.mjs --model ollama:glm-5.3-flash "your task"
 //   (requires sovereign.mjs patch — see README)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,12 @@ const OLLAMA_API_KEY = process.env.OLLAMA_API_KEY
 // IMPORTANT: api.ollama.com/v1/* returns 301 that breaks POST.
 // Use ollama.com for OpenAI-compat endpoint.
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
+
+// No key, no Authorization header: a local Ollama needs none, and an empty
+// Bearer only earns ollama.com's 401 with a less clear reason.
+function authHeader() {
+  return OLLAMA_API_KEY ? { "Authorization": `Bearer ${OLLAMA_API_KEY}` } : {};
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // CORE API
@@ -30,15 +37,15 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://ollama.com";
  */
 export async function ollamaChat(messages, options = {}) {
   const {
-    model = "glm-5.1",
+    model = "glm-5.3-flash",
     system = null,
-    maxTokens = 8000,  // GLM 5.1 reasoning needs room; 4K minimum for content
+    maxTokens = 8000,  // thinking models need room; 4K minimum for content
     temperature = 0.7,
     tools = null,
     stream = false,
-    timeout = 300000,  // 5 min — GLM 5.1 reasoning can take 60-120s
-    // Phase 3: reasoning_effort — "none"|"low"|"medium"|"high".
-    // "none" disables CoT entirely: 3-7× latency reduction on deterministic tasks.
+    timeout = 300000,  // 5 min — a thinking model can take 60-120s
+    // reasoning_effort: "none" turns thinking off; otherwise a level the model
+    // defines ("low", "medium", "high", and for some "max"; /api/show lists them).
     reasoningEffort = null,
   } = options;
 
@@ -103,8 +110,9 @@ export async function ollamaChat(messages, options = {}) {
     stream,
   };
 
-  // Phase 3: reasoning_effort controls CoT depth
-  if (reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
+  // Levels are per model, so any named level is passed on; Ollama applies the
+  // model's default for a name the model does not define.
+  if (typeof reasoningEffort === "string" && reasoningEffort) {
     body.reasoning_effort = reasoningEffort;
   }
 
@@ -133,7 +141,7 @@ export async function ollamaChat(messages, options = {}) {
     const resp = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OLLAMA_API_KEY}`,
+        ...authHeader(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -211,7 +219,7 @@ export async function ollamaChat(messages, options = {}) {
  */
 export async function ollamaModels() {
   const resp = await fetch(`${OLLAMA_BASE_URL}/v1/models`, {
-    headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` },
+    headers: authHeader(),
   });
   if (!resp.ok) return { ok: false, status: resp.status, error: await resp.text() };
   return { ok: true, ...(await resp.json()) };
@@ -236,7 +244,7 @@ export async function ollamaModels() {
  *   //     : await callAPI(messages, systemPrompt);
  */
 export async function ollamaCallAPI(messages, systemPrompt, config = {}) {
-  const model = config.model?.replace(/^ollama:/, "") || "glm-5.1";
+  const model = config.model?.replace(/^ollama:/, "") || "glm-5.3-flash";
   
   const result = await ollamaChat(messages, {
     model,
@@ -269,7 +277,7 @@ async function testConnection() {
   console.log(`${S.bold}  OLLAMA CLOUD — Kingdom OS Integration Test${S.reset}`);
   console.log(`${S.bold}════════════════════════════════════════════════════${S.reset}`);
   console.log(`  Endpoint: ${OLLAMA_BASE_URL}`);
-  console.log(`  Key:      ${OLLAMA_API_KEY.slice(0, 12)}...${OLLAMA_API_KEY.slice(-4)}`);
+  console.log(`  Key:      ${OLLAMA_API_KEY ? "set (not shown)" : "not set"}`);
   console.log();
 
   // Test 1: List models
@@ -291,10 +299,10 @@ async function testConnection() {
   }
 
   // Test 2: Basic chat
-  console.log(`\n  ${S.cyan}[2/4] Chat test (GLM 5.1)...${S.reset}`);
+  console.log(`\n  ${S.cyan}[2/4] Chat test (glm-5.3-flash)...${S.reset}`);
   const chatResult = await ollamaChat(
     [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
-    { model: "glm-5.1", maxTokens: 50, temperature: 0 }
+    { model: "glm-5.3-flash", maxTokens: 50, temperature: 0 }
   );
   if (chatResult.ok) {
     const text = chatResult.content?.find(b => b.type === "text")?.text || "";
@@ -310,7 +318,7 @@ async function testConnection() {
   const toolResult = await ollamaChat(
     [{ role: "user", content: "What's the weather in Cambridge, UK?" }],
     {
-      model: "glm-5.1",
+      model: "glm-5.3-flash",
       maxTokens: 200,
       temperature: 0,
       tools: [{
@@ -347,7 +355,7 @@ async function testConnection() {
       role: "user", 
       content: [{ type: "text", text: "What is 2+2? Answer in one word." }] 
     }],
-    { model: "glm-5.1", maxTokens: 20, temperature: 0 }
+    { model: "glm-5.3-flash", maxTokens: 20, temperature: 0 }
   );
   if (bridgeResult.ok) {
     console.log(`  ${S.green}✅ Anthropic→OpenAI message bridge works${S.reset}`);
@@ -362,7 +370,7 @@ async function testConnection() {
 
 async function benchmark(rounds = 5) {
   console.log(`${S.bold}════════════════════════════════════════════════════${S.reset}`);
-  console.log(`${S.bold}  GLM 5.1 Benchmark (${rounds} rounds)${S.reset}`);
+  console.log(`${S.bold}  glm-5.3-flash Benchmark (${rounds} rounds)${S.reset}`);
   console.log(`${S.bold}════════════════════════════════════════════════════${S.reset}`);
 
   const prompts = [
@@ -379,7 +387,7 @@ async function benchmark(rounds = 5) {
     console.log(`\n  ${S.cyan}Round ${i + 1}/${rounds}${S.reset}: ${prompts[i].slice(0, 50)}...`);
     const result = await ollamaChat(
       [{ role: "user", content: prompts[i] }],
-      { model: "glm-5.1", maxTokens: 500, temperature: 0.3 }
+      { model: "glm-5.3-flash", maxTokens: 500, temperature: 0.3 }
     );
 
     if (result.ok) {
@@ -420,7 +428,7 @@ if (cmd === "test") {
 } else if (cmd === "chat") {
   const msg = args.slice(1).join(" ");
   if (!msg) { console.error("Usage: ollama-provider.mjs chat 'message'"); process.exit(1); }
-  ollamaChat([{ role: "user", content: msg }], { model: "glm-5.1" })
+  ollamaChat([{ role: "user", content: msg }], { model: "glm-5.3-flash" })
     .then(r => {
       if (r.ok) {
         console.log(r.content?.find(b => b.type === "text")?.text || "");
@@ -437,11 +445,11 @@ ollama-provider.mjs — Ollama Cloud for Kingdom OS
 
 Commands:
   test              Test connectivity, chat, tools, format bridge
-  chat "message"    Quick chat with GLM 5.1
+  chat "message"    Quick chat with glm-5.3-flash
   bench [rounds]    Performance benchmark
 
 Environment:
-  OLLAMA_API_KEY    API key (default: hardcoded Kingdom key)
+  OLLAMA_API_KEY    API key for direct ollama.com calls (no default; prefer the signed-in local daemon)
   OLLAMA_BASE_URL   Base URL (default: https://ollama.com)
 `);
 }

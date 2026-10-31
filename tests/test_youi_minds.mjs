@@ -126,7 +126,12 @@ test("the minds registry reports each state honestly and offers only granted, an
   }
 
   const cloudGranted = new Set(["models:use", "models:ollama-cloud"]);
-  assert.equal(byId(await minds.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"].state, "not_configured");
+  // No key: a running local Ollama is the way to Ollama Cloud; with none answering, nothing is.
+  const throughLocal = byId(await minds.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"];
+  assert.equal(throughLocal.state, "unchecked");
+  assert.match(throughLocal.note, /through the local Ollama/);
+  const nowhere = registry({ localBaseUrl: await closedUrl(), vllmBaseUrl: vllm.baseUrl });
+  assert.equal(byId(await nowhere.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"].state, "not_configured");
   const keyed = registry({ localBaseUrl: ollama.baseUrl, vllmBaseUrl: vllm.baseUrl, cloudKeyConfigured: () => true });
   const cloud = byId(await keyed.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"];
   assert.equal(cloud.state, "unchecked");

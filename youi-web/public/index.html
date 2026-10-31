@@ -1354,11 +1354,11 @@ button, select, textarea, input { font: inherit; }
 
     <!-- YOUSPEAK -->
     <div class="sidebar-section">
-      <h3>YOUSPEAK <span id="ys-grade" style="font-size:1.2rem;font-weight:bold;margin-left:6px">—</span></h3>
+      <h3>YOUSPEAK</h3>
       <!-- L1 Output -->
       <div class="budget-bar">
         <div class="bar-header">
-          <span class="bar-label">L1 Useful Ratio</span>
+          <span class="bar-label" title="YOUI's own English-only estimate (chars/4 and filler patterns)">L1 Useful Ratio (est.)</span>
           <span class="bar-value" id="ys-ratio">—</span>
         </div>
         <div class="bar-track"><div class="bar-fill" id="ys-fill" style="width:100%;background:var(--green)"></div></div>
@@ -1378,11 +1378,15 @@ button, select, textarea, input { font: inherit; }
           <div class="label">L4 Ctx</div>
         </div>
         <div class="stat-item">
-          <div class="value" id="ys-saved" style="font-size:0.95rem">0</div>
-          <div class="label">Filler</div>
+          <div class="value" id="ys-filler" style="font-size:0.95rem" title="Filler tokens in measured blocks: YOUI's own English-only estimate">0</div>
+          <div class="label">Filler (est.)</div>
         </div>
       </div>
       <div id="ys-detail" style="font-size:0.7rem;color:var(--text-dim);margin-top:4px"></div>
+      <!-- What the provider reported, with each figure's label: reported, or est. (YOUI's own) -->
+      <div id="ys-usage" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px"></div>
+      <div id="ys-minds" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px"></div>
+      <div id="ys-cache" style="font-size:0.7rem;color:var(--text-dim);margin-top:2px"></div>
       <div id="ys-signals" style="font-size:0.7rem;color:var(--gold,#f0c040);margin-top:2px"></div>
       <div id="ys-store" style="font-size:0.7rem;color:var(--red);margin-top:2px"></div>
     </div>
@@ -2485,20 +2489,23 @@ async function fetchUsageDashboard() {
 
 // The tally of the current YOUSPEAK session only: `session` is its id, and a
 // new session (after Clear, a switch or an idle cut) starts a fresh tally.
-// Only blocks L1 grades count toward the ratio; the rest have grade null.
+// Only blocks L1 measures count toward the ratio. The ratio is YOUI's own
+// estimate, shown with "~"; there is no grade (Y2).
 let ysAccum = { session: null, totalOutput: 0, totalFiller: 0, blocks: 0 };
 
-// Back to the empty state of a new YOUSPEAK session: no ratio, no grade, no signals.
+// Back to the empty state of a new YOUSPEAK session: no ratio, no signals.
 function resetYouspeakUI(session = null) {
   ysAccum = { session, totalOutput: 0, totalFiller: 0, blocks: 0 };
   const set = (id, text) => { const el = document.getElementById(id); if (el) { el.textContent = text; el.style.color = ''; } };
   set('ys-ratio', '—');
-  set('ys-grade', '—');
-  set('ys-saved', '0');
+  set('ys-filler', '0');
   set('ys-detail', '');
   set('ys-think', '—');
   set('ys-tools', '0');
   set('ys-ctx', '—');
+  set('ys-usage', '');
+  set('ys-minds', '');
+  set('ys-cache', '');
   const fill = document.getElementById('ys-fill');
   if (fill) { fill.style.width = '0%'; fill.style.background = 'var(--green)'; }
   updateYouspeakSignals([]);
@@ -2508,32 +2515,28 @@ function updateYouspeakUI(metrics) {
   if (!metrics) return;
   if (metrics.session && metrics.session !== ysAccum.session) resetYouspeakUI(metrics.session);
   ysAccum.blocks++;
-  if (metrics.grade) {
+  if (metrics.graded === true) {
     ysAccum.totalOutput += Number(metrics.totalTokensEstimate) || 0;
     ysAccum.totalFiller += Number(metrics.fillerTokensEstimate) || 0;
   }
   if (ysAccum.totalOutput === 0) {
-    // Nothing graded yet (short replies, or mostly non-English): no ratio, no grade.
-    document.getElementById('ys-detail').textContent = `${ysAccum.blocks} blocks | none graded`;
+    // Nothing measured yet (short replies, or mostly non-English): no ratio.
+    document.getElementById('ys-detail').textContent = `${ysAccum.blocks} blocks | none measured`;
     return;
   }
 
   const ratio = Math.round(((ysAccum.totalOutput - ysAccum.totalFiller) / ysAccum.totalOutput) * 100);
 
-  const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
-  const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';
-
-  document.getElementById('ys-ratio').textContent = ratio + '%';
-  document.getElementById('ys-grade').textContent = grade;
-  document.getElementById('ys-grade').style.color = gradeColor;
-  document.getElementById('ys-saved').textContent = ysAccum.totalFiller;
+  // "~": an estimate (chars/4 and English filler patterns).
+  document.getElementById('ys-ratio').textContent = ratio + '%~';
+  document.getElementById('ys-filler').textContent = ysAccum.totalFiller;
 
   const fill = document.getElementById('ys-fill');
   fill.style.width = ratio + '%';
   fill.style.background = ratio >= 85 ? 'var(--green)' : ratio >= 70 ? 'var(--gold,#f0c040)' : 'var(--red)';
 
   document.getElementById('ys-detail').textContent =
-    `${ysAccum.blocks} blocks | ${ysAccum.totalOutput} tok graded | ${ysAccum.totalFiller} filler`;
+    `${ysAccum.blocks} blocks | ~${ysAccum.totalOutput} tok measured | ~${ysAccum.totalFiller} filler (est.)`;
 }
 
 // The current signals, as suggestions: the reason shows, and what could be done is in the tooltip.
@@ -2551,11 +2554,29 @@ function updateYouspeakStore(store) {
   el.textContent = store?.warnings?.length ? `⚠ ${store.warnings.join(' ')}` : '';
 }
 
+// A figure's evidential label as the panel shows it: "reported" (the
+// provider stated it) or "est." (YOUI computed it); nothing when there is no figure.
+function ysEvidence(label) {
+  return label === 'reported' ? 'reported' : label === 'estimated' ? 'est.' : '';
+}
+function ysTokens(value) {
+  if (typeof value !== 'number') return '—';
+  return value >= 10000 ? `${Math.round(value / 1000)}k` : String(value);
+}
+function ysCost(value) {
+  return typeof value === 'number' ? `$${value.toFixed(value < 0.01 ? 6 : 4)}` : '—';
+}
+
 function updateYouspeakLayers(data) {
-  // L2 Thinking
+  // L2 Thinking: only where the provider reported it
   if (data.thinking) {
     const el = document.getElementById('ys-think');
-    if (el) el.textContent = data.thinking.avgRatio + 'x';
+    if (el) {
+      el.textContent = typeof data.thinking.avgRatio === 'number' ? data.thinking.avgRatio + 'x' : '—';
+      el.title = typeof data.thinking.totalTokens === 'number'
+        ? `${data.thinking.totalTokens} thinking tokens (${ysEvidence(data.thinking.evidence?.totalTokens)})`
+        : 'Thinking tokens not reported';
+    }
   }
   // L3 Action
   if (data.action) {
@@ -2566,15 +2587,67 @@ function updateYouspeakLayers(data) {
       if (data.action.redundantReads > 0) el.style.color = 'var(--gold,#f0c040)';
     }
   }
-  // L4 Context
+  // L4 Context: the latest request's input and cache (reported), or chars/4 (est.)
   if (data.context) {
     const el = document.getElementById('ys-ctx');
     if (el) {
-      const k = Math.round(data.context.estimatedTokens / 1000);
-      const pct = (data.context.windowUtilization * 100).toFixed(0);
-      el.textContent = `${k}k`;
-      if (data.context.windowUtilization > 0.8) el.style.color = 'var(--red)';
-      else if (data.context.windowUtilization > 0.5) el.style.color = 'var(--gold,#f0c040)';
+      const c = data.context;
+      const label = ysEvidence(c.evidence?.tokens);
+      el.textContent = typeof c.tokens === 'number' ? `${ysTokens(c.tokens)}${label === 'est.' ? '~' : ''}` : '—';
+      el.title = typeof c.tokens === 'number'
+        ? `${c.tokens} tokens (${label})` + (typeof c.window === 'number'
+          ? ` of a ${ysTokens(c.window)} window (${ysEvidence(c.evidence?.window)})`
+          : '; window unknown')
+        : 'No context figure yet';
+      el.style.color = '';
+      if (c.windowUtilization > 0.8) el.style.color = 'var(--red)';
+      else if (c.windowUtilization > 0.5) el.style.color = 'var(--gold,#f0c040)';
+    }
+  }
+  // Usage as the provider reported it: input, cache read, cache write, output, thinking, cost
+  if (data.usage) {
+    const el = document.getElementById('ys-usage');
+    const u = data.usage;
+    if (el) {
+      if (!u.turns) el.textContent = '';
+      else {
+        const e = u.evidence || {};
+        el.textContent = `Usage: in (uncached) ${ysTokens(u.inputTokens)} · cache read ${ysTokens(u.cacheReadTokens)} · cache write ${ysTokens(u.cacheCreationTokens)}`
+          + ` · out ${ysTokens(u.outputTokens)} (${ysEvidence(e.outputTokens) || 'not reported'})`
+          + ` · think ${ysTokens(u.thinkingTokens)}${e.thinkingTokens ? ` (${ysEvidence(e.thinkingTokens)})` : ''}`
+          + ` · ${ysCost(u.costUsd)}${e.costUsd ? ` (${ysEvidence(e.costUsd)})` : ''}`;
+      }
+    }
+  }
+  // Other minds, apart from the agent's own turns. Input is shown whole
+  // (uncached + cache read + cache write), as a mind's tool card counts it,
+  // with its parts beside it.
+  if (data.minds) {
+    const el = document.getElementById('ys-minds');
+    const m = data.minds;
+    if (el) {
+      const parts = [m.inputTokens, m.cacheReadTokens, m.cacheCreationTokens];
+      const total = parts.some(value => typeof value === 'number') ? parts.reduce((sum, value) => sum + (Number(value) || 0), 0) : null;
+      const cached = typeof m.cacheReadTokens === 'number' || typeof m.cacheCreationTokens === 'number'
+        ? ` (uncached ${ysTokens(m.inputTokens)} · cache read ${ysTokens(m.cacheReadTokens)} · cache write ${ysTokens(m.cacheCreationTokens)})`
+        : '';
+      el.textContent = m.calls
+        ? `Minds: ${m.calls} call${m.calls === 1 ? '' : 's'}${m.failedCalls ? ` (${m.failedCalls} failed)` : ''}`
+          + ` · input incl. cache ${ysTokens(total)}${cached}${m.evidence?.inputTokens ? ` (${ysEvidence(m.evidence.inputTokens)})` : ''}`
+          + ` · out ${ysTokens(m.outputTokens)}${m.evidence?.outputTokens ? ` (${ysEvidence(m.evidence.outputTokens)})` : ''}`
+          + ` · ${ysCost(m.costUsd)}${m.evidence?.costUsd ? ` (${ysEvidence(m.evidence.costUsd)})` : ''}`
+        : '';
+    }
+  }
+  // The cached system prompt: changes YOUI saw, misses Claude reported
+  if (data.cache) {
+    const el = document.getElementById('ys-cache');
+    const k = data.cache;
+    if (el) {
+      const parts = [];
+      if (k.promptChanges) parts.push(`system prompt changed ${k.promptChanges}× (${(k.lastChange?.parts || []).join(', ') || 'unnamed'}; est.)`);
+      if (k.misses) parts.push(`${k.misses} cache miss${k.misses === 1 ? '' : 'es'}${k.lastMiss ? `, last ${k.lastMiss.type}` : ''} (reported)`);
+      el.textContent = parts.length ? `Cache: ${parts.join(' · ')}` : '';
     }
   }
   // Signals
@@ -2591,20 +2664,15 @@ async function fetchYouspeakStats() {
     ysAccum.totalOutput = Number(data.gradedTokens) || 0;
     ysAccum.totalFiller = Number(data.totalFiller) || 0;
     ysAccum.blocks = Number(data.textBlocks) || 0;
-    // No output yet: no ratio and no grade.
+    // No measured output yet: no ratio.
     if (data.usefulRatio === null) {
       document.getElementById('ys-ratio').textContent = '—';
-      document.getElementById('ys-grade').textContent = '—';
-      document.getElementById('ys-grade').style.color = '';
       updateYouspeakLayers(data);
     } else if (typeof data.usefulRatio === 'number') {
       const ratio = Math.round(data.usefulRatio * 100);
-      const grade = ratio >= 98 ? 'S' : ratio >= 95 ? 'A' : ratio >= 85 ? 'B' : ratio >= 70 ? 'C' : 'D';
-      const gradeColor = (grade === 'S' || grade === 'A') ? 'var(--green)' : grade === 'B' ? 'var(--gold,#f0c040)' : 'var(--red)';
-      document.getElementById('ys-ratio').textContent = ratio + '%';
-      document.getElementById('ys-grade').textContent = grade;
-      document.getElementById('ys-grade').style.color = gradeColor;
-      document.getElementById('ys-saved').textContent = data.tokensSaved || 0;
+      // "~": an estimate (chars/4 and English filler patterns); there is no grade.
+      document.getElementById('ys-ratio').textContent = ratio + '%~';
+      document.getElementById('ys-filler').textContent = Number(data.totalFiller) || 0;
       document.getElementById('ys-detail').textContent =
         `Action density: ${data.actionDensity} | ${data.textBlocks} blocks`;
       // Update new layer displays

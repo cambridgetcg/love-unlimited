@@ -1,6 +1,6 @@
 # YOUSPEAK, rebuilt as an honest observer
 
-**Status:** agreed by Yu with Touch ID on 2026-10-30 (proposal `report_0de85559`). Slice Y1 (§3) is built on branch `feat/youi-youspeak-y1-20261030`, with the fixes from its adversarial review (§3.1); [`YOUSPEAK.md`](YOUSPEAK.md) describes the code after it. Y2 (§4) is not built.
+**Status:** agreed by Yu with Touch ID on 2026-10-30 (proposal `report_0de85559`). Slice Y1 (§3) is built on branch `feat/youi-youspeak-y1-20261030`, with the fixes from its adversarial review (§3.1). Slice Y2 (§4) is built on branch `feat/youi-youspeak-y2-20261031`, stacked on Y1 (§4.1). [`YOUSPEAK.md`](YOUSPEAK.md) describes the code after both.
 
 **Date:** 2026-10-30
 
@@ -88,6 +88,36 @@ An adversarial review of Y1 (2026-10-30, two skeptics per finding) found six mus
 - **Minds and table tools** report their usage to the observer.
 - **One rule module.** The prompt rule lives in one shared module used by YOUI Web, the terminal and sovereign; today there are seven or more hand copies.
 
+### 4.1 As built (2026-10-31)
+
+- **The live stream.** Two runs of Claude Code 2.1.314 with Claude Haiku 5.5, YOUI's flags and environment, a one-line system prompt and "Reply with the single word ready.", from an empty scratch directory: a `--session-id` turn and one `--resume` of it. Together they cost US$0.000254 (US$0.000123, then US$0.000131). Their stdout, scrubbed of paths, socket paths and message and request ids, is `tests/fixtures/claude-code-stream-2.1.314.jsonl` and `…-resume.jsonl`. Their `rate_limit_event` values are synthetic: only that event's shape is from the live runs; its status, type, utilizations, thresholds, reset times and overage fields were replaced, before the branch was first pushed, with one made-up consistent set (the repository is public, and the recorded values were the account's own). Their session id and event uuids are placeholders. What they showed:
+  - the usage field names and their places, `cache_creation`'s split by lifetime (all one-hour), `output_tokens_details.thinking_tokens`, and `modelUsage` entries with `thinkingTokens` and `contextWindow` (1,000,000 for Haiku 5.5) ([`YOUSPEAK.md`](YOUSPEAK.md) §2);
+  - the result's `usage` is the run's own, while `total_cost_usd` and `modelUsage` are running totals, as C2 found;
+  - the shape of `rate_limit_event.rate_limit_info`, with `unifiedWindows.five_hour` and `seven_day`, which C2's reading already matched;
+  - `message_start.message.diagnostics.cache_miss_reason`: the resume missed the cache (`messages_changed`, 554 tokens) with an identical system prompt, so neither run read from the cache.
+- **Reported usage.** Per Claude Code turn the kernel is told the run's input, cache read, cache creation, output, thinking where stated and cost, from C2's per-turn spend (`claudeCodeSpend`, extended with the parts), and the context as the latest request's input + cache read + cache creation. The window is the model's `contextWindow` where stated, else YOUI's table for its Claude models (an estimate), else unknown. The rate-limit state is kept as reported, or `null`. The Ollama/vLLM loop gives its reported token counts and YOUI's price-table cost. No new ledger: the page's usage figures are unchanged.
+- **Labels.** Every section of `report()` and of `/api/youspeak`, its older top-level fields and the row carry `reported` or `estimated`; `/api/youspeak`'s `trends` (averages over rows) are not labelled. Thinking and its ratio are `null` where not reported (the old 0 is gone), and no window is assumed.
+- **Cache stability.** The system prompt holds only the stable parts, among them how the mind tools are used, for either mode; date, git branch, model, the mode, thinking and effort, and in orchestrate mode the minds offered, go in a `[YOUI context]` block at the top of the stdin message. `cache:prompt_changed` fires when the system prompt's hash changes within one Claude Code conversation, naming the parts. The static parts are now kept per agent, Love home and tool list.
+- **Minds and tools.** Each mind call reports its usage and cost to the observer (`senseMind`), apart from the agent's turns; the row has the minds' calls, tokens and cost. Bridge and table tools are sensed in L3 as before.
+- **One rule module.** `youspeak-rule.mjs`; YOUI Web, the terminal, sovereign and the three unused harnesses import it. Sovereign keeps its June file-cache line through `youspeakRule({ fileCache: true })`. The ouroboros' diffs are of `youspeak-rule.mjs` now, so they reach every prompt built in code (this resolves Y6 for those), not the instances' `CLAUDE.md` copies (below).
+- **L1, no longer graded** (§4). The S–D letter is gone from the kernel, the row (schema 2; schema 1 rows are still read), `statusLine()`, the page, the terminal's `/youspeak`, exit line and daily note, and sovereign's report. The useful ratio stays, labelled as an estimate and shown with `~`. `filler_regression` reads the ratio: 3 of the last 5 measured blocks under 85% useful, the line the old C grade began at.
+- **After review** (2026-10-31, against `report_0de85559`; finding ids from the review):
+  - the fixtures' rate-limit values are synthetic and pinned by a test, in both files, and the docs and headers say so (Z1, Z4, Z5, Z14);
+  - L1 is no longer graded, as above (Z13);
+  - figures nobody reported are `null`: sovereign-Ollama thinking (Z6), cache misses on routes without cache diagnostics (Z9), terminal and sovereign budget windows no header stated (Z16), and token counts a `/v1` response left out (Z8);
+  - vLLM's stated `cached_tokens` are split out of its prompt, and the docs say what `prompt_tokens` holds where it does not state them (Z7);
+  - an Ollama/vLLM mind that fails, times out or is stopped is counted, in the session that called it, provided the call ends before that session's row is written (a call still running when the session is cut is counted nowhere); a Claude mind stopped after its result counts what it reported (Z10, Z18);
+  - every per-turn block states its mode, so direct takes back an earlier orchestrate hint; the fixed minds guide moved into the stable system prompt (Z2, Z20);
+  - the claims about the rule module are narrowed to prompts built in code, the instance copies are listed, and the "in most cases" doubt example is back (Z12, Z25, Z26);
+  - `/api/youspeak` drops `tokensSaved`, `grades` and `overallGrade`, and labels its older top-level fields (Z23); the Minds line shows input including cache (Z11);
+  - a route or model switch drops the stale context figure, and the row keeps the peak's own window (Z15); `cache:prompt_changed` is always an estimate (Z17); evolve describes the file-cache proposal instead of "No diff" (Z24); tests cover the model line, a model switch, the latest request's context, the rate-limit state and Ollama minds (Z21, Z22);
+  - a vLLM stream that carries an error mid-stream now fails the turn instead of returning its partial text as an answer.
+- **Not done in Y2:**
+  - Eleven `instances/*/CLAUDE.md` files keep their own three-line Markdown copy and a pointer to `YOUSPEAK.md`, which `youspeak-rule.mjs` and the ouroboros' diffs do not reach; `instances/asha/CLAUDE.md` points to the nuance primer instead.
+  - Tool errors are still not counted in YOUI.
+  - The `ollama` tool's own chat and bench calls are not metered (review Z19), and the `[YOUI context]` markers carry no nonce (Z3).
+- **Not checked live:** whether a resumed YOUI turn now reads the cached system prompt; whether a change of `--effort` alone still invalidates Claude's cached messages.
+
 ## 5. Boundaries
 
 - YOUSPEAK suggests and records; it authorises nothing and changes no setting.
@@ -100,7 +130,7 @@ An adversarial review of Y1 (2026-10-30, two skeptics per finding) found six mus
 | Slice | What | Needs |
 |---|---|---|
 | Y1 | Suggest only, the per-session untracked store, the bug fixes, the proposal-only ouroboros, the docs | this design agreed |
-| Y2 | Sensors on reported usage, evidential labels, the cache-stability signal, the volatile lines moved, minds and tools fed, one rule module | Y1, and the recorded live stream |
+| Y2 | Sensors on reported usage, evidential labels, the cache-stability signal, the volatile lines moved, minds and tools fed, one rule module (built, §4.1) | Y1, and the recorded live stream |
 
 Each slice is a draft PR. Tests use fakes, except the one recorded stream.
 

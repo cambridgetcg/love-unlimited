@@ -23,6 +23,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { execSync, spawn } from "child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import { resolve, relative } from "path";
+import { youspeakRule } from "./youspeak-rule.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -336,9 +337,7 @@ function getSystemPrompt() {
 
   return `You are an expert software engineer working in the terminal.
 
-# YOUSPEAK Protocol
-No filler. No preamble. No tool narration. Dense status (key:value not prose).
-Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
+${youspeakRule()}
 
 # Environment
 cwd: ${cwd} | git: ${gitBranch} | date: ${new Date().toISOString().split("T")[0]}

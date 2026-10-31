@@ -495,6 +495,8 @@ import vm from 'node:vm';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { installationGuide, GUIDE } from '__ADVISORY__';
+// The YOUSPEAK rule module is pure (text only), so the prompt builders get the real one.
+import * as youspeakRuleModule from '__YOUSPEAK_RULE__';
 const input = JSON.parse(process.argv[1]);
 const home = input.home, boot = path.join(home, 'boot');
 const runtime = input.runtime;
@@ -536,6 +538,7 @@ const imports = {
   } },
   './youi-runtime-policy.mjs': { resolveScopedPath: forbidden('file_scope') },
   './tools/lantern_suite/advisory.mjs': { installationGuide: () => installationGuide({ home }) },
+  './youspeak-rule.mjs': { ...youspeakRuleModule },
 };
 const main = new vm.SourceTextModule(code, { context, identifier: input.source });
 await main.link(specifier => {
@@ -556,7 +559,8 @@ assert.equal(config.model, 'fixture-model');
 assert.equal(config.effort, 'high');
 assert.equal(readPaths.length > 0, true);
 process.stdout.write(JSON.stringify({ prompt, constant: GUIDE, model: config.model, tools: TOOLS.map(t => t.name) }));
-'''.replace("__ADVISORY__", (TOOLS / "lantern_suite/advisory.mjs").as_uri())
+'''.replace("__ADVISORY__", (TOOLS / "lantern_suite/advisory.mjs").as_uri()).replace(
+    "__YOUSPEAK_RULE__", (ROOT / "youspeak-rule.mjs").as_uri())
 
 
 @pytest.mark.parametrize("runtime", ["youi", "sovereign"])

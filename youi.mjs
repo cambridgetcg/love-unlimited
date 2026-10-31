@@ -452,6 +452,25 @@ function runtimeManifest() {
       transport: "https",
       local_only: false,
     },
+    // Until the terminal moves onto the installed claude (docs/CLAUDE-CODE-LOGIN-USE.md).
+    claude_code_login: {
+      reads: "Claude Code's login from the macOS Keychain (service \"Claude Code-credentials\")",
+      refreshes_and_writes_back: true,
+      client_headers: "sends Claude Code 2.1.92's client headers, billing line and device id,"
+        + " so its requests present themselves as Claude Code 2.1.92",
+      until: "the terminal is moved onto the installed claude",
+      also_used_by: [
+        "sovereign.mjs",
+        "tools/truth_detector (YOUI Web feeds it when TRUTH_DETECTOR_ENABLED=1)",
+        "tools/ainp/nullify.py",
+        "raw-chat/server.mjs",
+        "subscription-harness.mjs",
+        "training/scripts/soul/oauth_client.py",
+        "ainp.mjs",
+        "docs/research/test-unlock.mjs, test-unlock2.mjs, test-429.mjs",
+      ],
+      inventory: "docs/CLAUDE-CODE-LOGIN-USE.md",
+    },
     data_boundary: {
       sent_to_provider: [
         "loaded soul and identity files",

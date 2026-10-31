@@ -1953,7 +1953,13 @@ function updatePrivacyUI(privacy) {
   // describes only the /classify and /plan diagnostics.
   const active = privacy.direct;
   const fallback = privacy.fallback?.localToCloud ? 'cloud fallback granted' : 'no local→cloud fallback';
-  element.textContent = `Compute: ${active?.route || 'unknown'} · ${active?.destination || 'no destination'} · ${fallback}`;
+  const compute = `Compute: ${active?.route || 'unknown'} · ${active?.destination || 'no destination'} · ${fallback}`;
+  const login = privacy.claudeCodeLogin;
+  if (!login) { element.textContent = compute; return; }
+  // Moving YOUI Web did not end the use of Claude Code's login elsewhere; say so under the route.
+  element.replaceChildren(
+    document.createTextNode(compute), document.createElement('br'),
+    document.createTextNode(`${login.stillUsedBy}. See ${login.inventory}.`));
 }
 
 function updateSettingsUI(data) {

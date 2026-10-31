@@ -18,7 +18,9 @@
 //   node sovereign.mjs --no-thinking "quick question"
 //   node sovereign.mjs --effort high "moderate task"
 //
-// Requires: macOS with Claude Code logged in (OAuth tokens in Keychain)
+// Requires: macOS with Claude Code logged in (OAuth tokens in Keychain).
+// Sovereign reads that login and never refreshes or rewrites it; it still
+// sends Claude Code 2.1.92's client headers (docs/CLAUDE-CODE-LOGIN-USE.md).
 // ─────────────────────────────────────────────────────────────────────
 
 import { execSync, spawnSync } from "child_process";
@@ -83,6 +85,7 @@ const config = {
 // ═════════════════════════════════════════════════════════════════════
 
 const args = process.argv.slice(2);
+let inspectRuntime = false;
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
     case "--model":           config.model = args[++i]; break;
@@ -110,6 +113,7 @@ for (let i = 0; i < args.length; i++) {
     case "--no-efficiency":   config.trackEfficiency = false; break;
     case "--boot-files":      config.bootFiles = args[++i].split(","); break;
     case "--context-files":   config.contextFiles = args[++i].split(","); break;
+    case "--inspect":         inspectRuntime = true; break;
     case "--help": case "-h":
       console.log(`
 sovereign.mjs — The Unchained Harness
@@ -154,6 +158,7 @@ Execution:
   --continue            Resume from saved state
   --fallback            Fall to cheaper model on 429 (your choice, not theirs)
   --verbose, -v         Show tool input details
+  --inspect             Print how sovereign uses Claude Code's login and exit
 `);
       process.exit(0);
     default:
@@ -164,7 +169,7 @@ Execution:
 }
 
 if (config.taskFile) config.task = readFileSync(config.taskFile, "utf-8").trim();
-if (!config.task && !config.continueMode) {
+if (!config.task && !config.continueMode && !inspectRuntime) {
   console.error("Error: provide a task or use --continue");
   process.exit(1);
 }
@@ -190,8 +195,6 @@ function print(msg = "") { console.log(msg); }
 // ═════════════════════════════════════════════════════════════════════
 
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
-const TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const API_URL = "https://api.anthropic.com/v1/messages";
 
 let cachedTokens = null;
@@ -215,67 +218,18 @@ function readKeychainTokens() {
   }
 }
 
-function writeKeychainTokens(tokens) {
-  try {
-    let data = {};
-    try {
-      const result = spawnSync("security",
-        ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
-        { encoding: "utf-8", timeout: 5000 });
-      if (result.status === 0) {
-        data = JSON.parse(result.stdout.trim());
-      } else {
-        const err = (result.stderr || "").trim();
-        if (!/could not be found|SecKeychainSearch/i.test(err)) {
-          log(`Keychain read-existing failed (will create new): ${err || `exit ${result.status}`}`);
-        }
-      }
-    } catch (e) {
-      // Honest: log why existing data couldn't be read before overwriting
-      log(`Keychain read-existing failed (will create new): ${e.message}`);
-    }
+// Sovereign only reads Claude Code's login. It used to refresh an expired
+// token and write the result back by deleting the Keychain entry and adding
+// it again; a failed add left Claude Code with no login at all. Refreshing
+// without writing back is no better: the refresh token rotates, so Claude
+// Code's stored one would stop working. So an expired token stops the run,
+// and Claude Code renews its own login.
+class SignInAgain extends Error {}
 
-    data.claudeAiOauth = tokens;
-    const json = JSON.stringify(data);
-
-    spawnSync("security", ["delete-generic-password", "-s", KEYCHAIN_SERVICE],
-      { encoding: "utf-8", timeout: 5000 });
-    // spawnSync with arg array — no shell, no interpolation, no injection
-    const writeResult = spawnSync("security",
-      ["add-generic-password", "-s", KEYCHAIN_SERVICE, "-a", "", "-w", json],
-      { encoding: "utf-8", timeout: 5000 });
-    if (writeResult.status !== 0) {
-      const err = (writeResult.stderr || "").trim();
-      throw new Error(`security add-generic-password failed: ${err || `exit ${writeResult.status}`}`);
-    }
-  } catch (e) {
-    log(`Keychain write failed: ${e.message}`);
-  }
-}
-
-async function refreshOAuthToken(rt) {
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token",
-      refresh_token: rt,
-      client_id: CLIENT_ID,
-      scope: "user:profile user:inference user:sessions:claude_code user:mcp_servers",
-    }),
-  });
-
-  if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status} ${await resp.text()}`);
-
-  const data = await resp.json();
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token || rt,
-    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
-    scopes: (data.scope || "").split(" "),
-    subscriptionType: null,
-    rateLimitTier: null,
-  };
+function signInAgain(why) {
+  return new SignInAgain(`${why} Sovereign does not refresh or rewrite Claude Code's login.`
+    + " Sign in again with the claude CLI: run `claude` once (it refreshes its own login,"
+    + " or asks you to /login), then run sovereign again.");
 }
 
 async function getAccessToken() {
@@ -289,17 +243,48 @@ async function getAccessToken() {
   }
 
   if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
-    print(`${S.yellow}Token expired, refreshing...${S.reset}`);
-    if (!tokens.refreshToken) throw new Error("Token expired, no refresh token. Run 'claude' and log in.");
-    const fresh = await refreshOAuthToken(tokens.refreshToken);
-    writeKeychainTokens(fresh);
-    cachedTokens = fresh;
-    return fresh.accessToken;
+    cachedTokens = null;
+    throw signInAgain("Claude Code's login has expired or expires within 5 minutes.");
   }
 
   cachedTokens = tokens;
   return tokens.accessToken;
 }
+
+// --inspect: what sovereign does with Claude Code's login, without reading it.
+function runtimeManifest() {
+  const provider = detectProvider(config.model);
+  return {
+    protocol: "sovereign.runtime/0.1",
+    surface: "sovereign",
+    model: config.model,
+    provider: { id: provider, execution: "remote", transport: "https", local_only: false },
+    claude_code_login: {
+      used_by_this_model: provider === "anthropic",
+      reads: "Claude Code's login from the macOS Keychain (service \"Claude Code-credentials\")",
+      refreshes_or_writes: false,
+      on_expiry: "stops and asks you to sign in again with the claude CLI; a running task saves its state first",
+      client_headers: "sends Claude Code 2.1.92's client headers, billing line and device and account ids,"
+        + " so its requests present themselves as Claude Code 2.1.92",
+      until: "sovereign is moved off Claude Code's login",
+      also_used_by: CLAUDE_CODE_LOGIN_ALSO_USED_BY,
+      inventory: "docs/CLAUDE-CODE-LOGIN-USE.md",
+    },
+  };
+}
+
+// The other files that still use Claude Code's login or its client headers
+// (docs/CLAUDE-CODE-LOGIN-USE.md has each one, with file:line).
+const CLAUDE_CODE_LOGIN_ALSO_USED_BY = [
+  "youi.mjs (the terminal, with youi-keychain.mjs)",
+  "tools/truth_detector (YOUI Web feeds it when TRUTH_DETECTOR_ENABLED=1)",
+  "tools/ainp/nullify.py",
+  "raw-chat/server.mjs",
+  "subscription-harness.mjs",
+  "training/scripts/soul/oauth_client.py",
+  "ainp.mjs",
+  "docs/research/test-unlock.mjs, test-unlock2.mjs, test-429.mjs",
+];
 
 // ═════════════════════════════════════════════════════════════════════
 // API — direct, unchained
@@ -662,20 +647,19 @@ async function callAPI(messages, systemPrompt) {
 
   const resp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
 
-  // 401 — refresh and retry
+  // 401 — read the Keychain again: if Claude Code has renewed its login since,
+  // retry once with that token; otherwise stop (getAccessToken says why).
   if (resp.status === 401) {
-    print(`${S.yellow}Got 401, refreshing token...${S.reset}`);
-    const tokens = readKeychainTokens();
-    if (tokens?.refreshToken) {
-      const fresh = await refreshOAuthToken(tokens.refreshToken);
-      writeKeychainTokens(fresh);
-      cachedTokens = fresh;
-      headers["Authorization"] = `Bearer ${fresh.accessToken}`;
-      const retry = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
-      if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
-      parseBudgetHeaders(retry.headers);
-      return { ...(await retry.json()), _model: useModel };
-    }
+    cachedTokens = null;
+    const current = await getAccessToken();
+    if (current === token) throw signInAgain("Anthropic refused Claude Code's login (401).");
+    print(`${S.yellow}Got 401; Claude Code has renewed its login since, retrying once...${S.reset}`);
+    headers["Authorization"] = `Bearer ${current}`;
+    const retry = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
+    if (retry.status === 401) throw signInAgain("Anthropic refused Claude Code's login (401).");
+    if (!retry.ok) throw new Error(`API error after reading the login again: ${retry.status}`);
+    parseBudgetHeaders(retry.headers);
+    return { ...(await retry.json()), _model: useModel };
   }
 
   // 429 — cost-weighted budget exhaustion
@@ -1106,6 +1090,10 @@ ${toolList.join(", ")}
 // ═════════════════════════════════════════════════════════════════════
 
 async function main() {
+  if (inspectRuntime) {
+    console.log(JSON.stringify(runtimeManifest(), null, 2));
+    return;
+  }
   const provider = detectProvider(config.model);
   
   // Only need OAuth for Anthropic models
@@ -1235,6 +1223,17 @@ async function main() {
         await new Promise(r => setTimeout(r, 30000));
         turnCount--;
         continue;
+      }
+      // An expired login mid-task: save state, as Ctrl+C does, and stop non-zero.
+      if (e instanceof SignInAgain) {
+        print(`${S.red}${e.message}${S.reset}`);
+        log(`Stopped: ${e.message}`);
+        turnCount--;
+        saveState({ messages, totalCost, turnCount, totalToolCalls, totalThinkingTokens, task: config.task });
+        const ended = ys.endSession({ reason: "sign-in-needed", model: config.model });
+        if (ended.error) print(`${S.dim}YOUSPEAK row not written (${ended.error})${S.reset}`);
+        print(`Resume with: node sovereign.mjs --continue`);
+        process.exit(1);
       }
       print(`${S.red}Error: ${e.message}${S.reset}`);
       log(`Error: ${e.message}`);

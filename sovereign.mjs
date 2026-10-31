@@ -1415,7 +1415,7 @@ async function main() {
       }
     }
 
-    // One row for this run in YOUSPEAK's store (not the tracked youspeak-history.json)
+    // One row for this run in YOUSPEAK's store (not the old youspeak-history.json, now a record in docs/history/)
     const ended = ys.endSession({ reason: "run-end", model: config.model });
     if (ended.written) {
       print(`\n${S.green}✓ YOUSPEAK row written to ${ys.historyPath}${S.reset}`);

@@ -20,7 +20,8 @@
 //
 // What it senses (docs/YOUSPEAK.md §2):
 //   USAGE       — Reported input, cache read, cache creation, output, thinking, cost per turn
-//   L1 OUTPUT   — English filler estimate (regex over chars/4)
+//   L1 OUTPUT   — English filler estimate (regex over chars/4), a useful
+//                 ratio and no grade (Y2: L1 is no longer graded)
 //   L2 THINKING — Thinking tokens, only where the provider reports them
 //   L3 ACTION   — Tool call counts and repeated reads
 //   L4 CONTEXT  — The latest request's input + cache (reported), or chars/4
@@ -60,8 +61,11 @@ import { dirname, join, resolve } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 
-// The schema of one history row. A row with another schema is reported and skipped.
-export const HISTORY_SCHEMA = 1;
+// The schema of the rows this kernel writes. Schema 2 (Y2) has no L1 grade;
+// a schema 1 row (Y1, with `outputGrade`) is still read. A row with any other
+// schema is reported and skipped.
+export const HISTORY_SCHEMA = 2;
+const READABLE_SCHEMAS = Object.freeze([1, 2]);
 // Routes a row may name.
 export const ROUTES = Object.freeze(["claude-code", "ollama", "vllm", "terminal-legacy", "sovereign"]);
 // Routes with no Claude effort setting and no Claude 5-hour window: YOUI's own
@@ -90,9 +94,13 @@ export const CONTEXT_EVICT_SHARE = 0.5;
 // One tolerance for "improving" or "regressing", shared with youspeak-evolve.mjs:
 // a change in the useful ratio within one percentage point is steady.
 export const TREND_TOLERANCE = 0.01;
-// L1 grades a text block only when it has at least this many estimated tokens
-// (chars/4, so 80 characters) and is not mostly non-ASCII.
+// L1 measures a text block ("graded" in the code: counted in the useful
+// ratio) only when it has at least this many estimated tokens (chars/4, so 80
+// characters) and is not mostly non-ASCII. It gives no letter grade.
 export const MIN_GRADED_TOKENS = 20;
+// filler_regression counts a measured block whose useful ratio is under this
+// line: the line the old C grade began at, so the signal fires where it did.
+export const FILLER_RATIO_FLOOR = 0.85;
 // The git-tracked file earlier versions wrote after every message. Read only, as legacy.
 export const LEGACY_HISTORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "youspeak-history.json");
 
@@ -178,11 +186,11 @@ export function detectFiller(text) {
 }
 
 /**
- * Whether L1 grades this text block: at least MIN_GRADED_TOKENS estimated
+ * Whether L1 measures this text block: at least MIN_GRADED_TOKENS estimated
  * tokens, and at least half of its non-space characters ASCII. A short reply,
- * or one mostly in Cantonese or another script, gets grade null: the English
- * patterns cannot judge it, and it is left out of the useful ratio and of the
- * filler_regression signal.
+ * or one mostly in Cantonese or another script, gets useful ratio null: the
+ * English patterns cannot judge it, and it is left out of the session's ratio
+ * and of the filler_regression signal. (The name is Y1's; nothing is graded.)
  */
 export function isGradable(text) {
   const value = typeof text === "string" ? text : "";
@@ -197,22 +205,14 @@ export function isGradable(text) {
   return visible > 0 && nonAscii * 2 <= visible;
 }
 
-function gradeRatio(ratio) {
-  if (typeof ratio !== "number" || !Number.isFinite(ratio)) return null;
-  if (ratio >= 0.98) return "S";  // Sovereign
-  if (ratio >= 0.95) return "A";
-  if (ratio >= 0.85) return "B";
-  if (ratio >= 0.70) return "C";
-  return "D";
-}
-
 // ═════════════════════════════════════════════════════════════════════
 // STORE — one JSON line per session, appended; never rewritten
 // ═════════════════════════════════════════════════════════════════════
 
 // The fields a row may carry, by type. A field may be absent or null; a field
 // of the wrong type makes the row unreadable (it is reported and skipped), so
-// trends and the ouroboros never meet one.
+// trends and the ouroboros never meet one. `outputGrade` is checked only
+// because schema 1 rows carry it; nothing reads it.
 const ROW_STRING_FIELDS = ["route", "model", "agent", "startedAt", "endedAt", "closedAt", "endReason", "outputGrade", "budgetBurned",
   "rateLimitStatus"];
 const ROW_NUMBER_FIELDS = ["elapsed", "turns", "usefulRatio", "outputTokensEstimate", "fillerTokensEstimate", "textBlocks",
@@ -228,7 +228,7 @@ const ROW_OBJECT_FIELDS = ["routes", "models", "exchanges", "evidence"];
 const isPlainObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 function isRowShape(row) {
-  return isPlainObject(row) && row.schema === HISTORY_SCHEMA && typeof row.session === "string" && row.session.length > 0;
+  return isPlainObject(row) && READABLE_SCHEMAS.includes(row.schema) && typeof row.session === "string" && row.session.length > 0;
 }
 
 function hasValidFields(row) {
@@ -290,13 +290,13 @@ export function readHistory(path = defaultHistoryPath()) {
     }
     result.skipped += 1;
     if (isRowShape(row)) mistyped += 1;
-    else if (isPlainObject(row) && row.schema !== undefined && row.schema !== HISTORY_SCHEMA) otherSchema += 1;
+    else if (isPlainObject(row) && row.schema !== undefined && !READABLE_SCHEMAS.includes(row.schema)) otherSchema += 1;
     if (partialTail && index === lines.length - 1) tailBroken = true;
   });
   if (result.skipped > 0) {
     const parts = [`${result.skipped} of ${result.lines} lines in the YOUSPEAK store could not be read and were skipped`];
     if (tailBroken) parts.push("the last line is incomplete (a write was cut short)");
-    if (otherSchema > 0) parts.push(`${otherSchema} have a schema other than ${HISTORY_SCHEMA}`);
+    if (otherSchema > 0) parts.push(`${otherSchema} have a schema other than ${READABLE_SCHEMAS.join(" or ")}`);
     if (mistyped > 0) parts.push(`${mistyped} have a field of the wrong type`);
     result.warnings.push(`${parts.join("; ")}. They are left in place; nothing was reset.`);
   }
@@ -553,14 +553,15 @@ export function createKernel(opts = {}) {
     },
 
     // L1 Output. totalTokens counts every block; the useful ratio uses only
-    // graded blocks (gradedTokens, and the filler found in them). All estimates.
+    // measured ("graded") blocks (gradedTokens, and the filler found in them).
+    // All estimates, and no letter grade (Y2).
     output: {
       totalTokens: 0,
       gradedTokens: 0,
       fillerTokens: 0,
       textBlocks: 0,
       gradedBlocks: 0,
-      grades: [],            // one per block; null for a block L1 does not grade
+      ratios: [],            // one useful ratio per block; null for a block L1 does not measure
     },
 
     // L2 Thinking: only turns whose provider reported thinking tokens.
@@ -585,6 +586,10 @@ export function createKernel(opts = {}) {
       evidence: null,
       peakTokens: null,
       peakEvidence: null,
+      // The window that applied when the peak was reached, so the row never
+      // sets an earlier model's peak against a later model's window.
+      peakWindow: null,
+      peakWindowEvidence: null,
       window: null,
       windowEvidence: null,
       // chars/4 over the conversation YOUI holds (senseContext), and what it counted.
@@ -595,7 +600,9 @@ export function createKernel(opts = {}) {
     },
 
     // CACHE — the cached system prompt of the Claude Code conversation (senseSystemPrompt),
-    // and the cache misses Claude reported (senseUsage).
+    // and the cache misses Claude reported (senseUsage). misses and
+    // missedTokens stay null until a route that reports cache diagnostics
+    // (Claude Code) is sensed: elsewhere nobody reported a miss, or its absence.
     cache: {
       conversation: null,
       hash: null,
@@ -603,8 +610,8 @@ export function createKernel(opts = {}) {
       changes: 0,
       lastChange: null,      // { parts: [names] }
       changedThisTurn: false,
-      misses: 0,
-      missedTokens: 0,
+      misses: null,
+      missedTokens: null,
       lastMiss: null,        // { type, missedTokens }, as reported
       missThisTurn: null,
     },
@@ -644,9 +651,21 @@ export function createKernel(opts = {}) {
   const currentModel = () => session.lastModel || session.model;
 
   // ─── ROUTE / EXCHANGE: what the row says about the session ─────
-  // Called as each message starts: the cache signal of the last one is done with.
+  // Called as each message starts: the cache signal of the last one is done
+  // with. A message on another route or model drops the current context
+  // figure (it described the other one's conversation) until this one reports
+  // or estimates its own; the peak is kept, with the window it was against.
   function noteRoute(route, model) {
     const r = ROUTES.includes(route) ? route : null;
+    const m = typeof model === "string" && model ? model : null;
+    const switched = (r && session.lastRoute && r !== session.lastRoute) || (m && session.lastModel && m !== session.lastModel);
+    if (switched) {
+      session.context.tokens = null;
+      session.context.evidence = null;
+      const known = knownContextWindow(m || currentModel());
+      session.context.window = known;
+      session.context.windowEvidence = known === null ? null : EVIDENCE.estimated;
+    }
     if (r) {
       session.routes[r] = (session.routes[r] || 0) + 1;
       session.lastRoute = r;
@@ -679,7 +698,10 @@ export function createKernel(opts = {}) {
    * turn added. contextTokens is the latest request's input + cache read +
    * cache creation; contextWindow the model's window, when the provider stated
    * it (else YOUI's own table is used, as an estimate). cacheMiss is the
-   * reported reason a request missed the cache ({ type, missedTokens }).
+   * reported reason a request missed the cache ({ type, missedTokens });
+   * cacheDiagnostics says the provider reports cache misses at all (Claude
+   * Code's message_start `diagnostics`), so a turn without one counts as a
+   * reported 0; on any other route the miss count stays null.
    * Each figure takes the label given with it (`tokensEvidence`,
    * `costEvidence`, `contextEvidence`, `contextWindowEvidence`).
    */
@@ -698,6 +720,7 @@ export function createKernel(opts = {}) {
     contextWindow = null,
     contextWindowEvidence = EVIDENCE.reported,
     cacheMiss = null,
+    cacheDiagnostics = false,
   } = {}) {
     const usage = session.usage;
     usage.turns++;
@@ -707,13 +730,18 @@ export function createKernel(opts = {}) {
     addTo(usage.output, output, tokensEvidence);
     addTo(usage.costUsd, costUsd, costEvidence);
     if (isNumber(thinking)) recordThinking(thinking, isNumber(output) ? output : null, tokensEvidence);
-    if (isNumber(contextTokens)) setContext(contextTokens, contextEvidence);
+    // The window first, so a new peak is recorded with the window it was against.
     if (isNumber(contextWindow) && contextWindow > 0) setWindow(contextWindow, contextWindowEvidence);
     else setWindow(knownContextWindow(model || currentModel()), EVIDENCE.estimated);
+    if (isNumber(contextTokens)) setContext(contextTokens, contextEvidence);
     const miss = cacheMiss && typeof cacheMiss.type === "string"
       ? { type: cacheMiss.type, missedTokens: isNumber(cacheMiss.missedTokens) ? cacheMiss.missedTokens : null }
       : null;
     session.cache.missThisTurn = miss;
+    if (cacheDiagnostics === true || miss) {
+      session.cache.misses ??= 0;
+      session.cache.missedTokens ??= 0;
+    }
     if (miss) {
       session.cache.misses++;
       session.cache.missedTokens += miss.missedTokens || 0;
@@ -741,15 +769,15 @@ export function createKernel(opts = {}) {
   }
 
   // ─── L1: SENSE OUTPUT ──────────────────────────────────
-  // A block L1 does not grade (isGradable) counts as output, with grade null;
-  // it adds nothing to the useful ratio and nothing to filler_regression.
+  // A block L1 does not measure (isGradable) counts as output, with useful
+  // ratio null; it adds nothing to the ratio and nothing to filler_regression.
+  // There is no letter grade (Y2, design §4): the ratio is an estimate.
   function senseOutput(text) {
     if (!text?.trim()) return null;
     const filler = detectFiller(text);
     const graded = isGradable(text);
     const useful = !graded ? null
       : filler.totalTokens > 0 ? Math.max(0, (filler.totalTokens - filler.tokens) / filler.totalTokens) : 1.0;
-    const grade = graded ? gradeRatio(useful) : null;
 
     session.output.totalTokens += filler.totalTokens;
     session.output.textBlocks++;
@@ -758,7 +786,7 @@ export function createKernel(opts = {}) {
       session.output.fillerTokens += filler.tokens;
       session.output.gradedBlocks++;
     }
-    session.output.grades.push(grade);
+    session.output.ratios.push(useful);
     touch();
 
     return {
@@ -766,7 +794,6 @@ export function createKernel(opts = {}) {
       fillerTokens: graded ? filler.tokens : 0,
       totalTokens: filler.totalTokens,
       usefulRatio: graded ? Math.round(useful * 100) / 100 : null,
-      grade,
       graded,
       patterns: graded ? filler.patterns.slice(0, 5) : [],
       weight: graded ? filler.weight : 0,
@@ -831,6 +858,8 @@ export function createKernel(opts = {}) {
     if (context.peakTokens === null || tokens >= context.peakTokens) {
       context.peakTokens = tokens;
       context.peakEvidence = evidence;
+      context.peakWindow = context.window;
+      context.peakWindowEvidence = context.windowEvidence;
     }
   }
 
@@ -873,8 +902,8 @@ export function createKernel(opts = {}) {
     }
 
     session.context.estimatedTokens = est;
-    setContext(est, EVIDENCE.estimated);
     setWindow(knownContextWindow(currentModel()), EVIDENCE.estimated);
+    setContext(est, EVIDENCE.estimated);
     session.context.oldestToolResultAge = oldestToolResult >= 0 ? messages.length - oldestToolResult : 0;
     touch();
 
@@ -950,8 +979,12 @@ export function createKernel(opts = {}) {
   }
 
   // ─── L5: SENSE SYSTEM ─────────────────────────────────
-  // A window not reported stays null, never 0.
+  // A window not reported stays null, never 0. The terminal and sovereign
+  // start each window at utilization 0 with status "unknown" until a
+  // rate-limit header arrives (and on their Ollama route none does): such a
+  // window was never reported, so it counts as null too.
   function utilizationOf(window) {
+    if (window && typeof window === "object" && window.status === "unknown") return null;
     const value = window && typeof window === "object" ? window.utilization : window;
     return isNumber(value) ? value : null;
   }
@@ -961,14 +994,14 @@ export function createKernel(opts = {}) {
     if (budget) {
       const fiveHour = utilizationOf(budget.fiveHour);
       const sevenDay = utilizationOf(budget.sevenDay);
-      if (!session.system.budgetAtStart && (fiveHour !== null || sevenDay !== null)) {
-        session.system.budgetAtStart = { fiveHour, sevenDay };
+      if (fiveHour !== null || sevenDay !== null) {
+        if (!session.system.budgetAtStart) session.system.budgetAtStart = { fiveHour, sevenDay };
+        session.system.budgetNow = {
+          fiveHour,
+          sevenDay,
+          isOverage: budget.isUsingOverage === true,
+        };
       }
-      session.system.budgetNow = {
-        fiveHour,
-        sevenDay,
-        isOverage: budget.isUsingOverage === true,
-      };
     }
     touch();
   }
@@ -1064,8 +1097,11 @@ export function createKernel(opts = {}) {
         parts: session.cache.lastChange?.parts || [],
         reason: `The system prompt changed between turns of this conversation (${names}), so the cache was rewritten`
           + (miss ? `; Claude reported a cache miss (${miss.type}${isNumber(miss.missedTokens) ? `, ${miss.missedTokens} tokens` : ""})` : ""),
-        // The change is YOUI's own comparison; the miss, when there is one, is Claude's.
-        evidence: miss ? EVIDENCE.reported : EVIDENCE.estimated,
+        // The change is YOUI's own comparison of system-prompt hashes, so the
+        // signal is an estimate even when Claude reported a miss that turn:
+        // the miss can have another cause (the recorded --resume missed with
+        // messages_changed and an identical system prompt).
+        evidence: EVIDENCE.estimated,
         suggestion: `Nothing was changed. What changed (${names}) is part of the cached system prompt; changing it mid-conversation`
           + ` rewrites the cache on the next turn. You could change it less often, or ${r.fresh} when you do.` });
     }
@@ -1088,14 +1124,14 @@ export function createKernel(opts = {}) {
         suggestion: `${who} could stop and re-check the approach; you could restate the goal.` });
     }
 
-    // ── Output filler trend (English-only estimate; graded blocks only) ──
-    const graded = session.output.grades.filter(Boolean);
-    if (graded.length >= 5) {
-      const recent = graded.slice(-5);
-      const badCount = recent.filter(g => g === "C" || g === "D").length;
+    // ── Output filler (English-only estimate; measured blocks only, by their useful ratio) ──
+    const measured = session.output.ratios.filter(isNumber);
+    if (measured.length >= 5) {
+      const recent = measured.slice(-5);
+      const badCount = recent.filter(ratio => ratio < FILLER_RATIO_FLOOR).length;
       if (badCount >= 3) {
         signals.push({ type: "output", action: "filler_regression",
-          reason: `${badCount}/5 recent graded text blocks grade C or D (English-only estimate)`,
+          reason: `${badCount}/5 recent measured text blocks under ${Math.round(FILLER_RATIO_FLOOR * 100)}% useful (English-only estimate)`,
           evidence: EVIDENCE.estimated,
           suggestion: `${who} could drop preamble and narration and say what matters.` });
       }
@@ -1143,14 +1179,12 @@ export function createKernel(opts = {}) {
     const elapsed = session.startedAt === null ? 0 : session.lastActivityAt - session.startedAt;
     const elapsedMin = +(elapsed / 60000).toFixed(1);
 
-    // L1 Output: no graded text, no grade.
+    // L1 Output: an estimate, and no letter grade; no measured text, no ratio.
     const usefulRatio = session.output.gradedTokens > 0
       ? Math.max(0, (session.output.gradedTokens - session.output.fillerTokens) / session.output.gradedTokens)
       : null;
-    const overallGrade = gradeRatio(usefulRatio);
     const output = {
       usefulRatio: usefulRatio === null ? null : Math.round(usefulRatio * 100) / 100,
-      grade: overallGrade,
       totalTokens: session.output.totalTokens,
       gradedTokens: session.output.gradedTokens,
       fillerTokens: session.output.fillerTokens,
@@ -1185,6 +1219,7 @@ export function createKernel(opts = {}) {
     const context = {
       tokens: c.tokens,
       peakTokens: c.peakTokens,
+      peakWindow: c.peakWindow,
       window: c.window,
       windowUtilization: c.window && isNumber(c.tokens) ? +(c.tokens / c.window).toFixed(4) : null,
       estimatedTokens: c.estimatedTokens,
@@ -1266,7 +1301,6 @@ export function createKernel(opts = {}) {
       // L1 Output (all estimates)
       output: {
         ...output,
-        gradeDistribution: countGrades(session.output.grades),
         evidence: allLabelled(output, E),
       },
 
@@ -1294,6 +1328,7 @@ export function createKernel(opts = {}) {
         evidence: {
           tokens: c.evidence,
           peakTokens: c.peakEvidence,
+          peakWindow: c.peakWindowEvidence,
           window: c.windowEvidence,
           windowUtilization: labelOf(context.windowUtilization, weakerEvidence(c.evidence, c.windowEvidence)),
           estimatedTokens: labelOf(c.estimatedTokens, E),
@@ -1308,8 +1343,8 @@ export function createKernel(opts = {}) {
         evidence: {
           promptChanges: E,
           lastChange: labelOf(cache.lastChange, E),
-          misses: EVIDENCE.reported,
-          missedTokens: EVIDENCE.reported,
+          misses: labelOf(cache.misses, EVIDENCE.reported),
+          missedTokens: labelOf(cache.missedTokens, EVIDENCE.reported),
           lastMiss: labelOf(cache.lastMiss, EVIDENCE.reported),
         },
       },
@@ -1345,12 +1380,6 @@ export function createKernel(opts = {}) {
     };
   }
 
-  function countGrades(arr) {
-    const d = {};
-    arr.forEach(g => { if (g) d[g] = (d[g] || 0) + 1; });
-    return d;
-  }
-
   function hasActivity() {
     return session.system.turns > 0 || session.output.textBlocks > 0
       || session.action.toolCalls > 0 || session.exchanges.ok + session.exchanges.failed > 0;
@@ -1377,7 +1406,6 @@ export function createKernel(opts = {}) {
     const figures = {
       elapsed: r.elapsed,
       turns: r.turns,
-      outputGrade: r.output.grade,
       usefulRatio: r.output.usefulRatio,
       outputTokensEstimate: r.output.totalTokens,
       fillerTokensEstimate: r.output.fillerTokens,
@@ -1389,7 +1417,8 @@ export function createKernel(opts = {}) {
       redundantReads: r.action.redundantReads,
       toolErrors: r.action.errors,
       contextPeakTokens: r.context.peakTokens,
-      contextWindow: r.context.window,
+      // The window that applied at the peak, not the latest model's.
+      contextWindow: r.context.peakWindow,
       usageTurns: r.usage.turns,
       inputTokens: r.usage.inputTokens,
       cacheReadTokens: r.usage.cacheReadTokens,
@@ -1415,7 +1444,6 @@ export function createKernel(opts = {}) {
     const labels = {
       elapsed: E,
       turns: E,
-      outputGrade: E,
       usefulRatio: E,
       outputTokensEstimate: E,
       fillerTokensEstimate: E,
@@ -1427,7 +1455,7 @@ export function createKernel(opts = {}) {
       redundantReads: E,
       toolErrors: E,
       contextPeakTokens: r.context.evidence.peakTokens,
-      contextWindow: r.context.evidence.window,
+      contextWindow: r.context.evidence.peakWindow,
       usageTurns: E,
       inputTokens: r.usage.evidence.inputTokens,
       cacheReadTokens: r.usage.evidence.cacheReadTokens,
@@ -1435,7 +1463,7 @@ export function createKernel(opts = {}) {
       outputTokens: r.usage.evidence.outputTokens,
       costUsd: r.usage.evidence.costUsd,
       promptChanges: E,
-      cacheMisses: EVIDENCE.reported,
+      cacheMisses: r.cache.evidence.misses,
       mindCalls: E,
       mindFailedCalls: E,
       mindInputTokens: r.minds.evidence.inputTokens,
@@ -1528,10 +1556,10 @@ export function createKernel(opts = {}) {
   }
 
   // ─── COMPACT STATUS LINE ───────────────────────────────
-  // "~" marks an estimate; a figure with no mark was reported. "—" is no figure.
+  // "~" marks an estimate; a figure with no mark was reported. "—" is no
+  // figure. L1 shows its useful ratio, an estimate, and no grade.
   function statusLine() {
     const r = report();
-    const g = r.output.grade ?? "—";
     const ur = r.output.usefulRatio === null ? "—" : `${Math.round(r.output.usefulRatio * 100)}%~`;
     const tr = r.thinking.avgRatio === null ? "—" : `${r.thinking.avgRatio}x`;
     const tc = r.action.totalCalls;
@@ -1540,7 +1568,7 @@ export function createKernel(opts = {}) {
       : `${Math.round(r.context.tokens / 1000)}k${r.context.evidence.tokens === EVIDENCE.estimated ? "~" : ""}`;
     const cost = r.usage.costUsd === null ? "" : ` $${r.usage.costUsd.toFixed(4)}${r.usage.evidence.costUsd === EVIDENCE.estimated ? "~" : ""}`;
     const sig = r.signals.length;
-    return `YS:${g}(${ur}) think:${tr} tools:${tc}${rr > 0 ? ` dup:${rr}` : ""} ctx:${ctx}${cost}${sig > 0 ? ` ⚡${sig}` : ""}`;
+    return `YS:${ur} think:${tr} tools:${tc}${rr > 0 ? ` dup:${rr}` : ""} ctx:${ctx}${cost}${sig > 0 ? ` ⚡${sig}` : ""}`;
   }
 
   // ─── PUBLIC API ────────────────────────────────────────
@@ -1631,7 +1659,7 @@ Import:
 
 What it senses (each figure labelled reported or estimated; see docs/YOUSPEAK.md):
   USAGE       — Input, cache read and creation, output, thinking, cost, as the provider reports them
-  L1 OUTPUT   — English filler estimate, useful ratio (blocks of 20+ tokens, mostly ASCII)
+  L1 OUTPUT   — English filler estimate, useful ratio (blocks of 20+ tokens, mostly ASCII); no grade
   L2 THINKING — Thinking tokens, only where reported
   L3 ACTION   — Tool calls, repeated reads
   L4 CONTEXT  — The latest request's input + cache (reported) or chars/4, against the model's window where known

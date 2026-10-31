@@ -39,8 +39,10 @@ const S = {
 };
 
 const REPO_DIR = dirname(fileURLToPath(import.meta.url));
-// The rule the system-prompt proposals are drawn against: the one shared
-// module YOUI Web, the terminal and sovereign all take their rule from (Y2).
+// The rule the system-prompt proposals are drawn against: the one module
+// every prompt built in code takes its rule from (Y2): YOUI Web, the terminal,
+// sovereign and the three unused harnesses. The eleven instances/*/CLAUDE.md
+// copies are separate Markdown, which these diffs do not reach.
 const RULE_FILE = "youspeak-rule.mjs";
 const RULE_PATH = join(REPO_DIR, RULE_FILE);
 // Where the rule's text starts in that file, and where it ends.
@@ -90,9 +92,6 @@ function reflect() {
     console.log(`  Avg tool errors: ${avg("toolErrors").toFixed(1)}`);
     console.log(`  Avg signals:     ${avg("signalCount").toFixed(1)}/session`);
 
-    const grades = {};
-    for (const s of measured) grades[s.outputGrade || "?"] = (grades[s.outputGrade || "?"] || 0) + 1;
-    console.log(`  Grade dist:      ${Object.entries(grades).map(([g, c]) => `${g}:${c}`).join("  ")}`);
     const routes = {};
     for (const s of sessions) routes[s.route || "?"] = (routes[s.route || "?"] || 0) + 1;
     console.log(`  Routes:          ${Object.entries(routes).map(([r, c]) => `${r}:${c}`).join("  ")}`);
@@ -266,9 +265,9 @@ function distill() {
 // ═════════════════════════════════════════════════════════════════════
 
 // What each insight proposes. `system_prompt` proposals become a diff of the
-// rule in youspeak-rule.mjs (YOUSPEAK_RULE), which every surface's prompt
-// carries; `note` proposals are described in full and need a code change
-// someone writes and reviews on its own.
+// rule in youspeak-rule.mjs (YOUSPEAK_RULE), which every prompt built in code
+// carries (not the instances' CLAUDE.md copies); `note` proposals are
+// described in full and need a code change someone writes and reviews on its own.
 function proposalFor(insight) {
   switch (insight.type) {
     case "filler_high":
@@ -329,7 +328,8 @@ function proposalFor(insight) {
 // Text inserted into a template literal is escaped as it would have to be written.
 const templateSafe = text => text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
 
-// The source with the proposal applied, in memory only, or { skip } with why not.
+// The source with the proposal applied, in memory only, or { skip } with why
+// not, or { describe } when the change it needs is not a plain diff of the rule.
 function proposedSource(source, proposal) {
   const opening = source.indexOf(RULE_START);
   if (opening === -1) return { skip: `no YOUSPEAK_RULE in ${RULE_FILE}` };
@@ -340,8 +340,16 @@ function proposedSource(source, proposal) {
   if (proposal.patch) {
     const text = templateSafe(proposal.patch);
     if (block.includes(text.trim())) return { skip: `already in the rule in ${RULE_FILE}` };
-    // Sovereign's file-cache line lives in the module outside the shared rule; it is not proposed again.
-    if (source.includes(text.trim())) return { skip: `already in ${RULE_FILE}, outside the shared rule (a line only sovereign adds)` };
+    // Sovereign's file-cache line lives in the module outside the shared rule:
+    // only sovereign's prompt has it. Adding it to the rule would give
+    // sovereign the line twice, so the change is described, not diffed.
+    if (source.includes(text.trim())) {
+      return {
+        describe: `Only sovereign's prompt has this line (YOUSPEAK_FILE_CACHE_LINE in ${RULE_FILE}, added by youspeakRule({ fileCache: true })); `
+          + "YOUI Web and the terminal do not. To give it to every prompt built in code, move that line into YOUSPEAK_RULE "
+          + "and drop sovereign's fileCache option, in one reviewed change.",
+      };
+    }
     // The patch begins with a newline, so it starts a line of its own.
     return { after: source.slice(0, end) + text + source.slice(end) };
   }
@@ -401,6 +409,9 @@ function transmute() {
       const edit = source ? proposedSource(source, proposal) : { skip: `${RULE_FILE} not found` };
       if (edit.skip) {
         console.log(`    ${S.dim}No diff: ${edit.skip}.${S.reset}`);
+      } else if (edit.describe) {
+        console.log(`    ${S.cyan}Proposal (description only):${S.reset} ${edit.describe}`);
+        proposals.push({ ...proposal, insight: insight.type, severity: insight.severity, kind: "description" });
       } else {
         console.log(`    ${S.dim}Proposed diff (full text; not applied):${S.reset}`);
         console.log(unifiedDiff(RULE_FILE, source, edit.after));
@@ -418,6 +429,9 @@ function transmute() {
   console.log(`${S.dim}${diffs} proposed diff(s) and ${described} described proposal(s). Nothing was written: to adopt one, edit the file by hand, review it and commit it.${S.reset}`);
   if (diffs > 1) {
     console.log(`${S.dim}Each diff is drawn against the unmodified ${RULE_FILE}, so after one is applied the others no longer apply as printed: run transmute again for fresh diffs.${S.reset}`);
+  }
+  if (diffs > 0) {
+    console.log(`${S.dim}A diff of ${RULE_FILE} reaches every prompt built in code; the eleven instances/*/CLAUDE.md copies of the rule are separate text that it does not change.${S.reset}`);
   }
   return proposals;
 }
@@ -447,11 +461,11 @@ function showHistory() {
   console.log(`\n${S.bold}${S.cyan}═══ YOUSPEAK History ═══${S.reset}\n`);
   console.log(`${S.bold}Sessions in the store: ${store.rows.length}${S.reset}`);
   for (const s of store.rows.slice(-10)) {
-    const grade = s.outputGrade ? ` ${S.bold}${s.outputGrade}${S.reset}` : " —";
-    const useful = typeof s.usefulRatio === "number" ? ` ${Math.round(s.usefulRatio * 100)}%` : "";
+    // The useful ratio is an estimate ("~"); a schema 1 row's grade is not shown (L1 is no longer graded).
+    const useful = typeof s.usefulRatio === "number" ? ` useful ~${Math.round(s.usefulRatio * 100)}%` : " useful —";
     const rl = s.rateLimitHits ? ` ${S.yellow}429×${s.rateLimitHits}${S.reset}` : "";
     const sig = s.signalCount > 0 ? ` ⚡${s.signalCount}` : "";
-    console.log(`  ${S.dim}${day(s)}${S.reset} ${s.route || "?"} ${s.model || "?"}${grade} ${s.turns}t ${s.toolCalls}tc${useful}${rl}${sig}`);
+    console.log(`  ${S.dim}${day(s)}${S.reset} ${s.route || "?"} ${s.model || "?"} ${s.turns}t ${s.toolCalls}tc${useful}${rl}${sig}`);
   }
 
   const legacy = readLegacyHistory();

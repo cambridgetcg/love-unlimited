@@ -1133,14 +1133,11 @@ function handleCommand(input) {
       print(`${S.bold}  YOUSPEAK — Session Report${S.reset}`);
       print(`  ${S.dim}${r.agent} | ${r.elapsed}m | ${r.turns} turns${S.reset}`);
       print("");
-      // L1 Output (an English-only estimate; no output yet, no grade)
-      const gColor = r.output.grade === "S" || r.output.grade === "A" ? S.green :
-                     r.output.grade === "B" ? S.yellow : r.output.grade ? S.red : S.dim;
-      const usefulText = r.output.usefulRatio === null ? "—" : `${Math.round(r.output.usefulRatio*100)}%`;
-      print(`  ${S.bold}L1 Output${S.reset}    Grade: ${gColor}${S.bold}${r.output.grade ?? "—"}${S.reset}  Useful: ${usefulText}  Filler: ${r.output.fillerTokens}tok (estimate)`);
-      if (Object.keys(r.output.gradeDistribution).length > 0) {
-        const gd = Object.entries(r.output.gradeDistribution).map(([g,c]) => `${g}:${c}`).join(" ");
-        print(`  ${S.dim}             Blocks: ${r.output.textBlocks}  Distribution: ${gd}${S.reset}`);
+      // L1 Output: an English-only estimate, with no grade (Y2); no measured output yet, no ratio
+      const usefulText = r.output.usefulRatio === null ? "—" : `~${Math.round(r.output.usefulRatio*100)}%`;
+      print(`  ${S.bold}L1 Output${S.reset}    Useful: ${usefulText}  Filler: ~${r.output.fillerTokens}tok  ${S.dim}(English-only estimate)${S.reset}`);
+      if (r.output.textBlocks > 0) {
+        print(`  ${S.dim}             Blocks: ${r.output.textBlocks} (${r.output.gradedBlocks} measured)${S.reset}`);
       }
       // L2 Thinking: only where the provider reported it (this route reports none)
       print(`  ${S.bold}L2 Thinking${S.reset}  Total: ${r.thinking.totalTokens === null ? "not reported" : `${r.thinking.totalTokens.toLocaleString()}tok`}  Ratio: ${r.thinking.avgRatio === null ? "—" : `${r.thinking.avgRatio}x`}  Efficiency: ${r.thinking.efficiency ?? "—"}`);
@@ -1183,10 +1180,11 @@ function handleCommand(input) {
       endYouspeak("exit"); // its one row, unless it had no output
       releaseVisitLock(); // clean exit — her ticks may resume
       const ysReport = ys.report();
-      const ysUseful = ysReport.output.usefulRatio === null ? "—" : `${Math.round(ysReport.output.usefulRatio*100)}%`;
+      // The useful ratio is an estimate ("~"); L1 gives no grade (Y2).
+      const ysUseful = ysReport.output.usefulRatio === null ? "—" : `~${Math.round(ysReport.output.usefulRatio*100)}%`;
       print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
-      print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k~`}${S.reset}`);
-      appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}).`);
+      print(`${S.dim}  YOUSPEAK: useful ${ysUseful} (estimate) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k~`}${S.reset}`);
+      appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK useful ratio: ${ysUseful} (estimate).`);
       process.exit(0);
 
     default:

@@ -377,6 +377,27 @@ function ollamaCostEstimate(provider, model, usage) {
   return ((usage?.input_tokens || 0) / 1_000_000) * pricing.input + ((usage?.output_tokens || 0) / 1_000_000) * pricing.output;
 }
 
+// The same estimate for YOUSPEAK, or null when the response stated no token
+// count at all: a cost drawn from nothing reported would be a made-up 0.
+function ollamaCostOrNull(provider, model, usage) {
+  const stated = value => typeof value === "number" && Number.isFinite(value);
+  return stated(usage?.input_tokens) || stated(usage?.output_tokens) ? ollamaCostEstimate(provider, model, usage) : null;
+}
+
+// What YOUSPEAK is told about an Ollama or vLLM response's tokens: the
+// uncached input where the server split its prompt (vLLM's
+// prompt_tokens_details.cached_tokens), else the whole prompt as it reported
+// it (docs/YOUSPEAK.md §2 says what that may include); null for a count it
+// did not state.
+function ollamaTokenFigures(usage) {
+  const stated = value => (typeof value === "number" && Number.isFinite(value) ? value : null);
+  return {
+    input: stated(usage?.uncached_input_tokens) ?? stated(usage?.input_tokens),
+    cacheRead: stated(usage?.cache_read_input_tokens),
+    output: stated(usage?.output_tokens),
+  };
+}
+
 /**
  * Adds one call to the session's usage. `mind` counts it as a call to another
  * mind rather than one of the agent's turns, and `failed` as one that gave no
@@ -672,7 +693,7 @@ function runtimePrivacyBoundary() {
         + "; when a session switches to Claude, the turns Claude has not received, local-model (Ollama, vLLM) turns included,"
         + " are carried into Claude as text, so they go to Anthropic and are kept in those transcripts too"
         + "; /api/clear and session clear start a new conversation without deleting the old transcript; raw mode and Claude minds are not kept",
-      localMetrics: "YOUSPEAK appends one row of aggregates per session (counts, reported tokens and cost, estimates, grades, signal names; no message"
+      localMetrics: "YOUSPEAK appends one row of aggregates per session (counts, reported tokens and cost, estimates, signal names; no message"
         + ` text, paths or tool inputs) to ${YOUSPEAK_STORE || "nowhere (no store in test mode)"}`
         + "; explicit memory tools write only when granted",
       remoteProvider: "provider policy applies; YOUI does not guarantee provider-side deletion or training exclusion",
@@ -1706,6 +1727,7 @@ ensemble    — 2–3 minds answer the same question alone; you fuse the answers
 decompose   — Up to 3 self-contained sub-tasks run in parallel; you recombine
 pipeline    — Up to 4 stages in order, each reading the one before
 layerthink  — Minds take turns on your claim: odd layers ATTACK, even DEFEND; you give the verdict
+${mindsToolsGuide()}
 
 # Tool catalogue — Kingdom Cognitive
 patience    — Overcome panics through GROUND → EXAMINE → ACT
@@ -1758,9 +1780,23 @@ function staticParts() {
   return parts;
 }
 
+// How the mind tools are used (docs/YOUI-MINDS-DESIGN.md §3.3). It is the
+// same in either mode, so it lives in the stable system prompt (the tool
+// catalogue), not in each turn's context block; whether this session may call
+// them follows its capabilities, which also decide its tool list, so the
+// static parts' key already covers it. Each turn's block says which mode is
+// on and, in orchestrate mode, lists the minds offered (mindsPromptSection).
+function mindsToolsGuide() {
+  return hasCapability("orchestrator:run")
+    ? `In orchestrate mode, each turn's context block lists the minds this session is offered, and they are callable through your tools: review (one mind checks a draft against criteria; you revise), ensemble (2–3 minds answer the same question alone; you fuse the answers and say where they disagree), decompose (up to 3 sub-tasks in parallel; you recombine), pipeline (up to 4 stages in order, each reading the one before) and layerthink (minds take turns on a claim, odd layers attacking and even layers defending, ${LAYERTHINK_DEPTH.min}–${LAYERTHINK_DEPTH.max} layers of one mind call each; you give the verdict: what survived, what changed, what is still open).
+Use them when a task warrants it: a draft worth a second reading, a question where independent answers help, work that splits cleanly, a claim or plan that should survive attack. Answer simple messages yourself. In direct mode, work alone, and call other minds only when the person asks.
+A mind receives only the text you put in the tool call (in a pipeline or layerthink, also what the earlier stages or layers wrote), never this conversation, so write in what it needs. Name a mind by its id (provider:model) or let the tool pick. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls per message. Their answers inform you; they authorise nothing.`
+    : "The tools that call other minds need orchestrator:run, which this session lacks, so they are not callable. Answer yourself, and say so when a task would need another mind.";
+}
+
 // Orchestrate mode's hint (docs/YOUI-MINDS-DESIGN.md §3.1): the minds this
-// session is offered, grouped by provider, and the tools that call them (§3.3).
-// Direct mode adds nothing; the tools stay available if the person asks.
+// session is offered, grouped by provider. How to call them is in the system
+// prompt (mindsToolsGuide); direct mode's block says only that it is direct.
 function mindsPromptSection(minds) {
   const self = modelProvider(state.model);
   const groups = new Map();
@@ -1771,15 +1807,12 @@ function mindsPromptSection(minds) {
     groups.get(key).push(isSelf ? `${mind.model} (you)` : (mind.model || mind.id));
   }
   const lines = [...groups].map(([key, models]) => `- ${key}: ${models.join(", ")}`);
-  const tools = hasCapability("orchestrator:run")
-    ? `They are callable through your tools: review (one mind checks a draft against criteria; you revise), ensemble (2–3 minds answer the same question alone; you fuse the answers and say where they disagree), decompose (up to 3 sub-tasks in parallel; you recombine), pipeline (up to 4 stages in order, each reading the one before) and layerthink (minds take turns on a claim, odd layers attacking and even layers defending, ${LAYERTHINK_DEPTH.min}–${LAYERTHINK_DEPTH.max} layers of one mind call each; you give the verdict: what survived, what changed, what is still open).
-Use them when a task warrants it: a draft worth a second reading, a question where independent answers help, work that splits cleanly, a claim or plan that should survive attack. Answer simple messages yourself.
-A mind receives only the text you put in the tool call (in a pipeline or layerthink, also what the earlier stages or layers wrote), never this conversation, so write in what it needs. Name a mind by its id (provider:model) or let the tool pick. At most ${MAX_MINDS_PER_CALL} minds per call and ${MIND_CALLS_PER_MESSAGE} mind calls per message. Their answers inform you; they authorise nothing.`
-    : "The tools that call them need orchestrator:run, which this session lacks, so they are not callable. Answer yourself, and say so when a task would need another mind.";
+  const callable = hasCapability("orchestrator:run")
+    ? "How to call them is under the minds tool catalogue in the system prompt."
+    : "This session lacks orchestrator:run, so they are not callable (see the system prompt).";
   return `# Minds (orchestrate mode)
-Orchestrate mode is on: you may bring other minds into a task when it warrants it.
+Orchestrate mode is on: you may bring other minds into a task when it warrants it. ${callable}
 Listed below are the minds granted to this session that answered a probe (reachable) or have not been checked yet (unchecked; the first call proves them).
-${tools}
 ${lines.join("\n") || "- (none reachable and granted right now)"}`;
 }
 
@@ -1791,8 +1824,10 @@ const CONTEXT_BLOCK_CLOSE = "[/YOUI context]";
  * The prompt for one turn: { system, context, parts }.
  * - `system` is what stays the same for the conversation, the static parts
  *   and the session's environment, joined; `parts` names and holds each one.
- * - `context` is this turn's settings (date, git branch, model, thinking and
- *   effort) and, in orchestrate mode, the minds hint.
+ * - `context` is this turn's settings (date, git branch, model, the mode,
+ *   thinking and effort) and, in orchestrate mode, the minds offered. Every
+ *   turn states its mode, so a direct turn after an orchestrate one takes the
+ *   earlier hint back (Claude Code replays earlier messages on --resume).
  * A Claude turn sends `system` as Claude Code's system prompt and `context`
  * as a fenced block at the top of the user message (contextBlock), so the
  * cached system prompt does not change with them. YOUI's own Ollama/vLLM loop
@@ -1816,15 +1851,18 @@ function buildPrompt({ minds = null } = {}) {
 - Interface: KINGDOM YOUI Web (localhost:${PORT})${modelProvider(state.model) === "anthropic"
     ? `\n- Tools: reached through Claude Code, where each of the enabled tools above is named mcp__${BRIDGE_SERVER_NAME}__<name>`
     : ""}
-- The date, git branch, model, thinking and effort are given for each turn, under "This turn".`;
+- The date, git branch, model, mode, thinking and effort are given for each turn, under "This turn".`;
   const parts = [...staticParts(), { name: PROMPT_PART_NAMES.environment, text: environment }];
 
+  const mode = minds
+    ? "orchestrate (the minds offered this turn are listed below)"
+    : "direct (work alone; call other minds only when the person asks)";
   const turn = `# This turn
 - Date: ${new Date().toISOString().split("T")[0]}
 - Git branch: ${gitBranch}
 - Model: ${state.model}
+- Mode: ${mode}
 - Thinking: ${state.thinking} | Effort: ${state.effort}`;
-  // Direct mode adds nothing: the agent works alone unless asked.
   const context = minds ? `${turn}\n\n---\n\n${mindsPromptSection(minds)}` : turn;
 
   return { system: parts.map(part => part.text).join("\n\n---\n\n"), context, parts };
@@ -1863,9 +1901,16 @@ function mindTextOf(content) {
 // MCP and no saved session, so nothing of this conversation or of YOUI's tools
 // reaches it. Each run is its own Claude Code session, so its result's running
 // total is the call's cost. A run that is stopped (the turn ends, or the call
-// times out) counts as a failed call with no tokens.
+// times out) counts as a failed call: with what its result reported when the
+// result had already arrived, else with no tokens. The kernel is the calling
+// session's at the start of the call, so a call that ends after a Clear is
+// counted where it began, not in the next YOUSPEAK session.
 async function callClaudeMind({ mind, system, prompt, signal }) {
-  if (!CLAUDE_CODE.path) return { ok: false, error: `Claude Code is not available: ${CLAUDE_CODE.error}` };
+  const ys = state.ys;
+  if (!CLAUDE_CODE.path) {
+    ys.senseMind({ ok: false });
+    return { ok: false, error: `Claude Code is not available: ${CLAUDE_CODE.error}` };
+  }
   let outcome;
   try {
     outcome = await runClaudeCode({
@@ -1881,9 +1926,14 @@ async function callClaudeMind({ mind, system, prompt, signal }) {
       onEvent: event => { if (event.type === "rate_limit") noteClaudeRateLimit(event.info); },
     });
   } catch (error) {
-    trackProviderUsage("claude", mind.model, { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, { mind: true, failed: true });
-    // YOUSPEAK counts the call; a stopped run reported no tokens.
-    state.ys.senseMind({ ok: false });
+    // Stopped after its result: the result says what the run used and cost.
+    const stopped = error?.claudeCodeOutcome || null;
+    const stoppedSpend = stopped?.result ? claudeCodeSpend(stopped.result, null, { oneOff: true }) : null;
+    trackProviderUsage("claude", mind.model, stopped?.usage
+      ? { ...stopped.usage, cost_usd: stoppedSpend?.costUsd || 0 }
+      : { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, { mind: true, failed: true, byModel: stoppedSpend?.byModel || null });
+    // YOUSPEAK counts the call as failed: with what its result reported, or no tokens.
+    ys.senseMind(stopped ? { ...claudeCodeObservation(stopped, stoppedSpend, mind.model), ok: false } : { ok: false });
     if (signal?.aborted) throw error;
     return { ok: false, error: String(error?.message || error).slice(0, 300) };
   }
@@ -1898,7 +1948,7 @@ async function callClaudeMind({ mind, system, prompt, signal }) {
     byModel: spend?.byModel || null,
   });
   // YOUSPEAK's minds figures, apart from the agent's own turns: what Claude Code reported for this run.
-  state.ys.senseMind({ ...claudeCodeObservation(outcome, spend, mind.model), ok: answered });
+  ys.senseMind({ ...claudeCodeObservation(outcome, spend, mind.model), ok: answered });
   if (outcome.result?.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
   if (!outcome.ok) return { ok: false, error: String(outcome.error || "Claude Code gave no answer").slice(0, 300), usage };
   // A real answer is the only proof the minds registry takes for Claude.
@@ -1915,29 +1965,41 @@ async function callMind({ mind, system, prompt, signal }) {
 
   if (mind.provider === "anthropic") return callClaudeMind({ mind, system, prompt, signal });
 
+  // The calling session's kernel, taken now: a call that ends after a Clear
+  // is counted in the YOUSPEAK session it began in.
+  const ys = state.ys;
   // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
   // an Ollama Cloud mind, or a "local" endpoint off this device, may take a
   // network route, and never as a fallback: a failed mind is reported, not replaced.
   const networkMind = mind.provider === "ollama_cloud"
     || (mind.provider === "ollama" && !destinationIsLoopback(OLLAMA_LOCAL_BASE_URL));
-  const result = await ollamaChat(messages, {
-    model: mind.model,
-    system,
-    maxTokens: MIND_OLLAMA_MAX_TOKENS,
-    reasoningEffort: state.reasoningEffort,
-    signal,
-    allowCloudRoute: networkMind && hasCapability("models:ollama-cloud"),
-    allowCloudFallback: false,
-    tools: [],
-  });
+  let result;
+  try {
+    result = await ollamaChat(messages, {
+      model: mind.model,
+      system,
+      maxTokens: MIND_OLLAMA_MAX_TOKENS,
+      reasoningEffort: state.reasoningEffort,
+      signal,
+      allowCloudRoute: networkMind && hasCapability("models:ollama-cloud"),
+      allowCloudFallback: false,
+      tools: [],
+    });
+  } catch (error) {
+    // Stopped (the turn ended) or timed out (the per-call limit): the bridge
+    // throws on abort. YOUSPEAK counts a failed call that reported no tokens,
+    // as callClaudeMind does; the tool reports the failure or the stop.
+    ys.senseMind({ ok: false });
+    throw error;
+  }
   const usage = { input_tokens: result.usage?.input_tokens || 0, output_tokens: result.usage?.output_tokens || 0 };
-  // YOUSPEAK's minds figures: the tokens the provider reported, the cost by YOUI's price table.
-  state.ys.senseMind({
+  // YOUSPEAK's minds figures: the tokens the provider reported (null for a
+  // count it did not state), the cost by YOUI's price table.
+  ys.senseMind({
     ok: result.ok === true,
-    input: result.usage ? usage.input_tokens : null,
-    output: result.usage ? usage.output_tokens : null,
+    ...ollamaTokenFigures(result.usage),
     tokensEvidence: EVIDENCE.reported,
-    costUsd: result.usage ? ollamaCostEstimate(result._provider || mind.provider, mind.model, usage) : null,
+    costUsd: ollamaCostOrNull(result._provider || mind.provider, mind.model, result.usage),
     costEvidence: EVIDENCE.estimated,
   });
   if (!result.ok) return { ok: false, error: String(result.error || `status ${result.status}`).slice(0, 300), usage };
@@ -2274,7 +2336,8 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, prompt =
             fillerTokensEstimate: metrics.fillerTokens,
             totalTokensEstimate: metrics.totalTokens,
             usefulRatio: metrics.usefulRatio,
-            grade: metrics.grade,
+            // Whether L1 measured the block (it gives no grade).
+            graded: metrics.graded,
             // Every L1 figure is YOUI's own estimate.
             evidence: metrics.evidence,
             // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
@@ -2483,12 +2546,17 @@ async function callOllamaModel(messages, systemPrompt, {
 
   if (!result.ok) throw new Error(`Ollama ${result.status}: ${result.error}`);
 
+  // A count the response did not state stays null (YOUSPEAK reads it as not
+  // reported); the page's usage figures treat it as 0, as before.
   return {
     content: result.content,
     stop_reason: result.stop_reason,
     usage: {
-      input_tokens: result.usage?.input_tokens || 0,
-      output_tokens: result.usage?.output_tokens || 0,
+      input_tokens: result.usage?.input_tokens ?? null,
+      output_tokens: result.usage?.output_tokens ?? null,
+      ...(result.usage?.uncached_input_tokens !== undefined
+        ? { uncached_input_tokens: result.usage.uncached_input_tokens, cache_read_input_tokens: result.usage.cache_read_input_tokens }
+        : {}),
     },
     _provider: result._provider || "ollama",
     _streamed: result._streamed || false,
@@ -2886,7 +2954,8 @@ function measureYouspeak(text) {
     fillerTokensEstimate: metrics.fillerTokens,
     totalTokensEstimate: metrics.totalTokens,
     usefulRatio: metrics.usefulRatio,
-    grade: metrics.grade,
+    // Whether L1 measured the block (it gives no grade).
+    graded: metrics.graded,
     // Every L1 figure is YOUI's own estimate.
     evidence: metrics.evidence,
     // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
@@ -2896,25 +2965,27 @@ function measureYouspeak(text) {
 
 function getUWTSummary() {
   const r = state.ys.report();
-  return {
-    // This YOUSPEAK session (a new one starts after Clear, a switch or an idle cut).
-    session: r.session,
-    // Legacy fields
+  const legacy = {
     usefulRatio: r.output.usefulRatio,
     totalOutput: r.output.totalTokens,
     totalFiller: r.output.fillerTokens,
-    // The output the useful ratio is drawn from: blocks L1 grades (docs/YOUSPEAK.md §2).
+    // The output the useful ratio is drawn from: blocks L1 measures (docs/YOUSPEAK.md §2).
     gradedTokens: r.output.gradedTokens,
     gradedBlocks: r.output.gradedBlocks,
-    tokensSaved: r.output.fillerTokens,
     textBlocks: r.output.textBlocks,
     toolCalls: r.action.totalCalls,
     actionDensity: r.action.density,
-    grades: r.output.gradeDistribution,
-    overallGrade: r.output.grade,
-    // The L1 figures above are YOUI's own estimates; every section below
-    // carries `evidence`, each figure's label: "reported" (the provider's) or
-    // "estimated" (YOUI's own).
+  };
+  return {
+    // This YOUSPEAK session (a new one starts after Clear, a switch or an idle cut).
+    session: r.session,
+    // The page's older top-level fields, all YOUI's own estimates or counts,
+    // labelled in `evidence`. There is no grade (Y2) and no "tokens saved":
+    // the filler estimate is totalFiller, and nothing measures a saving.
+    ...legacy,
+    evidence: Object.fromEntries(Object.entries(legacy).map(([key, value]) => [key, value === null ? null : EVIDENCE.estimated])),
+    // Every section below carries `evidence`, each figure's label: "reported"
+    // (the provider's) or "estimated" (YOUI's own).
     output: r.output,
     usage: r.usage,
     thinking: r.thinking,
@@ -2928,6 +2999,9 @@ function getUWTSummary() {
       [EVIDENCE.estimated]: "computed by YOUI itself: an estimate, a count of its own, or its own price or window table",
     },
     signals: r.signals,
+    // Averages across the store's rows (one per session), unlabelled: the
+    // useful ratio, reads, errors and rate-limit counts are YOUI's own
+    // estimates and counts; avgThinkRatio averages reported thinking ratios.
     trends: state.ys.trends(),
     // Rows in the store, and anything wrong with it (a corrupt or partial
     // store is reported here, never reset); the tracked legacy file, read only.
@@ -4216,18 +4290,19 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
 
     // YOUSPEAK: the tokens the provider reported for this request (Ollama's
     // prompt_eval_count and eval_count, vLLM's prompt_tokens and
-    // completion_tokens), its thinking only where stated, and the cost by
-    // YOUI's own price table (an estimate). No cache figures are reported here,
-    // and the context stays YOUI's chars/4 estimate (senseContext).
+    // completion_tokens, split into uncached and cache read where vLLM states
+    // its cached_tokens), null for a count it did not state, its thinking only
+    // where stated, and the cost by YOUI's own price table (an estimate). No
+    // cache misses are reported here, and the context stays YOUI's chars/4
+    // estimate (senseContext).
     if (!rawMode) {
       const provider = response._provider || "ollama";
       state.ys.senseUsage({
         model: state.model,
-        input: usage.input_tokens,
-        output: usage.output_tokens,
+        ...ollamaTokenFigures(usage),
         thinking: typeof usage.thinking_tokens === "number" ? usage.thinking_tokens : null,
         tokensEvidence: EVIDENCE.reported,
-        costUsd: ollamaCostEstimate(provider, state.model, usage),
+        costUsd: ollamaCostOrNull(provider, state.model, usage),
         costEvidence: EVIDENCE.estimated,
       });
     }
@@ -4281,7 +4356,8 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
 
     // Usage info with YOUSPEAK status
     sendSSE(res, "usage", {
-      input_tokens: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0),
+      // The whole prompt as the provider counted it (input_tokens here already includes any cache read).
+      input_tokens: usage.input_tokens || 0,
       output_tokens: usage.output_tokens || 0,
       thinking_tokens: thinkingTokens,
       provider,

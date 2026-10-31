@@ -392,6 +392,31 @@ function buildNativeBody(oaiMessages, options) {
 }
 
 /**
+ * The token counts an OpenAI-compatible (/v1) response states, under YOUI's
+ * names. A count the response leaves out (a server that ignores
+ * include_usage, a stream that ends before its usage chunk) is null, never 0.
+ * `input_tokens` is the whole prompt (`prompt_tokens`), prefix-cache hits
+ * included; where the server states those hits
+ * (`prompt_tokens_details.cached_tokens`, as vLLM can), the prompt is also
+ * split into `uncached_input_tokens` and `cache_read_input_tokens`.
+ */
+function v1Usage(usage) {
+  const count = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
+  const prompt = count(usage?.prompt_tokens);
+  const completion = count(usage?.completion_tokens);
+  const cached = count(usage?.prompt_tokens_details?.cached_tokens);
+  const total = count(usage?.total_tokens) ?? (prompt !== null && completion !== null ? prompt + completion : null);
+  return {
+    input_tokens: prompt,
+    output_tokens: completion,
+    total_tokens: total,
+    ...(prompt !== null && cached !== null
+      ? { uncached_input_tokens: Math.max(0, prompt - cached), cache_read_input_tokens: Math.min(cached, prompt) }
+      : {}),
+  };
+}
+
+/**
  * Parse /v1/chat/completions response → Anthropic-compatible content blocks.
  */
 function parseV1Response(data, model) {
@@ -423,11 +448,7 @@ function parseV1Response(data, model) {
     content,
     stop_reason,
     model: data.model || model,
-    usage: {
-      input_tokens: data.usage?.prompt_tokens || 0,
-      output_tokens: data.usage?.completion_tokens || 0,
-      total_tokens: data.usage?.total_tokens || 0,
-    },
+    usage: v1Usage(data.usage),
   };
 }
 
@@ -524,6 +545,9 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
     let finishReason = null;
     let usage = null;
     let respModel = body.model;
+    // An error the server sent inside the stream (vLLM writes one as a data
+    // line, then [DONE]): the turn failed, whatever text came before it.
+    let streamError = null;
     let buffer = "";
     const decoder = new TextDecoder();
 
@@ -541,6 +565,13 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
         try { parsed = JSON.parse(trimmed.slice(6)); }
         catch { continue; }
 
+        if (parsed && (parsed.error || parsed.object === "error")) {
+          const detail = parsed.error && typeof parsed.error === "object" ? parsed.error : parsed;
+          streamError ||= redactOllamaCredential(String(
+            (typeof parsed.error === "string" ? parsed.error : detail.message) || "the server reported an error mid-stream",
+          ));
+          continue;
+        }
         const choice = parsed.choices?.[0];
         if (!choice) { if (parsed.usage) usage = parsed.usage; continue; }
 
@@ -572,6 +603,9 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
 
     request.cleanup();
     const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+    if (streamError) {
+      return { ok: false, status: 0, error: `vLLM stream error: ${streamError}`.slice(0, 500), latency: elapsed, _provider: "vllm", _endpoint: "v1" };
+    }
 
     const content = [];
     if (fullText) content.push({ type: "text", text: fullText });
@@ -588,7 +622,7 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
 
     return {
       ok: true, status: resp.status, content, stop_reason, model: respModel,
-      usage: { input_tokens: usage?.prompt_tokens || 0, output_tokens: usage?.completion_tokens || 0, total_tokens: usage?.total_tokens || 0 },
+      usage: v1Usage(usage),
       latency: elapsed, _provider: "vllm", _endpoint: "v1", _streamed: true,
     };
   } catch (e) {

@@ -49,6 +49,8 @@
 //   FAKE:null-line             stdout lines that are JSON but not objects ("null", "42", "[]") before the answer
 //   FAKE:bad-fields            an assistant event whose content is a number, before the answer
 //   FAKE:cache-miss            the answer's request reports a cache miss (diagnostics.cache_miss_reason)
+//   FAKE:two-requests          two model requests in the turn, the first with a larger cache read than
+//                              the second, so the context must come from the latest one
 // and, with any of those, how the process ends:
 //   FAKE:ignore-eof            stays running after stdin closes (until killed)
 //   FAKE:slow-exit             on SIGTERM, waits 800 ms before exiting
@@ -174,9 +176,9 @@ let cacheMiss = null;
 // A request's usage as 2.1.314 reports it in message_start (tests/fixtures/claude-code-stream-2.1.314.jsonl).
 const requestUsage = { input_tokens: 3, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000,
   cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 100 }, output_tokens: 1 };
-function textMessage(text) {
+function textMessage(text, usage = requestUsage) {
   const id = `msg_fake_${++messageCount}`;
-  out({ type: "stream_event", event: { type: "message_start", message: { id, model, role: "assistant", content: [], usage: requestUsage,
+  out({ type: "stream_event", event: { type: "message_start", message: { id, model, role: "assistant", content: [], usage,
     diagnostics: cacheMiss ? { cache_miss_reason: cacheMiss } : null } }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, parent_tool_use_id: null });
   const half = Math.ceil(text.length / 2);
@@ -185,7 +187,7 @@ function textMessage(text) {
   }
   out({ type: "assistant", message: { id, model, role: "assistant", content: [{ type: "text", text }] }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null });
-  out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { ...requestUsage, output_tokens: 5 } }, parent_tool_use_id: null });
+  out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { ...usage, output_tokens: 5 } }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "message_stop" }, parent_tool_use_id: null });
 }
 
@@ -399,6 +401,15 @@ async function answer(full) {
     const text = `Tool said: ${replies.join(" | ")}`;
     textMessage(text);
     result({ text });
+    return;
+  }
+
+  if (has("two-requests")) {
+    // The first request read more from the cache than the latest one: the
+    // context is the latest request's input + cache read + cache creation.
+    textMessage("first request", { ...requestUsage, input_tokens: 4, cache_read_input_tokens: 5000, cache_creation_input_tokens: 0 });
+    textMessage("second request", { ...requestUsage, input_tokens: 6, cache_read_input_tokens: 2000, cache_creation_input_tokens: 50 });
+    result({ text: "second request" });
     return;
   }
 

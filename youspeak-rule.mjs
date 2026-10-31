@@ -2,9 +2,15 @@
 // youspeak-rule.mjs — the YOUSPEAK Discipline's rule, in one place
 //
 // The rule is the only part of YOUSPEAK that reaches the model
-// (docs/YOUSPEAK.md §1). YOUI Web, the YOUI terminal and sovereign put it in
-// their system prompts from here; nothing else carries its own copy. The
-// observer (youspeak-kernel.mjs) never changes it, and the ouroboros
+// (docs/YOUSPEAK.md §1). Every prompt built in code takes it from here:
+// YOUI Web (youi-web/server.mjs), the YOUI terminal (youi.mjs), sovereign
+// (sovereign.mjs) and the three unused harnesses (harness.mjs,
+// subscription-harness.mjs, stream.mjs); none of them carries a copy. Outside
+// code, eleven instances/*/CLAUDE.md files keep their own three-line Markdown
+// copy and a pointer to docs/YOUSPEAK.md (instances/asha points to the nuance
+// primer instead): an instance's Claude Code reads them as text, they cannot
+// import this module, and changes here do not reach them. The observer
+// (youspeak-kernel.mjs) never changes the rule, and the ouroboros
 // (youspeak-evolve.mjs) only prints proposed diffs of this file.
 //
 // It is the Discipline, not the YOUSPEAK Cathedral at ~/YOUSPEAK: say what
@@ -12,14 +18,14 @@
 // when unsure, in creative work and when feelings are in it.
 // ─────────────────────────────────────────────────────────────────────
 
-/** The rule, as every surface's system prompt carries it. */
+/** The rule, as every prompt built in code carries it (not the instances' CLAUDE.md copies). */
 export const YOUSPEAK_RULE = `# YOUSPEAK — the Discipline
 No filler. No preamble. No tool narration. Dense status (key:value not prose).
 Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
 - Zero-pad: no "sure", "let me check", "here's what I found"
 - Dense status: \`Tests: 47/48 ✓\` not "I ran the tests and 47 out of 48 passed"
 - No tool narration: don't announce tools. Call them. Let results speak.
-- Never compress doubt: "probably", "unless", "might", "I think" are sacred. When uncertain, expand.
+- Never compress doubt: "probably", "unless", "might", "I think", "in most cases" are sacred. When uncertain, expand.
 - Expand when it matters: teaching, uncertainty, creative work, emotional context`;
 
 /**

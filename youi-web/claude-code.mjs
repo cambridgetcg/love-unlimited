@@ -527,7 +527,9 @@ function spendTotals(byModel) {
  * - the window: the model's `contextWindow` in modelUsage, when stated;
  * - a cache miss: the first request's `diagnostics.cache_miss_reason`, as the
  *   API reported it (it can name a miss even when nothing YOUI sent changed:
- *   the recorded --resume of 2026-10-31 reported "messages_changed").
+ *   the recorded --resume of 2026-10-31 reported "messages_changed"), and
+ *   `cacheDiagnostics`, whether any request stated its diagnostics at all, so
+ *   a run with none missing counts as a reported 0 misses.
  * Every figure here is "reported"; null is a figure Claude Code did not state.
  */
 export function claudeCodeObservation(outcome, spend, model = null) {
@@ -559,6 +561,7 @@ export function claudeCodeObservation(outcome, spend, model = null) {
     contextWindow: typeof own?.contextWindow === "number" ? own.contextWindow : null,
     contextWindowEvidence: "reported",
     cacheMiss: requests.find(request => request.cacheMiss)?.cacheMiss || null,
+    cacheDiagnostics: requests.some(request => request.cacheDiagnostics === true),
     requests: requests.length,
   };
 }
@@ -900,7 +903,14 @@ export async function runClaudeCode({
             if (inner.type === "message_start") {
               currentMessageId = inner.message?.id || null;
               blocks.clear();
-              outcome.requests.push({ id: currentMessageId, usage: requestUsage(inner.message?.usage), cacheMiss: cacheMissOf(inner.message) });
+              outcome.requests.push({
+                id: currentMessageId,
+                usage: requestUsage(inner.message?.usage),
+                cacheMiss: cacheMissOf(inner.message),
+                // Whether the request states its cache diagnostics at all (2.1.314 sends
+                // `diagnostics: null` when nothing missed), so no miss can count as 0.
+                cacheDiagnostics: Boolean(inner.message && typeof inner.message === "object" && Object.hasOwn(inner.message, "diagnostics")),
+              });
               emit({ type: "request", messageId: currentMessageId });
             } else if (inner.type === "message_delta") {
               // The request's final figures (output, and input and cache again).

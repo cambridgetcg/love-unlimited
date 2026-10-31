@@ -488,10 +488,11 @@ function openAIResponseToAnthropic(data, model) {
   return {
     content,
     stop_reason: choice.finish_reason === "tool_calls" ? "tool_use" : "end_turn",
+    // Ollama's /v1 states no thinking count, so none is given: YOUSPEAK then
+    // shows thinking as not reported (null), never a made-up 0.
     usage: {
       input_tokens: data.usage?.prompt_tokens || 0,
       output_tokens: data.usage?.completion_tokens || 0,
-      thinking_tokens: 0,
     },
     _model: model,
     _provider: "ollama",
@@ -993,8 +994,8 @@ function saveState(data) {
 //   Before: ~12k tokens/session boot. After: ~2k tokens. Save: ~10k tokens.
 //
 // TIER 2 — PROTOCOL: YOUSPEAK Communication Discipline
-//   47-token protocol fragment eliminates conversational filler.
-//   Save: 200-500 tokens/turn × 50 turns = 10-25k tokens/session.
+//   The rule comes from youspeak-rule.mjs (youspeakRule({ fileCache: true })).
+//   No measurement shows what it saves (docs/YOUSPEAK.md §1).
 //
 // TIER 3 — SELF-IMPROVEMENT: Efficiency Tracking
 //   Measure tokens-per-useful-action, identify waste, auto-adjust.
@@ -1393,7 +1394,8 @@ async function main() {
   if (config.trackEfficiency) {
     const ysReport = ys.report();
     print(`\n${S.cyan}── YOUSPEAK Kernel Report ──${S.reset}`);
-    print(`  Grade:           ${ysReport.output.grade ?? "—"} (${ysReport.output.usefulRatio === null ? "no output" : `${Math.round(ysReport.output.usefulRatio * 100)}% useful`})`);
+    // L1 gives a useful ratio, an English-only estimate, and no grade (Y2).
+    print(`  Useful ratio:    ${ysReport.output.usefulRatio === null ? "— (no measured output)" : `~${Math.round(ysReport.output.usefulRatio * 100)}% (English-only estimate)`}`);
     print(`  Output tokens:   ${ysReport.output.totalTokens.toLocaleString()} (${ysReport.output.fillerTokens} filler)`);
     print(`  Text blocks:     ${ysReport.output.textBlocks}`);
     // Thinking only where the provider reported it; the direct route reports none.

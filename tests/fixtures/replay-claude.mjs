@@ -5,7 +5,12 @@
 //
 // FAKE_CLAUDE_REPLAY names a .jsonl file of stdout lines Claude Code printed
 // (tests/fixtures/claude-code-stream-2.1.314.jsonl, recorded live on
-// 2026-10-31). It waits for the one stream-json user message on stdin, writes
+// 2026-10-31, with paths, socket paths and message and request ids scrubbed).
+// Its rate_limit_event values are synthetic: only that event's shape (its
+// field names and nesting) is from the live stream, while its status, type,
+// utilizations, thresholds, reset times and overage fields were replaced with
+// one made-up consistent set. Its session id and event uuids are
+// placeholders. It waits for the one stream-json user message on stdin, writes
 // the recorded lines unchanged, and exits once stdin closes, as Claude Code
 // does after its result. FAKE_CLAUDE_LOG, when set, gets the argv and the
 // message as one JSON line.

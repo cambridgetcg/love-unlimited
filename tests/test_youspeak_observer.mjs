@@ -313,25 +313,24 @@ test("short text never turns the L1 totals into NaN", () => {
     assert.ok(filler.tokens <= filler.totalTokens, "filler is never more than the text");
   }
   const ys = createKernel({ agent: "alpha", historyPath: null, legacyPath: null });
-  assert.equal(ys.senseOutput("OK.").grade, null, "too short to grade");
-  assert.equal(ys.senseOutput("收到。").grade, null);
+  assert.equal(ys.senseOutput("OK.").usefulRatio, null, "too short to measure");
+  assert.equal(ys.senseOutput("收到。").graded, false);
   ys.senseOutput("Sure! Let me check that. Here is what I found in the file, which is long enough to grade honestly.");
   const output = ys.report().output;
   assert.ok(Number.isFinite(output.totalTokens) && output.totalTokens > 0);
   assert.ok(Number.isFinite(output.usefulRatio));
   assert.ok(output.usefulRatio < 1, "the filler in the long reply still counts after two short ones");
-  assert.notEqual(output.grade, "S");
+  assert.equal(output.grade, undefined, "no grade (Y2)");
   assert.doesNotMatch(ys.statusLine(), /NaN/);
 });
 
-test("a session with no output has no grade, and neither it nor one that only failed writes a row", t => {
+test("a session with no output has no useful ratio, and neither it nor one that only failed writes a row", t => {
   const dir = scratch(t, "ys-kernel-empty-");
   const historyPath = join(dir, "history.jsonl");
   const empty = createKernel({ agent: "alpha", route: "claude-code", model: "claude-opus-5-5", historyPath, legacyPath: null });
   empty.senseTurn(null);
-  assert.equal(empty.report().output.grade, null, "no output, no grade (not S)");
-  assert.equal(empty.report().output.usefulRatio, null);
-  assert.match(empty.statusLine(), /^YS:—\(—\)/);
+  assert.equal(empty.report().output.usefulRatio, null, "no output, no ratio (not 100%)");
+  assert.match(empty.statusLine(), /^YS:— /);
   assert.deepEqual(empty.endSession({ reason: "clear" }), { written: false, skipped: "no output", error: null, row: null });
 
   const failed = createKernel({ agent: "alpha", historyPath, legacyPath: null });
@@ -391,7 +390,8 @@ test("a session writes one row, with its id and route, aggregates only, to a pri
   assert.ok(Date.parse(row.startedAt) <= Date.parse(row.endedAt));
   assert.equal(row.toolCalls, 2);
   assert.equal(row.redundantReads, 1);
-  for (const field of ["turns", "outputGrade", "usefulRatio", "thinkingTokens", "thinkAvgRatio", "toolErrors",
+  assert.equal("outputGrade" in row, false, "schema 2 rows have no grade");
+  for (const field of ["turns", "usefulRatio", "thinkingTokens", "thinkAvgRatio", "toolErrors",
     "contextPeakTokens", "budgetBurned", "rateLimitHits", "signalCount"]) {
     assert.ok(field in row, `the row keeps ${field}`);
   }
@@ -457,25 +457,25 @@ test("a corrupt or partial store is reported, never reset", t => {
 
 test("code-mixed Cantonese and doubt are not graded as filler (the review's lines)", () => {
   const kernel = () => createKernel({ agent: "alpha", route: "claude-code", historyPath: null, legacyPath: null });
-  // The lines the review found graded D, each raising filler_regression in five.
+  // The lines the review found graded D (Y1), each raising filler_regression in five.
   const reviewLines = [
     "我唔 sure 呢個 fix 啱唔啱，你 check 下先。",
     "Okay 我睇咗 server.mjs，問題喺第 42 行。",
     "我仲未 sure 個 root cause，可能係 cache。",
     "Make sure 你 run 咗 test 先 merge。",
   ];
-  // Long enough to grade: doubt and "make sure" are not openers.
+  // Long enough to measure: doubt and "make sure" are not openers.
   const graded = [
     "我唔 sure 呢個 fix 啱唔啱，因為 server.mjs 第 42 行嘅 cache key 冇包 session id，所以兩個 tab 會共用同一個 entry；你 check 下先，我未 run test。",
     "I'm not sure this is right; the cache may be stale, so check server.mjs:42 before merging this change into main.",
     "Make sure you run the tests before merging the branch, because the cache layer in server.mjs:42 is still fragile.",
   ];
   for (const text of reviewLines) {
-    assert.equal(kernel().senseOutput(text).grade, null, `too short to grade: ${text}`);
+    assert.equal(kernel().senseOutput(text).usefulRatio, null, `too short to measure: ${text}`);
   }
   for (const text of graded) {
     assert.equal(isGradable(text), true);
-    assert.equal(kernel().senseOutput(text).grade, "S", `no filler in: ${text}`);
+    assert.equal(kernel().senseOutput(text).usefulRatio, 1, `no filler in: ${text}`);
     assert.ok(!detectFiller(text).patterns.some(p => p.name === "affirmative"), "'sure' mid-sentence is not an opener");
   }
   // An opener still counts at the start of the text, a sentence or a line.
@@ -490,7 +490,7 @@ test("code-mixed Cantonese and doubt are not graded as filler (the review's line
   const signals = ys.decide("high", "claude-opus-5-5", null);
   assert.ok(!signals.some(signal => signal.action === "filler_regression"));
   assert.deepEqual(ys.newSuggestions(signals), []);
-  // English filler, graded, still raises it.
+  // English filler, measured, still raises it.
   const padded = kernel();
   for (let i = 0; i < 5; i++) padded.senseOutput("Sure! Let me check that. Here is what I found in the file, which is long enough to grade honestly.");
   assert.ok(padded.decide("high", "claude-opus-5-5", null).some(signal => signal.action === "filler_regression"));
@@ -914,7 +914,8 @@ test("a session's row is written once when it is cleared, switched, closed, rese
   const summary = await request(port, { path: "/api/youspeak", headers: cleared.read });
   assert.equal(summary.json.store.rows, 1);
   assert.deepEqual(summary.json.store.warnings, []);
-  assert.equal(summary.json.overallGrade, null, "the fresh session has no output and no grade");
+  assert.equal(summary.json.usefulRatio, null, "the fresh session has no output and no ratio");
+  assert.equal("overallGrade" in summary.json, false, "no grade (Y2)");
 
   await openSession(port, "empty");
   // A turn that produced text and then failed: it has output, so only the
@@ -1044,7 +1045,7 @@ test("the ouroboros prints full proposed diffs and writes nothing", async t => {
     const ys = createKernel({ agent: "alpha", historyPath, legacyPath: null });
     ys.noteRoute("claude-code", "claude-opus-5-5");
     ys.senseOutput("Sure! Let me check that. Here is what I found. I am going to read the file. Okay. Perfect! ");
-    // Three repeated reads: add_cache_reminder is already in youspeak-rule.mjs (sovereign's line), so it prints no diff.
+    // Three repeated reads: add_cache_reminder's line is in youspeak-rule.mjs for sovereign only, so it is described, not diffed.
     for (let read = 0; read < 4; read++) ys.senseToolCall("read_file", { path: "README.md" }, null);
     ys.noteExchange({ ok: true });
     assert.equal(ys.endSession({ reason: "test" }).written, true);
@@ -1069,8 +1070,11 @@ test("the ouroboros prints full proposed diffs and writes nothing", async t => {
   assert.match(cycle.stdout, /^ No filler\. No preamble\./m, "with its context");
   assert.match(cycle.stdout, /^\+Target: ≥80% of output tokens should be substantive content, not scaffolding\.`;$/m);
   assert.match(cycle.stdout, /Nothing was written/);
-  assert.match(cycle.stdout, /No diff: already in youspeak-rule\.mjs, outside the shared rule \(a line only sovereign adds\)/);
-  assert.match(cycle.stdout, /2 proposed diff\(s\) and 0 described proposal\(s\)/, "a proposal with no diff is not counted");
+  // Z24: it no longer reads as if the reminder were in effect everywhere.
+  assert.doesNotMatch(cycle.stdout, /No diff: already in youspeak-rule\.mjs/);
+  assert.match(cycle.stdout, /add_cache_reminder[\s\S]*Proposal \(description only\):.*Only sovereign's prompt has this line[^\n]*YOUI Web and the terminal do not/);
+  assert.match(cycle.stdout, /2 proposed diff\(s\) and 1 described proposal\(s\)/);
+  assert.match(cycle.stdout, /the eleven instances\/\*\/CLAUDE\.md copies of the rule are separate text that it does not change/);
   assert.match(cycle.stdout, /Each diff is drawn against the unmodified youspeak-rule\.mjs/);
   assert.match(run("reflect").stdout, /steady/, "identical sessions are steady, by the kernel's tolerance");
   for (const command of ["transmute", "reflect", "distill", "history"]) assert.equal(run(command).status, 0);

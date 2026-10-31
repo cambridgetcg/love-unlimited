@@ -20,12 +20,16 @@ The browser route contract is method-specific:
 
 Local and cloud are separate authority and privacy routes:
 
-- A locally available model is labelled `LOCAL_MODEL:ollama`.
-- Direct Ollama Cloud routing is labelled `REMOTE_MODEL:ollama-cloud` and
-  requires `models:ollama-cloud`.
+- A locally available model (an exact name in `GET /api/tags`) is labelled
+  `LOCAL_MODEL:ollama`.
+- Ollama Cloud routing is labelled `REMOTE_MODEL:ollama-cloud` and requires
+  `models:ollama-cloud`, whether it goes directly to ollama.com with
+  `OLLAMA_API_KEY` or through a signed-in local Ollama (a `:cloud` or `-cloud`
+  name, or one `/api/tags` lists with `remote_host`/`remote_model`).
+  `youi-web/ollama-routes.mjs` decides the route for the bridge and the server.
 - Local-to-cloud fallback requires both `models:ollama-cloud` and
-  `models:cloud-fallback`; neither the `safe` nor `developer` web profile
-  includes those grants.
+  `models:cloud-fallback`; the `developer` web profile has the first grant
+  only, and `safe` has neither.
 - Without the cloud-route grant, an unavailable local model is reported as
   `BLOCKED:ollama-cloud-capability-required` and no cloud request is made.
 - A missing cloud credential fails before a provider request. Credentials are

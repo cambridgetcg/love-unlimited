@@ -133,9 +133,10 @@ mutations also require same-origin CSRF validation and the active page lease.
 The default `safe` profile grants chat/status/session/settings and selected
 read/orchestration operations, not filesystem write, shell, HIVE, autonomous,
 publish, or deploy authority. `YOUI_CAPABILITY_PROFILE=developer` adds local
-filesystem read/write, Git read/commit, memory write, and YOUSPEAK reset, but
-still does not add shell, unrestricted filesystem, HIVE, AgentTool mutation,
-autonomous, push, publication, deploy, or Ollama Cloud fallback.
+filesystem read/write, Git read/commit, memory write, YOUSPEAK reset, and
+Ollama Cloud models (`models:ollama-cloud`), but still does not add shell,
+unrestricted filesystem, HIVE, AgentTool mutation, autonomous, push,
+publication, deploy, or Ollama Cloud fallback.
 
 `safe` means reduced tool/side-effect authority, not local-only inference:
 chat, model use, and adaptive orchestration can send selected input to the
@@ -155,7 +156,20 @@ include `REMOTE_MODEL:anthropic`, `REMOTE_MODEL:vllm`,
 `BLOCKED:ollama-cloud-capability-required`; orchestration is labelled
 separately. Local Ollama never routes directly to cloud without
 `models:ollama-cloud`, and local-to-cloud fallback additionally requires
-`models:cloud-fallback`. Neither grant is in `safe` or `developer`.
+`models:cloud-fallback`. `developer` has the first grant and not the second;
+`safe` has neither.
+
+A signed-in local Ollama also serves Ollama Cloud models: a name whose tag
+is `:cloud` or ends in `-cloud`, or a model its `GET /api/tags` lists with
+`remote_host` or `remote_model`. YOUI counts those as Ollama Cloud even
+though they go through localhost, because the content leaves the device:
+they need `models:ollama-cloud`, show as `REMOTE_MODEL:ollama-cloud`, and
+their cost is estimated from YOUI's price table. Only an exact name counts as
+installed, so `gemma4:31b` is not local because `gemma4:12b` is pulled. With
+no `OLLAMA_API_KEY`, a running local Ollama is the route to Ollama Cloud. With
+a key, a model that is neither listed nor named with a cloud suffix goes to
+the direct API; so does a cloud name when no local Ollama answers, with the
+suffix removed, since the direct API names models without it.
 
 Model-facing subprocesses receive an allowlisted environment. Provider or
 adapter credentials are delegated only by explicit variable name for that

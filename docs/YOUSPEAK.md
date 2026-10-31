@@ -69,7 +69,7 @@ Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object
 | Cache read, cache creation | reported | cache read: reported where vLLM states `prompt_tokens_details.cached_tokens` or native Ollama states `prompt_eval_cached_count` (then input is the rest of the prompt), else `null`; cache creation: `null` | — |
 | Cache misses | reported (0 when Claude Code's `diagnostics` name none) | `null` (no cache diagnostics) | `null` |
 | Thinking | reported where Claude Code states it | `null` unless the response states it | `null` (the route states none) |
-| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table, from list prices, never a bill; self-hosted is 0, but an Ollama Cloud model reached through the local Ollama is priced; `null` when the response stated no count) | — |
+| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table, from list prices, never a bill; self-hosted is 0, but an Ollama Cloud model reached through the local Ollama is priced; `null` when the response stated no count, or when the model has no listed price) | — |
 | Context | reported: the latest request's input + cache read + cache creation | estimated: chars/4 | estimated: chars/4 |
 | Context window | reported (`modelUsage.<model>.contextWindow`), else YOUI's table (estimated) | unknown: `null` | YOUI's table (estimated) |
 | Rate-limit state | reported (`rate_limit_event`), else `null` | — | their own header reading (unchanged); a window no header has stated yet (status `unknown`) is `null`, not 0% |

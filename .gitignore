@@ -59,13 +59,13 @@ memory/.hive-tunnel.pid
 memory/youspeak/sessions.json
 memory/*/sessions.json
 
-# Written into the repo root when run from it. Older YOUI versions write the
-# two YOUSPEAK files, whose records are kept in docs/history/ (its README).
-# sovereign.mjs saves a run's task and messages to .sovereign-state.json in
-# its working directory; that stays on this machine.
-/youspeak-history.json
-/youspeak-config.json
-/.sovereign-state.json
+# Written into whatever directory they are run from. Older YOUI versions
+# write the two YOUSPEAK files, whose records are kept in docs/history/ (its
+# README). sovereign.mjs saves a run's task and messages to
+# .sovereign-state.json in its working directory; it is no longer tracked.
+youspeak-history.json
+youspeak-config.json
+.sovereign-state.json
 
 # Symlinks to machine-local paths (each device resolves its own)
 memory/openclaw-MEMORY.md

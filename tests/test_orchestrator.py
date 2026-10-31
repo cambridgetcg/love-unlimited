@@ -177,7 +177,7 @@ class TestDispatcher:
         )
         plan = d.dispatch("fix typo", profile)
         assert plan.primary.provider == "ollama_cloud"
-        assert plan.primary.model in ("gemma4:31b", "devstral-small-2:24b")
+        assert plan.primary.model in ("gemma4:31b", "glm-5.3-flash")
 
     def test_unit_frontier_goes_to_opus(self):
         d = Dispatcher()
@@ -203,7 +203,7 @@ class TestDispatcher:
         )
         plan = d.dispatch("implement feature", profile)
         assert plan.primary.provider == "ollama_cloud"
-        assert plan.primary.model == "deepseek-v3.2"
+        assert plan.primary.model == "deepseek-v4.1-flash"
 
     def test_unit_review_has_cross_provider_reviewer(self):
         d = Dispatcher()
@@ -376,6 +376,52 @@ class MockProvider:
 
     def supports_streaming(self):
         return False
+
+
+class FailingProvider(MockProvider):
+    """A provider whose every call fails, as one with no key does."""
+    name = "ollama_cloud"
+
+    def complete(self, request):
+        self.call_count += 1
+        raise RuntimeError("No Ollama Cloud API key available")
+
+
+def _engine_routing_to(provider, model):
+    """An engine whose router always picks `provider`/`model` and whose
+    classifier is the heuristic one, so nothing leaves the process."""
+    engine = OrchestrationEngine()
+    engine.classifier = TaskClassifier()
+    engine.router.route = lambda role, preferred_provider=None, prompt=None: (provider, model)
+    return engine
+
+
+class TestOrchestrationOutcome:
+    """T6a: a failed run says why; models_used is the model actually called."""
+
+    def test_integration_failed_run_carries_the_stage_error(self):
+        engine = _engine_routing_to(FailingProvider(), "glm-5.3-flash")
+        result = engine.run("fix typo", force_mode="solo")
+        assert result.success is False
+        assert result.content == ""
+        assert "No Ollama Cloud API key available" in result.error
+        assert result.error.startswith("glm-5.3-flash: ")
+        output = result.to_dict()
+        assert output["success"] is False
+        assert output["error"] == result.error
+        assert result.models_used == ["glm-5.3-flash"]
+
+    def test_integration_models_used_is_the_called_model(self):
+        engine = _engine_routing_to(MockProvider("done"), "deepseek-v4.1-flash")
+        result = engine.run("fix typo", force_mode="solo")
+        assert result.success is True
+        assert result.error == ""
+        assert result.to_dict()["error"] == ""
+        assert result.models_used == ["deepseek-v4.1-flash"]
+        assert result.providers_used == ["mock"]
+        stage = result.stages[0].to_dict()
+        assert stage["model"] == "deepseek-v4.1-flash"
+        assert stage["planned_model"] == result.plan.primary.model
 
 
 class TestClassifierLLM:

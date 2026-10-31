@@ -2,22 +2,24 @@
 Dispatcher — Routes classified tasks to optimal provider/model combinations.
 
 The dispatch table maps (difficulty, importance, task_type) → (provider, model, role).
-GLM 5.1 (free via Ollama Max) handles the bulk. Claude is reserved for
+GLM 5.3 and the other Ollama Cloud models handle the bulk. Claude is reserved for
 frontier reasoning, high-stakes review, and interactive work.
 
 Cost philosophy:
-    - Ollama Cloud = $100/mo flat = effectively free per call
+    - Ollama Cloud = billed per token since 2026-08-31 (ollama.com/pricing),
+      cheaper per call than Claude for most tasks
     - Anthropic = per-token billing = reserve for high-value work
     - Route 80%+ through Ollama Cloud, 20% through Anthropic
 
-Model strengths (from benchmarks + E2E testing):
-    GLM 5.1 (754B)        — best open-weight for agentic coding, tool calling, reasoning
-    DeepSeek v3.2          — top coding benchmarks, fast, no tool calling (hallucinates XML)
-    Qwen3-Coder 480B       — specialized coding, strong on refactoring
-    Kimi K2.5              — massive context window, good for analysis
-    Cogito 2.1 671B        — deep reasoning, analytical tasks
-    Devstral Small 24B     — fastest (1.1s), good for monitoring
-    Gemma4 31B             — quick verification, lightweight
+Ollama Cloud picks (names from ollama.com/api/tags, 2026-10-31; the strengths
+are the vendors' descriptions, not measured here):
+    glm-5.3                — agentic coding, tool calling (coordinator)
+    deepseek-v4.1-flash    — coding and general work at a standard-tier price
+    deepseek-v4-pro:0813   — deep reasoning (research)
+    kimi-k2.7-code         — coding specialist
+    mistral-large-4        — analysis
+    glm-5.3-flash          — cheap and fast: monitoring, economy tier
+    gemma4:31b             — quick verification, lightweight
     Claude Opus            — frontier reasoning, novel architecture, soul work
     Claude Sonnet          — balanced, reliable, good tool calling
     Claude Haiku           — fast, cheap, quick checks
@@ -106,7 +108,7 @@ class Dispatcher:
     """Maps task profiles to provider/model targets.
 
     Dispatch priority:
-        1. Task type determines the MODEL (coding → DeepSeek, analysis → Cogito, etc.)
+        1. Task type determines the MODEL (coding → DeepSeek, analysis → Mistral, etc.)
         2. Difficulty determines the TIER (trivial → economy, hard → premium)
         3. Importance determines the PROVIDER (critical → Anthropic, normal → Ollama)
         4. Collaboration mode determines the PATTERN (solo, review, decompose, etc.)
@@ -116,16 +118,16 @@ class Dispatcher:
 
     # Task type → preferred Ollama Cloud model
     OLLAMA_MODEL_MAP = {
-        "code_generation": ("deepseek-v3.2", "builder"),
-        "code_review": ("glm-5.1", "coordinator"),
-        "analysis": ("cogito-2.1:671b", "analyst"),
-        "architecture": ("glm-5.1", "coordinator"),
-        "debugging": ("glm-5.1", "coordinator"),
-        "testing": ("qwen3-coder:480b", "coder"),
-        "documentation": ("deepseek-v3.2", "builder"),
-        "deployment": ("glm-5.1", "coordinator"),
-        "monitoring": ("devstral-small-2:24b", "monitor"),
-        "research": ("kimi-k2.5", "consultant"),
+        "code_generation": ("deepseek-v4.1-flash", "builder"),
+        "code_review": ("glm-5.3", "coordinator"),
+        "analysis": ("mistral-large-4", "analyst"),
+        "architecture": ("glm-5.3", "coordinator"),
+        "debugging": ("glm-5.3", "coordinator"),
+        "testing": ("kimi-k2.7-code", "coder"),
+        "documentation": ("deepseek-v4.1-flash", "builder"),
+        "deployment": ("glm-5.3", "coordinator"),
+        "monitoring": ("glm-5.3-flash", "monitor"),
+        "research": ("deepseek-v4-pro:0813", "consultant"),
     }
 
     # Task type → preferred Anthropic model
@@ -145,8 +147,8 @@ class Dispatcher:
     # Economy overrides for trivial/easy tasks on Ollama
     ECONOMY_MODELS = {
         "code_generation": ("gemma4:31b", "quick_check"),
-        "code_review": ("devstral-small-2:24b", "monitor"),
-        "monitoring": ("devstral-small-2:24b", "monitor"),
+        "code_review": ("glm-5.3-flash", "monitor"),
+        "monitoring": ("glm-5.3-flash", "monitor"),
         "documentation": ("gemma4:31b", "quick_check"),
     }
 
@@ -156,7 +158,7 @@ class Dispatcher:
     REVIEW_PAIRS = {
         # If primary is Ollama, reviewer is Anthropic (and vice versa)
         "ollama_cloud": ("anthropic", "claude-sonnet-4-6", "consultant"),
-        "anthropic": ("ollama_cloud", "glm-5.1", "coordinator"),
+        "anthropic": ("ollama_cloud", "glm-5.3", "coordinator"),
     }
 
     def dispatch(self, task: str, profile: TaskProfile) -> DispatchPlan:
@@ -207,9 +209,9 @@ class Dispatcher:
                     ))
             plan.reviewer = DispatchTarget(
                 provider="ollama_cloud",
-                model="glm-5.1",
+                model="glm-5.3",
                 role="coordinator",
-                reason="GLM 5.1 synthesises ensemble results",
+                reason="GLM 5.3 synthesises ensemble results",
             )
 
         elif profile.collaboration_mode == "pipeline":
@@ -219,9 +221,9 @@ class Dispatcher:
             plan.sub_dispatches = stages
             plan.reviewer = DispatchTarget(
                 provider="ollama_cloud",
-                model="glm-5.1",
+                model="glm-5.3",
                 role="coordinator",
-                reason="GLM 5.1 manages pipeline stages and final review",
+                reason="GLM 5.3 manages pipeline stages and final review",
             )
 
         return plan
@@ -282,9 +284,9 @@ class Dispatcher:
                 reason=f"High importance + hard → Anthropic {model}",
             )
 
-        # Default: Ollama Cloud (flat rate, effectively free)
+        # Default: Ollama Cloud (per-token, cheaper than Claude)
         model, role = self.OLLAMA_MODEL_MAP.get(
-            task_type, ("glm-5.1", "builder")
+            task_type, ("glm-5.3", "builder")
         )
         # Easy tasks can use lighter models
         if difficulty <= Difficulty.EASY:
@@ -314,13 +316,13 @@ class Dispatcher:
                 needs_tools=False,  # Reviewer reads, doesn't write
                 reason=f"Cross-provider review: {provider}/{model}",
             )
-        # Fallback: GLM 5.1 reviews everything
+        # Fallback: GLM 5.3 reviews everything
         return DispatchTarget(
             provider="ollama_cloud",
-            model="glm-5.1",
+            model="glm-5.3",
             role="coordinator",
             needs_tools=False,
-            reason="Default reviewer: GLM 5.1",
+            reason="Default reviewer: GLM 5.3",
         )
 
     def _select_for_provider(
@@ -333,7 +335,7 @@ class Dispatcher:
             )
         else:
             model, role = self.OLLAMA_MODEL_MAP.get(
-                profile.task_type, ("glm-5.1", "builder")
+                profile.task_type, ("glm-5.3", "builder")
             )
         return DispatchTarget(
             provider=provider,
@@ -350,11 +352,11 @@ class Dispatcher:
         """
         stages = []
 
-        # Stage 1: Analysis (Cogito or Kimi for deep reasoning)
+        # Stage 1: Analysis (Mistral Large for reasoning)
         stages.append(DispatchPlan(
             primary=DispatchTarget(
                 provider="ollama_cloud",
-                model="cogito-2.1:671b",
+                model="mistral-large-4",
                 role="analyst",
                 needs_tools=True,
                 reason="Pipeline stage 1: deep analysis",
@@ -363,12 +365,12 @@ class Dispatcher:
             collaboration_mode="solo",
         ))
 
-        # Stage 2: Implementation (DeepSeek or Qwen-Coder for code)
+        # Stage 2: Implementation (DeepSeek or GLM for code)
         if profile.task_type in ("code_generation", "debugging", "testing"):
-            impl_model = "deepseek-v3.2"
+            impl_model = "deepseek-v4.1-flash"
             impl_role = "builder"
         else:
-            impl_model = "glm-5.1"
+            impl_model = "glm-5.3"
             impl_role = "coordinator"
 
         stages.append(DispatchPlan(
@@ -400,7 +402,7 @@ class Dispatcher:
         stages.append(DispatchPlan(
             primary=DispatchTarget(
                 provider="ollama_cloud",
-                model="devstral-small-2:24b",
+                model="glm-5.3-flash",
                 role="monitor",
                 needs_tools=True,
                 reason="Pipeline stage 4: verification",

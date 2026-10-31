@@ -22,9 +22,9 @@ DEFAULTS: dict[str, Any] = {
         "ollama_cloud": {
             "api_url": "https://ollama.com",
             "models": {
-                "premium": "glm-5.1",
-                "standard": "deepseek-v3.2",
-                "economy": "devstral-small-2:24b",
+                "premium": "glm-5.3",
+                "standard": "deepseek-v4.1-flash",
+                "economy": "glm-5.3-flash",
             },
         },
         "anthropic": {

@@ -675,12 +675,23 @@ test("a process holding a YOUSPEAK session writes its row on SIGHUP, SIGTERM, EO
   const script = `
     import { createKernel, endSessionOnExit } from ${JSON.stringify(KERNEL_URL)};
     import { createInterface } from "node:readline";
+    import { createRequire } from "node:module";
+    const require = createRequire(import.meta.url);
     const [path] = process.argv.slice(1);
     const make = () => createKernel({ agent: "alpha", route: "terminal-legacy", model: "m", historyPath: path, legacyPath: null });
     const work = k => { k.noteRoute("terminal-legacy", "m"); k.senseOutput(${JSON.stringify(LONG_ANSWER)}); k.noteExchange({ ok: true }); };
     let ys = make();
     work(ys);
-    endSessionOnExit(reason => ys.endSession({ reason, model: "m" }));
+    endSessionOnExit(reason => {
+      // While the row is written, a second SIGHUP (zsh can send two within a
+      // millisecond) must still meet YOUSPEAK's listener, not Node's default.
+      if (reason === "hangup" && process.listenerCount("SIGHUP") === 0) {
+        require("node:fs").writeSync(2, "no SIGHUP listener while writing\\n");
+        process.exitCode = 99;
+        return;
+      }
+      ys.endSession({ reason, model: "m" });
+    });
     const rl = createInterface({ input: process.stdin });
     rl.on("line", line => {
       if (line === "/switch") { ys.endSession({ reason: "switch", model: "m" }); ys = make(); work(ys); }
@@ -716,11 +727,13 @@ test("a process holding a YOUSPEAK session writes its row on SIGHUP, SIGTERM, EO
   };
   assert.deepEqual(await run("hup", ["/switch", "SIGHUP"]), { code: 129, signal: null, reasons: ["switch", "hangup"] });
   assert.deepEqual(await run("term", ["SIGTERM"]), { code: 143, signal: null, reasons: ["terminated"] });
+  // Two hangups back to back: still one row, written whole.
+  assert.deepEqual(await run("hup2", ["SIGHUP", "SIGHUP"]), { code: 129, signal: null, reasons: ["hangup"] });
   assert.deepEqual(await run("eof", ["EOF"]), { code: 0, signal: null, reasons: ["exit"] });
   assert.deepEqual(await run("exit", ["/switch", "/exit"]), { code: 0, signal: null, reasons: ["switch", "exit"] });
   assert.deepEqual(await run("crash", ["crash"]), { code: 1, signal: null, reasons: ["exit"] });
 
-  // The terminal and sovereign use it; the terminal's /switch waits for a running task.
+  // The terminal and sovereign use it; the terminal refuses /switch while a task runs.
   const youi = readFileSync(join(REPO_ROOT, "youi.mjs"), "utf-8");
   assert.match(youi, /endSessionOnExit\(reason => endYouspeak\(reason\)\)/);
   assert.match(youi, /if \(taskRunning\) \{[^\n]*\/switch when it has finished/);
@@ -956,6 +969,8 @@ test("YOUI Web writes open sessions' rows when its terminal closes (SIGHUP) or i
     assert.equal(storeLines(historyPath).length, 0, "nothing per message");
     const exited = new Promise(resolve => child.once("exit", (code, sig) => resolve({ code, sig })));
     child.kill(signal);
+    // A hangup under zsh can arrive twice within a millisecond.
+    if (signal === "SIGHUP") child.kill(signal);
     const { code } = await exited;
     assert.equal(code, how === "crash" ? 1 : 0);
     assert.deepEqual(storeLines(historyPath).map(line => JSON.parse(line).endReason), [reason], `${how}: the open session's row`);
@@ -963,7 +978,7 @@ test("YOUI Web writes open sessions' rows when its terminal closes (SIGHUP) or i
   assert.equal(existsSync(exported), false, "YOUSPEAK_HISTORY_PATH is ignored under YOUI_TEST");
 
   // With no test store, a test server writes nowhere.
-  const { port } = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, YOUSPEAK_HISTORY_PATH: exported });
+  const { port } = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, YOUSPEAK_HISTORY_PATH: exported, YOUSPEAK_TEST_HISTORY_PATH: "" });
   const session = await openSession(port, "nowhere");
   await chat(session, "hello");
   assert.equal((await post(session, "/api/clear")).status, 200);
@@ -1000,6 +1015,9 @@ test("YOUI Web's chat code applies no YOUSPEAK signal and writes nothing per mes
   }
   const server = readFileSync(join(REPO_ROOT, "youi-web/server.mjs"), "utf-8");
   assert.doesNotMatch(server, /"YOUSPEAK\.md"/, "the dead <soulDir>/YOUSPEAK.md include is gone");
+  // Shutdown listeners stay installed, so a second SIGHUP within a millisecond
+  // (zsh on a closed window) cannot meet Node's default action mid-write.
+  assert.match(server, /for \(const signal of \["SIGTERM", "SIGINT", "SIGHUP"\]\) \{\n  process\.on\(signal,/, "the server keeps its signal listeners");
 });
 
 // ── The ouroboros and the audit ─────────────────────────────────────

@@ -406,13 +406,22 @@ function remedies(surface, agent) {
  * SIGTERM, which otherwise end Node without emitting 'exit'. Each signal exits
  * with 128 + its number (129, 143), so the 'exit' hook runs. end(reason) gets
  * "exit", "hangup" or "terminated" and must be idempotent, as endSession is.
+ * The listeners stay installed (process.on, not once): a closed window under
+ * zsh delivers SIGHUP twice within a millisecond, and with `once` the second
+ * one met Node's default action and killed the process mid-write.
  * SIGKILL and power loss still end the process with nothing written.
  */
 export function endSessionOnExit(end) {
   let reason = "exit";
+  let stopping = false;
   process.once("exit", () => { try { end(reason); } catch {} });
   for (const [signal, code, why] of [["SIGHUP", 129, "hangup"], ["SIGTERM", 143, "terminated"]]) {
-    process.once(signal, () => { reason = why; process.exit(code); });
+    process.on(signal, () => {
+      if (stopping) return;
+      stopping = true;
+      reason = why;
+      process.exit(code);
+    });
   }
 }
 

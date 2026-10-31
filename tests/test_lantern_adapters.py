@@ -529,7 +529,7 @@ const imports = {
     branches.push(name); return { stdout: 'fixture-branch\n' };
   } },
   fs: mockFs, path, os: { homedir: () => home }, readline: { createInterface: forbidden('terminal') },
-  crypto: { default: crypto }, './youspeak-kernel.mjs': { createKernel: () => ({}) },
+  crypto: { default: crypto }, './youspeak-kernel.mjs': { createKernel: () => ({}), endSessionOnExit: () => {} },
   './youi-keychain.mjs': { KeychainCredentialStore: class {
     readCredential = forbidden('auth');
     updateTokens = forbidden('auth');

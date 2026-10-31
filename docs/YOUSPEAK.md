@@ -103,12 +103,12 @@ What was removed in Y1 (an earlier agent added these; Yu did not choose them):
 
 **Where:** `~/.local/share/youi/youspeak/history.jsonl` (a directory YOUI creates is 0700, the file 0600). `YOUSPEAK_HISTORY_PATH` overrides it. It is per user, outside any repository, and never committed. The store must be a regular file owned by the user: a symlink, a device such as `/dev/null`, or another user's file is refused (the row is not written and the error is reported), and the file is left as it is.
 
-A YOUI Web test server (`YOUI_TEST=1`) ignores `YOUSPEAK_HISTORY_PATH`, so a store a person exports in their shell is never written by the test suites. It writes only where `YOUSPEAK_TEST_HISTORY_PATH` points, and otherwise nowhere.
+A YOUI Web test server (`YOUI_TEST=1`) ignores `YOUSPEAK_HISTORY_PATH`, so a store a person exports in their shell is never written by the test suites. It writes only where `YOUSPEAK_TEST_HISTORY_PATH` points, and otherwise nowhere. If you export `YOUSPEAK_TEST_HISTORY_PATH` in your own shell, every test server the suites start writes its rows there.
 
 **When a row is written:** once, when a YOUSPEAK session ends.
 
 - **YOUI Web:** Clear (`/api/clear` or a session's clear), an agent switch, `/api/youspeak/reset`, a session closed, evicted or expired, 30 minutes without activity (the conversation goes on, and its next message starts a new YOUSPEAK session), and the server stopping: SIGTERM, SIGINT, or SIGHUP (closing the terminal window it was started from), each with `endReason` `shutdown`, or any other exit, such as an uncaught error (`exit`).
-- **Terminal:** `/switch`, `/exit`, Ctrl+C or end of input, a closed window or dropped SSH session (SIGHUP, `endReason` `hangup`), SIGTERM (`terminated`), or any other exit. `/switch` waits while a task is running. If a row cannot be written, the terminal says so in one dim line.
+- **Terminal:** `/switch`, `/exit`, Ctrl+C or end of input, a closed window or dropped SSH session (usually seen first as end of input, `endReason` `exit`; a SIGHUP while input is still open records `hangup`), SIGTERM (`terminated`), or any other exit. `/switch` is refused while a task is running; type it again once the task ends. A signal that arrives while a tool is running waits for that tool to finish, then ends the process before the next queued tool. If a row cannot be written, the terminal says so in one dim line.
 - **Sovereign:** the end of each run (`run-end`), Ctrl+C (`interrupted`; its state is saved as before), a fatal error (`fatal`), SIGHUP or SIGTERM.
 
 Nothing is written per message. That is the accepted trade-off: a process killed with SIGKILL, or a power loss, ends with any YOUSPEAK session still open unwritten.

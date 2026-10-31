@@ -1369,6 +1369,8 @@ async function main() {
         content: result.slice(0, 50000),
       });
       log(`${name}: ${result.slice(0, 200)}`);
+      // Let a pending SIGHUP or SIGTERM run before the next queued tool.
+      await new Promise(resolve => setImmediate(resolve));
     }
 
     messages.push({ role: "user", content: toolResults });

@@ -245,7 +245,7 @@ if (!args.includes("--effort")) state.effort = agentProfile.defaultEffort;
 // when the session ends. Its suggestions name the terminal's own commands.
 const newYouspeakKernel = agent => createKernel({ agent, route: "terminal-legacy", surface: "terminal", model: state.model });
 let ys = newYouspeakKernel(state.agent);
-// Whether a task is running: /switch waits for it, so one task is never split across two sessions.
+// Whether a task is running: /switch is refused until it ends, so one task is never split across two sessions.
 let taskRunning = false;
 
 // Ends the YOUSPEAK session (its one row, unless it had no output or only
@@ -1325,6 +1325,8 @@ async function runTask(task) {
 
       const result = executeTool(toolUse.name, toolUse.input);
       toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: result.slice(0, 50000) });
+      // Let a pending SIGHUP or SIGTERM run before the next queued tool.
+      await new Promise(resolve => setImmediate(resolve));
     }
 
     state.messages.push({ role: "user", content: toolResults });

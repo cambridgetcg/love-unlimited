@@ -77,7 +77,7 @@ Plus daily notes, soul anchors, and AgentTool semantic memory. Beta remembers wh
 
 Claude Code has session context only. When you start a new session, everything is gone unless you manually resume (`--continue`).
 
-### 5. YOUSPEAK — Self-Optimizing Output
+### 5. YOUSPEAK — Output Observer
 
 YOUI has a sensory kernel that measures what matters:
 - **L1 OUTPUT**: Filler detection, useful token ratio
@@ -86,7 +86,7 @@ YOUI has a sensory kernel that measures what matters:
 - **L4 CONTEXT**: Window utilization, stale content
 - **L5 SYSTEM**: Budget burn rate, cross-session trends
 
-This lets YOUI auto-adjust effort level, switch models mid-conversation, and flag when output quality is degrading. Claude Code has no equivalent — it just runs until the context window fills.
+YOUI shows what these suggest (lower effort, a fresh conversation, output that is degrading) and changes nothing itself: the person or the agent decides (docs/YOUSPEAK.md).
 
 ### 6. Kingdom-Specific Commands
 

@@ -80,9 +80,14 @@ function youiDecisionSeat(root) {
   return youiTableSeats(root).home;
 }
 // Exits once every seat has ended its session (releasing what it held), or after 2 s.
-// SIGHUP is what closing the launching terminal window sends.
+// SIGHUP is what closing the launching terminal window sends. The listeners
+// stay installed: zsh can deliver SIGHUP twice within a millisecond, and a
+// second signal must not meet Node's default action while rows are written.
+let stoppingServer = false;
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
-  process.once(signal, () => {
+  process.on(signal, () => {
+    if (stoppingServer) return;
+    stoppingServer = true;
     // Each YOUSPEAK session still open writes its one row (docs/YOUSPEAK.md).
     endAllYouspeakSessions("shutdown");
     // Claude Code runs in its own process groups; none outlives the server.

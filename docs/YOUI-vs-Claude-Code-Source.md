@@ -172,7 +172,7 @@ Plus `--allowedTools` and `--disallowedTools` for fine-grained control. In deleg
 2. **HIVE messaging** — Encrypted inter-agent communication with channel ACLs
 3. **5-layer memory** — Structured persistence across sessions
 4. **Multi-model routing** — Local + cloud, complexity-based, cost-optimized
-5. **YOUSPEAK kernel** — Self-optimizing output quality measurement
+5. **YOUSPEAK kernel** — Output quality observation that suggests and never acts
 6. **Convergence bridge** — Kingdom ↔ AgentTool ↔ Zerone identity linking
 7. **Wall-gate** — Spawn permissions, channel access, credential access
 8. **Daily notes** — Persistent episodic memory across sessions

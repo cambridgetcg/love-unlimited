@@ -38,6 +38,7 @@
 //   FAKE:bridge-down           reports the bridge as failed in init
 //   FAKE:bridge-pending        reports the bridge as still connecting in init
 //   FAKE:rate-limit-bare       a rate_limit_event with no windows
+//   FAKE:rate-limit-high       a rate_limit_event with the 5-hour window at 97%
 //   FAKE:die-before-init       keeps the session, then exits 1 before init
 //   FAKE:stall-missing         says "No conversation found" on stderr, then hangs before init
 //   FAKE:thinking <text>       a thinking block before the answer
@@ -290,6 +291,8 @@ async function answer(full) {
   if (has("bad-fields")) out({ type: "assistant", message: { id: "msg_bad", model, role: "assistant", content: 5 }, parent_tool_use_id: null });
   if (has("rate-limit-bare")) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed", isUsingOverage: false } });
+  } else if (has("rate-limit-high")) {
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", unifiedWindows: { five_hour: { utilization: 0.97, resetsAt: Math.floor(Date.now() / 1000) + 3600, status: "allowed_warning" }, seven_day: { utilization: 0.5, resetsAt: Math.floor(Date.now() / 1000) + 86400, status: "allowed" } }, isUsingOverage: false } });
   } else {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed", unifiedWindows: { five_hour: { utilization: 0.25, resetsAt: Math.floor(Date.now() / 1000) + 3600, status: "allowed" }, seven_day: { utilization: 0.5, resetsAt: Math.floor(Date.now() / 1000) + 86400, status: "allowed" } }, isUsingOverage: false } });
   }

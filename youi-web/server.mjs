@@ -29,7 +29,7 @@ import {
 import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
-import { createKernel } from "../youspeak-kernel.mjs";
+import { createKernel, defaultHistoryPath } from "../youspeak-kernel.mjs";
 import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
@@ -80,8 +80,16 @@ function youiDecisionSeat(root) {
   return youiTableSeats(root).home;
 }
 // Exits once every seat has ended its session (releasing what it held), or after 2 s.
-for (const signal of ["SIGTERM", "SIGINT"]) {
-  process.once(signal, () => {
+// SIGHUP is what closing the launching terminal window sends. The listeners
+// stay installed: zsh can deliver SIGHUP twice within a millisecond, and a
+// second signal must not meet Node's default action while rows are written.
+let stoppingServer = false;
+for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
+  process.on(signal, () => {
+    if (stoppingServer) return;
+    stoppingServer = true;
+    // Each YOUSPEAK session still open writes its one row (docs/YOUSPEAK.md).
+    endAllYouspeakSessions("shutdown");
     // Claude Code runs in its own process groups; none outlives the server.
     killAllClaudeCode();
     const exit = () => process.exit(0);
@@ -119,6 +127,20 @@ import {
 const PORT = parseInt(process.env.PORT || "17777", 10);
 const __dirname = new URL(".", import.meta.url).pathname;
 const IS_TEST = process.env.YOUI_TEST === "1";
+// YOUSPEAK's store: one row per session (docs/YOUSPEAK.md), at
+// YOUSPEAK_HISTORY_PATH or ~/.local/share/youi/youspeak/history.jsonl. A test
+// server (YOUI_TEST=1) ignores YOUSPEAK_HISTORY_PATH, which a person may export
+// for their own store, and writes only where YOUSPEAK_TEST_HISTORY_PATH points,
+// or nowhere.
+const YOUSPEAK_STORE = IS_TEST
+  ? (process.env.YOUSPEAK_TEST_HISTORY_PATH ? resolve(process.env.YOUSPEAK_TEST_HISTORY_PATH) : null)
+  : defaultHistoryPath();
+// A session idle this long ends its YOUSPEAK session (its row is written; the
+// conversation goes on, and its next turn starts a new YOUSPEAK session).
+const YOUSPEAK_IDLE_MS = (() => {
+  const configured = Number(process.env.YOUI_TEST_YOUSPEAK_IDLE_MS);
+  return IS_TEST && Number.isFinite(configured) && configured > 0 ? configured : 30 * 60_000;
+})();
 const MAX_BODY_BYTES = Math.min(
   10 * 1024 * 1024,
   Math.max(1024, Number.parseInt(process.env.YOUI_MAX_BODY_BYTES || `${1024 * 1024}`, 10) || 1024 * 1024),
@@ -474,7 +496,7 @@ function createSessionState(overrides = {}) {
     mindBudget: null,
     capabilities: new Set(SERVER_CAPABILITIES),
     providerUsage: createProviderUsage(),
-    ys: createKernel({ agent }),
+    ys: newYouspeakKernel(agent),
     sessionId: null,
     // The Claude Code conversation this YOUI session's Claude turns continue,
     // or null until the first one (claudeCodeTurn): { id, started, seen,
@@ -506,6 +528,8 @@ const state = new Proxy({}, {
 
 const sessionRegistry = new SessionRegistry({
   stateFactory: overrides => createSessionState(overrides),
+  // A session closed, evicted or expired writes its YOUSPEAK row.
+  onSessionEnd: (session, reason) => endYouspeakSession(session.state, reason, { fresh: false }),
 });
 
 async function runSessionRequest(req, res, session, callback) {
@@ -641,7 +665,9 @@ function runtimePrivacyBoundary() {
         + "; when a session switches to Claude, the turns Claude has not received, local-model (Ollama, vLLM) turns included,"
         + " are carried into Claude as text, so they go to Anthropic and are kept in those transcripts too"
         + "; /api/clear and session clear start a new conversation without deleting the old transcript; raw mode and Claude minds are not kept",
-      localMetrics: "YOUSPEAK may persist aggregate session metrics; explicit memory tools write only when granted",
+      localMetrics: "YOUSPEAK appends one row of aggregates per session (counts, estimates, grades, signal names; no message"
+        + ` text, paths or tool inputs) to ${YOUSPEAK_STORE || "nowhere (no store in test mode)"}`
+        + "; explicit memory tools write only when granted",
       remoteProvider: "provider policy applies; YOUI does not guarantee provider-side deletion or training exclusion",
     },
     truthDetector: {
@@ -1627,13 +1653,6 @@ function buildStaticPrefix() {
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
   if (existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
 
-  // YOUSPEAK.md full rules
-  const youspeakPath = join(state.soulDir, "YOUSPEAK.md");
-  if (existsSync(youspeakPath)) {
-    const ys = readFileSync(youspeakPath, "utf-8");
-    if (ys.length < 2000) parts.push(ys);
-  }
-
   // MODE-ONE: Truth-alignment methodology
   const modeOnePath = join(state.soulDir, "MODE-ONE.md");
   if (existsSync(modeOnePath)) {
@@ -2189,6 +2208,8 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
             totalTokensEstimate: metrics.totalTokens,
             usefulRatio: metrics.usefulRatio,
             grade: metrics.grade,
+            // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
+            session: turnState.ys.session.id,
           } : null,
         });
         break;
@@ -2343,18 +2364,9 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   sendSSE(res, "usage", usageEvent());
 
   if (rawMode) return { answered };
-  // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop.
+  // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop. Suggestions only.
   turnState.ys.senseContext(turnState.messages, systemPrompt.length);
-  const signals = turnState.ys.decide(turnState.effort, model, kernelBudget());
-  if (signals.length > 0) {
-    sendSSE(res, "youspeak_signals", { signals });
-    for (const sig of signals) {
-      if (sig.type === "effort" && sig.action === "reduce") {
-        turnState.effort = sig.to;
-        sendSSE(res, "youspeak_action", { action: "effort_reduced", from: sig.from, to: sig.to, reason: sig.reason });
-      }
-    }
-  }
+  sendYouspeakSignals(res, turnState.ys, turnState.ys.decide(turnState.effort, model, kernelBudget(), { route: "claude-code" }));
   return { answered };
 }
 
@@ -2710,6 +2722,79 @@ function stopAutonomousLoop() {
 // All 5 layers: Output, Thinking, Action, Context, System
 // ═════════════════════════════════════════════════════════════════════
 
+// One YOUSPEAK kernel per session lifetime (docs/YOUSPEAK.md): its row goes to
+// YOUSPEAK_STORE when the session ends, never per message.
+function newYouspeakKernel(agent) {
+  return createKernel({ agent, surface: "web", historyPath: YOUSPEAK_STORE });
+}
+
+// Which route a message to this model takes, as YOUSPEAK's row names it.
+function youspeakRoute(model) {
+  if (!isOllamaModel(model)) return "claude-code";
+  return isVllmModel(model) ? "vllm" : "ollama";
+}
+
+// Ends a session's YOUSPEAK session: its one row is appended (unless it had no
+// output or only failed), and, with `fresh`, a new kernel starts. Never throws.
+function endYouspeakSession(sessionState, reason, { fresh = true } = {}) {
+  if (!sessionState?.ys) return null;
+  let outcome = null;
+  try {
+    outcome = sessionState.ys.endSession({ reason, model: sessionState.model });
+    if (outcome?.error) console.warn(`YOUSPEAK: the session row was not written (${outcome.error})`);
+  } catch (error) {
+    console.warn(`YOUSPEAK: the session row was not written (${error.message})`);
+  }
+  if (fresh) sessionState.ys = newYouspeakKernel(sessionState.agent);
+  return outcome;
+}
+
+// At shutdown every open YOUSPEAK session writes its row (synchronously).
+function endAllYouspeakSessions(reason) {
+  try {
+    for (const session of sessionRegistry.sessionsById.values()) endYouspeakSession(session.state, reason, { fresh: false });
+    endYouspeakSession(serverState, reason, { fresh: false });
+  } catch (error) {
+    console.warn(`YOUSPEAK: rows not written at ${reason} (${error.message})`);
+  }
+}
+// Any other way the process exits (an uncaught error, an unhandled rejection,
+// process.exit) still writes each open session's row. endSession is idempotent,
+// so after a signal's shutdown this writes nothing more. SIGKILL and power loss
+// write nothing: YOUSPEAK writes nothing per message (docs/YOUSPEAK.md §4).
+process.once("exit", () => endAllYouspeakSessions("exit"));
+
+// A session with no YOUSPEAK activity for YOUSPEAK_IDLE_MS, and no turn in
+// flight, ends its YOUSPEAK session; its next turn starts a new one.
+function endIdleYouspeakSessions() {
+  const now = Date.now();
+  const states = [serverState, ...[...sessionRegistry.sessionsById.values()].map(session => session.state)];
+  for (const sessionState of states) {
+    const ys = sessionState?.ys;
+    if (!ys || sessionState.chatInFlight || !ys.hasActivity() || ys.lastActivityAt === null) continue;
+    if (now - ys.lastActivityAt >= YOUSPEAK_IDLE_MS) endYouspeakSession(sessionState, "idle");
+  }
+}
+setInterval(endIdleYouspeakSessions, Math.min(60_000, Math.max(50, Math.floor(YOUSPEAK_IDLE_MS / 4)))).unref();
+
+// YOUSPEAK suggests and never acts (Yu, 2026-10-30): the page gets the current
+// signals, and each new one once as a suggestion line in the chat, saying what
+// the person or the agent could do. Effort and history are left as they are.
+function sendYouspeakSignals(res, ys, signals) {
+  if (!signals?.length) return;
+  sendSSE(res, "youspeak_signals", { signals });
+  for (const sig of ys.newSuggestions(signals)) {
+    sendSSE(res, "youspeak_suggestion", {
+      type: sig.type,
+      action: sig.action,
+      from: sig.from,
+      to: sig.to,
+      reason: sig.reason,
+      suggestion: sig.suggestion,
+    });
+  }
+}
+
 // Backward-compatible wrapper for web UI SSE events
 function measureYouspeak(text) {
   const metrics = state.ys.senseOutput(text);
@@ -2721,16 +2806,23 @@ function measureYouspeak(text) {
     totalTokensEstimate: metrics.totalTokens,
     usefulRatio: metrics.usefulRatio,
     grade: metrics.grade,
+    // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
+    session: state.ys.session.id,
   };
 }
 
 function getUWTSummary() {
   const r = state.ys.report();
   return {
+    // This YOUSPEAK session (a new one starts after Clear, a switch or an idle cut).
+    session: r.session,
     // Legacy fields
     usefulRatio: r.output.usefulRatio,
     totalOutput: r.output.totalTokens,
     totalFiller: r.output.fillerTokens,
+    // The output the useful ratio is drawn from: blocks L1 grades (docs/YOUSPEAK.md §2).
+    gradedTokens: r.output.gradedTokens,
+    gradedBlocks: r.output.gradedBlocks,
     tokensSaved: r.output.fillerTokens,
     textBlocks: r.output.textBlocks,
     toolCalls: r.action.totalCalls,
@@ -2744,6 +2836,9 @@ function getUWTSummary() {
     system: r.system,
     signals: r.signals,
     trends: state.ys.trends(),
+    // Rows in the store, and anything wrong with it (a corrupt or partial
+    // store is reported here, never reset); the tracked legacy file, read only.
+    store: state.ys.storeStatus(),
   };
 }
 
@@ -3134,6 +3229,8 @@ async function handleSessionRequest(req, res, url, path) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: "Unknown agent" }));
       }
+      // The conversation ends here, and with it the YOUSPEAK session.
+      endYouspeakSession(activeState(), "switch", { fresh: false });
       state.agent = target;
       state.model = AGENTS[target].defaultModel;
       state.effort = AGENTS[target].defaultEffort;
@@ -3142,7 +3239,7 @@ async function handleSessionRequest(req, res, url, path) {
       state.totalToolCalls = 0;
       state.totalThinkingTokens = 0;
       state.claudeCodeSession = null;
-      state.ys = createKernel({ agent: target });
+      state.ys = newYouspeakKernel(target);
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({
         ok: true,
@@ -3242,6 +3339,8 @@ async function handleSessionRequest(req, res, url, path) {
     }
 
     if (path === "/api/clear" && req.method === "POST") {
+      // A cleared conversation ends its YOUSPEAK session (one row) and starts a new one.
+      endYouspeakSession(activeState(), "clear");
       state.messages = [];
       state.turnCount = 0;
       state.totalToolCalls = 0;
@@ -3503,13 +3602,14 @@ async function handleSessionRequest(req, res, url, path) {
     }
 
     if (path === "/api/youspeak/trends") {
+      // The trends, and anything wrong with the store they come from.
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(state.ys.trends() || { sessions: 0 }));
+      return res.end(JSON.stringify({ ...(state.ys.trends() || { sessions: 0 }), warnings: state.ys.storeStatus().warnings }));
     }
 
     if (path === "/api/youspeak/reset" && req.method === "POST") {
-      state.ys.persist(); // Save before reset
-      state.ys = createKernel({ agent: state.agent }); // Fresh kernel
+      // Ends this YOUSPEAK session (its row is written) and starts a fresh one.
+      endYouspeakSession(activeState(), "reset");
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: true }));
     }
@@ -3632,6 +3732,7 @@ async function handleSessionApi(req, res, url, path, client) {
     if (session.state.chatInFlight) {
       throw new HttpError(409, "Session has an active turn", "session_busy");
     }
+    endYouspeakSession(session.state, "clear");
     session.state.messages = [];
     session.state.turnCount = 0;
     session.state.totalToolCalls = 0;
@@ -3920,13 +4021,16 @@ async function handleChatTurn(req, res, signal) {
 
   // Claude answers through the installed Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md);
   // Ollama and vLLM keep YOUI's own agent loop.
+  // YOUSPEAK's row names the route and model each message took.
+  if (!rawMode) state.ys.noteRoute(youspeakRoute(state.model), state.model);
   let detect = true;
+  let exchangeOk = true;
   if (isOllamaModel(state.model)) {
     // Which model answered, so a later Claude turn that carries these turns can name it.
     const turnModel = state.model;
     const before = state.messages.length;
     try {
-      await ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode });
+      exchangeOk = (await ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode }))?.ok !== false;
     } finally {
       if (!rawMode) {
         for (const message of state.messages.slice(before)) {
@@ -3939,11 +4043,12 @@ async function handleChatTurn(req, res, signal) {
     // in an error (claudeCodeTurn says when), but only an answer that ended
     // without an error goes to the truth detector.
     detect = (await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }))?.answered === true;
+    exchangeOk = detect;
   }
 
   throwIfAborted(signal);
-  // Persist YOUSPEAK session data
-  if (!IS_TEST && !rawMode) state.ys.persist();
+  // YOUSPEAK writes nothing per message; the session's one row is written when it ends.
+  if (!rawMode) state.ys.noteExchange({ ok: exchangeOk });
 
   // SP1: fire-and-forget mode-two detection (post-stream, no await)
   // Direct-mode terminal response is the last assistant message in state.messages.
@@ -3963,8 +4068,11 @@ async function handleChatTurn(req, res, signal) {
 
 // YOUI's own agent loop, for Ollama and vLLM models: the provider answers,
 // YOUI runs the tools it asks for, and the results go back, up to 50 rounds.
+// Returns { ok }: false when the turn ended in an error or a refusal (YOUSPEAK
+// writes no row for a session whose turns only failed).
 async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMode }) {
   let maxTurns = rawMode ? 1 : 50;
+  let failed = false;
 
   for (let turn = 0; turn < maxTurns; turn++) {
     throwIfAborted(signal);
@@ -3999,6 +4107,7 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
         continue;
       }
       sendSSE(res, "error", { message: e.message || "Unknown error" });
+      failed = true;
       break;
     }
     throwIfAborted(signal);
@@ -4037,6 +4146,7 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
     // Claude 5-series models can decline a request (HTTP 200, stop_reason
     // "refusal"), often with no text at all; say so instead of going quiet.
     if (response.stop_reason === "refusal") {
+      failed = true;
       const category = response.stop_details?.category;
       sendSSE(res, "error", {
         message: `The model declined this request${category ? ` (${category})` : ""}. Rephrase it, or choose another model.`,
@@ -4141,26 +4251,11 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
     // YOUSPEAK L4: Sense context after adding messages
     state.ys.senseContext(state.messages, systemPrompt.length);
 
-    // YOUSPEAK DECIDE: Check for adaptive signals
-    const signals = state.ys.decide(state.effort, state.model, kernelBudget());
-    if (signals.length > 0) {
-      sendSSE(res, "youspeak_signals", { signals });
-      for (const sig of signals) {
-        // Auto-apply effort reduction
-        if (sig.type === "effort" && sig.action === "reduce") {
-          state.effort = sig.to;
-          sendSSE(res, "youspeak_action", { action: "effort_reduced", from: sig.from, to: sig.to, reason: sig.reason });
-        }
-        // Auto-apply context pruning
-        if (sig.type === "context" && (sig.action === "prune_recommended" || sig.action === "evict_old_results")) {
-          const { pruned } = state.ys.pruneContext(state.messages);
-          if (pruned > 0) {
-            sendSSE(res, "youspeak_action", { action: "context_pruned", pruned, reason: sig.reason });
-          }
-        }
-      }
-    }
+    // YOUSPEAK DECIDE: suggestions only; nothing here changes effort or history.
+    // This loop sends no effort and has no Claude 5-hour window: decide() is told the route.
+    sendYouspeakSignals(res, state.ys, state.ys.decide(state.effort, state.model, kernelBudget(), { route: youspeakRoute(state.model) }));
   }
+  return { ok: !failed };
 }
 
 // ═════════════════════════════════════════════════════════════════════

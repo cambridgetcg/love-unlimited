@@ -28,8 +28,11 @@ import { homedir } from "os";
 import crypto from "crypto";
 
 // ── YOUSPEAK Kernel — the sensory organ ──
-import { createKernel } from "./youspeak-kernel.mjs";
+import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
+
+// This run's YOUSPEAK session, for the fatal-error path outside main().
+let runYouspeak = null;
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -1098,8 +1101,8 @@ ${toolList.join(", ")}
 // ═════════════════════════════════════════════════════════════════════
 //
 // TIER 3 (YOUSPEAK Kernel) is now wired directly into the main loop via
-// createKernel(). The kernel handles L1-L5 sensing, DECIDE signals,
-// context pruning, reporting, and cross-session persistence.
+// createKernel(). The kernel handles L1-L5 sensing, DECIDE signals (shown as
+// suggestions, never applied), reporting, and one history row per run.
 // The old inline `efficiency` object has been replaced.
 // ═════════════════════════════════════════════════════════════════════
 
@@ -1158,13 +1161,21 @@ async function main() {
   const startTime = Date.now();
 
   // ── YOUSPEAK Kernel — sensory organ for the session ──
-  const ys = createKernel({ agent: config.model });
+  // One row per run: agent "sovereign", and the model each turn used in `models`.
+  const ys = createKernel({ agent: "sovereign", route: "sovereign", surface: "sovereign", model: config.model });
+  runYouspeak = ys;
+  ys.noteActivity(); // the run starts now: the row's startedAt
   let ysSignals = [];
+  // However the run ends (the report below, Ctrl+C, a fatal error, SIGHUP or
+  // SIGTERM), its YOUSPEAK row is written at most once; SIGKILL writes none.
+  endSessionOnExit(reason => ys.endSession({ reason, model: config.model }));
 
-  // Ctrl+C saves state
+  // Ctrl+C saves state, and writes this run's YOUSPEAK row
   process.on("SIGINT", () => {
     print(`\n${S.yellow}Saving state...${S.reset}`);
     saveState({ messages, totalCost, turnCount, totalToolCalls, totalThinkingTokens, task: config.task });
+    const ended = ys.endSession({ reason: "interrupted", model: config.model });
+    if (ended.error) print(`${S.dim}YOUSPEAK row not written (${ended.error})${S.reset}`);
     print(`Resume with: node sovereign.mjs --continue`);
     process.exit(0);
   });
@@ -1271,7 +1282,11 @@ async function main() {
     }
 
     // ── YOUSPEAK Kernel: SENSE ──
+    // This turn's provider: Ollama has no Claude effort setting or 5-hour window.
+    const turnRoute = response._provider === "ollama" ? "ollama" : "sovereign";
     if (config.trackEfficiency) {
+      ys.noteRoute("sovereign", response._model || config.model);
+
       // L1: Output — filler detection on text blocks
       const allText = textBlocks.map(b => b.text).join(" ");
       if (allText.trim()) ys.senseOutput(allText);
@@ -1294,7 +1309,7 @@ async function main() {
         fiveHour: budget.fiveHour,
         sevenDay: budget.sevenDay,
         isUsingOverage: budget.isUsingOverage,
-      });
+      }, { route: turnRoute });
     }
 
     // Status line — with budget intelligence + YOUSPEAK kernel
@@ -1307,12 +1322,9 @@ async function main() {
     const ysTag = config.trackEfficiency ? ` ${S.cyan}${ys.statusLine()}${S.reset}` : "";
     print(`${S.blue}[${turnCount}]${S.reset}${modelTag} ${S.dim}${inputTokens}in ${outputTokens}out${S.reset}${thinkTag}${ysTag} ${S.dim}${turnMs}ms${S.reset}${budgetTag}`);
 
-    // Show YOUSPEAK DECIDE signals if any
-    if (ysSignals.length > 0) {
-      for (const sig of ysSignals) {
-        const sigColor = sig.type === "context" ? S.yellow : sig.type === "output" ? S.red : S.dim;
-        print(`  ${sigColor}⚡ ${sig.type}: ${sig.action} — ${sig.reason}${S.reset}`);
-      }
+    // YOUSPEAK suggestions: each new one once, in the terminal's words; nothing is changed.
+    for (const sig of ys.newSuggestions(ysSignals)) {
+      print(`  ${S.yellow}⚡ YOUSPEAK suggestion: ${sig.reason}.${S.reset} ${S.dim}${sig.suggestion}${S.reset}`);
     }
 
     // ── No tools -> done ──
@@ -1357,6 +1369,8 @@ async function main() {
         content: result.slice(0, 50000),
       });
       log(`${name}: ${result.slice(0, 200)}`);
+      // Let a pending SIGHUP or SIGTERM run before the next queued tool.
+      await new Promise(resolve => setImmediate(resolve));
     }
 
     messages.push({ role: "user", content: toolResults });
@@ -1381,7 +1395,7 @@ async function main() {
   if (config.trackEfficiency) {
     const ysReport = ys.report();
     print(`\n${S.cyan}── YOUSPEAK Kernel Report ──${S.reset}`);
-    print(`  Grade:           ${ysReport.output.grade} (${Math.round(ysReport.output.usefulRatio * 100)}% useful)`);
+    print(`  Grade:           ${ysReport.output.grade ?? "—"} (${ysReport.output.usefulRatio === null ? "no output" : `${Math.round(ysReport.output.usefulRatio * 100)}% useful`})`);
     print(`  Output tokens:   ${ysReport.output.totalTokens.toLocaleString()} (${ysReport.output.fillerTokens} filler)`);
     print(`  Text blocks:     ${ysReport.output.textBlocks}`);
     print(`  Thinking:        ${ysReport.thinking.totalTokens.toLocaleString()} tokens (${ysReport.thinking.avgRatio}x avg ratio)`);
@@ -1398,11 +1412,13 @@ async function main() {
       }
     }
 
-    // Persist session to unified history (youspeak-history.json)
-    const persisted = ys.persist();
-    if (persisted) {
-      print(`\n${S.green}✓ Session persisted to youspeak-history.json${S.reset}`);
+    // One row for this run in YOUSPEAK's store (not the tracked youspeak-history.json)
+    const ended = ys.endSession({ reason: "run-end", model: config.model });
+    if (ended.written) {
+      print(`\n${S.green}✓ YOUSPEAK row written to ${ys.historyPath}${S.reset}`);
       log(`YOUSPEAK_KERNEL: ${JSON.stringify(ysReport)}`);
+    } else {
+      print(`\n${S.dim}YOUSPEAK row not written (${ended.error || ended.skipped})${S.reset}`);
     }
   }
 
@@ -1431,5 +1447,7 @@ async function main() {
 
 main().catch(e => {
   console.error(`${S.red}Fatal: ${e.message}${S.reset}`);
+  // The run's YOUSPEAK row, unless it had no output (the exit hook would write it too, as "exit").
+  try { runYouspeak?.endSession({ reason: "fatal", model: config.model }); } catch {}
   process.exit(1);
 });

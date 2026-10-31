@@ -7,8 +7,8 @@
 // YOUSPEAK_TEST_HISTORY_PATH for a test server (which ignores
 // YOUSPEAK_HISTORY_PATH, so an exported one is never written by these tests),
 // or by YOUSPEAK_HISTORY_PATH for the read-only CLIs; the real
-// ~/.local/share/youi is never touched, and the tracked youspeak-history.json
-// and youspeak-config.json are checked unchanged. Claude is
+// ~/.local/share/youi is never touched, and the legacy records in docs/history/
+// are checked unchanged, with nothing written at their old root paths. Claude is
 // tests/fixtures/fake-claude.mjs and vLLM a local fake; no network, no Keychain.
 
 import assert from "node:assert/strict";
@@ -41,6 +41,7 @@ import {
   isGradable,
   readHistory,
   readHistoryCached,
+  readLegacyHistory,
   trendDirection,
   trendsFromRows,
 } from "../youspeak-kernel.mjs";
@@ -49,7 +50,13 @@ import { SessionRegistry } from "../youi-web/security.mjs";
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
 const KERNEL_URL = pathToFileURL(join(REPO_ROOT, "youspeak-kernel.mjs")).href;
 const FAKE = join(REPO_ROOT, "tests/fixtures/fake-claude.mjs");
-const TRACKED = ["youspeak-history.json", "youspeak-config.json"].map(name => join(REPO_ROOT, name));
+// The legacy records in docs/history/, and the root paths older versions wrote them to.
+const TRACKED = [
+  "docs/history/youspeak-history-2026-04-13-to-06-19.json",
+  "docs/history/youspeak-config-2026-06-19.json",
+  "youspeak-history.json",
+  "youspeak-config.json",
+].map(name => join(REPO_ROOT, name));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -67,7 +74,7 @@ function guardTracked(t) {
   const before = fingerprint(TRACKED);
   t.after(async () => {
     await stopServers(t);
-    assert.deepEqual(fingerprint(TRACKED), before, "the tracked youspeak-history.json and youspeak-config.json are unchanged");
+    assert.deepEqual(fingerprint(TRACKED), before, "the legacy records in docs/history/ are unchanged, and nothing is written at their old root paths");
   });
 }
 
@@ -1118,5 +1125,10 @@ test("the audit stays read only", t => {
   assert.match(audit.stdout, /YOUSPEAK Audit Report/);
   assert.deepEqual(fingerprint([state, ...TRACKED]), before);
   assert.deepEqual(readdirSync(dir), ["state.json"]);
-  assert.ok(existsSync(LEGACY_HISTORY_PATH), "the legacy file is still there, as a historical record");
+  assert.ok(existsSync(LEGACY_HISTORY_PATH), "the legacy file is still there, as a historical record in docs/history/");
+  assert.deepEqual(
+    [readLegacyHistory()?.rows, readLegacyHistory()?.span],
+    [178, "2026-04-13 → 2026-06-19"],
+    "the legacy reader finds the moved record",
+  );
 });

@@ -470,7 +470,7 @@ function showHistory() {
 
   const legacy = readLegacyHistory();
   if (legacy) {
-    console.log(`\n${S.bold}Legacy record${S.reset} ${S.dim}(youspeak-history.json, tracked, read only)${S.reset}`);
+    console.log(`\n${S.bold}Legacy record${S.reset} ${S.dim}(docs/history/, the old youspeak-history.json, read only)${S.reset}`);
     console.log(`  ${legacy.rows} rows${legacy.span ? `, ${legacy.span}` : ""}; ${legacy.note}.`);
     console.log(`  ${legacy.mutations} mutation record(s). The June 2026 entries marked "applied" in youspeak-config.json`);
     console.log(`  never took effect: nothing reads that file. Only add_cache_reminder reached a prompt: sovereign's, as the`);

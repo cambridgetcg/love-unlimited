@@ -1171,7 +1171,7 @@ function handleCommand(input) {
         const dir = t.fillerTrend.direction === "improving" ? S.green + "↑" : t.fillerTrend.direction === "regressing" ? S.red + "↓" : S.dim + "─";
         print(`  ${S.dim}  Useful: ${Math.round(t.avgUsefulRatio*100)}% avg  Think: ${t.avgThinkRatio === null ? "—" : `${t.avgThinkRatio}x`}  Dups: ${t.avgRedundantReads}/s  Filler: ${dir} ${t.fillerTrend.direction}${S.reset}`);
       }
-      if (store.legacy) print(`  ${S.dim}  Legacy youspeak-history.json (read only): ${store.legacy.rows} rows; not comparable${S.reset}`);
+      if (store.legacy) print(`  ${S.dim}  Legacy record, docs/history/ (read only): ${store.legacy.rows} rows; not comparable${S.reset}`);
       print("");
       return true;
     }

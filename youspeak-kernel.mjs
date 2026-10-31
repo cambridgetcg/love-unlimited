@@ -33,8 +33,8 @@
 // History: one row per session, appended when the session ends, to an
 // untracked per-user store (default ~/.local/share/youi/youspeak/history.jsonl,
 // or YOUSPEAK_HISTORY_PATH). Rows hold aggregates only, never message text,
-// file paths or tool inputs. The tracked youspeak-history.json is legacy and
-// only ever read.
+// file paths or tool inputs. The rows earlier versions wrote to a tracked
+// youspeak-history.json are kept in docs/history/ as legacy, and only ever read.
 //
 // Import:
 //   import { createKernel } from './youspeak-kernel.mjs';
@@ -101,8 +101,9 @@ export const MIN_GRADED_TOKENS = 20;
 // filler_regression counts a measured block whose useful ratio is under this
 // line: the line the old C grade began at, so the signal fires where it did.
 export const FILLER_RATIO_FLOOR = 0.85;
-// The git-tracked file earlier versions wrote after every message. Read only, as legacy.
-export const LEGACY_HISTORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "youspeak-history.json");
+// The rows earlier versions wrote after every message to a tracked
+// youspeak-history.json, moved to docs/history/ (its README). Read only, as legacy.
+export const LEGACY_HISTORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "docs", "history", "youspeak-history-2026-04-13-to-06-19.json");
 
 /** The weaker of two labels (an estimate wins); null when neither has a figure. */
 export function weakerEvidence(a, b) {
@@ -1640,7 +1641,7 @@ if (process.argv[1]?.endsWith("youspeak-kernel.mjs")) {
     }
     const legacy = readLegacyHistory();
     if (legacy) {
-      console.log(`${S.dim}Legacy youspeak-history.json (read only): ${legacy.rows} rows${legacy.span ? `, ${legacy.span}` : ""}; ${legacy.note}.${S.reset}`);
+      console.log(`${S.dim}Legacy record, docs/history/ (read only): ${legacy.rows} rows${legacy.span ? `, ${legacy.span}` : ""}; ${legacy.note}.${S.reset}`);
     }
 
   } else {

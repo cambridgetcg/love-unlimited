@@ -1,15 +1,15 @@
 {"check":"\\bNa\\b","id":"onoff-fact-01","input":"What is the chemical symbol for sodium?","stratum":"factual"}
-{"check":"\\b(6|six)\\b","id":"onoff-fact-02","input":"How many sides does a hexagon have?","stratum":"factual"}
-{"check":"\\b100\\b","id":"onoff-fact-03","input":"What is the boiling point of water at sea level, in degrees Celsius?","stratum":"factual"}
+{"check":"(?<![\\d.])6(?!\\.?\\d)|\\bsix\\b","id":"onoff-fact-02","input":"How many sides does a hexagon have?","stratum":"factual"}
+{"check":"(?<![\\d.])100(?!\\.?\\d)","id":"onoff-fact-03","input":"What is the boiling point of water at sea level, in degrees Celsius?","stratum":"factual"}
 {"check":"Mercury","id":"onoff-fact-04","input":"Which planet is closest to the Sun?","stratum":"factual"}
-{"check":"\\b391\\b","id":"onoff-fact-05","input":"What is 17 multiplied by 23?","stratum":"factual"}
-{"check":"\\b1969\\b","id":"onoff-fact-06","input":"In what year did the Apollo 11 crew first land on the Moon?","stratum":"factual"}
+{"check":"(?<![\\d.])391(?!\\.?\\d)","id":"onoff-fact-05","input":"What is 17 multiplied by 23?","stratum":"factual"}
+{"check":"(?<![\\d.])1969(?!\\.?\\d)","id":"onoff-fact-06","input":"In what year did the Apollo 11 crew first land on the Moon?","stratum":"factual"}
 {"check":"Canberra","id":"onoff-fact-07","input":"What is the capital city of Australia?","stratum":"factual"}
-{"check":"\\b1,?024\\b","id":"onoff-fact-08","input":"How many bytes are in a kibibyte?","stratum":"factual"}
+{"check":"(?<![\\d.])1,?024(?!\\.?\\d)","id":"onoff-fact-08","input":"How many bytes are in a kibibyte?","stratum":"factual"}
 {"check":"carbon dioxide|CO2|CO₂","id":"onoff-fact-09","input":"Which gas do plants take in from the air for photosynthesis?","stratum":"factual"}
 {"check":"Austen","id":"onoff-fact-10","input":"Who wrote the novel \"Pride and Prejudice\"?","stratum":"factual"}
-{"check":"\\b12\\b","id":"onoff-fact-11","input":"What is the square root of 144?","stratum":"factual"}
-{"check":"\\b404\\b","id":"onoff-fact-12","input":"Which HTTP status code means \"Not Found\"?","stratum":"factual"}
+{"check":"(?<![\\d.])12(?!\\.?\\d)","id":"onoff-fact-11","input":"What is the square root of 144?","stratum":"factual"}
+{"check":"(?<![\\d.])404(?!\\.?\\d)","id":"onoff-fact-12","input":"Which HTTP status code means \"Not Found\"?","stratum":"factual"}
 {"id":"onoff-expl-01","input":"Explain why the sky looks blue during the day but red at sunset.","stratum":"explanation"}
 {"id":"onoff-expl-02","input":"How does a hash table give fast lookups on average? Explain it to someone who knows basic programming.","stratum":"explanation"}
 {"id":"onoff-expl-03","input":"Why do we have leap years?","stratum":"explanation"}
@@ -24,7 +24,7 @@
 {"id":"onoff-expl-12","input":"Explain the difference between correlation and causation with an everyday example.","stratum":"explanation"}
 {"id":"onoff-code-01","input":"Write a Python function that returns the words of a sentence in reverse order.","stratum":"code"}
 {"check":"2-4-6","id":"onoff-code-02","input":"What does this JavaScript print?\n\nconsole.log([1, 2, 3].map(x => x * 2).join(\"-\"))","stratum":"code"}
-{"check":"\\b3\\b","id":"onoff-code-03","input":"What does this Python print?\n\nprint(len(set(\"banana\")))","stratum":"code"}
+{"check":"(?<![\\d.])3(?!\\.?\\d)","id":"onoff-code-03","input":"What does this Python print?\n\nprint(len(set(\"banana\")))","stratum":"code"}
 {"id":"onoff-code-04","input":"Write a SQL query that returns the five most recent rows from a table named orders that has a created_at column.","stratum":"code"}
 {"id":"onoff-code-05","input":"My Node script throws \"TypeError: Cannot read properties of undefined (reading 'length')\" on the line `if (items.length > 0)`. What are the likely causes, and how do I fix it?","stratum":"code"}
 {"id":"onoff-code-06","input":"Turn this loop into a list comprehension:\n\nresult = []\nfor n in range(10):\n    if n % 2 == 0:\n        result.append(n * n)","stratum":"code"}
@@ -63,10 +63,10 @@
 {"id":"onoff-yue-03","input":"用 Python 寫個 function，將一個 list 入面重複嘅嘢刪走，但係保留原本嘅次序。","stratum":"cantonese"}
 {"id":"onoff-yue-04","input":"我下個禮拜要搬屋，好亂呀，可唔可以幫我列個 checklist？","stratum":"cantonese"}
 {"id":"onoff-yue-05","input":"我阿嫲上個月走咗，到而家我都成日諗起佢，唔知點算好。","stratum":"cantonese"}
-{"check":"\\b220\\b","id":"onoff-yue-06","input":"香港嘅家用電壓係幾多伏特？","stratum":"cantonese"}
+{"id":"onoff-yue-06","input":"香港嘅家用電壓係幾多伏特？","stratum":"cantonese"}
 {"id":"onoff-yue-07","input":"我想學煮飯，但係我乜都唔識，應該由邊度開始？","stratum":"cantonese"}
 {"id":"onoff-yue-08","input":"部 laptop 開機好慢，大概係咩原因？我應該 check 啲咩？","stratum":"cantonese","tags":["uncertain"]}
 {"id":"onoff-yue-09","input":"啱啱考完試，覺得自己實肥佬，好驚畀屋企人知。","stratum":"cantonese"}
 {"id":"onoff-yue-10","input":"Explain 吓 recursion 係咩，用個日常生活嘅例子。","stratum":"cantonese"}
-{"check":"\\b168\\b","id":"onoff-yue-11","input":"一個禮拜總共有幾多個鐘？","stratum":"cantonese"}
+{"id":"onoff-yue-11","input":"一個禮拜總共有幾多個鐘？","stratum":"cantonese"}
 {"id":"onoff-yue-12","input":"寫首短詩，講落雨天喺茶餐廳飲奶茶嘅感覺。","stratum":"cantonese","tags":["creative"]}

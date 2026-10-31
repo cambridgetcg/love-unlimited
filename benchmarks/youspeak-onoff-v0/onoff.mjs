@@ -153,7 +153,8 @@ const isNumber = value => typeof value === "number" && Number.isFinite(value);
  * Why one call's rate-limit reports stop the run, as reason strings (none:
  * []). `infos` is every rate_limit_event's `rate_limit_info` the call
  * printed. A call that printed none, or whose reports never state both
- * windows' utilisation, stops it too: the rules could not be checked.
+ * windows' utilisation or whether overage is in use, stops it too: the rules
+ * could not be checked.
  */
 export function rateLimitStops(infos) {
   const reasons = new Set();
@@ -161,7 +162,9 @@ export function rateLimitStops(infos) {
   if (list.length === 0) return ["rate_limit_unreported"];
   let fiveHour = null;
   let sevenDay = null;
+  let overageStated = false;
   for (const info of list) {
+    if (typeof info.isUsingOverage === "boolean") overageStated = true;
     if (info.isUsingOverage === true) reasons.add("overage");
     if (info.status !== "allowed") reasons.add("status_not_allowed");
     const windows = info.unifiedWindows && typeof info.unifiedWindows === "object" ? info.unifiedWindows : {};
@@ -171,6 +174,7 @@ export function rateLimitStops(infos) {
     if (isNumber(windows.five_hour?.utilization)) fiveHour = Math.max(fiveHour ?? 0, windows.five_hour.utilization);
     if (isNumber(windows.seven_day?.utilization)) sevenDay = Math.max(sevenDay ?? 0, windows.seven_day.utilization);
   }
+  if (!overageStated) reasons.add("overage_unreported");
   if (fiveHour === null || sevenDay === null) reasons.add("rate_limit_window_unreported");
   if (fiveHour !== null && fiveHour > FIVE_HOUR_STOP) reasons.add("five_hour_over_0.5");
   if (sevenDay !== null && sevenDay > SEVEN_DAY_STOP) reasons.add("seven_day_over_0.8");
@@ -253,7 +257,7 @@ export function bootstrapMean(groups, { seed = 1, resamples = 10_000, level = 0.
 
 /**
  * The completed pairs in a phase's calls: for each prompt, its latest attempt
- * whose two arms both answered.
+ * whose two arms both answered on the same Claude Code version.
  */
 export function completedPairs(calls) {
   const byKey = new Map();
@@ -267,6 +271,7 @@ export function completedPairs(calls) {
   const latest = new Map();
   for (const entry of byKey.values()) {
     if (!entry.on || !entry.off) continue;
+    if ((entry.on.claudeCodeVersion ?? null) !== (entry.off.claudeCodeVersion ?? null)) continue;
     const kept = latest.get(entry.promptId);
     if (!kept || entry.attempt > kept.attempt) latest.set(entry.promptId, entry);
   }
@@ -333,9 +338,10 @@ export function analysePairs(calls, prompts, { seed = 1, capUsd = null, plannedP
   const thinking = ratioEndpoint(pairs, call => call.reported?.thinking, {
     seed, strata, evidence: "estimated", basis: "reported thinking tokens, only pairs where both calls stated them",
   });
-  const costDiffs = pairs.filter(pair => isNumber(pair.on.reported?.costUsd) && isNumber(pair.off.reported?.costUsd))
-    .map(pair => pair.on.reported.costUsd - pair.off.reported.costUsd);
-  const costInterval = bootstrapMean([costDiffs], { seed });
+  const costPairs = pairs.filter(pair => isNumber(pair.on.reported?.costUsd) && isNumber(pair.off.reported?.costUsd));
+  const costDiff = pair => pair.on.reported.costUsd - pair.off.reported.costUsd;
+  // Resampled within each stratum, as the pooled ratios are.
+  const costInterval = bootstrapMean(strata.map(stratum => costPairs.filter(pair => pair.stratum === stratum).map(costDiff)), { seed });
   const allCost = calls.map(call => call.reported?.costUsd).filter(isNumber);
   const spentUsd = allCost.reduce((a, b) => a + b, 0);
 
@@ -370,7 +376,7 @@ export function analysePairs(calls, prompts, { seed = 1, capUsd = null, plannedP
       cost: {
         evidence: "estimated",
         basis: "Claude Code's reported list-price cost per call; ON − OFF per pair, in US$",
-        n: costDiffs.length,
+        n: costPairs.length,
         meanDiffUsd: costInterval.mean,
         lowUsd: costInterval.low,
         highUsd: costInterval.high,
@@ -380,6 +386,8 @@ export function analysePairs(calls, prompts, { seed = 1, capUsd = null, plannedP
     checkable: { evidence: "estimated", basis: "the prompt's check pattern against the answer text", pairs: checkable.length, bothRight, onOnly, offOnly },
     hedges: { evidence: "estimated", basis: "the rule's English hedges, counted outside the cantonese stratum", pairs: english.length, on: hedgesOn, off: hedgesOff },
     interim: {
+      evidence: "estimated",
+      basis: "harm: offOnly − onOnly among the checkable pairs; futility: the reported spend plus its mean per pair times the pairs left, against the phase cap",
       harm: netLoss >= HARM_NET_LOSS,
       netCheckableLoss: netLoss,
       futility: capUsd !== null && projectedUsd !== null && projectedUsd > capUsd,

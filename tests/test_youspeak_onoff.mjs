@@ -1,6 +1,6 @@
 // The YOUSPEAK ON/OFF test's R0 (benchmarks/youspeak-onoff-v0/): the arms,
-// every stop rule, the dry run, the interim look, resuming, and the paired
-// statistics.
+// every stop rule, the shared spend ledger, the dry run, the interim look,
+// resuming, and the paired statistics.
 //
 // Every `claude` here is a stand-in: tests/fixtures/replay-claude.mjs playing
 // the recorded stream (or a copy of it with the rate_limit_event changed), or
@@ -25,6 +25,7 @@ import {
   armSystemPrompt,
   bootstrapMean,
   capStops,
+  completedPairs,
   insideRepo,
   loadPrompts,
   planOrder,
@@ -33,7 +34,13 @@ import {
   suggestPairs,
   visibleChars,
 } from "../benchmarks/youspeak-onoff-v0/onoff.mjs";
-import { REPLAY_FIXTURE, runOnOff } from "../benchmarks/youspeak-onoff-v0/harness.mjs";
+import {
+  REPLAY_FIXTURE,
+  chargedCost,
+  pendingHolds,
+  registrationChangedSince,
+  runOnOff,
+} from "../benchmarks/youspeak-onoff-v0/harness.mjs";
 import { analysePhase, blindPacket } from "../benchmarks/youspeak-onoff-v0/analyze.mjs";
 
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
@@ -70,6 +77,34 @@ function replayWith(dir, edit) {
   const path = join(dir, `replay-${Math.random().toString(36).slice(2)}.jsonl`);
   writeFileSync(path, `${lines.join("\n")}\n`);
   return path;
+}
+
+// The recorded stream's lines with each event passed through `edit` (null: dropped).
+function streamWith(edit) {
+  return readFileSync(REPLAY_FIXTURE, "utf-8").split("\n").filter(Boolean).flatMap(line => {
+    const event = edit(JSON.parse(line));
+    return event ? [JSON.stringify(event)] : [];
+  });
+}
+const RECORDED = streamWith(event => event);
+const FAILED = streamWith(event => (event.type === "result" ? { ...event, is_error: true, subtype: "error_during_execution", result: "stand-in failure" } : event));
+// Cut before the rate_limit_event, as a call killed after its answer but before its result is: it never finishes.
+const CUT = streamWith(event => (event.type === "rate_limit_event" || event.type === "result" ? null : event));
+const withoutCost = event => {
+  if (event.type !== "result") return event;
+  const { total_cost_usd: _total, ...rest } = event;
+  const strip = usage => usage && Object.fromEntries(Object.entries(usage).map(([model, { costUSD: _cost, ...entry }]) => [model, entry]));
+  return { ...rest, modelUsage: strip(rest.modelUsage), model_usage_since_last_result: strip(rest.model_usage_since_last_result) };
+};
+
+// A replay file whose stream changes between calls: `streamFor(n)` gives call n's lines (from 1).
+// Its `log` goes to runOnOff, which logs once after each call.
+function switchingReplay(dir, streamFor) {
+  const path = join(dir, `switch-${Math.random().toString(36).slice(2)}.jsonl`);
+  let call = 1;
+  const write = () => writeFileSync(path, `${streamFor(call).join("\n")}\n`);
+  write();
+  return { path, log: () => { call += 1; write(); } };
 }
 
 function gitStatus() {
@@ -166,6 +201,29 @@ test("rateLimitStops: each rule, its boundary, and unreported state", () => {
   assert.deepEqual(rateLimitStops([withWindows(0.2, 0.3), { ...ALLOWED, isUsingOverage: true }]), ["overage"], "any report in the call counts");
   assert.deepEqual(rateLimitStops([]), ["rate_limit_unreported"]);
   assert.deepEqual(rateLimitStops([{ status: "allowed", isUsingOverage: false }]), ["rate_limit_window_unreported"]);
+  const { isUsingOverage: _overage, ...noOverage } = ALLOWED;
+  assert.deepEqual(rateLimitStops([noOverage]), ["overage_unreported"], "an overage state not stated is not a pass");
+  const windowRejected = { ...ALLOWED, unifiedWindows: { ...ALLOWED.unifiedWindows, seven_day: { ...ALLOWED.unifiedWindows.seven_day, status: "rejected" } } };
+  assert.deepEqual(rateLimitStops([windowRejected]), ["status_not_allowed"], "a window's own status counts");
+});
+
+test("pendingHolds: the latest report that could be read holds, and a failed call that reported nothing does not", () => {
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const high = { ...ALLOWED, unifiedWindows: { ...ALLOWED.unifiedWindows, five_hour: { utilization: 0.6, resetsAt: future, status: "allowed" } } };
+  const call = (startedAt, rateLimits, ok = true) => ({ startedAt, rateLimits, ok });
+  assert.deepEqual(pendingHolds([]), []);
+  assert.deepEqual(pendingHolds([call("2026-01-01T00:00:01Z", [ALLOWED]), call("2026-01-01T00:00:02Z", [], false)]), []);
+  assert.deepEqual(pendingHolds([call("2026-01-01T00:00:01Z", [high]), call("2026-01-01T00:00:02Z", [], false)]), ["five_hour_over_0.5"]);
+  assert.deepEqual(pendingHolds([call("2026-01-01T00:00:01Z", [ALLOWED]), call("2026-01-01T00:00:02Z", [])]), ["rate_limit_unreported"],
+    "a call that answered without any report holds");
+  assert.deepEqual(pendingHolds([call("2026-01-01T00:00:02Z", [ALLOWED]), call("2026-01-01T00:00:01Z", [high])]), [], "ordered by start time");
+});
+
+test("chargedCost counts a call whose cost went unreported at the costliest reported call", () => {
+  const call = costUsd => ({ reported: { costUsd } });
+  assert.equal(chargedCost([call(1), call(null), call(0.5)]), 2.5);
+  assert.equal(chargedCost([call(null)]), 0);
+  assert.equal(chargedCost([]), 0);
 });
 
 test("capStops: at the cap, and when the costliest call so far would pass it", () => {
@@ -201,11 +259,11 @@ for (const [name, edit, reason] of [
 }
 
 test("a run stops at the phase cap and at the total cap, before the call that would pass it", async t => {
-  const dir = scratch(t);
   // Each replayed call reports US$0.000123.
-  const phase = await runOnOff({ phase: "pilot", outDir: dir, runId: "phase", seed: 5, pairs: 3, capUsd: 0.0003 });
+  const phase = await runOnOff({ phase: "pilot", outDir: scratch(t), runId: "phase", seed: 5, pairs: 3, capUsd: 0.0003 });
   assert.equal(phase.summary.calls, 2);
   assert.deepEqual(phase.summary.stop.reasons, ["phase_cap"]);
+  const dir = scratch(t);
   const total = await runOnOff({ phase: "pilot", outDir: dir, runId: "total", seed: 5, pairs: 3, totalCapUsd: 0.0002 });
   assert.equal(total.summary.calls, 1);
   assert.deepEqual(total.summary.stop.reasons, ["total_cap"]);
@@ -213,6 +271,34 @@ test("a run stops at the phase cap and at the total cap, before the call that wo
   const opus = await runOnOff({ phase: "opus", outDir: dir, runId: "total", seed: 5, pairs: 3, totalCapUsd: 0.0002 });
   assert.equal(opus.summary.calls, 0);
   assert.deepEqual(opus.summary.stop.reasons, ["total_cap"]);
+});
+
+test("the caps count every run under the output directory: a new run-id starts with the spend before it", async t => {
+  const dir = scratch(t);
+  const first = await runOnOff({ phase: "pilot", outDir: dir, runId: "a", seed: 5, pairs: 3, totalCapUsd: 0.0002 });
+  assert.deepEqual(first.summary.stop.reasons, ["total_cap"]);
+  for (const phase of ["pilot", "opus"]) {
+    const next = await runOnOff({ phase, outDir: dir, runId: "b", seed: 5, pairs: 3, totalCapUsd: 0.0002 });
+    assert.equal(next.summary.calls, 0, `${phase} under another run-id makes no call`);
+    assert.deepEqual(next.summary.stop.reasons, ["total_cap"]);
+    assert.equal(next.summary.cost.totalUsd, 0.000123);
+  }
+  const phaseCap = await runOnOff({ phase: "pilot", outDir: dir, runId: "c", seed: 5, pairs: 3, capUsd: 0.0002 });
+  assert.deepEqual(phaseCap.summary.stop.reasons, ["phase_cap"], "the phase cap counts that phase in every run");
+  // Another --out is another ledger.
+  const elsewhere = await runOnOff({ phase: "pilot", outDir: scratch(t), runId: "b", seed: 5, pairs: 1 });
+  assert.equal(elsewhere.summary.stop, null);
+});
+
+test("a resume keeps a lower cap the run began with, unless --cap-usd names one again", async t => {
+  const dir = scratch(t);
+  const first = await runOnOff({ phase: "pilot", outDir: dir, seed: 5, pairs: 3, capUsd: 0.0003 });
+  assert.deepEqual(first.summary.stop.reasons, ["phase_cap"]);
+  const again = await runOnOff({ phase: "pilot", outDir: dir, resume: true });
+  assert.equal(again.summary.calls, 2);
+  assert.equal(again.summary.cost.capUsd, 0.0003);
+  const named = await runOnOff({ phase: "pilot", outDir: dir, resume: true, capUsd: 1 });
+  assert.equal(named.summary.pairsComplete, 3);
 });
 
 test("a rate-limit stop holds on resume until its window's reset time has passed", async t => {
@@ -227,12 +313,93 @@ test("a rate-limit stop holds on resume until its window's reset time has passed
   assert.deepEqual(again.summary.stop.reasons, ["five_hour_over_0.5"]);
   assert.equal(staleStopHolds("five_hour_over_0.5", [{ unifiedWindows: { five_hour: { resetsAt: 1000 } } }]), false);
 
-  await runOnOff({ phase: "pilot", outDir: dir, runId: "reset", seed: 5, pairs: 2, replayFile: replayWith(dir, high(1000)) });
-  const resumed = await runOnOff({ phase: "pilot", outDir: dir, runId: "reset", resume: true });
+  const other = scratch(t);
+  await runOnOff({ phase: "pilot", outDir: other, runId: "reset", seed: 5, pairs: 2, replayFile: replayWith(other, high(1000)) });
+  const resumed = await runOnOff({ phase: "pilot", outDir: other, runId: "reset", resume: true });
   assert.equal(resumed.summary.pairsComplete, 2, "the half-done pair is run again in full");
   assert.equal(resumed.summary.calls, 5);
   assert.equal(resumed.summary.stop, null);
-  await assert.rejects(runOnOff({ phase: "pilot", outDir: dir, runId: "reset" }), /--resume/);
+  await assert.rejects(runOnOff({ phase: "pilot", outDir: other, runId: "reset" }), /--resume/);
+});
+
+for (const [name, edit, reason] of [
+  ["five-hour utilisation past 0.5", info => ({ ...info, unifiedWindows: { ...info.unifiedWindows,
+    five_hour: { ...info.unifiedWindows.five_hour, utilization: 0.6, resetsAt: Math.floor(Date.now() / 1000) + 3600 } } }), "five_hour_over_0.5"],
+  ["overage", info => ({ ...info, isUsingOverage: true }), "overage"],
+]) {
+  test(`a pilot's stop on ${name} holds for the Opus phase and for another run-id`, async t => {
+    const dir = scratch(t);
+    const pilot = await runOnOff({ phase: "pilot", outDir: dir, seed: 5, pairs: 2, replayFile: replayWith(dir, edit) });
+    assert.deepEqual(pilot.summary.stop.reasons, [reason]);
+    const opus = await runOnOff({ phase: "opus", outDir: dir, seed: 5, pairs: 2 });
+    assert.equal(opus.summary.calls, 0);
+    assert.deepEqual(opus.summary.stop.reasons, [reason]);
+    const another = await runOnOff({ phase: "opus", outDir: dir, runId: "another", seed: 5, pairs: 2 });
+    assert.equal(another.summary.calls, 0);
+  });
+}
+
+test("a call that fails stops the run before the next call", async t => {
+  const dir = scratch(t);
+  const { summary } = await runOnOff({ phase: "pilot", outDir: dir, seed: 5, pairs: 2, replayFile: switchingReplay(dir, () => FAILED).path });
+  assert.equal(summary.calls, 1);
+  assert.deepEqual(summary.stop.reasons, ["call_failed"]);
+  assert.equal(summary.failedCalls, 1);
+});
+
+for (const [name, edit] of [
+  ["a result with no cost at all", withoutCost],
+  ["per-model figures without costUSD", event => (event.type === "result" ? { ...withoutCost(event), modelUsage: event.modelUsage } : event)],
+]) {
+  test(`${name} stops the run, and after --resume the call still counts at the costliest reported call`, async t => {
+    const dir = scratch(t);
+    const first = await runOnOff({ phase: "pilot", outDir: dir, seed: 5, pairs: 2, replayFile: switchingReplay(dir, () => streamWith(edit)).path });
+    assert.equal(first.summary.calls, 1);
+    assert.deepEqual(first.summary.stop.reasons, ["cost_unreported"]);
+    assert.equal(first.summary.cost.unreportedCostCalls, 1);
+    const resumed = await runOnOff({ phase: "pilot", outDir: dir, resume: true });
+    assert.equal(resumed.summary.calls, 5);
+    assert.equal(resumed.summary.stop, null);
+    assert.equal(resumed.summary.cost.phaseUsd, 0.000615, "five calls at US$0.000123, the unreported one included");
+  });
+}
+
+test("an interrupted call that never reached its rate-limit report stops the run, and --resume goes on", async t => {
+  const dir = scratch(t);
+  const controller = new AbortController();
+  // The recorded stream prints its rate_limit_event after the answer: the second call is cut before it and hangs.
+  const replay = switchingReplay(dir, n => (n === 1 ? RECORDED : CUT));
+  const first = await runOnOff({
+    phase: "pilot", outDir: dir, seed: 5, pairs: 2, replayFile: replay.path, signal: controller.signal,
+    log: () => { replay.log(); setTimeout(() => controller.abort(), 300); },
+  });
+  assert.equal(first.summary.calls, 2);
+  for (const reason of ["interrupted", "call_failed", "rate_limit_unreported", "cost_unreported"]) {
+    assert.ok(first.summary.stop.reasons.includes(reason), JSON.stringify(first.summary.stop));
+  }
+  const resumed = await runOnOff({ phase: "pilot", outDir: dir, resume: true });
+  assert.equal(resumed.summary.pairsComplete, 2);
+  assert.equal(resumed.summary.stop, null);
+});
+
+test("a change of Claude Code version between calls stops the run, and the mixed pair is not a pair", async t => {
+  const dir = scratch(t);
+  const newer = streamWith(event => (event.type === "system" && event.subtype === "init" ? { ...event, claude_code_version: "2.1.999" } : event));
+  const replay = switchingReplay(dir, n => (n === 1 ? RECORDED : newer));
+  const { summary } = await runOnOff({ phase: "pilot", outDir: dir, seed: 5, pairs: 2, replayFile: replay.path, log: replay.log });
+  assert.equal(summary.calls, 2);
+  assert.deepEqual(summary.stop.reasons, ["claude_code_version_changed"]);
+  assert.equal(summary.pairsComplete, 0);
+  assert.deepEqual(summary.claudeCodeVersions.sort(), ["2.1.314", "2.1.999"]);
+});
+
+test("a live resume refuses once the registered paths differ from the run's commit", t => {
+  assert.equal(registrationChangedSince(execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf-8" }).trim()), false);
+  assert.equal(registrationChangedSince(null), null);
+  const added = execFileSync("git", ["log", "--format=%H", "--diff-filter=A", "--", "benchmarks/youspeak-onoff-v0/onoff.mjs"],
+    { cwd: REPO_ROOT, encoding: "utf-8" }).trim().split("\n").at(-1);
+  if (!added) return t.skip("no git history for the benchmark here");
+  assert.equal(registrationChangedSince(`${added}~1`), true);
 });
 
 test("the Opus phase stops once at the interim look, and --past-interim counts only after it", async t => {
@@ -246,6 +413,22 @@ test("the Opus phase stops once at the interim look, and --past-interim counts o
   const past = await runOnOff({ phase: "opus", outDir: dir, resume: true, pastInterim: true });
   assert.equal(past.summary.pairsComplete, 4);
   assert.equal(past.summary.stop, null);
+  assert.equal(past.summary.interimPassed.pairs, 2);
+});
+
+test("a pair whose second arm fails is not done: the interim look still waits for interimAt complete pairs", async t => {
+  const dir = scratch(t);
+  const replay = switchingReplay(dir, n => (n === 4 ? FAILED : RECORDED));
+  const first = await runOnOff({ phase: "opus", outDir: dir, seed: 9, pairs: 4, replayFile: replay.path, log: replay.log });
+  assert.equal(first.summary.pairsComplete, 1);
+  assert.deepEqual(first.summary.stop.reasons, ["call_failed"]);
+  assert.equal(first.summary.interimReached, null);
+  const look = await runOnOff({ phase: "opus", outDir: dir, resume: true, pastInterim: true });
+  assert.equal(look.summary.pairsComplete, 2);
+  assert.deepEqual(look.summary.stop.reasons, ["interim_look"]);
+  assert.equal(look.summary.interimReached.pairs, 2);
+  const past = await runOnOff({ phase: "opus", outDir: dir, resume: true, pastInterim: true });
+  assert.equal(past.summary.pairsComplete, 4);
   assert.equal(past.summary.interimPassed.pairs, 2);
 });
 
@@ -316,8 +499,9 @@ test("analysePairs: paired log ratios with a bootstrap interval, checks, and the
     fakeCall("a2", "a", "on", 50), fakeCall("a2", "a", "off", 100),
     fakeCall("b1", "b", "on", 200), fakeCall("b1", "b", "off", 100),
     fakeCall("b2", "b", "on", 99), fakeCall("b2", "b", "off", 99),
-    // A superseded attempt and a failed call are not pairs.
-    { ...fakeCall("b2", "b", "on", 5, { attempt: 0 }) },
+    // A superseded complete attempt, a half attempt and a failed call are not pairs.
+    fakeCall("b2", "b", "on", 5, { attempt: 0 }), fakeCall("b2", "b", "off", 7, { attempt: 0 }),
+    fakeCall("a2", "a", "on", 5, { attempt: 0 }),
     { ...fakeCall("b1", "b", "on", 1, { attempt: 2 }), ok: false },
   ];
   const result = analysePairs(calls, prompts, { seed: 3, capUsd: 1, plannedPairs: 8 });
@@ -335,6 +519,49 @@ test("analysePairs: paired log ratios with a bootstrap interval, checks, and the
   assert.equal(result.interim.futility, false);
   assert.equal(analysePairs(calls, prompts, { seed: 3, capUsd: 0.005, plannedPairs: 8 }).interim.futility, true);
   assert.deepEqual(analysePairs(calls, prompts, { seed: 3 }).primary, result.primary, "the bootstrap is seeded");
+  assert.equal(result.interim.evidence, "estimated");
+  assert.equal(completedPairs([...calls].reverse()).find(pair => pair.promptId === "b2").attempt, 1, "the latest complete attempt, in any order");
+  const mixed = [fakeCall("a1", "a", "on", 2), { ...fakeCall("a1", "a", "off", 3), claudeCodeVersion: "2.1.999" }];
+  assert.deepEqual(completedPairs(mixed), [], "two versions in one pair are not a pair");
+});
+
+test("the interim harm verdict: ON loses three more checkable answers than OFF", async t => {
+  const prompts = ["c1", "c2", "c3"].map(id => ({ id, stratum: "a", input: "?", check: "(?<![\\d.])42(?!\\.?\\d)" }));
+  const calls = prompts.flatMap(({ id }) => [fakeCall(id, "a", "on", 5, { text: "no idea" }), fakeCall(id, "a", "off", 5, { text: "42." })]);
+  const result = analysePairs(calls, prompts, { seed: 1 });
+  assert.deepEqual([result.checkable.offOnly, result.interim.netCheckableLoss, result.interim.harm], [3, 3, true]);
+  assert.equal(analysePairs(calls.slice(2), prompts, { seed: 1 }).interim.harm, false, "two is not enough");
+
+  const out = scratch(t);
+  const { summary, phaseDir } = await runOnOff({ phase: "opus", outDir: out, seed: 9, pairs: 4 });
+  assert.deepEqual(summary.stop.reasons, ["interim_look"]);
+  const callsPath = join(phaseDir, "calls.jsonl");
+  const { prompts: all } = loadPrompts();
+  const checked = all.filter(prompt => prompt.check).slice(0, 3);
+  const rows = checked.flatMap(prompt => [fakeCall(prompt.id, prompt.stratum, "on", 2, { text: "?", attempt: 9 }),
+    fakeCall(prompt.id, prompt.stratum, "off", 2, { text: { "onoff-fact-01": "Na", "onoff-fact-02": "6", "onoff-fact-03": "100" }[prompt.id], attempt: 9 })]);
+  writeFileSync(callsPath, `${readFileSync(callsPath, "utf-8")}${rows.map(row => JSON.stringify(row)).join("\n")}\n`);
+  const { analysis } = analysePhase({ phase: "opus", outDir: out, dryRun: true });
+  assert.ok(analysis.interim.harm);
+  assert.equal(analysis.interim.suggestion, "stop");
+});
+
+test("the check patterns accept a number with its unit attached and reject a longer number", () => {
+  const { prompts } = loadPrompts();
+  const check = id => new RegExp(prompts.find(prompt => prompt.id === id).check, "iu");
+  for (const [id, good, bad] of [
+    ["onoff-fact-02", ["6", "six sides", "6-sided"], ["16", "60"]],
+    ["onoff-fact-03", ["100°C", "100 degrees", "It is 100."], ["1000", "100.5"]],
+    ["onoff-fact-05", ["391", "= 391."], ["3910", "1391"]],
+    ["onoff-fact-08", ["1024B", "1,024 bytes", "2^10 = 1024"], ["10240", "1024.5"]],
+    ["onoff-fact-11", ["12", "12."], ["120", "0.12"]],
+    ["onoff-code-03", ["3", "It prints 3."], ["13", "3.5"]],
+  ]) {
+    for (const text of good) assert.ok(check(id).test(text), `${id} should accept ${text}`);
+    for (const text of bad) assert.ok(!check(id).test(text), `${id} should reject ${text}`);
+  }
+  assert.ok(prompts.filter(prompt => prompt.stratum === "cantonese").every(prompt => !prompt.check),
+    "the Cantonese stratum is read by tokens and blind reading only");
 });
 
 test("suggestPairs follows the registered formula and bounds", () => {

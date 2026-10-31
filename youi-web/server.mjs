@@ -1903,8 +1903,9 @@ function mindTextOf(content) {
 // total is the call's cost. A run that is stopped (the turn ends, or the call
 // times out) counts as a failed call: with what its result reported when the
 // result had already arrived, else with no tokens. The kernel is the calling
-// session's at the start of the call, so a call that ends after a Clear is
-// counted where it began, not in the next YOUSPEAK session.
+// session's at the start of the call, so it never lands in the next YOUSPEAK
+// session. A call that ends after its session was cut (Clear, switch, reset,
+// idle) is counted in no row: that session's row is already written.
 async function callClaudeMind({ mind, system, prompt, signal }) {
   const ys = state.ys;
   if (!CLAUDE_CODE.path) {
@@ -1965,8 +1966,9 @@ async function callMind({ mind, system, prompt, signal }) {
 
   if (mind.provider === "anthropic") return callClaudeMind({ mind, system, prompt, signal });
 
-  // The calling session's kernel, taken now: a call that ends after a Clear
-  // is counted in the YOUSPEAK session it began in.
+  // The calling session's kernel, taken now, so the call never lands in the
+  // next YOUSPEAK session. A call that ends after its session was cut (Clear,
+  // switch, reset, idle) is counted in no row: that row is already written.
   const ys = state.ys;
   // vLLM, local Ollama and Ollama Cloud all go through the Ollama bridge. Only
   // an Ollama Cloud mind, or a "local" endpoint off this device, may take a

@@ -106,7 +106,7 @@ An adversarial review of Y1 (2026-10-30, two skeptics per finding) found six mus
   - L1 is no longer graded, as above (Z13);
   - figures nobody reported are `null`: sovereign-Ollama thinking (Z6), cache misses on routes without cache diagnostics (Z9), terminal and sovereign budget windows no header stated (Z16), and token counts a `/v1` response left out (Z8);
   - vLLM's stated `cached_tokens` are split out of its prompt, and the docs say what `prompt_tokens` holds where it does not state them (Z7);
-  - an Ollama/vLLM mind that fails, times out or is stopped is counted, in the session that called it; a Claude mind stopped after its result counts what it reported (Z10, Z18);
+  - an Ollama/vLLM mind that fails, times out or is stopped is counted, in the session that called it, provided the call ends before that session's row is written (a call still running when the session is cut is counted nowhere); a Claude mind stopped after its result counts what it reported (Z10, Z18);
   - every per-turn block states its mode, so direct takes back an earlier orchestrate hint; the fixed minds guide moved into the stable system prompt (Z2, Z20);
   - the claims about the rule module are narrowed to prompts built in code, the instance copies are listed, and the "in most cases" doubt example is back (Z12, Z25, Z26);
   - `/api/youspeak` drops `tokensSaved`, `grades` and `overallGrade`, and labels its older top-level fields (Z23); the Minds line shows input including cache (Z11);

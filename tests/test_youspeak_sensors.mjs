@@ -32,7 +32,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -398,7 +398,11 @@ test("a Claude Code build that states no thinking or window gives null, never 0"
 test("the fixtures hold nothing identifying", () => {
   for (const file of [FIXTURE, FIXTURE_RESUME]) {
     const text = readFileSync(file, "utf-8");
-    assert.doesNotMatch(text, /\/Users\/|\/home\/|\/private\/|macair|claude-501|@(?!builtin)|account|org_id|organization/i, file);
+    assert.doesNotMatch(text, /\/Users\/|\/home\/|\/private\/|@(?!builtin)|account|org_id|organization/i, file);
+    // This machine's own names, read at run time so the source spells none.
+    for (const own of [userInfo().username, tmpdir()]) {
+      if (own) assert.ok(!text.includes(own), `${file} holds a local name`);
+    }
     const events = text.split("\n").filter(Boolean).map(line => JSON.parse(line));
     const init = events.find(event => event.subtype === "init");
     assert.equal(init.cwd, "<scrubbed: a scratch directory>");

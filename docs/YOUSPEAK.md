@@ -232,7 +232,7 @@ It never holds message text, file paths, tool inputs or prompt hashes.
 
 The file itself is left as it is. While it is unchanged (same size, mtime and inode), a process reads it once, not on every finished turn.
 
-**The legacy file.** `youspeak-history.json` is tracked in git. Its 178 committed rows end on 2026-06-19 and are cumulative per-message snapshots with no session id, so one session appears many times. YOUI no longer writes it. It is read only, and shown separately as "legacy", never mixed into the store's trends. Whether to keep it in git is Yu's open question.
+**The legacy file.** The old `youspeak-history.json` is kept as history in [`history/youspeak-history-2026-04-13-to-06-19.json`](history/youspeak-history-2026-04-13-to-06-19.json), moved there unchanged on 2026-10-31 ([`history/README.md`](history/README.md) says what its fields mean). Its 178 rows end on 2026-06-19 and are cumulative per-message snapshots with no session id, so one session appears many times. YOUI no longer writes it. It is read only, and shown separately as "legacy", never mixed into the store's trends. The old root path is in `.gitignore`, so a checkout from before Y1 that still writes there cannot commit it by accident.
 
 ---
 
@@ -275,7 +275,7 @@ On 2026-06-19, `integrate --apply` recorded three mutations as applied: commit `
   - It reaches sovereign's prompt only, not YOUI Web's or the terminal's.
   - It fired only because the cumulative rows counted one session's repeated reads many times.
 
-`youspeak-config.json` and the tracked history stay as historical records; their contents are not changed.
+`youspeak-config.json` and the history file stay as historical records in [`history/`](history/README.md); their contents are not changed.
 
 ---
 

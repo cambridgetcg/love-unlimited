@@ -6,16 +6,28 @@
 // decide() returns (Yu, 2026-10-30: suggest only; docs/YOUSPEAK.md).
 //
 // Three functions:
-//   SENSE  — Zero-cost estimates across 5 layers (no model calls)
+//   SENSE  — What the provider reports, and YOUI's own estimates (no model calls)
 //   DECIDE — Threshold signals, each with a suggestion for the person or agent
 //   REPORT — Structured data for the page, the terminal and the ouroboros
 //
-// Five measurement layers (what each measures today is in docs/YOUSPEAK.md):
+// Every figure carries an evidential label (EVIDENCE): "reported" when the
+// provider stated it (Claude Code's usage, cost, context window and rate-limit
+// state; Ollama's and vLLM's token counts), "estimated" when YOUI computed it
+// itself (the L1 filler estimate, chars/4, its own counts, a price table, a
+// window from its own table). A figure built from an estimate is an estimate:
+// a label may understate, never overstate. A figure nobody reported is null,
+// never 0.
+//
+// What it senses (docs/YOUSPEAK.md §2):
+//   USAGE       — Reported input, cache read, cache creation, output, thinking, cost per turn
 //   L1 OUTPUT   — English filler estimate (regex over chars/4)
-//   L2 THINKING — Thinking tokens, where a caller reports them
+//   L2 THINKING — Thinking tokens, only where the provider reports them
 //   L3 ACTION   — Tool call counts and repeated reads
-//   L4 CONTEXT  — chars/4 estimate of the conversation against 1M
+//   L4 CONTEXT  — The latest request's input + cache (reported), or chars/4
+//                 (estimated), against the model's window where known
 //   L5 SYSTEM   — Rate-limit state as reported, turns
+//   CACHE       — Whether the cached system prompt changed within a conversation
+//   MINDS       — Other minds' calls, tokens and cost, apart from the agent's own
 //
 // History: one row per session, appended when the session ends, to an
 // untracked per-user store (default ~/.local/share/youi/youspeak/history.jsonl,
@@ -57,6 +69,24 @@ export const ROUTES = Object.freeze(["claude-code", "ollama", "vllm", "terminal-
 const OPEN_MODEL_ROUTES = Object.freeze(["ollama", "vllm"]);
 // Where a suggestion is shown, which decides the remedy it names.
 export const SURFACES = Object.freeze(["web", "terminal", "sovereign"]);
+// The two evidential labels every figure carries.
+export const EVIDENCE = Object.freeze({ reported: "reported", estimated: "estimated" });
+const EVIDENCE_LABELS = Object.values(EVIDENCE);
+// The context windows YOUI knows for its Claude models, used only when the
+// provider has not reported the model's own (Claude Code's
+// modelUsage.contextWindow); a window from this table is an estimate. Any other
+// model's window is unknown (null), and no context signal is raised for it.
+export const KNOWN_CONTEXT_WINDOWS = Object.freeze({
+  "claude-opus-5-5": 1_000_000,
+  "claude-opus-4-7": 1_000_000,
+  "claude-opus-4-6": 1_000_000,
+  "claude-sonnet-4-6": 1_000_000,
+  "claude-haiku-5-5": 1_000_000,
+  "claude-haiku-4-5-20251001": 200_000,
+});
+// The share of a known window at which the context signals fire.
+export const CONTEXT_PRUNE_SHARE = 0.8;
+export const CONTEXT_EVICT_SHARE = 0.5;
 // One tolerance for "improving" or "regressing", shared with youspeak-evolve.mjs:
 // a change in the useful ratio within one percentage point is steady.
 export const TREND_TOLERANCE = 0.01;
@@ -65,6 +95,20 @@ export const TREND_TOLERANCE = 0.01;
 export const MIN_GRADED_TOKENS = 20;
 // The git-tracked file earlier versions wrote after every message. Read only, as legacy.
 export const LEGACY_HISTORY_PATH = join(dirname(fileURLToPath(import.meta.url)), "youspeak-history.json");
+
+/** The weaker of two labels (an estimate wins); null when neither has a figure. */
+export function weakerEvidence(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  return a === EVIDENCE.estimated || b === EVIDENCE.estimated ? EVIDENCE.estimated : EVIDENCE.reported;
+}
+
+/** The window YOUI knows for a model, or null. */
+export function knownContextWindow(model) {
+  return typeof model === "string" && Object.hasOwn(KNOWN_CONTEXT_WINDOWS, model) ? KNOWN_CONTEXT_WINDOWS[model] : null;
+}
+
+const isNumber = value => typeof value === "number" && Number.isFinite(value);
 
 /** Where the store lives: YOUSPEAK_HISTORY_PATH, else ~/.local/share/youi/youspeak/history.jsonl. */
 export function defaultHistoryPath(env = process.env) {
@@ -169,11 +213,18 @@ function gradeRatio(ratio) {
 // The fields a row may carry, by type. A field may be absent or null; a field
 // of the wrong type makes the row unreadable (it is reported and skipped), so
 // trends and the ouroboros never meet one.
-const ROW_STRING_FIELDS = ["route", "model", "agent", "startedAt", "endedAt", "closedAt", "endReason", "outputGrade", "budgetBurned"];
+const ROW_STRING_FIELDS = ["route", "model", "agent", "startedAt", "endedAt", "closedAt", "endReason", "outputGrade", "budgetBurned",
+  "rateLimitStatus"];
 const ROW_NUMBER_FIELDS = ["elapsed", "turns", "usefulRatio", "outputTokensEstimate", "fillerTokensEstimate", "textBlocks",
   "gradedBlocks", "thinkingTokens", "thinkAvgRatio", "toolCalls", "redundantReads", "toolErrors", "contextPeakTokens",
-  "rateLimitHits", "signalCount"];
-const ROW_OBJECT_FIELDS = ["routes", "models", "exchanges"];
+  "rateLimitHits", "signalCount",
+  // Y2: what the provider reported, the window, the cache and the minds.
+  "usageTurns", "inputTokens", "cacheReadTokens", "cacheCreationTokens", "outputTokens", "costUsd", "contextWindow",
+  "fiveHourUtilization", "sevenDayUtilization", "promptChanges", "cacheMisses",
+  "mindCalls", "mindFailedCalls", "mindInputTokens", "mindCacheReadTokens", "mindCacheCreationTokens", "mindOutputTokens",
+  "mindCostUsd"];
+// `evidence` maps a row's figures to their labels ("reported" or "estimated").
+const ROW_OBJECT_FIELDS = ["routes", "models", "exchanges", "evidence"];
 const isPlainObject = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 function isRowShape(row) {
@@ -185,6 +236,7 @@ function hasValidFields(row) {
   for (const key of ROW_NUMBER_FIELDS) if (row[key] != null && !Number.isFinite(row[key])) return false;
   for (const key of ROW_OBJECT_FIELDS) if (row[key] != null && !isPlainObject(row[key])) return false;
   if (row.signals != null && !(Array.isArray(row.signals) && row.signals.every(name => typeof name === "string"))) return false;
+  if (row.evidence != null && !Object.values(row.evidence).every(label => EVIDENCE_LABELS.includes(label))) return false;
   return true;
 }
 
@@ -344,7 +396,11 @@ export function trendsFromRows(rows, n = 20) {
     sessions: recent.length,
     span: `${rowDay(recent[0])} → ${rowDay(recent.at(-1))}`,
     avgUsefulRatio: +avg(recent, "usefulRatio").toFixed(2),
-    avgThinkRatio: +avg(recent, "thinkAvgRatio").toFixed(2),
+    // Only sessions whose provider reported thinking; null when none did.
+    avgThinkRatio: (() => {
+      const reported = recent.filter(row => isNumber(row.thinkAvgRatio));
+      return reported.length ? +avg(reported, "thinkAvgRatio").toFixed(2) : null;
+    })(),
     avgRedundantReads: +avg(recent, "redundantReads").toFixed(1),
     avgToolErrors: +avg(recent, "toolErrors").toFixed(1),
     fillerTrend: {
@@ -451,6 +507,16 @@ export function createKernel(opts = {}) {
   const surface = SURFACES.includes(opts.surface) ? opts.surface
     : route === "terminal-legacy" ? "terminal" : route === "sovereign" ? "sovereign" : "web";
 
+  // A figure with its label: { value, evidence }, both null until something is sensed.
+  const figure = () => ({ value: null, evidence: null });
+  // Adds a number to a figure; anything that is not a number (not reported) adds nothing.
+  const addTo = (target, value, evidence) => {
+    if (!isNumber(value)) return;
+    target.value = (target.value ?? 0) + value;
+    target.evidence = weakerEvidence(target.evidence, evidence);
+  };
+  const labelOf = (value, evidence) => (value === null || value === undefined ? null : evidence);
+
   // ─── Accumulated session state ──────────────────────────
   const session = {
     id: randomUUID(),
@@ -461,6 +527,8 @@ export function createKernel(opts = {}) {
     route,
     surface,
     model: typeof opts.model === "string" ? opts.model : null,
+    // The model of the latest message (noteRoute), for its known window.
+    lastModel: null,
     // Turns per route and per model, as callers report them (noteRoute), and the latest route.
     routes: {},
     models: {},
@@ -472,8 +540,20 @@ export function createKernel(opts = {}) {
     suggested: new Set(),
     ended: null,
 
+    // USAGE — what the provider reported for the agent's own turns (senseUsage).
+    // Input is the uncached part; cache read and cache creation are apart.
+    usage: {
+      turns: 0,
+      input: figure(),
+      cacheRead: figure(),
+      cacheCreation: figure(),
+      output: figure(),
+      costUsd: figure(),
+      last: null,            // the latest turn's figures, with their labels
+    },
+
     // L1 Output. totalTokens counts every block; the useful ratio uses only
-    // graded blocks (gradedTokens, and the filler found in them).
+    // graded blocks (gradedTokens, and the filler found in them). All estimates.
     output: {
       totalTokens: 0,
       gradedTokens: 0,
@@ -483,9 +563,10 @@ export function createKernel(opts = {}) {
       grades: [],            // one per block; null for a block L1 does not grade
     },
 
-    // L2 Thinking
+    // L2 Thinking: only turns whose provider reported thinking tokens.
     thinking: {
-      totalTokens: 0,
+      totalTokens: null,
+      evidence: null,
       perTurn: [],           // { thinking, output, ratio }
     },
 
@@ -498,13 +579,45 @@ export function createKernel(opts = {}) {
       toolErrors: 0,
     },
 
-    // L4 Context
+    // L4 Context: the latest figure, reported (Claude Code) or estimated (chars/4).
     context: {
+      tokens: null,
+      evidence: null,
+      peakTokens: null,
+      peakEvidence: null,
+      window: null,
+      windowEvidence: null,
+      // chars/4 over the conversation YOUI holds (senseContext), and what it counted.
+      estimatedTokens: null,
       messagesCount: 0,
-      estimatedTokens: 0,   // rough estimate of context window usage
-      peakTokens: 0,
       systemPromptTokens: 0,
       oldestToolResultAge: 0, // messages since the oldest tool result
+    },
+
+    // CACHE — the cached system prompt of the Claude Code conversation (senseSystemPrompt),
+    // and the cache misses Claude reported (senseUsage).
+    cache: {
+      conversation: null,
+      hash: null,
+      parts: null,           // [{ name, hash }], kept in memory only, never written
+      changes: 0,
+      lastChange: null,      // { parts: [names] }
+      changedThisTurn: false,
+      misses: 0,
+      missedTokens: 0,
+      lastMiss: null,        // { type, missedTokens }, as reported
+      missThisTurn: null,
+    },
+
+    // MINDS — calls to other minds (senseMind), apart from the agent's own turns.
+    minds: {
+      calls: 0,
+      failed: 0,
+      input: figure(),
+      cacheRead: figure(),
+      cacheCreation: figure(),
+      output: figure(),
+      costUsd: figure(),
     },
 
     // L5 System
@@ -513,6 +626,7 @@ export function createKernel(opts = {}) {
       rateLimitHits: 0,
       budgetAtStart: null,
       budgetNow: null,
+      rateLimit: null,       // the latest rate-limit state, as reported (senseRateLimitState)
     },
 
     // DECIDE signals from the latest decide()
@@ -526,14 +640,23 @@ export function createKernel(opts = {}) {
     session.lastActivityAt = t;
   }
 
+  // The model whose window applies: the latest message's, else the one given at creation.
+  const currentModel = () => session.lastModel || session.model;
+
   // ─── ROUTE / EXCHANGE: what the row says about the session ─────
+  // Called as each message starts: the cache signal of the last one is done with.
   function noteRoute(route, model) {
     const r = ROUTES.includes(route) ? route : null;
     if (r) {
       session.routes[r] = (session.routes[r] || 0) + 1;
       session.lastRoute = r;
     }
-    if (typeof model === "string" && model) session.models[model] = (session.models[model] || 0) + 1;
+    if (typeof model === "string" && model) {
+      session.models[model] = (session.models[model] || 0) + 1;
+      session.lastModel = model;
+    }
+    session.cache.changedThisTurn = false;
+    session.cache.missThisTurn = null;
     touch();
   }
 
@@ -546,6 +669,75 @@ export function createKernel(opts = {}) {
     if (ok) session.exchanges.ok++;
     else session.exchanges.failed++;
     touch();
+  }
+
+  // ─── USAGE: what the provider reported for one turn ───
+  /**
+   * One turn of the agent's own, as the provider reported it. Token figures
+   * are numbers, or null when not reported (they then add nothing): input
+   * (uncached), cacheRead, cacheCreation, output, thinking. costUsd is what the
+   * turn added. contextTokens is the latest request's input + cache read +
+   * cache creation; contextWindow the model's window, when the provider stated
+   * it (else YOUI's own table is used, as an estimate). cacheMiss is the
+   * reported reason a request missed the cache ({ type, missedTokens }).
+   * Each figure takes the label given with it (`tokensEvidence`,
+   * `costEvidence`, `contextEvidence`, `contextWindowEvidence`).
+   */
+  function senseUsage({
+    model = null,
+    input = null,
+    cacheRead = null,
+    cacheCreation = null,
+    output = null,
+    thinking = null,
+    tokensEvidence = EVIDENCE.reported,
+    costUsd = null,
+    costEvidence = EVIDENCE.reported,
+    contextTokens = null,
+    contextEvidence = EVIDENCE.reported,
+    contextWindow = null,
+    contextWindowEvidence = EVIDENCE.reported,
+    cacheMiss = null,
+  } = {}) {
+    const usage = session.usage;
+    usage.turns++;
+    addTo(usage.input, input, tokensEvidence);
+    addTo(usage.cacheRead, cacheRead, tokensEvidence);
+    addTo(usage.cacheCreation, cacheCreation, tokensEvidence);
+    addTo(usage.output, output, tokensEvidence);
+    addTo(usage.costUsd, costUsd, costEvidence);
+    if (isNumber(thinking)) recordThinking(thinking, isNumber(output) ? output : null, tokensEvidence);
+    if (isNumber(contextTokens)) setContext(contextTokens, contextEvidence);
+    if (isNumber(contextWindow) && contextWindow > 0) setWindow(contextWindow, contextWindowEvidence);
+    else setWindow(knownContextWindow(model || currentModel()), EVIDENCE.estimated);
+    const miss = cacheMiss && typeof cacheMiss.type === "string"
+      ? { type: cacheMiss.type, missedTokens: isNumber(cacheMiss.missedTokens) ? cacheMiss.missedTokens : null }
+      : null;
+    session.cache.missThisTurn = miss;
+    if (miss) {
+      session.cache.misses++;
+      session.cache.missedTokens += miss.missedTokens || 0;
+      session.cache.lastMiss = miss;
+    }
+    const num = value => (isNumber(value) ? value : null);
+    usage.last = {
+      input: num(input),
+      cacheRead: num(cacheRead),
+      cacheCreation: num(cacheCreation),
+      output: num(output),
+      thinking: num(thinking),
+      costUsd: num(costUsd),
+      contextTokens: num(contextTokens),
+      cacheMiss: miss,
+      evidence: {
+        tokens: tokensEvidence,
+        costUsd: labelOf(num(costUsd), costEvidence),
+        contextTokens: labelOf(num(contextTokens), contextEvidence),
+        cacheMiss: miss ? EVIDENCE.reported : null,
+      },
+    };
+    touch();
+    return usage.last;
   }
 
   // ─── L1: SENSE OUTPUT ──────────────────────────────────
@@ -578,21 +770,34 @@ export function createKernel(opts = {}) {
       graded,
       patterns: graded ? filler.patterns.slice(0, 5) : [],
       weight: graded ? filler.weight : 0,
+      // Every L1 figure is YOUI's own estimate.
+      evidence: EVIDENCE.estimated,
     };
   }
 
   // ─── L2: SENSE THINKING ────────────────────────────────
-  function senseThinking(usage = {}) {
-    const thinkTok = Number(usage?.thinking_tokens) || 0;
-    const outTok = Number(usage?.output_tokens) || 0;
-    session.thinking.totalTokens += thinkTok;
-
-    const ratio = outTok > 0 ? +(thinkTok / outTok).toFixed(2) : 0;
+  function recordThinking(thinkTok, outTok, evidence) {
+    session.thinking.totalTokens = (session.thinking.totalTokens ?? 0) + thinkTok;
+    session.thinking.evidence = weakerEvidence(session.thinking.evidence, evidence);
+    const ratio = isNumber(outTok) && outTok > 0 ? +(thinkTok / outTok).toFixed(2) : null;
     const entry = { thinking: thinkTok, output: outTok, ratio };
     session.thinking.perTurn.push(entry);
-    touch();
-
     return entry;
+  }
+
+  /**
+   * Thinking tokens from a usage block, only where the provider states them
+   * (`thinking_tokens`, or `output_tokens_details.thinking_tokens`). A usage
+   * block without them records nothing: thinking stays null, never 0.
+   */
+  function senseThinking(usage = {}) {
+    const stated = isNumber(usage?.thinking_tokens) ? usage.thinking_tokens
+      : isNumber(usage?.output_tokens_details?.thinking_tokens) ? usage.output_tokens_details.thinking_tokens
+        : null;
+    const outTok = isNumber(usage?.output_tokens) ? usage.output_tokens : null;
+    touch();
+    if (stated === null) return { thinking: null, output: outTok, ratio: null };
+    return recordThinking(stated, outTok, EVIDENCE.reported);
   }
 
   // ─── L3: SENSE ACTION ─────────────────────────────────
@@ -619,6 +824,27 @@ export function createKernel(opts = {}) {
   }
 
   // ─── L4: SENSE CONTEXT ────────────────────────────────
+  function setContext(tokens, evidence) {
+    const context = session.context;
+    context.tokens = tokens;
+    context.evidence = evidence;
+    if (context.peakTokens === null || tokens >= context.peakTokens) {
+      context.peakTokens = tokens;
+      context.peakEvidence = evidence;
+    }
+  }
+
+  function setWindow(window, evidence) {
+    session.context.window = isNumber(window) && window > 0 ? window : null;
+    session.context.windowEvidence = session.context.window === null ? null : evidence;
+  }
+
+  /**
+   * YOUI's own estimate of the context (chars/4 over the conversation it
+   * holds, tool definitions left out), for a route that reports no context:
+   * YOUI's Ollama/vLLM loop, the terminal and sovereign. The window is YOUI's
+   * own figure for the latest model, or unknown.
+   */
   function senseContext(messages, systemPromptLength) {
     session.context.messagesCount = messages.length;
     session.context.systemPromptTokens = Math.ceil((systemPromptLength || 0) / 4);
@@ -647,32 +873,101 @@ export function createKernel(opts = {}) {
     }
 
     session.context.estimatedTokens = est;
-    session.context.peakTokens = Math.max(session.context.peakTokens, est);
+    setContext(est, EVIDENCE.estimated);
+    setWindow(knownContextWindow(currentModel()), EVIDENCE.estimated);
     session.context.oldestToolResultAge = oldestToolResult >= 0 ? messages.length - oldestToolResult : 0;
     touch();
 
+    const window = session.context.window;
     return {
       estimatedTokens: est,
       messagesCount: messages.length,
       systemPromptTokens: session.context.systemPromptTokens,
-      windowUtilization: +(est / 1_000_000).toFixed(4), // fraction of 1M context
+      window,
+      windowUtilization: window ? +(est / window).toFixed(4) : null,
+      evidence: EVIDENCE.estimated,
     };
   }
 
+  // ─── CACHE: SENSE THE SYSTEM PROMPT ───────────────────
+  /**
+   * The system prompt a Claude Code turn ran with: `hash` of the whole, and
+   * `parts` [{ name, hash }] naming its sections. When it differs from the
+   * previous turn's in the same `conversation`, the change is recorded and
+   * names the parts that changed; a new conversation starts afresh. Only the
+   * names and hashes are kept, in memory, never the text.
+   */
+  function senseSystemPrompt({ conversation = null, hash = null, parts = [] } = {}) {
+    const cache = session.cache;
+    const list = (Array.isArray(parts) ? parts : [])
+      .filter(part => typeof part?.name === "string" && typeof part?.hash === "string")
+      .map(part => ({ name: part.name, hash: part.hash }));
+    let changedParts = [];
+    const changed = Boolean(conversation && cache.conversation === conversation && cache.hash && hash && hash !== cache.hash);
+    if (changed) {
+      const before = new Map((cache.parts || []).map(part => [part.name, part.hash]));
+      const after = new Map(list.map(part => [part.name, part.hash]));
+      changedParts = [
+        ...list.filter(part => before.get(part.name) !== part.hash).map(part => part.name),
+        ...[...before.keys()].filter(name => !after.has(name)),
+      ];
+      cache.changes++;
+      cache.lastChange = { parts: changedParts };
+    }
+    cache.conversation = conversation;
+    cache.hash = hash;
+    cache.parts = list;
+    cache.changedThisTurn = changed;
+    touch();
+    return { changed, parts: changedParts };
+  }
+
+  // ─── MINDS: SENSE A CALL TO ANOTHER MIND ──────────────
+  /**
+   * One call to another mind (review, ensemble, decompose, pipeline,
+   * layerthink), apart from the agent's own turns: whether it answered, and
+   * its tokens and cost with their labels, as for senseUsage.
+   */
+  function senseMind({
+    ok = false,
+    input = null,
+    cacheRead = null,
+    cacheCreation = null,
+    output = null,
+    tokensEvidence = EVIDENCE.reported,
+    costUsd = null,
+    costEvidence = EVIDENCE.reported,
+  } = {}) {
+    const minds = session.minds;
+    minds.calls++;
+    if (!ok) minds.failed++;
+    addTo(minds.input, input, tokensEvidence);
+    addTo(minds.cacheRead, cacheRead, tokensEvidence);
+    addTo(minds.cacheCreation, cacheCreation, tokensEvidence);
+    addTo(minds.output, output, tokensEvidence);
+    addTo(minds.costUsd, costUsd, costEvidence);
+    touch();
+  }
+
   // ─── L5: SENSE SYSTEM ─────────────────────────────────
+  // A window not reported stays null, never 0.
+  function utilizationOf(window) {
+    const value = window && typeof window === "object" ? window.utilization : window;
+    return isNumber(value) ? value : null;
+  }
+
   function senseTurn(budget) {
     session.system.turns++;
     if (budget) {
-      if (!session.system.budgetAtStart) {
-        session.system.budgetAtStart = {
-          fiveHour: budget.fiveHour?.utilization || 0,
-          sevenDay: budget.sevenDay?.utilization || 0,
-        };
+      const fiveHour = utilizationOf(budget.fiveHour);
+      const sevenDay = utilizationOf(budget.sevenDay);
+      if (!session.system.budgetAtStart && (fiveHour !== null || sevenDay !== null)) {
+        session.system.budgetAtStart = { fiveHour, sevenDay };
       }
       session.system.budgetNow = {
-        fiveHour: budget.fiveHour?.utilization || 0,
-        sevenDay: budget.sevenDay?.utilization || 0,
-        isOverage: budget.isUsingOverage || false,
+        fiveHour,
+        sevenDay,
+        isOverage: budget.isUsingOverage === true,
       };
     }
     touch();
@@ -681,6 +976,33 @@ export function createKernel(opts = {}) {
   function senseRateLimit() {
     session.system.rateLimitHits++;
     touch();
+  }
+
+  /**
+   * The rate-limit state as the provider reported it (Claude Code's
+   * rate_limit_event `rate_limit_info`): its status, type, utilization and
+   * the five-hour and seven-day windows, with no other field. Until one is
+   * reported it is null.
+   */
+  function senseRateLimitState(info) {
+    if (!isPlainObject(info)) return session.system.rateLimit;
+    const text = value => (typeof value === "string" ? value : null);
+    const window = value => (isPlainObject(value) && isNumber(value.utilization)
+      ? { utilization: value.utilization, status: text(value.status), resetsAt: isNumber(value.resetsAt) ? value.resetsAt : null }
+      : null);
+    const windows = isPlainObject(info.unifiedWindows) ? info.unifiedWindows : {};
+    session.system.rateLimit = {
+      status: text(info.status),
+      type: text(info.rateLimitType),
+      utilization: isNumber(info.utilization) ? info.utilization : null,
+      fiveHour: window(windows.five_hour),
+      sevenDay: window(windows.seven_day),
+      isUsingOverage: typeof info.isUsingOverage === "boolean" ? info.isUsingOverage : null,
+      reportedAt: new Date(now()).toISOString(),
+      evidence: EVIDENCE.reported,
+    };
+    touch();
+    return session.system.rateLimit;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -700,31 +1022,52 @@ export function createKernel(opts = {}) {
     const onClaude = !OPEN_MODEL_ROUTES.includes(turnRoute ?? session.lastRoute ?? session.route);
 
     // ── Effort, under rate-limit pressure (as reported); only the strongest applies ──
-    const bu5 = budget?.fiveHour?.utilization || 0;
+    const bu5 = utilizationOf(budget?.fiveHour) ?? 0;
     if (onClaude && bu5 > 0.95 && (currentEffort === "max" || currentEffort === "high")) {
       signals.push({ type: "effort", action: "reduce", from: currentEffort, to: "medium",
-        reason: `Budget 5h at ${(bu5*100).toFixed(0)}%, close to the limit`,
+        reason: `Budget 5h at ${(bu5*100).toFixed(0)}% (reported), close to the limit`,
+        evidence: EVIDENCE.reported,
         suggestion: `Nothing was changed. You could ${r.lower(currentEffort, "medium")}, or pause until the window resets; ${r.keeps(currentEffort)}.` });
     } else if (onClaude && bu5 > 0.85 && currentEffort === "max") {
       signals.push({ type: "effort", action: "reduce", from: "max", to: "high",
-        reason: `Budget 5h at ${(bu5*100).toFixed(0)}%`,
+        reason: `Budget 5h at ${(bu5*100).toFixed(0)}% (reported)`,
+        evidence: EVIDENCE.reported,
         suggestion: `Nothing was changed. To stretch the 5-hour window, you could ${r.lower("max", "high")}; ${r.keeps("max")}.` });
     }
 
     // (The L2 rule that suggested a cheaper model from the thinking/output
     // ratio is gone: nothing reported thinking tokens, so it always fired.)
 
-    // ── Context window pressure (chars/4 estimate against 1M) ──
-    if (session.context.estimatedTokens > 800_000) {
+    // ── Context window pressure: the latest context against the model's window, where known ──
+    const context = session.context;
+    const share = context.window && isNumber(context.tokens) ? context.tokens / context.window : null;
+    const contextEvidence = weakerEvidence(context.evidence, context.windowEvidence);
+    if (share !== null && share > CONTEXT_PRUNE_SHARE) {
       signals.push({ type: "context", action: "prune_recommended",
-        reason: `Context at ~${Math.round(session.context.estimatedTokens/1000)}k tokens (estimate), approaching 1M`,
-        utilization: session.context.estimatedTokens / 1_000_000,
+        reason: `Context at ~${Math.round(context.tokens/1000)}k of a ${Math.round(context.window/1000)}k window (${contextEvidence})`,
+        utilization: +share.toFixed(4),
+        evidence: contextEvidence,
         suggestion: `Nothing was pruned. You could ${r.fresh}, or ask ${who} to summarise what matters so far.` });
     }
-    if (session.context.estimatedTokens > 500_000 && session.context.oldestToolResultAge > 20) {
+    if (share !== null && share > CONTEXT_EVICT_SHARE && context.oldestToolResultAge > 20) {
       signals.push({ type: "context", action: "evict_old_results",
-        reason: `${session.context.oldestToolResultAge} messages since the oldest tool result; old results are piling up`,
+        reason: `${context.oldestToolResultAge} messages since the oldest tool result; old results are piling up`,
+        evidence: contextEvidence,
         suggestion: `Nothing was pruned. Once ${who} has noted what it still needs, you could ${r.fresh}.` });
+    }
+
+    // ── The cached system prompt changed within a conversation ──
+    if (session.cache.changedThisTurn) {
+      const names = session.cache.lastChange?.parts?.length ? session.cache.lastChange.parts.join(", ") : "a part YOUI could not name";
+      const miss = session.cache.missThisTurn;
+      signals.push({ type: "cache", action: "prompt_changed",
+        parts: session.cache.lastChange?.parts || [],
+        reason: `The system prompt changed between turns of this conversation (${names}), so the cache was rewritten`
+          + (miss ? `; Claude reported a cache miss (${miss.type}${isNumber(miss.missedTokens) ? `, ${miss.missedTokens} tokens` : ""})` : ""),
+        // The change is YOUI's own comparison; the miss, when there is one, is Claude's.
+        evidence: miss ? EVIDENCE.reported : EVIDENCE.estimated,
+        suggestion: `Nothing was changed. What changed (${names}) is part of the cached system prompt; changing it mid-conversation`
+          + ` rewrites the cache on the next turn. You could change it less often, or ${r.fresh} when you do.` });
     }
 
     // ── Redundant tool calls ──
@@ -732,6 +1075,7 @@ export function createKernel(opts = {}) {
       signals.push({ type: "action", action: "redundant_reads",
         count: session.action.redundantReads,
         reason: `${session.action.redundantReads} repeated file reads`,
+        evidence: EVIDENCE.estimated,
         suggestion: `${who} could rely on files it has already read this session unless they changed.` });
     }
 
@@ -740,6 +1084,7 @@ export function createKernel(opts = {}) {
       signals.push({ type: "action", action: "high_error_rate",
         rate: +(session.action.toolErrors / session.action.toolCalls).toFixed(2),
         reason: `${session.action.toolErrors}/${session.action.toolCalls} tool calls errored`,
+        evidence: EVIDENCE.estimated,
         suggestion: `${who} could stop and re-check the approach; you could restate the goal.` });
     }
 
@@ -751,6 +1096,7 @@ export function createKernel(opts = {}) {
       if (badCount >= 3) {
         signals.push({ type: "output", action: "filler_regression",
           reason: `${badCount}/5 recent graded text blocks grade C or D (English-only estimate)`,
+          evidence: EVIDENCE.estimated,
           suggestion: `${who} could drop preamble and narration and say what matters.` });
       }
     }
@@ -760,6 +1106,7 @@ export function createKernel(opts = {}) {
       signals.push({ type: "system", action: "rate_limit_pressure",
         hits: session.system.rateLimitHits, turns: session.system.turns,
         reason: `${session.system.rateLimitHits} rate limits in ${session.system.turns} turns`,
+        evidence: EVIDENCE.estimated,
         suggestion: `You could ${onClaude ? r.pause : r.pauseOpen}.` });
     }
 
@@ -781,10 +1128,17 @@ export function createKernel(opts = {}) {
   }
 
   // ═══════════════════════════════════════════════════════
-  // REPORT — Structured metrics for dashboards
+  // REPORT — Structured metrics for dashboards. Each section carries
+  // `evidence`: every figure's label, "reported" or "estimated" (null
+  // where there is no figure).
   // ═══════════════════════════════════════════════════════
 
+  // Every key of `figures` with the same label, or null where the figure is null.
+  const allLabelled = (figures, evidence) =>
+    Object.fromEntries(Object.entries(figures).map(([key, value]) => [key, labelOf(value, evidence)]));
+
   function report() {
+    const E = EVIDENCE.estimated;
     // The active span: first activity to last activity (0 before any).
     const elapsed = session.startedAt === null ? 0 : session.lastActivityAt - session.startedAt;
     const elapsedMin = +(elapsed / 60000).toFixed(1);
@@ -794,27 +1148,98 @@ export function createKernel(opts = {}) {
       ? Math.max(0, (session.output.gradedTokens - session.output.fillerTokens) / session.output.gradedTokens)
       : null;
     const overallGrade = gradeRatio(usefulRatio);
+    const output = {
+      usefulRatio: usefulRatio === null ? null : Math.round(usefulRatio * 100) / 100,
+      grade: overallGrade,
+      totalTokens: session.output.totalTokens,
+      gradedTokens: session.output.gradedTokens,
+      fillerTokens: session.output.fillerTokens,
+      textBlocks: session.output.textBlocks,
+      gradedBlocks: session.output.gradedBlocks,
+    };
 
-    // L2 Thinking
-    const avgThinkRatio = session.thinking.perTurn.length > 0
-      ? session.thinking.perTurn.reduce((s, t) => s + t.ratio, 0) / session.thinking.perTurn.length
-      : 0;
-    const thinkingEfficiency = session.thinking.totalTokens > 0
-      ? +(session.output.totalTokens / session.thinking.totalTokens).toFixed(3)
-      : null;
+    // L2 Thinking: only what the provider reported; null when it reported none.
+    const ratios = session.thinking.perTurn.map(turn => turn.ratio).filter(isNumber);
+    const thinkingEvidence = session.thinking.evidence;
+    const thinking = {
+      totalTokens: session.thinking.totalTokens,
+      avgRatio: ratios.length ? +(ratios.reduce((s, ratio) => s + ratio, 0) / ratios.length).toFixed(2) : null,
+      // Output (an estimate) per thinking token.
+      efficiency: session.thinking.totalTokens > 0
+        ? +(session.output.totalTokens / session.thinking.totalTokens).toFixed(3)
+        : null,
+      turns: session.thinking.perTurn.length,
+    };
 
-    // L3 Action
-    const actionDensity = session.output.textBlocks > 0
-      ? +(session.action.toolCalls / session.output.textBlocks).toFixed(2)
-      : 0;
+    // L3 Action: YOUI's own counts.
+    const action = {
+      totalCalls: session.action.toolCalls,
+      redundantReads: session.action.redundantReads,
+      errors: session.action.toolErrors,
+      density: session.output.textBlocks > 0 ? +(session.action.toolCalls / session.output.textBlocks).toFixed(2) : 0,
+      uniqueFilesRead: session.action.readPaths.size,
+    };
 
-    // L5 System
-    const budgetBurned = session.system.budgetAtStart && session.system.budgetNow
-      ? +((session.system.budgetNow.fiveHour - session.system.budgetAtStart.fiveHour) * 100).toFixed(1)
-      : null;
+    // L4 Context
+    const c = session.context;
+    const context = {
+      tokens: c.tokens,
+      peakTokens: c.peakTokens,
+      window: c.window,
+      windowUtilization: c.window && isNumber(c.tokens) ? +(c.tokens / c.window).toFixed(4) : null,
+      estimatedTokens: c.estimatedTokens,
+      messagesCount: c.messagesCount,
+      systemPromptTokens: c.systemPromptTokens,
+    };
+
+    // USAGE: as reported, summed over the turns that reported it.
+    const u = session.usage;
+    const usage = {
+      turns: u.turns,
+      inputTokens: u.input.value,
+      cacheReadTokens: u.cacheRead.value,
+      cacheCreationTokens: u.cacheCreation.value,
+      outputTokens: u.output.value,
+      thinkingTokens: session.thinking.totalTokens,
+      costUsd: u.costUsd.value === null ? null : +u.costUsd.value.toFixed(6),
+    };
+
+    // CACHE
+    const cache = {
+      promptChanges: session.cache.changes,
+      lastChange: session.cache.lastChange,
+      misses: session.cache.misses,
+      missedTokens: session.cache.missedTokens,
+      lastMiss: session.cache.lastMiss,
+    };
+
+    // MINDS
+    const m = session.minds;
+    const minds = {
+      calls: m.calls,
+      failedCalls: m.failed,
+      inputTokens: m.input.value,
+      cacheReadTokens: m.cacheRead.value,
+      cacheCreationTokens: m.cacheCreation.value,
+      outputTokens: m.output.value,
+      costUsd: m.costUsd.value === null ? null : +m.costUsd.value.toFixed(6),
+    };
+
+    // L5 System. The 5-hour window is account-wide, so what moved while this
+    // session ran is YOUI's inference from two reported figures.
+    const start = session.system.budgetAtStart?.fiveHour;
+    const end = session.system.budgetNow?.fiveHour;
+    const budgetBurned = isNumber(start) && isNumber(end) ? +((end - start) * 100).toFixed(1) : null;
     const tokensPerTurn = session.system.turns > 0
-      ? Math.round((session.output.totalTokens + session.thinking.totalTokens) / session.system.turns)
+      ? Math.round((session.output.totalTokens + (session.thinking.totalTokens || 0)) / session.system.turns)
       : 0;
+    const system = {
+      budgetBurned: budgetBurned !== null ? `${budgetBurned}%` : null,
+      budgetNow: session.system.budgetNow,
+      rateLimit: session.system.rateLimit,
+      rateLimitHits: session.system.rateLimitHits,
+      tokensPerTurn,
+    };
 
     return {
       // Header
@@ -823,51 +1248,96 @@ export function createKernel(opts = {}) {
       elapsed: elapsedMin,
       turns: session.system.turns,
 
-      // L1 Output
+      // What the provider reported for the agent's own turns
+      usage: {
+        ...usage,
+        last: u.last,
+        evidence: {
+          turns: E,
+          inputTokens: u.input.evidence,
+          cacheReadTokens: u.cacheRead.evidence,
+          cacheCreationTokens: u.cacheCreation.evidence,
+          outputTokens: u.output.evidence,
+          thinkingTokens: thinkingEvidence,
+          costUsd: u.costUsd.evidence,
+        },
+      },
+
+      // L1 Output (all estimates)
       output: {
-        usefulRatio: usefulRatio === null ? null : Math.round(usefulRatio * 100) / 100,
-        grade: overallGrade,
-        totalTokens: session.output.totalTokens,
-        gradedTokens: session.output.gradedTokens,
-        fillerTokens: session.output.fillerTokens,
-        textBlocks: session.output.textBlocks,
-        gradedBlocks: session.output.gradedBlocks,
+        ...output,
         gradeDistribution: countGrades(session.output.grades),
+        evidence: allLabelled(output, E),
       },
 
       // L2 Thinking
       thinking: {
-        totalTokens: session.thinking.totalTokens,
-        avgRatio: +avgThinkRatio.toFixed(2),
-        efficiency: thinkingEfficiency,
-        turns: session.thinking.perTurn.length,
+        ...thinking,
+        evidence: {
+          totalTokens: labelOf(thinking.totalTokens, thinkingEvidence),
+          avgRatio: labelOf(thinking.avgRatio, thinkingEvidence),
+          efficiency: labelOf(thinking.efficiency, E),
+          turns: E,
+        },
       },
 
       // L3 Action
       action: {
-        totalCalls: session.action.toolCalls,
+        ...action,
         byName: session.action.toolsByName,
-        redundantReads: session.action.redundantReads,
-        errors: session.action.toolErrors,
-        density: actionDensity,
-        uniqueFilesRead: session.action.readPaths.size,
+        evidence: allLabelled(action, E),
       },
 
       // L4 Context
       context: {
-        estimatedTokens: session.context.estimatedTokens,
-        peakTokens: session.context.peakTokens,
-        windowUtilization: +(session.context.estimatedTokens / 1_000_000).toFixed(4),
-        messagesCount: session.context.messagesCount,
-        systemPromptTokens: session.context.systemPromptTokens,
+        ...context,
+        evidence: {
+          tokens: c.evidence,
+          peakTokens: c.peakEvidence,
+          window: c.windowEvidence,
+          windowUtilization: labelOf(context.windowUtilization, weakerEvidence(c.evidence, c.windowEvidence)),
+          estimatedTokens: labelOf(c.estimatedTokens, E),
+          messagesCount: E,
+          systemPromptTokens: E,
+        },
+      },
+
+      // The cached system prompt (YOUI's comparison) and the misses Claude reported
+      cache: {
+        ...cache,
+        evidence: {
+          promptChanges: E,
+          lastChange: labelOf(cache.lastChange, E),
+          misses: EVIDENCE.reported,
+          missedTokens: EVIDENCE.reported,
+          lastMiss: labelOf(cache.lastMiss, EVIDENCE.reported),
+        },
+      },
+
+      // Other minds, apart from the agent's own turns
+      minds: {
+        ...minds,
+        evidence: {
+          calls: E,
+          failedCalls: E,
+          inputTokens: m.input.evidence,
+          cacheReadTokens: m.cacheRead.evidence,
+          cacheCreationTokens: m.cacheCreation.evidence,
+          outputTokens: m.output.evidence,
+          costUsd: m.costUsd.evidence,
+        },
       },
 
       // L5 System
       system: {
-        budgetBurned: budgetBurned !== null ? `${budgetBurned}%` : null,
-        budgetNow: session.system.budgetNow,
-        rateLimitHits: session.system.rateLimitHits,
-        tokensPerTurn,
+        ...system,
+        evidence: {
+          budgetBurned: labelOf(system.budgetBurned, E),
+          budgetNow: labelOf(system.budgetNow, EVIDENCE.reported),
+          rateLimit: labelOf(system.rateLimit, EVIDENCE.reported),
+          rateLimitHits: E,
+          tokensPerTurn: E,
+        },
       },
 
       // Signals (suggestions only)
@@ -899,11 +1369,90 @@ export function createKernel(opts = {}) {
   /**
    * The row this session would write: aggregates only. startedAt and endedAt
    * are its first and last activity, elapsed the minutes between them, and
-   * closedAt when it was cut (now).
+   * closedAt when it was cut (now). `evidence` labels its figures.
    */
   function row(reason = null) {
     const r = report();
     const iso = t => (t === null ? null : new Date(t).toISOString());
+    const figures = {
+      elapsed: r.elapsed,
+      turns: r.turns,
+      outputGrade: r.output.grade,
+      usefulRatio: r.output.usefulRatio,
+      outputTokensEstimate: r.output.totalTokens,
+      fillerTokensEstimate: r.output.fillerTokens,
+      textBlocks: r.output.textBlocks,
+      gradedBlocks: r.output.gradedBlocks,
+      thinkingTokens: r.thinking.totalTokens,
+      thinkAvgRatio: r.thinking.avgRatio,
+      toolCalls: r.action.totalCalls,
+      redundantReads: r.action.redundantReads,
+      toolErrors: r.action.errors,
+      contextPeakTokens: r.context.peakTokens,
+      contextWindow: r.context.window,
+      usageTurns: r.usage.turns,
+      inputTokens: r.usage.inputTokens,
+      cacheReadTokens: r.usage.cacheReadTokens,
+      cacheCreationTokens: r.usage.cacheCreationTokens,
+      outputTokens: r.usage.outputTokens,
+      costUsd: r.usage.costUsd,
+      promptChanges: r.cache.promptChanges,
+      cacheMisses: r.cache.misses,
+      mindCalls: r.minds.calls,
+      mindFailedCalls: r.minds.failedCalls,
+      mindInputTokens: r.minds.inputTokens,
+      mindCacheReadTokens: r.minds.cacheReadTokens,
+      mindCacheCreationTokens: r.minds.cacheCreationTokens,
+      mindOutputTokens: r.minds.outputTokens,
+      mindCostUsd: r.minds.costUsd,
+      budgetBurned: r.system.budgetBurned,
+      rateLimitStatus: r.system.rateLimit?.status ?? null,
+      fiveHourUtilization: r.system.rateLimit?.fiveHour?.utilization ?? null,
+      sevenDayUtilization: r.system.rateLimit?.sevenDay?.utilization ?? null,
+      rateLimitHits: r.system.rateLimitHits,
+    };
+    const E = EVIDENCE.estimated;
+    const labels = {
+      elapsed: E,
+      turns: E,
+      outputGrade: E,
+      usefulRatio: E,
+      outputTokensEstimate: E,
+      fillerTokensEstimate: E,
+      textBlocks: E,
+      gradedBlocks: E,
+      thinkingTokens: r.thinking.evidence.totalTokens,
+      thinkAvgRatio: r.thinking.evidence.avgRatio,
+      toolCalls: E,
+      redundantReads: E,
+      toolErrors: E,
+      contextPeakTokens: r.context.evidence.peakTokens,
+      contextWindow: r.context.evidence.window,
+      usageTurns: E,
+      inputTokens: r.usage.evidence.inputTokens,
+      cacheReadTokens: r.usage.evidence.cacheReadTokens,
+      cacheCreationTokens: r.usage.evidence.cacheCreationTokens,
+      outputTokens: r.usage.evidence.outputTokens,
+      costUsd: r.usage.evidence.costUsd,
+      promptChanges: E,
+      cacheMisses: EVIDENCE.reported,
+      mindCalls: E,
+      mindFailedCalls: E,
+      mindInputTokens: r.minds.evidence.inputTokens,
+      mindCacheReadTokens: r.minds.evidence.cacheReadTokens,
+      mindCacheCreationTokens: r.minds.evidence.cacheCreationTokens,
+      mindOutputTokens: r.minds.evidence.outputTokens,
+      mindCostUsd: r.minds.evidence.costUsd,
+      budgetBurned: E,
+      rateLimitStatus: EVIDENCE.reported,
+      fiveHourUtilization: EVIDENCE.reported,
+      sevenDayUtilization: EVIDENCE.reported,
+      rateLimitHits: E,
+    };
+    const evidence = {};
+    for (const [key, value] of Object.entries(figures)) {
+      if (value !== null && value !== undefined && labels[key]) evidence[key] = labels[key];
+    }
     return {
       schema: HISTORY_SCHEMA,
       session: session.id,
@@ -916,25 +1465,11 @@ export function createKernel(opts = {}) {
       endedAt: iso(session.lastActivityAt),
       closedAt: iso(now()),
       endReason: reason,
-      elapsed: r.elapsed,
-      turns: r.turns,
       exchanges: { ...session.exchanges },
-      outputGrade: r.output.grade,
-      usefulRatio: r.output.usefulRatio,
-      outputTokensEstimate: r.output.totalTokens,
-      fillerTokensEstimate: r.output.fillerTokens,
-      textBlocks: r.output.textBlocks,
-      gradedBlocks: r.output.gradedBlocks,
-      thinkingTokens: r.thinking.totalTokens,
-      thinkAvgRatio: r.thinking.avgRatio,
-      toolCalls: r.action.totalCalls,
-      redundantReads: r.action.redundantReads,
-      toolErrors: r.action.errors,
-      contextPeakTokens: session.context.peakTokens,
-      budgetBurned: r.system.budgetBurned,
-      rateLimitHits: r.system.rateLimitHits,
+      ...figures,
       signalCount: session.signalKeys.size,
       signals: [...session.signalKeys].sort(),
+      evidence,
     };
   }
 
@@ -993,27 +1528,34 @@ export function createKernel(opts = {}) {
   }
 
   // ─── COMPACT STATUS LINE ───────────────────────────────
+  // "~" marks an estimate; a figure with no mark was reported. "—" is no figure.
   function statusLine() {
     const r = report();
     const g = r.output.grade ?? "—";
-    const ur = r.output.usefulRatio === null ? "—" : `${Math.round(r.output.usefulRatio * 100)}%`;
-    const tr = r.thinking.avgRatio;
+    const ur = r.output.usefulRatio === null ? "—" : `${Math.round(r.output.usefulRatio * 100)}%~`;
+    const tr = r.thinking.avgRatio === null ? "—" : `${r.thinking.avgRatio}x`;
     const tc = r.action.totalCalls;
     const rr = r.action.redundantReads;
-    const ctx = Math.round(r.context.estimatedTokens / 1000);
+    const ctx = r.context.tokens === null ? "—"
+      : `${Math.round(r.context.tokens / 1000)}k${r.context.evidence.tokens === EVIDENCE.estimated ? "~" : ""}`;
+    const cost = r.usage.costUsd === null ? "" : ` $${r.usage.costUsd.toFixed(4)}${r.usage.evidence.costUsd === EVIDENCE.estimated ? "~" : ""}`;
     const sig = r.signals.length;
-    return `YS:${g}(${ur}) think:${tr}x tools:${tc}${rr > 0 ? ` dup:${rr}` : ""} ctx:${ctx}k${sig > 0 ? ` ⚡${sig}` : ""}`;
+    return `YS:${g}(${ur}) think:${tr} tools:${tc}${rr > 0 ? ` dup:${rr}` : ""} ctx:${ctx}${cost}${sig > 0 ? ` ⚡${sig}` : ""}`;
   }
 
   // ─── PUBLIC API ────────────────────────────────────────
   return {
     // SENSE
+    senseUsage,
     senseOutput,
     senseThinking,
     senseToolCall,
     senseContext,
+    senseSystemPrompt,
+    senseMind,
     senseTurn,
     senseRateLimit,
+    senseRateLimitState,
     noteRoute,
     noteExchange,
     noteActivity,
@@ -1058,7 +1600,7 @@ if (process.argv[1]?.endsWith("youspeak-kernel.mjs")) {
       console.log(`\n${S.bold}${S.cyan}═══ YOUSPEAK TRENDS ═══${S.reset}`);
       console.log(`${S.dim}${t.span} (${t.sessions} sessions, one row each)${S.reset}\n`);
       console.log(`  Useful ratio:     ${S.bold}${t.avgUsefulRatio >= 0.9 ? S.green : t.avgUsefulRatio >= 0.8 ? S.yellow : S.red}${Math.round(t.avgUsefulRatio*100)}%${S.reset} ${S.dim}(English-only estimate)${S.reset}`);
-      console.log(`  Think/output:     ${t.avgThinkRatio}x avg`);
+      console.log(`  Think/output:     ${t.avgThinkRatio === null ? "— (no session reported thinking)" : `${t.avgThinkRatio}x avg (reported)`}`);
       console.log(`  Redundant reads:  ${t.avgRedundantReads}/session avg`);
       console.log(`  Tool errors:      ${t.avgToolErrors}/session avg`);
       console.log();
@@ -1087,12 +1629,15 @@ Import:
   ${S.cyan}import { createKernel } from './youspeak-kernel.mjs';${S.reset}
   ${S.cyan}const ys = createKernel({ agent, route, model, surface });${S.reset}
 
-Five measurement layers (estimates; see docs/YOUSPEAK.md):
+What it senses (each figure labelled reported or estimated; see docs/YOUSPEAK.md):
+  USAGE       — Input, cache read and creation, output, thinking, cost, as the provider reports them
   L1 OUTPUT   — English filler estimate, useful ratio (blocks of 20+ tokens, mostly ASCII)
-  L2 THINKING — Thinking tokens where reported
+  L2 THINKING — Thinking tokens, only where reported
   L3 ACTION   — Tool calls, repeated reads
-  L4 CONTEXT  — chars/4 estimate against 1M
+  L4 CONTEXT  — The latest request's input + cache (reported) or chars/4, against the model's window where known
   L5 SYSTEM   — Rate-limit state as reported
+  CACHE       — Whether the cached system prompt changed within a conversation
+  MINDS       — Other minds' calls, tokens and cost
 `);
   }
 }

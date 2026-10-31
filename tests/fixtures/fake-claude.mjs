@@ -23,6 +23,10 @@
 //     modelUsage as running totals for a kept session (0.0123 a turn), and
 //     exits when stdin closes.
 //
+// A message may begin with YOUI's per-turn context block ("[YOUI context]" …
+// "[/YOUI context]"); the fake logs it as `context` and reads only what
+// follows it, as `message`.
+//
 // The user message steers it, one directive per line (only the part after
 // YOUI's carried transcript, whose end marker carries that transcript's nonce):
 //   FAKE:list                  tools/list through the bridge; answers with the names
@@ -44,6 +48,7 @@
 //   FAKE:thinking <text>       a thinking block before the answer
 //   FAKE:null-line             stdout lines that are JSON but not objects ("null", "42", "[]") before the answer
 //   FAKE:bad-fields            an assistant event whose content is a number, before the answer
+//   FAKE:cache-miss            the answer's request reports a cache miss (diagnostics.cache_miss_reason)
 // and, with any of those, how the process ends:
 //   FAKE:ignore-eof            stays running after stdin closes (until killed)
 //   FAKE:slow-exit             on SIGTERM, waits 800 ms before exiting
@@ -165,9 +170,14 @@ async function connectBridge() {
 }
 
 let messageCount = 0;
+let cacheMiss = null;
+// A request's usage as 2.1.314 reports it in message_start (tests/fixtures/claude-code-stream-2.1.314.jsonl).
+const requestUsage = { input_tokens: 3, cache_creation_input_tokens: 100, cache_read_input_tokens: 1000,
+  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 100 }, output_tokens: 1 };
 function textMessage(text) {
   const id = `msg_fake_${++messageCount}`;
-  out({ type: "stream_event", event: { type: "message_start", message: { id, model, role: "assistant", content: [], usage: { input_tokens: 3, output_tokens: 1 } } }, parent_tool_use_id: null });
+  out({ type: "stream_event", event: { type: "message_start", message: { id, model, role: "assistant", content: [], usage: requestUsage,
+    diagnostics: cacheMiss ? { cache_miss_reason: cacheMiss } : null } }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, parent_tool_use_id: null });
   const half = Math.ceil(text.length / 2);
   for (const part of [text.slice(0, half), text.slice(half)].filter(Boolean)) {
@@ -175,7 +185,7 @@ function textMessage(text) {
   }
   out({ type: "assistant", message: { id, model, role: "assistant", content: [{ type: "text", text }] }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, parent_tool_use_id: null });
-  out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } }, parent_tool_use_id: null });
+  out({ type: "stream_event", event: { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { ...requestUsage, output_tokens: 5 } }, parent_tool_use_id: null });
   out({ type: "stream_event", event: { type: "message_stop" }, parent_tool_use_id: null });
 }
 
@@ -199,6 +209,7 @@ function result({ text = "", isError = false, stopReason = "end_turn", subtype =
       cacheCreationInputTokens: (before.cacheCreationInputTokens || 0) + 100,
       outputTokens: (before.outputTokens || 0) + 20,
       costUSD: Number(((before.costUSD || 0) + TURN_COST).toFixed(6)),
+      contextWindow: 1000000,
     },
   };
   if (transcript) writeFileSync(transcript, JSON.stringify({ cost: total, usage: { ...saved.usage, ...modelUsage } }));
@@ -239,6 +250,7 @@ async function answer(full) {
   const lines = String(message).split("\n");
   const has = name => lines.find(line => line === `FAKE:${name}` || line.startsWith(`FAKE:${name} `));
   if (has("ignore-eof")) holdOnEof = true;
+  if (has("cache-miss")) cacheMiss = { type: "system_changed", cache_missed_input_tokens: 1100 };
   if (has("slow-exit")) {
     process.on("SIGTERM", () => {
       log({ step: "sigterm" });
@@ -403,8 +415,12 @@ input.on("line", async line => {
   if (event.type !== "user") return;
   answered = true;
   const content = event.message?.content;
-  const message = typeof content === "string" ? content : (content || []).map(block => block.text || "").join("");
-  log({ step: "message", message, line: event });
+  const full = typeof content === "string" ? content : (content || []).map(block => block.text || "").join("");
+  // YOUI's per-turn context block, when the message begins with one.
+  const fenced = full.match(/^\[YOUI context\]\n[\s\S]*?\n\[\/YOUI context\]\n\n/);
+  const context = fenced ? fenced[0] : null;
+  const message = fenced ? full.slice(fenced[0].length) : full;
+  log({ step: "message", message, context, line: event });
   try {
     await answer(message);
   } catch (error) {

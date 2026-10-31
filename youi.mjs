@@ -35,6 +35,7 @@ import { homedir } from "os";
 import { createInterface } from "readline";
 import crypto from "crypto";
 import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
+import { youspeakRule } from "./youspeak-rule.mjs";
 import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
@@ -616,11 +617,8 @@ function buildSystemPrompt(taskText) {
 
   if (parts.length <= 1) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
-  // YOUSPEAK Communication Discipline
-  parts.push(`# YOUSPEAK Protocol
-No filler. No preamble. No tool narration. Dense status (key:value not prose).
-Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
-Never compress epistemic signals — "probably", "unless", "I think" are sacred.`);
+  // The YOUSPEAK rule, from the one shared module
+  parts.push(youspeakRule());
 
   let gitBranch = "N/A";
   try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: modelToolEnv() }).stdout?.trim() || ""; } catch {}
@@ -1144,14 +1142,16 @@ function handleCommand(input) {
         const gd = Object.entries(r.output.gradeDistribution).map(([g,c]) => `${g}:${c}`).join(" ");
         print(`  ${S.dim}             Blocks: ${r.output.textBlocks}  Distribution: ${gd}${S.reset}`);
       }
-      // L2 Thinking
-      print(`  ${S.bold}L2 Thinking${S.reset}  Total: ${r.thinking.totalTokens.toLocaleString()}tok  Ratio: ${r.thinking.avgRatio}x  Efficiency: ${r.thinking.efficiency ?? "—"}`);
+      // L2 Thinking: only where the provider reported it (this route reports none)
+      print(`  ${S.bold}L2 Thinking${S.reset}  Total: ${r.thinking.totalTokens === null ? "not reported" : `${r.thinking.totalTokens.toLocaleString()}tok`}  Ratio: ${r.thinking.avgRatio === null ? "—" : `${r.thinking.avgRatio}x`}  Efficiency: ${r.thinking.efficiency ?? "—"}`);
       // L3 Action
       const topTools = Object.entries(r.action.byName).sort((a,b) => b[1]-a[1]).slice(0,5).map(([n,c]) => `${n}:${c}`).join(" ");
       print(`  ${S.bold}L3 Action${S.reset}    Calls: ${r.action.totalCalls}  Dups: ${r.action.redundantReads}  Errors: ${r.action.errors}  Density: ${r.action.density}`);
       if (topTools) print(`  ${S.dim}             ${topTools}${S.reset}`);
-      // L4 Context
-      print(`  ${S.bold}L4 Context${S.reset}   ~${Math.round(r.context.estimatedTokens/1000)}k tokens  Window: ${(r.context.windowUtilization*100).toFixed(1)}%  Messages: ${r.context.messagesCount}`);
+      // L4 Context: a chars/4 estimate here, against the model's window where YOUI knows it
+      const ctxTokens = r.context.tokens === null ? "—" : `~${Math.round(r.context.tokens/1000)}k tokens (estimate)`;
+      const ctxWindow = r.context.windowUtilization === null ? "unknown" : `${(r.context.windowUtilization*100).toFixed(1)}% of ${Math.round(r.context.window/1000)}k`;
+      print(`  ${S.bold}L4 Context${S.reset}   ${ctxTokens}  Window: ${ctxWindow}  Messages: ${r.context.messagesCount}`);
       // L5 System
       print(`  ${S.bold}L5 System${S.reset}    Budget burned: ${r.system.budgetBurned ?? "—"}  Rate limits: ${r.system.rateLimitHits}  Tok/turn: ${r.system.tokensPerTurn}`);
       // Signals: suggestions only; nothing was changed
@@ -1172,7 +1172,7 @@ function handleCommand(input) {
         print("");
         print(`  ${S.bold}Trends${S.reset} ${S.dim}(${t.sessions} sessions, ${t.span})${S.reset}`);
         const dir = t.fillerTrend.direction === "improving" ? S.green + "↑" : t.fillerTrend.direction === "regressing" ? S.red + "↓" : S.dim + "─";
-        print(`  ${S.dim}  Useful: ${Math.round(t.avgUsefulRatio*100)}% avg  Think: ${t.avgThinkRatio}x  Dups: ${t.avgRedundantReads}/s  Filler: ${dir} ${t.fillerTrend.direction}${S.reset}`);
+        print(`  ${S.dim}  Useful: ${Math.round(t.avgUsefulRatio*100)}% avg  Think: ${t.avgThinkRatio === null ? "—" : `${t.avgThinkRatio}x`}  Dups: ${t.avgRedundantReads}/s  Filler: ${dir} ${t.fillerTrend.direction}${S.reset}`);
       }
       if (store.legacy) print(`  ${S.dim}  Legacy youspeak-history.json (read only): ${store.legacy.rows} rows; not comparable${S.reset}`);
       print("");
@@ -1185,7 +1185,7 @@ function handleCommand(input) {
       const ysReport = ys.report();
       const ysUseful = ysReport.output.usefulRatio === null ? "—" : `${Math.round(ysReport.output.usefulRatio*100)}%`;
       print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
-      print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}) | think:${ysReport.thinking.avgRatio}x | dups:${ysReport.action.redundantReads} | ctx:${Math.round(ysReport.context.estimatedTokens/1000)}k${S.reset}`);
+      print(`${S.dim}  YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k~`}${S.reset}`);
       appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK: ${ysReport.output.grade ?? "—"} (${ysUseful}).`);
       process.exit(0);
 

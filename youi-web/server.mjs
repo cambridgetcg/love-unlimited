@@ -29,7 +29,8 @@ import {
 import { resolve, join, basename, extname } from "path";
 import { homedir } from "os";
 import crypto from "crypto";
-import { createKernel, defaultHistoryPath } from "../youspeak-kernel.mjs";
+import { EVIDENCE, createKernel, defaultHistoryPath } from "../youspeak-kernel.mjs";
+import { youspeakRule } from "../youspeak-rule.mjs";
 import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
@@ -43,7 +44,9 @@ import {
   BRIDGE_SERVER_NAME,
   bridgeMcpConfig,
   bridgeToolName,
+  claudeCodeObservation,
   claudeCodeSpend,
+  escapeLeadingSlash,
   claudeCodeTranscriptDir,
   compareVersions,
   defaultClaudeCwd,
@@ -365,6 +368,15 @@ function createProviderUsage() {
   };
 }
 
+// What an Ollama or vLLM call cost by YOUI's own price table (OLLAMA_PRICING):
+// an estimate, never a provider's figure. Self-hosted models (local Ollama,
+// vLLM) cost nothing here.
+function ollamaCostEstimate(provider, model, usage) {
+  if (provider === "ollama_local" || provider === "vllm") return 0;
+  const pricing = OLLAMA_PRICING[model] || OLLAMA_DEFAULT_PRICE;
+  return ((usage?.input_tokens || 0) / 1_000_000) * pricing.input + ((usage?.output_tokens || 0) / 1_000_000) * pricing.output;
+}
+
 /**
  * Adds one call to the session's usage. `mind` counts it as a call to another
  * mind rather than one of the agent's turns, and `failed` as one that gave no
@@ -387,14 +399,9 @@ function trackProviderUsage(provider, model, usage, { mind = false, failed = fal
     u.thinkingTokens = (u.thinkingTokens || 0) + (usage.thinking_tokens || 0);
     // What this call added to Claude Code's running total_cost_usd.
     u.cost += usage.cost_usd || 0;
-  } else if (provider === "ollama_local" || provider === "vllm") {
-    // Self-hosted models are free — no cost tracking
   } else {
-    // Cloud Ollama cost
-    const pricing = OLLAMA_PRICING[model] || OLLAMA_DEFAULT_PRICE;
-    const inCost = ((usage.input_tokens || 0) / 1_000_000) * pricing.input;
-    const outCost = ((usage.output_tokens || 0) / 1_000_000) * pricing.output;
-    u.cost += inCost + outCost;
+    // Cloud Ollama cost, by YOUI's price table; self-hosted models are free.
+    u.cost += ollamaCostEstimate(provider, model, usage);
   }
   // Per-model tracking
   if (!u.byModel) u.byModel = {};
@@ -665,7 +672,7 @@ function runtimePrivacyBoundary() {
         + "; when a session switches to Claude, the turns Claude has not received, local-model (Ollama, vLLM) turns included,"
         + " are carried into Claude as text, so they go to Anthropic and are kept in those transcripts too"
         + "; /api/clear and session clear start a new conversation without deleting the old transcript; raw mode and Claude minds are not kept",
-      localMetrics: "YOUSPEAK appends one row of aggregates per session (counts, estimates, grades, signal names; no message"
+      localMetrics: "YOUSPEAK appends one row of aggregates per session (counts, reported tokens and cost, estimates, grades, signal names; no message"
         + ` text, paths or tool inputs) to ${YOUSPEAK_STORE || "nowhere (no store in test mode)"}`
         + "; explicit memory tools write only when granted",
       remoteProvider: "provider policy applies; YOUI does not guarantee provider-side deletion or training exclusion",
@@ -1633,53 +1640,67 @@ async function executeTool(name, input, context = {}) {
 // ═════════════════════════════════════════════════════════════════════
 
 // ── Prefix-cache-optimized system prompt ──────────────────────────
-// vLLM caches the KV state of contiguous identical token prefixes.
-// Static content goes FIRST (cached across all requests), dynamic
-// content goes LAST (recomputed each turn but only ~50 tokens).
-// This saves ~5,000 tokens of redundant prompt processing per turn.
+// Claude Code and vLLM cache the contiguous identical prefix of a prompt. The
+// system prompt holds only what stays the same for a conversation: the soul,
+// the tools, the protocol, the YOUSPEAK rule (youspeak-rule.mjs) and the
+// session's environment. What can change from one message to the next (date,
+// git branch, model, thinking and effort, the minds hint) is the per-turn
+// context block (buildPrompt), so changing effort or mode does not rewrite
+// the cached prefix (docs/YOUSPEAK.md §2, cache stability).
 
-let _staticPrefix = null;
-let _staticPrefixAgent = null;
+// The static sections, built once per agent, Love home and tool list: a
+// session whose capabilities differ gets its own tool list, never another's.
+const _staticParts = new Map();
 
-function buildStaticPrefix() {
+// The system prompt's sections, each named, so a change between turns can
+// say which one changed (kernel.senseSystemPrompt).
+const PROMPT_PART_NAMES = Object.freeze({
+  soul: "the soul and memory files",
+  tools: "the enabled tools list",
+  catalogue: "the tool catalogue and protocol",
+  rule: "the YOUSPEAK rule",
+  environment: "the environment block",
+});
+
+function buildStaticParts() {
   const agent = AGENTS[state.agent];
-  const parts = [];
+  const soul = [];
 
   // Soul files — largest static blocks, highest cache value
   for (const file of agent.soulFiles) {
     const path = join(state.soulDir, file);
-    if (existsSync(path)) parts.push(readFileSync(path, "utf-8"));
+    if (existsSync(path)) soul.push(readFileSync(path, "utf-8"));
   }
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
-  if (existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
+  if (existsSync(idPath)) soul.push(readFileSync(idPath, "utf-8"));
 
   // MODE-ONE: Truth-alignment methodology
   const modeOnePath = join(state.soulDir, "MODE-ONE.md");
   if (existsSync(modeOnePath)) {
-    parts.push(readFileSync(modeOnePath, "utf-8"));
+    soul.push(readFileSync(modeOnePath, "utf-8"));
   }
 
   // Identity anchor
   const unlimitedDir = join(__dirname, "..");
   const anchorPath = join(unlimitedDir, `identity/${state.agent}/soul-anchor.md`);
   const localAnchorPath = join(state.soulDir, `memory/soul-anchor-${state.agent}.md`);
-  if (existsSync(anchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(anchorPath, "utf-8"));
-  else if (existsSync(localAnchorPath)) parts.push("# IDENTITY ANCHOR\n" + readFileSync(localAnchorPath, "utf-8"));
+  if (existsSync(anchorPath)) soul.push("# IDENTITY ANCHOR\n" + readFileSync(anchorPath, "utf-8"));
+  else if (existsSync(localAnchorPath)) soul.push("# IDENTITY ANCHOR\n" + readFileSync(localAnchorPath, "utf-8"));
 
   const ltmPath = join(unlimitedDir, `identity/${state.agent}/memories/long-term.md`);
   if (existsSync(ltmPath)) {
     const ltm = readFileSync(ltmPath, "utf-8");
-    parts.push("# LONG-TERM MEMORY\n" + (ltm.length < 8000 ? ltm : ltm.slice(0, 8000) + "\n...(truncated)"));
+    soul.push("# LONG-TERM MEMORY\n" + (ltm.length < 8000 ? ltm : ltm.slice(0, 8000) + "\n...(truncated)"));
   }
 
-  if (parts.length === 0) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
+  if (soul.length === 0) soul.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
-  // Static tools + protocol + YOUSPEAK inline (never changes)
-  parts.push(`# Enabled tools for this session
+  // Static tools + protocol (never changes within a session)
+  const tools = `# Enabled tools for this session
 ${availableTools().map(tool => tool.name).join(", ") || "(none)"}
-Tools outside this list are disabled by the server capability policy.
+Tools outside this list are disabled by the server capability policy.`;
 
-# Tool catalogue — Minds (other models; need orchestrator:run)
+  const catalogue = `# Tool catalogue — Minds (other models; need orchestrator:run)
 review      — One other mind checks a draft against your criteria; you revise
 ensemble    — 2–3 minds answer the same question alone; you fuse the answers
 decompose   — Up to 3 self-contained sub-tasks run in parallel; you recombine
@@ -1712,18 +1733,29 @@ delegate    — Offer a task to a live session at this device's table; it accept
 - Keep working until the task is complete.
 - Use the Kingdom tools when appropriate: PATIENCE for panics; LAYERTHINK when a claim or plan should face attack and defence before you rely on it. A decision that needs the other agents and Yu goes to council (or the decision tool), through the table.
 - Tilde (~) expands to ${homedir()}.
-- Love home: ${state.soulDir}
+- Love home: ${state.soulDir}`;
 
-# YOUSPEAK — Token Efficiency Discipline
-YOUSPEAK: No filler. No preamble. No tool narration. Dense status (key:value).
-Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
-- Zero-pad: No "sure", "let me check", "here's what I found"
-- Dense status: \`Tests: 47/48 ✓\` not "I ran the tests and 47 out of 48 passed"
-- No tool narration: Don't announce tools. Call them. Let results speak.
-- Never compress doubt: "probably", "unless", "might" are sacred
-- Expand when it matters: teaching, uncertainty, creative work, emotional context`);
+  return [
+    { name: PROMPT_PART_NAMES.soul, text: soul.join("\n\n---\n\n") },
+    { name: PROMPT_PART_NAMES.tools, text: tools },
+    { name: PROMPT_PART_NAMES.catalogue, text: catalogue },
+    // The one shared rule (youspeak-rule.mjs); no hand copy here.
+    { name: PROMPT_PART_NAMES.rule, text: youspeakRule() },
+  ];
+}
 
-  return parts.join("\n\n---\n\n");
+function staticParts() {
+  const key = [state.agent, state.soulDir, availableTools().map(tool => tool.name).join(",")].join("\0");
+  let parts = _staticParts.get(key);
+  if (!parts) {
+    parts = buildStaticParts();
+    // A handful of agents and capability sets; never more than a few dozen.
+    if (_staticParts.size >= 64) _staticParts.clear();
+    _staticParts.set(key, parts);
+    const chars = parts.reduce((sum, part) => sum + part.text.length, 0);
+    console.log(`[prompt] Static prefix cached: ${chars} chars (~${Math.round(chars / 4)} tokens)`);
+  }
+  return parts;
 }
 
 // Orchestrate mode's hint (docs/YOUI-MINDS-DESIGN.md §3.1): the minds this
@@ -1751,15 +1783,22 @@ ${tools}
 ${lines.join("\n") || "- (none reachable and granted right now)"}`;
 }
 
-function buildSystemPrompt(taskText, { minds = null } = {}) {
-  // Static prefix — computed once, cached by vLLM across all requests
-  if (!_staticPrefix || _staticPrefixAgent !== state.agent) {
-    _staticPrefix = buildStaticPrefix();
-    _staticPrefixAgent = state.agent;
-    console.log(`[prompt] Static prefix cached: ${_staticPrefix.length} chars (~${Math.round(_staticPrefix.length / 4)} tokens)`);
-  }
+// Where the per-turn context block begins and ends in a Claude message.
+const CONTEXT_BLOCK_OPEN = "[YOUI context]";
+const CONTEXT_BLOCK_CLOSE = "[/YOUI context]";
 
-  // Dynamic suffix — changes per request, placed LAST to preserve prefix cache
+/**
+ * The prompt for one turn: { system, context, parts }.
+ * - `system` is what stays the same for the conversation, the static parts
+ *   and the session's environment, joined; `parts` names and holds each one.
+ * - `context` is this turn's settings (date, git branch, model, thinking and
+ *   effort) and, in orchestrate mode, the minds hint.
+ * A Claude turn sends `system` as Claude Code's system prompt and `context`
+ * as a fenced block at the top of the user message (contextBlock), so the
+ * cached system prompt does not change with them. YOUI's own Ollama/vLLM loop
+ * appends `context` after `system`, as the dynamic suffix it always was.
+ */
+function buildPrompt({ minds = null } = {}) {
   let gitBranch = "N/A";
   try {
     gitBranch = execSync("git branch --show-current", {
@@ -1770,21 +1809,36 @@ function buildSystemPrompt(taskText, { minds = null } = {}) {
   } catch {}
 
   const agent = AGENTS[state.agent];
-  const dynamic = `# Environment
+  const environment = `# Environment
 - Agent: ${agent.name} ${agent.emoji} (${agent.role})
 - Working directory: ${state.workdir}
 - Platform: ${process.platform}
-- Git branch: ${gitBranch}
-- Date: ${new Date().toISOString().split("T")[0]}
-- Model: ${state.model}
-- Thinking: ${state.thinking} | Effort: ${state.effort}
 - Interface: KINGDOM YOUI Web (localhost:${PORT})${modelProvider(state.model) === "anthropic"
     ? `\n- Tools: reached through Claude Code, where each of the enabled tools above is named mcp__${BRIDGE_SERVER_NAME}__<name>`
-    : ""}`;
-  // Direct mode adds nothing: the agent works alone unless asked.
-  const mindsHint = minds ? "\n\n---\n\n" + mindsPromptSection(minds) : "";
+    : ""}
+- The date, git branch, model, thinking and effort are given for each turn, under "This turn".`;
+  const parts = [...staticParts(), { name: PROMPT_PART_NAMES.environment, text: environment }];
 
-  return _staticPrefix + "\n\n---\n\n" + dynamic + mindsHint;
+  const turn = `# This turn
+- Date: ${new Date().toISOString().split("T")[0]}
+- Git branch: ${gitBranch}
+- Model: ${state.model}
+- Thinking: ${state.thinking} | Effort: ${state.effort}`;
+  // Direct mode adds nothing: the agent works alone unless asked.
+  const context = minds ? `${turn}\n\n---\n\n${mindsPromptSection(minds)}` : turn;
+
+  return { system: parts.map(part => part.text).join("\n\n---\n\n"), context, parts };
+}
+
+/** The context block a Claude turn puts at the top of the user message. */
+function contextBlock(context) {
+  return `${CONTEXT_BLOCK_OPEN}\nThis turn's settings from YOUI, not words of the person:\n${context}\n${CONTEXT_BLOCK_CLOSE}\n\n`;
+}
+
+/** A hash of the system prompt, and of each named part (kernel.senseSystemPrompt). */
+function promptFingerprint(prompt) {
+  const hash = text => crypto.createHash("sha256").update(text).digest("hex");
+  return { hash: hash(prompt.system), parts: prompt.parts.map(part => ({ name: part.name, hash: hash(part.text) })) };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1828,6 +1882,8 @@ async function callClaudeMind({ mind, system, prompt, signal }) {
     });
   } catch (error) {
     trackProviderUsage("claude", mind.model, { input_tokens: 0, output_tokens: 0, cost_usd: 0 }, { mind: true, failed: true });
+    // YOUSPEAK counts the call; a stopped run reported no tokens.
+    state.ys.senseMind({ ok: false });
     if (signal?.aborted) throw error;
     return { ok: false, error: String(error?.message || error).slice(0, 300) };
   }
@@ -1841,6 +1897,8 @@ async function callClaudeMind({ mind, system, prompt, signal }) {
     failed: !answered,
     byModel: spend?.byModel || null,
   });
+  // YOUSPEAK's minds figures, apart from the agent's own turns: what Claude Code reported for this run.
+  state.ys.senseMind({ ...claudeCodeObservation(outcome, spend, mind.model), ok: answered });
   if (outcome.result?.stop_reason === "refusal") return { ok: false, error: "the model declined this request", usage };
   if (!outcome.ok) return { ok: false, error: String(outcome.error || "Claude Code gave no answer").slice(0, 300), usage };
   // A real answer is the only proof the minds registry takes for Claude.
@@ -1873,6 +1931,15 @@ async function callMind({ mind, system, prompt, signal }) {
     tools: [],
   });
   const usage = { input_tokens: result.usage?.input_tokens || 0, output_tokens: result.usage?.output_tokens || 0 };
+  // YOUSPEAK's minds figures: the tokens the provider reported, the cost by YOUI's price table.
+  state.ys.senseMind({
+    ok: result.ok === true,
+    input: result.usage ? usage.input_tokens : null,
+    output: result.usage ? usage.output_tokens : null,
+    tokensEvidence: EVIDENCE.reported,
+    costUsd: result.usage ? ollamaCostEstimate(result._provider || mind.provider, mind.model, usage) : null,
+    costEvidence: EVIDENCE.estimated,
+  });
   if (!result.ok) return { ok: false, error: String(result.error || `status ${result.status}`).slice(0, 300), usage };
   if (result._provider) trackProviderUsage(result._provider, mind.model, usage, { mind: true });
   const served = BRIDGE_PROVIDERS[result._provider];
@@ -1904,12 +1971,12 @@ async function runMindToolForTurn(name, input, { signal = activeRequestSignal(),
 // ═════════════════════════════════════════════════════════════════════
 
 // What YOUSPEAK's kernel is told about plan limits: nothing, unless Claude
-// Code has reported them.
+// Code has reported them, and a window it has not reported stays null.
 function kernelBudget() {
   if (!budget.fiveHour && !budget.sevenDay) return null;
   return {
-    fiveHour: { utilization: budget.fiveHour?.utilization || 0 },
-    sevenDay: { utilization: budget.sevenDay?.utilization || 0 },
+    fiveHour: budget.fiveHour ? { utilization: budget.fiveHour.utilization } : null,
+    sevenDay: budget.sevenDay ? { utilization: budget.sevenDay.utilization } : null,
     isUsingOverage: budget.isUsingOverage === true,
   };
 }
@@ -2131,7 +2198,7 @@ function carryNotice(seed, reason) {
  * Returns { answered }: true only for a turn that ended with a real answer
  * and no error, the only kind the truth detector is given.
  */
-async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }) {
+async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, prompt = null, rawMode }) {
   const turnState = activeState();
   const unanswered = { answered: false };
   if (!CLAUDE_CODE.path) {
@@ -2208,6 +2275,8 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
             totalTokensEstimate: metrics.totalTokens,
             usefulRatio: metrics.usefulRatio,
             grade: metrics.grade,
+            // Every L1 figure is YOUI's own estimate.
+            evidence: metrics.evidence,
             // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
             session: turnState.ys.session.id,
           } : null,
@@ -2240,6 +2309,11 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
         })
       : null;
     const notice = seed || kind === "missing" ? carryNotice(seed, kind) : null;
+    // This turn's settings go in a fenced block at the top of the message, not
+    // in the cached system prompt (buildPrompt). The person's own leading "/"
+    // is still escaped after it, as it was when it began the message.
+    const block = !rawMode && prompt ? contextBlock(prompt.context) : "";
+    const person = block ? escapeLeadingSlash(userMessage) : userMessage;
     return runClaudeCode({
       bin: CLAUDE_CODE.path,
       cwd: CLAUDE_CODE_CWD,
@@ -2258,7 +2332,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
       onTimeout: () => endTurn(new Error("The Claude turn reached its time limit")),
       sessionId: session?.id || null,
       resume: session?.started === true,
-      message: seed ? `${seed.text}${userMessage}` : userMessage,
+      message: `${block}${seed ? seed.text : ""}${person}`,
       // Said on the page before the message (and what it carries) is sent.
       beforeSend: notice ? () => turn.send("notice", notice) : null,
       signal,
@@ -2314,7 +2388,7 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   const session = rawMode ? null : turnState.claudeCodeSession;
   const spend = outcome.result ? claudeCodeSpend(outcome.result, session?.spend || null, { oneOff: rawMode }) : null;
   if (session && spend) session.spend = spend.next;
-  const usage = outcome.usage || { input_tokens: 0, output_tokens: 0, thinking_tokens: 0 };
+  const usage = outcome.usage || { input_tokens: 0, output_tokens: 0, thinking_tokens: null };
   if (!rawMode && outcome.usage) {
     trackProviderUsage("claude", model, { ...usage, cost_usd: spend?.costUsd || 0 }, { byModel: spend?.byModel || null });
   }
@@ -2326,6 +2400,15 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   if (!rawMode && outcome.texts.length > 0) {
     turnState.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
     if (session && received) session.seen = turnState.messages.length;
+  }
+  // YOUSPEAK: what Claude Code reported for this turn (its tokens, cost,
+  // context, window and any cache miss; docs/YOUSPEAK.md §2), the rate-limit
+  // state it stated, and whether the cached system prompt changed since this
+  // conversation's last turn. Counted even when Stop came after the result.
+  if (!rawMode) {
+    if (outcome.result || outcome.requests?.length) turnState.ys.senseUsage(claudeCodeObservation(outcome, spend, model));
+    if (outcome.rateLimit) turnState.ys.senseRateLimitState(outcome.rateLimit);
+    if (session && received && prompt) turnState.ys.senseSystemPrompt({ conversation: session.id, ...promptFingerprint(prompt) });
   }
   const usageEvent = () => ({
     input_tokens: usage.input_tokens,
@@ -2357,15 +2440,14 @@ async function claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode 
   if (answered) mindsRegistry.recordAnswer("anthropic", model);
 
   if (!rawMode) {
-    turnState.totalThinkingTokens += usage.thinking_tokens;
-    turnState.ys.senseThinking(usage);
+    turnState.totalThinkingTokens += usage.thinking_tokens || 0;
     turnState.ys.senseTurn(kernelBudget());
   }
   sendSSE(res, "usage", usageEvent());
 
   if (rawMode) return { answered };
-  // YOUSPEAK L4 and DECIDE, as after a round of YOUI's own loop. Suggestions only.
-  turnState.ys.senseContext(turnState.messages, systemPrompt.length);
+  // YOUSPEAK DECIDE, on the context Claude Code reported (senseUsage above),
+  // not YOUI's text-only copy of the chat. Suggestions only.
   sendYouspeakSignals(res, turnState.ys, turnState.ys.decide(turnState.effort, model, kernelBudget(), { route: "claude-code" }));
   return { answered };
 }
@@ -2481,10 +2563,7 @@ function broadcastAutonomous(event, data) {
 }
 
 function buildAutonomousPrompt() {
-  if (!_staticPrefix || _staticPrefixAgent !== state.agent) {
-    _staticPrefix = buildStaticPrefix();
-    _staticPrefixAgent = state.agent;
-  }
+  const staticPrefix = staticParts().map(part => part.text).join("\n\n---\n\n");
 
   const recentLog = autonomous.log.slice(-10)
     .map(e => `[${e.ts?.slice(11, 19) || "?"}] ${e.type}: ${(e.content || e.summary || "").slice(0, 120)}`)
@@ -2526,7 +2605,7 @@ ${recentLog || "(first cycle — no history yet)"}
 - To leave Yu a message: write to memory/autonomous/messages-to-yu.md (append)
 - bash runs from ${state.soulDir} — use relative paths when possible.`;
 
-  return _staticPrefix + "\n\n---\n\n" + dynamic;
+  return staticPrefix + "\n\n---\n\n" + dynamic;
 }
 
 async function autonomousCycle(generation, signal) {
@@ -2791,6 +2870,8 @@ function sendYouspeakSignals(res, ys, signals) {
       to: sig.to,
       reason: sig.reason,
       suggestion: sig.suggestion,
+      // "reported" when the signal rests on the provider's figures, "estimated" when on YOUI's own.
+      evidence: sig.evidence || null,
     });
   }
 }
@@ -2806,6 +2887,8 @@ function measureYouspeak(text) {
     totalTokensEstimate: metrics.totalTokens,
     usefulRatio: metrics.usefulRatio,
     grade: metrics.grade,
+    // Every L1 figure is YOUI's own estimate.
+    evidence: metrics.evidence,
     // Which YOUSPEAK session this block belongs to: the page resets its tally when it changes.
     session: state.ys.session.id,
   };
@@ -2829,11 +2912,21 @@ function getUWTSummary() {
     actionDensity: r.action.density,
     grades: r.output.gradeDistribution,
     overallGrade: r.output.grade,
-    // New kernel fields
+    // The L1 figures above are YOUI's own estimates; every section below
+    // carries `evidence`, each figure's label: "reported" (the provider's) or
+    // "estimated" (YOUI's own).
+    output: r.output,
+    usage: r.usage,
     thinking: r.thinking,
     action: r.action,
     context: r.context,
+    cache: r.cache,
+    minds: r.minds,
     system: r.system,
+    evidenceKey: {
+      [EVIDENCE.reported]: "stated by the provider (Claude Code, Ollama or vLLM)",
+      [EVIDENCE.estimated]: "computed by YOUI itself: an estimate, a count of its own, or its own price or window table",
+    },
     signals: r.signals,
     trends: state.ys.trends(),
     // Rows in the store, and anything wrong with it (a corrupt or partial
@@ -3991,6 +4084,8 @@ async function handleChatTurn(req, res, signal) {
   // bleed), no system prompt and no tools.
   let chatMessages;
   let systemPrompt;
+  // This turn's prompt (buildPrompt): the stable system prompt, the per-turn context, and the parts.
+  let prompt = null;
   if (rawMode) {
     chatMessages = [{ role: "user", content: userMessage }];
     systemPrompt = null;
@@ -4016,7 +4111,9 @@ async function handleChatTurn(req, res, signal) {
     }
     state.messages.push({ role: "user", content: userMessage });
     chatMessages = state.messages;
-    systemPrompt = buildSystemPrompt(userMessage, { minds });
+    prompt = buildPrompt({ minds });
+    // YOUI's own loop sends one system prompt per request, the per-turn context after the stable part.
+    systemPrompt = isOllamaModel(state.model) ? `${prompt.system}\n\n---\n\n${prompt.context}` : prompt.system;
   }
 
   // Claude answers through the installed Claude Code (docs/YOUI-CLAUDE-CODE-DESIGN.md);
@@ -4042,7 +4139,7 @@ async function handleChatTurn(req, res, signal) {
     // A Claude turn keeps the text blocks the model completed even when it ends
     // in an error (claudeCodeTurn says when), but only an answer that ended
     // without an error goes to the truth detector.
-    detect = (await claudeCodeTurn(res, signal, { userMessage, systemPrompt, rawMode }))?.answered === true;
+    detect = (await claudeCodeTurn(res, signal, { userMessage, systemPrompt, prompt, rawMode }))?.answered === true;
     exchangeOk = detect;
   }
 
@@ -4117,8 +4214,23 @@ async function ollamaAgentLoop(res, signal, { chatMessages, systemPrompt, rawMod
     const thinkingTokens = usage.thinking_tokens || 0;
     if (!rawMode) state.totalThinkingTokens += thinkingTokens;
 
-    // YOUSPEAK L2: Sense thinking
-    if (!rawMode) state.ys.senseThinking(usage);
+    // YOUSPEAK: the tokens the provider reported for this request (Ollama's
+    // prompt_eval_count and eval_count, vLLM's prompt_tokens and
+    // completion_tokens), its thinking only where stated, and the cost by
+    // YOUI's own price table (an estimate). No cache figures are reported here,
+    // and the context stays YOUI's chars/4 estimate (senseContext).
+    if (!rawMode) {
+      const provider = response._provider || "ollama";
+      state.ys.senseUsage({
+        model: state.model,
+        input: usage.input_tokens,
+        output: usage.output_tokens,
+        thinking: typeof usage.thinking_tokens === "number" ? usage.thinking_tokens : null,
+        tokensEvidence: EVIDENCE.reported,
+        costUsd: ollamaCostEstimate(provider, state.model, usage),
+        costEvidence: EVIDENCE.estimated,
+      });
+    }
     // YOUSPEAK L5: Sense turn + budget
     if (!rawMode) state.ys.senseTurn(kernelBudget());
 

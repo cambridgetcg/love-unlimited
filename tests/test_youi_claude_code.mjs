@@ -396,7 +396,15 @@ test("the runner finds only an explicit fake in test mode, and keeps credentials
 test("spend is what each result adds to Claude Code's running totals, and earlier turns go as a bounded, fenced transcript", () => {
   const first = claudeCodeSpend({ subtype: "success", total_cost_usd: 0.01, modelUsage: { m: { inputTokens: 1, cacheReadInputTokens: 10, outputTokens: 2, costUSD: 0.01 } } });
   assert.equal(first.costUsd, 0.01);
-  assert.deepEqual(first.byModel, { m: { inputTokens: 11, outputTokens: 2, costUsd: 0.01 } });
+  // The figures the usage panel counts; the parts YOUSPEAK reads are checked below.
+  const core = entry => ({ inputTokens: entry.inputTokens, outputTokens: entry.outputTokens, costUsd: entry.costUsd });
+  assert.deepEqual(core(first.byModel.m), { inputTokens: 11, outputTokens: 2, costUsd: 0.01 });
+  // YOUSPEAK's per-turn usage (Y2): the parts under 2.1.314's names, thinking and the window null where not stated.
+  assert.deepEqual(first.byModel.m, {
+    inputTokens: 11, outputTokens: 2, costUsd: 0.01,
+    uncachedInputTokens: 1, cacheReadInputTokens: 10, cacheCreationInputTokens: 0, thinkingTokens: null, contextWindow: null,
+  });
+  assert.deepEqual(first.totals, { input: 1, cacheRead: 10, cacheCreation: 0, output: 2, thinking: null });
   // A resumed turn's result carries the earlier turns too.
   const second = claudeCodeSpend({
     subtype: "success",
@@ -404,11 +412,13 @@ test("spend is what each result adds to Claude Code's running totals, and earlie
     modelUsage: { m: { inputTokens: 3, cacheReadInputTokens: 20, outputTokens: 5, costUSD: 0.02 }, h: { inputTokens: 4, outputTokens: 1, costUSD: 0.005 } },
   }, first.next);
   assert.equal(Number(second.costUsd.toFixed(6)), 0.015);
-  assert.deepEqual(second.byModel.m, { inputTokens: 12, outputTokens: 3, costUsd: 0.01 });
-  assert.deepEqual(second.byModel.h, { inputTokens: 4, outputTokens: 1, costUsd: 0.005 });
+  assert.deepEqual(core(second.byModel.m), { inputTokens: 12, outputTokens: 3, costUsd: 0.01 });
+  assert.deepEqual(core(second.byModel.h), { inputTokens: 4, outputTokens: 1, costUsd: 0.005 });
+  // The parts are the turn's own too: the running totals less the last ones.
+  assert.deepEqual(second.totals, { input: 2 + 4, cacheRead: 10, cacheCreation: 0, output: 3 + 1, thinking: null });
   // When Claude Code states what it counted since its last result, that is used as stated, cost included.
   const since = claudeCodeSpend({ subtype: "success", total_cost_usd: 0.5, model_usage_since_last_result: { m: { inputTokens: 7, outputTokens: 1, costUSD: 0.004 }, h: { costUSD: 0.001 } } }, first.next);
-  assert.deepEqual(since.byModel.m, { inputTokens: 7, outputTokens: 1, costUsd: 0.004 });
+  assert.deepEqual(core(since.byModel.m), { inputTokens: 7, outputTokens: 1, costUsd: 0.004 });
   assert.equal(Number(since.costUsd.toFixed(6)), 0.005);
   assert.equal(since.next.costUsd, 0.5);
   // A total below the baseline or a crash's zeros never move the baseline,
@@ -562,7 +572,13 @@ test("a Claude turn runs Claude Code with YOUI's flags, from its own empty direc
 
   // One stream-json user line on stdin; stdin closes after the result.
   const [sent] = fake.step("message");
-  assert.deepEqual(sent.line, { type: "user", message: { role: "user", content: "hello there" }, parent_tool_use_id: null });
+  // The turn's settings come first, in a fenced context block (YOUSPEAK Y2), then the person's message.
+  assert.equal(sent.message, "hello there");
+  assert.deepEqual({ ...sent.line, message: { ...sent.line.message, content: "<checked below>" } },
+    { type: "user", message: { role: "user", content: "<checked below>" }, parent_tool_use_id: null });
+  assert.equal(sent.line.message.content, `${sent.context}hello there`);
+  assert.match(sent.context, /^\[YOUI context\]\n[\s\S]*- Thinking: adaptive \| Effort: high\n\[\/YOUI context\]\n\n$/);
+  assert.doesNotMatch(first.systemPrompt.content, /Effort:|- Date:|Git branch:/, "no per-turn line in the cached system prompt");
   await until(() => fake.step("stdin-closed").length === 1, { label: "stdin to close" });
 
   // The next turn resumes the same Claude Code session; /api/clear starts another.

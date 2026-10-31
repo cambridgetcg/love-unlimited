@@ -18,7 +18,9 @@
 //     --allowedTools mcp__youi, --permission-prompts none;
 //   --system-prompt-file (a 0600 temp file, so a long prompt is never mangled
 //     on a command line) with --system-prompt-snapshot off, so each turn's
-//     prompt is the one YOUI built for it (mode, model, minds);
+//     prompt is the one YOUI built for it (the server keeps its per-turn
+//     settings out of it, in a context block at the top of the message, so
+//     the cached prompt stays the same; docs/YOUSPEAK.md §2.1);
 //   --session-id <uuid> on a YOUI session's first Claude turn, --resume <uuid>
 //     after it, or --no-session-persistence for a one-off call;
 //   --max-turns for an agent turn, so one message cannot run without end.
@@ -339,18 +341,52 @@ function clip(text, limit = 400) {
   return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
+const tokenFigure = value => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
 /**
- * Token counts from a result (or message) usage block. Input counts what the
- * model read, cached or not.
+ * Token counts from a result (or message) usage block, under the names
+ * Claude Code 2.1.314 reports (tests/fixtures/claude-code-stream-2.1.314.jsonl):
+ * `input_tokens` (the uncached input), `cache_read_input_tokens`,
+ * `cache_creation_input_tokens` (with its `cache_creation` breakdown by
+ * lifetime), `output_tokens` and `output_tokens_details.thinking_tokens`.
+ * `input_tokens` here counts what the model read, cached or not; the parts
+ * are kept apart too. Thinking is null when the block does not state it,
+ * never 0.
  */
 export function usageFromClaudeCode(usage = {}) {
-  const input = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+  const uncached = tokenFigure(usage.input_tokens) ?? 0;
+  const cacheRead = tokenFigure(usage.cache_read_input_tokens) ?? 0;
+  const cacheCreation = tokenFigure(usage.cache_creation_input_tokens) ?? 0;
   return {
-    input_tokens: input,
-    output_tokens: usage.output_tokens || 0,
-    thinking_tokens: usage.output_tokens_details?.thinking_tokens || 0,
-    cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+    input_tokens: uncached + cacheRead + cacheCreation,
+    output_tokens: tokenFigure(usage.output_tokens) ?? 0,
+    thinking_tokens: tokenFigure(usage.output_tokens_details?.thinking_tokens),
+    uncached_input_tokens: uncached,
+    cache_read_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheCreation,
   };
+}
+
+/**
+ * One model request's usage, as a stream event reports it (message_start's
+ * `message.usage`, then message_delta's `usage`): { input (uncached),
+ * cacheRead, cacheCreation, output }, each a number or null.
+ */
+function requestUsage(usage, before = null) {
+  const pick = (field, previous) => tokenFigure(usage?.[field]) ?? previous ?? null;
+  return {
+    input: pick("input_tokens", before?.input),
+    cacheRead: pick("cache_read_input_tokens", before?.cacheRead),
+    cacheCreation: pick("cache_creation_input_tokens", before?.cacheCreation),
+    output: pick("output_tokens", before?.output),
+  };
+}
+
+/** The reason a request missed the cache, as the API reports it (`diagnostics.cache_miss_reason`), or null. */
+function cacheMissOf(message) {
+  const reason = message?.diagnostics?.cache_miss_reason;
+  if (!reason || typeof reason !== "object" || typeof reason.type !== "string") return null;
+  return { type: reason.type, missedTokens: tokenFigure(reason.cache_missed_input_tokens) };
 }
 
 /**
@@ -390,11 +426,32 @@ export function claudeCodeSpend(result, baseline = null, { oneOff = false } = {}
   const total = typeof result?.total_cost_usd === "number" && Number.isFinite(result.total_cost_usd) ? result.total_cost_usd : null;
   const lastCost = typeof baseline?.costUsd === "number" ? baseline.costUsd : 0;
   const isError = result?.is_error === true || (typeof result?.subtype === "string" && result.subtype !== "success");
+  // A modelUsage entry, under 2.1.314's names. Thinking and the window are
+  // null where the entry does not state them.
   const tokens = entry => ({
     input: (entry?.inputTokens || 0) + (entry?.cacheReadInputTokens || 0) + (entry?.cacheCreationInputTokens || 0),
+    uncached: entry?.inputTokens || 0,
+    cacheRead: entry?.cacheReadInputTokens || 0,
+    cacheCreation: entry?.cacheCreationInputTokens || 0,
     output: entry?.outputTokens || 0,
+    thinking: tokenFigure(entry?.thinkingTokens),
+    window: tokenFigure(entry?.contextWindow),
     cost: typeof entry?.costUSD === "number" ? entry.costUSD : 0,
   });
+  // One model's figures for this result: as stated, or less the baseline's.
+  const figures = (now, before = null) => {
+    const less = (a, b) => Math.max(0, a - (b || 0));
+    return {
+      inputTokens: less(now.input, before?.input),
+      outputTokens: less(now.output, before?.output),
+      costUsd: less(now.cost, before?.cost),
+      uncachedInputTokens: less(now.uncached, before?.uncached),
+      cacheReadInputTokens: less(now.cacheRead, before?.cacheRead),
+      cacheCreationInputTokens: less(now.cacheCreation, before?.cacheCreation),
+      thinkingTokens: now.thinking === null ? null : less(now.thinking, before?.thinking),
+      contextWindow: now.window,
+    };
+  };
   const since = result?.model_usage_since_last_result;
   const cumulative = result?.modelUsage && typeof result.modelUsage === "object" ? result.modelUsage : null;
   // A running total this conversation can build on; an error's zeros are not one.
@@ -407,30 +464,22 @@ export function claudeCodeSpend(result, baseline = null, { oneOff = false } = {}
     costUsd = 0;
     for (const [model, entry] of Object.entries(since)) {
       const now = tokens(entry);
-      byModel[model] = { inputTokens: now.input, outputTokens: now.output, costUsd: now.cost };
+      byModel[model] = figures(now);
       costUsd += now.cost;
     }
   } else if (oneOff) {
     costUsd = total;
     if (cumulative) {
       byModel = {};
-      for (const [model, entry] of Object.entries(cumulative)) {
-        const now = tokens(entry);
-        byModel[model] = { inputTokens: now.input, outputTokens: now.output, costUsd: now.cost };
-      }
+      for (const [model, entry] of Object.entries(cumulative)) byModel[model] = figures(tokens(entry));
     }
   } else if (moves) {
     costUsd = Math.max(0, total - lastCost);
     if (cumulative) {
       byModel = {};
       for (const [model, entry] of Object.entries(cumulative)) {
-        const now = tokens(entry);
-        const before = tokens(baseline?.modelUsage?.[model]);
-        byModel[model] = {
-          inputTokens: Math.max(0, now.input - before.input),
-          outputTokens: Math.max(0, now.output - before.output),
-          costUsd: Math.max(0, now.cost - before.cost),
-        };
+        const baselineEntry = baseline?.modelUsage?.[model];
+        byModel[model] = figures(tokens(entry), baselineEntry ? tokens(baselineEntry) : null);
       }
     }
   } else if (total !== null) {
@@ -442,9 +491,75 @@ export function claudeCodeSpend(result, baseline = null, { oneOff = false } = {}
   return {
     costUsd,
     byModel,
+    // This result's tokens summed over its models (YOUSPEAK's per-turn usage).
+    totals: byModel ? spendTotals(byModel) : null,
     next: moves
       ? { costUsd: total, modelUsage: cumulative || baseline?.modelUsage || null }
       : (baseline ? { costUsd: lastCost, modelUsage: baseline.modelUsage || null } : null),
+  };
+}
+
+// One result's tokens over all its models: uncached input, cache read, cache
+// creation, output, and thinking (null when no model stated it).
+function spendTotals(byModel) {
+  const totals = { input: 0, cacheRead: 0, cacheCreation: 0, output: 0, thinking: null };
+  for (const entry of Object.values(byModel)) {
+    totals.input += entry.uncachedInputTokens || 0;
+    totals.cacheRead += entry.cacheReadInputTokens || 0;
+    totals.cacheCreation += entry.cacheCreationInputTokens || 0;
+    totals.output += entry.outputTokens || 0;
+    if (typeof entry.thinkingTokens === "number") totals.thinking = (totals.thinking ?? 0) + entry.thinkingTokens;
+  }
+  return totals;
+}
+
+/**
+ * What YOUSPEAK's observer is told about one Claude Code run, from what Claude
+ * Code reported (docs/YOUSPEAK.md §2), for kernel.senseUsage or, for a mind,
+ * kernel.senseMind:
+ * - tokens: the run's own figures from claudeCodeSpend (C2's per-turn delta:
+ *   model_usage_since_last_result, or the running modelUsage less the last
+ *   one), else the result's `usage`; thinking only where stated;
+ * - cost: what the run added (claudeCodeSpend), as Claude Code states it at
+ *   list price (`costBasis: "list"`), which on a subscription is not a bill;
+ * - context: the latest request's input + cache read + cache creation, from
+ *   the stream's message_start / message_delta usage;
+ * - the window: the model's `contextWindow` in modelUsage, when stated;
+ * - a cache miss: the first request's `diagnostics.cache_miss_reason`, as the
+ *   API reported it (it can name a miss even when nothing YOUI sent changed:
+ *   the recorded --resume of 2026-10-31 reported "messages_changed").
+ * Every figure here is "reported"; null is a figure Claude Code did not state.
+ */
+export function claudeCodeObservation(outcome, spend, model = null) {
+  const result = outcome?.result || null;
+  const fromResult = result?.usage ? usageFromClaudeCode(result.usage) : null;
+  const totals = spend?.totals || null;
+  const tokens = totals
+    ? { input: totals.input, cacheRead: totals.cacheRead, cacheCreation: totals.cacheCreation, output: totals.output,
+        thinking: totals.thinking ?? fromResult?.thinking_tokens ?? null }
+    : fromResult
+      ? { input: fromResult.uncached_input_tokens, cacheRead: fromResult.cache_read_input_tokens,
+          cacheCreation: fromResult.cache_creation_input_tokens, output: fromResult.output_tokens, thinking: fromResult.thinking_tokens }
+      : { input: null, cacheRead: null, cacheCreation: null, output: null, thinking: null };
+  const requests = Array.isArray(outcome?.requests) ? outcome.requests : [];
+  const last = requests.at(-1)?.usage || null;
+  const contextTokens = last && typeof last.input === "number"
+    ? last.input + (last.cacheRead || 0) + (last.cacheCreation || 0)
+    : null;
+  const entries = spend?.byModel ? Object.entries(spend.byModel) : [];
+  const own = entries.find(([name]) => name === model)?.[1] || entries.find(([, entry]) => typeof entry.contextWindow === "number")?.[1];
+  return {
+    model,
+    ...tokens,
+    tokensEvidence: "reported",
+    costUsd: typeof spend?.costUsd === "number" ? spend.costUsd : null,
+    costEvidence: "reported",
+    contextTokens,
+    contextEvidence: "reported",
+    contextWindow: typeof own?.contextWindow === "number" ? own.contextWindow : null,
+    contextWindowEvidence: "reported",
+    cacheMiss: requests.find(request => request.cacheMiss)?.cacheMiss || null,
+    requests: requests.length,
   };
 }
 
@@ -538,8 +653,10 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
  * request, {type:"text_delta", text}, {type:"text_done", text},
  * {type:"thinking", text}, {type:"tool_use", id, name, input},
  * {type:"rate_limit", info}. It resolves with
- * { ok, text, texts, error, usage, costUsd, sessionId, init, result, stderr,
- * setupFailed }; it rejects only when `signal` aborts, and then only after the
+ * { ok, text, texts, error, usage, costUsd, sessionId, init, result,
+ * rateLimit, requests, stderr, setupFailed }, where `requests` holds each
+ * model request's usage and any cache miss the API reported
+ * (claudeCodeObservation); it rejects only when `signal` aborts, and then only after the
  * process group has gone (or `abortGraceMs` has passed), so the next --resume
  * cannot meet the old process. When the result had already arrived, the
  * rejection is a new Error (its `cause` the abort reason) whose
@@ -596,6 +713,8 @@ export async function runClaudeCode({
     init: null,
     result: null,
     rateLimit: null,
+    // Each model request's usage and any reported cache miss, from the stream (claudeCodeObservation).
+    requests: [],
     stderr: "",
     args: null,
     setupFailed: false,
@@ -781,7 +900,12 @@ export async function runClaudeCode({
             if (inner.type === "message_start") {
               currentMessageId = inner.message?.id || null;
               blocks.clear();
+              outcome.requests.push({ id: currentMessageId, usage: requestUsage(inner.message?.usage), cacheMiss: cacheMissOf(inner.message) });
               emit({ type: "request", messageId: currentMessageId });
+            } else if (inner.type === "message_delta") {
+              // The request's final figures (output, and input and cache again).
+              const request = outcome.requests.at(-1);
+              if (request && inner.usage && typeof inner.usage === "object") request.usage = requestUsage(inner.usage, request.usage);
             } else if (inner.type === "content_block_start") {
               blocks.set(inner.index, { type: inner.content_block?.type, text: "" });
             } else if (inner.type === "content_block_delta") {

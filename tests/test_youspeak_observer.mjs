@@ -838,8 +838,11 @@ test("the vLLM loop neither cuts effort nor prunes history", async t => {
   ]);
   await turn("hello", [entry => entry.respondText("hi")]);
   await turn("hello again", [entry => entry.respondText("hi again")]);
-  // ~850k estimated tokens: past the 800k line where the old code pruned.
+  // ~850k estimated tokens: past the 800k line where the old code pruned. The
+  // same file is read three more times, so a suggestion reaches the chat.
   const events = await turn(`${"x".repeat(3_400_000)}`, [
+    entry => entry.respondTool("read_file", { path: "README.md" }),
+    entry => entry.respondTool("read_file", { path: "README.md" }),
     entry => entry.respondTool("read_file", { path: "README.md" }),
     entry => entry.respondText("done"),
   ]);
@@ -847,17 +850,29 @@ test("the vLLM loop neither cuts effort nor prunes history", async t => {
   const signals = events.filter(event => event.event === "youspeak_signals").flatMap(event => event.data.signals);
   // The window is at 97%, but this loop sends no effort and has no Claude 5-hour window.
   assert.ok(!signals.some(signal => signal.type === "effort"), "no effort signal on the vLLM route");
-  assert.ok(signals.some(signal => signal.action === "prune_recommended"), "the context signal fired");
+  // Y2: the vLLM model's window is unknown, so no context signal is raised from an assumed 1M.
+  assert.ok(!signals.some(signal => signal.type === "context"), "no context signal against an unknown window");
   const suggested = events.filter(event => event.event === "youspeak_suggestion").map(event => event.data.action);
-  assert.ok(suggested.includes("prune_recommended"));
+  assert.ok(suggested.includes("redundant_reads"), "a suggestion still reaches the chat on the vLLM loop");
   assert.ok(!events.some(event => event.event === "youspeak_action"));
+  const report = (await request(port, { path: "/api/youspeak", headers: session.read })).json;
+  assert.ok(report.context.tokens > 800_000, "the chars/4 estimate is still kept");
+  assert.equal(report.context.evidence.tokens, "estimated");
+  assert.equal(report.context.window, null, "no window is assumed for a vLLM model");
+  assert.equal(report.context.windowUtilization, null);
+  // vLLM's own token counts (prompt_tokens, completion_tokens) are reported; it states no cache figures here,
+  // and the cost is YOUI's price table.
+  assert.equal(report.usage.evidence.inputTokens, "reported");
+  assert.ok(report.usage.inputTokens > 0);
+  assert.equal(report.usage.cacheReadTokens, null);
+  assert.equal(report.usage.evidence.costUsd, "estimated");
 
   const current = await request(port, { path: "/api/sessions/current?include=messages", headers: session.read });
   assert.equal(current.json.session.effort, "high");
   const results = current.json.session.messages
     .flatMap(message => (Array.isArray(message.content) ? message.content : []))
     .filter(block => block.type === "tool_result");
-  assert.equal(results.length, 2);
+  assert.equal(results.length, 4);
   const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf-8");
   assert.ok(readme.length > 400);
   for (const block of results) {
@@ -1029,14 +1044,14 @@ test("the ouroboros prints full proposed diffs and writes nothing", async t => {
     const ys = createKernel({ agent: "alpha", historyPath, legacyPath: null });
     ys.noteRoute("claude-code", "claude-opus-5-5");
     ys.senseOutput("Sure! Let me check that. Here is what I found. I am going to read the file. Okay. Perfect! ");
-    // Three repeated reads: add_cache_reminder is already in sovereign.mjs, so it prints no diff.
+    // Three repeated reads: add_cache_reminder is already in youspeak-rule.mjs (sovereign's line), so it prints no diff.
     for (let read = 0; read < 4; read++) ys.senseToolCall("read_file", { path: "README.md" }, null);
     ys.noteExchange({ ok: true });
     assert.equal(ys.endSession({ reason: "test" }).written, true);
   }
   const work = join(dir, "cwd");
   mkdirSync(work);
-  const watched = [join(REPO_ROOT, "sovereign.mjs"), ...TRACKED, historyPath];
+  const watched = [join(REPO_ROOT, "youspeak-rule.mjs"), join(REPO_ROOT, "sovereign.mjs"), ...TRACKED, historyPath];
   const before = fingerprint(watched);
 
   const run = (...args) => spawnSync(process.execPath, [join(REPO_ROOT, "youspeak-evolve.mjs"), ...args], {
@@ -1046,22 +1061,24 @@ test("the ouroboros prints full proposed diffs and writes nothing", async t => {
   });
   const cycle = run("cycle");
   assert.equal(cycle.status, 0, cycle.stderr);
-  assert.match(cycle.stdout, /--- a\/sovereign\.mjs/);
-  assert.match(cycle.stdout, /\+\+\+ b\/sovereign\.mjs \(proposed, not applied\)/);
+  // Y2: the diffs are drawn against the one shared rule module (Y6 resolved), not sovereign.mjs.
+  assert.match(cycle.stdout, /--- a\/youspeak-rule\.mjs/);
+  assert.match(cycle.stdout, /\+\+\+ b\/youspeak-rule\.mjs \(proposed, not applied\)/);
+  assert.doesNotMatch(cycle.stdout, /a\/sovereign\.mjs/);
   assert.match(cycle.stdout, /^\+BAD: "Let me check that" \/ "Here's what I found" \/ "I'll now proceed to"$/m, "the full proposed text");
   assert.match(cycle.stdout, /^ No filler\. No preamble\./m, "with its context");
-  assert.match(cycle.stdout, /^\+Target: ≥80% of output tokens should be substantive content, not scaffolding\.`\);$/m);
+  assert.match(cycle.stdout, /^\+Target: ≥80% of output tokens should be substantive content, not scaffolding\.`;$/m);
   assert.match(cycle.stdout, /Nothing was written/);
-  assert.match(cycle.stdout, /No diff: already in sovereign\.mjs's YOUSPEAK Protocol block/);
+  assert.match(cycle.stdout, /No diff: already in youspeak-rule\.mjs, outside the shared rule \(a line only sovereign adds\)/);
   assert.match(cycle.stdout, /2 proposed diff\(s\) and 0 described proposal\(s\)/, "a proposal with no diff is not counted");
-  assert.match(cycle.stdout, /Each diff is drawn against the unmodified sovereign\.mjs/);
+  assert.match(cycle.stdout, /Each diff is drawn against the unmodified youspeak-rule\.mjs/);
   assert.match(run("reflect").stdout, /steady/, "identical sessions are steady, by the kernel's tolerance");
   for (const command of ["transmute", "reflect", "distill", "history"]) assert.equal(run(command).status, 0);
   const integrate = run("integrate", "--apply");
   assert.equal(integrate.status, 2);
   assert.match(integrate.stdout, /proposal-only/);
 
-  assert.deepEqual(fingerprint(watched), before, "sovereign.mjs, the tracked files and the store are unchanged");
+  assert.deepEqual(fingerprint(watched), before, "youspeak-rule.mjs, sovereign.mjs, the tracked files and the store are unchanged");
   assert.deepEqual(readdirSync(work), [], "nothing appeared in the working directory");
   // No write path is left: evolve imports only these, and no other way to write or run anything.
   const source = readFileSync(join(REPO_ROOT, "youspeak-evolve.mjs"), "utf-8");

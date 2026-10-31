@@ -29,6 +29,7 @@ import crypto from "crypto";
 
 // ── YOUSPEAK Kernel — the sensory organ ──
 import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
+import { youspeakRule } from "./youspeak-rule.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
 
 // This run's YOUSPEAK session, for the fatal-error path outside main().
@@ -1044,13 +1045,10 @@ function buildSystemPrompt() {
     parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
   }
 
-  // ── TIER 2: YOUSPEAK Protocol ──
+  // ── TIER 2: the YOUSPEAK rule, from the one shared module ──
+  // Sovereign keeps its file-cache line (YOUSPEAK_FILE_CACHE_LINE), as before.
   if (config.youspeak) {
-    parts.push(`# YOUSPEAK Protocol
-No filler. No preamble. No tool narration. Dense status (key:value not prose).
-Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity.
-When uncertain, expand. Never compress epistemic signals (probably, unless, in most cases).
-File cache: you've already read files this session. Don't re-read unless content changed. Use your context.`);
+    parts.push(youspeakRule({ fileCache: true }));
   }
 
   // ── Environment (compact) ──
@@ -1398,11 +1396,14 @@ async function main() {
     print(`  Grade:           ${ysReport.output.grade ?? "—"} (${ysReport.output.usefulRatio === null ? "no output" : `${Math.round(ysReport.output.usefulRatio * 100)}% useful`})`);
     print(`  Output tokens:   ${ysReport.output.totalTokens.toLocaleString()} (${ysReport.output.fillerTokens} filler)`);
     print(`  Text blocks:     ${ysReport.output.textBlocks}`);
-    print(`  Thinking:        ${ysReport.thinking.totalTokens.toLocaleString()} tokens (${ysReport.thinking.avgRatio}x avg ratio)`);
+    // Thinking only where the provider reported it; the direct route reports none.
+    print(`  Thinking:        ${ysReport.thinking.totalTokens === null ? "not reported" : `${ysReport.thinking.totalTokens.toLocaleString()} tokens${ysReport.thinking.avgRatio === null ? "" : ` (${ysReport.thinking.avgRatio}x avg ratio)`}`}`);
     if (ysReport.thinking.efficiency) print(`  Think efficiency: ${ysReport.thinking.efficiency} output/think`);
     print(`  Tool calls:      ${ysReport.action.totalCalls} (${ysReport.action.redundantReads} redundant, ${ysReport.action.errors} errors)`);
     print(`  Action density:  ${ysReport.action.density} tools/text block`);
-    print(`  Context peak:    ~${Math.round(ysReport.context.estimatedTokens / 1000)}k tokens (${(ysReport.context.windowUtilization * 100).toFixed(1)}% of 1M)`);
+    const peak = ysReport.context.peakTokens;
+    const window = ysReport.context.window;
+    print(`  Context peak:    ${peak === null ? "—" : `~${Math.round(peak / 1000)}k tokens (estimate)`}${peak !== null && window ? ` of a ${Math.round(window / 1000)}k window` : peak !== null ? ", window unknown" : ""}`);
     if (ysReport.system.budgetBurned) print(`  Budget burned:   ${ysReport.system.budgetBurned}`);
     print(`  Tokens/turn:     ${ysReport.system.tokensPerTurn}`);
     if (ysReport.signals.length > 0) {

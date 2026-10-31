@@ -37,6 +37,7 @@
 import { spawn } from "child_process";
 import { createInterface } from "readline";
 import { readFileSync, appendFileSync, writeFileSync, existsSync } from "fs";
+import { youspeakRule } from "./youspeak-rule.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -403,9 +404,8 @@ function runTurn(prompt, opts = {}) {
     if (!isEval) {
       cmdArgs.push(
         "--append-system-prompt",
-        // YOUSPEAK-aware continuation prompt — dense, no filler, action-oriented
-        "YOUSPEAK: No filler. No preamble. No tool narration. Dense status (key:value). " +
-        "Compress scaffolding, preserve substance. Expand for teaching/uncertainty/creativity. " +
+        // The YOUSPEAK rule (the one shared module), then the continuation prompt
+        `${youspeakRule()}\n` +
         "CONTINUATION: Keep calling tools to make progress. Verify changes by reading files or running tests. " +
         "When a subtask completes, start the next. Only stop tools when the ENTIRE task is complete and verified."
       );

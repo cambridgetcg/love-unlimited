@@ -39,9 +39,13 @@ const S = {
 };
 
 const REPO_DIR = dirname(fileURLToPath(import.meta.url));
-// The prompt block the system-prompt proposals are drawn against. YOUI Web and
-// the terminal carry their own copies of the rule; one shared module is Y2.
-const SOVEREIGN_PATH = join(REPO_DIR, "sovereign.mjs");
+// The rule the system-prompt proposals are drawn against: the one shared
+// module YOUI Web, the terminal and sovereign all take their rule from (Y2).
+const RULE_FILE = "youspeak-rule.mjs";
+const RULE_PATH = join(REPO_DIR, RULE_FILE);
+// Where the rule's text starts in that file, and where it ends.
+const RULE_START = "export const YOUSPEAK_RULE = `";
+const RULE_END = "`;";
 
 // ═════════════════════════════════════════════════════════════════════
 // HISTORY — the store, read only
@@ -158,7 +162,12 @@ function distill() {
   const avgRedundant = avg("redundantReads");
   const avgErrors = avg("toolErrors");
   const avgSignals = avg("signalCount");
-  const avgContextPeak = avg("contextPeakTokens");
+  // The context peak against the model's window, from rows that know it (Y2):
+  // no window is assumed for the others.
+  const windowed = measured.filter(s => typeof s.contextPeakTokens === "number" && typeof s.contextWindow === "number" && s.contextWindow > 0);
+  const avgPeakShare = windowed.length
+    ? windowed.reduce((sum, s) => sum + s.contextPeakTokens / s.contextWindow, 0) / windowed.length
+    : null;
 
   if (avgFiller > 5) {
     insights.push({
@@ -205,11 +214,11 @@ function distill() {
     });
   }
 
-  if (avgContextPeak > 500000) {
+  if (avgPeakShare !== null && avgPeakShare > 0.5) {
     insights.push({
       type: "context_bloat",
-      severity: avgContextPeak > 800000 ? "high" : "medium",
-      message: `Average context peak ~${Math.round(avgContextPeak / 1000)}k tokens (chars/4 estimate against 1M)`,
+      severity: avgPeakShare > 0.8 ? "high" : "medium",
+      message: `Average context peak at ${Math.round(avgPeakShare * 100)}% of the model's window (${windowed.length} session(s) whose window was known)`,
       action: "Review whether large reads could be narrower, or conversations restarted sooner.",
     });
   }
@@ -256,16 +265,17 @@ function distill() {
 // PROPOSE — Proposed changes, printed as full diffs; nothing is written
 // ═════════════════════════════════════════════════════════════════════
 
-// What each insight proposes. `system_prompt` proposals become a diff of
-// sovereign.mjs's YOUSPEAK Protocol block; `note` proposals are described in
-// full and need a code change someone writes and reviews on its own.
+// What each insight proposes. `system_prompt` proposals become a diff of the
+// rule in youspeak-rule.mjs (YOUSPEAK_RULE), which every surface's prompt
+// carries; `note` proposals are described in full and need a code change
+// someone writes and reviews on its own.
 function proposalFor(insight) {
   switch (insight.type) {
     case "filler_high":
       return {
         target: "system_prompt",
         action: "strengthen_youspeak",
-        description: "Add explicit anti-filler examples to the YOUSPEAK Protocol block",
+        description: "Add explicit anti-filler examples to the YOUSPEAK rule",
         before: `No filler. No preamble. No tool narration. Dense status (key:value not prose).`,
         after: `No filler. No preamble. No tool narration. Dense status (key:value not prose).\nBAD: "Let me check that" / "Here's what I found" / "I'll now proceed to"\nGOOD: [just do it, report results directly]`,
       };
@@ -273,7 +283,7 @@ function proposalFor(insight) {
       return {
         target: "system_prompt",
         action: "add_density_reminder",
-        description: "Add an explicit density target to the YOUSPEAK Protocol block",
+        description: "Add an explicit density target to the YOUSPEAK rule",
         patch: `\nTarget: ≥80% of output tokens should be substantive content, not scaffolding.`,
       };
     case "redundant_reads":
@@ -287,7 +297,7 @@ function proposalFor(insight) {
       return {
         target: "system_prompt",
         action: "add_error_awareness",
-        description: "Add tool-error awareness to the YOUSPEAK Protocol block",
+        description: "Add tool-error awareness to the YOUSPEAK rule",
         patch: `\nTool discipline: verify input format before calling. Common errors: wrong path format, missing required fields.`,
       };
     case "signal_pressure":
@@ -321,23 +331,25 @@ const templateSafe = text => text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").re
 
 // The source with the proposal applied, in memory only, or { skip } with why not.
 function proposedSource(source, proposal) {
-  const marker = "# YOUSPEAK Protocol";
-  const start = source.indexOf(marker);
-  if (start === -1) return { skip: "no YOUSPEAK Protocol block in sovereign.mjs" };
-  const end = source.indexOf("`)", start);
-  if (end === -1) return { skip: "the YOUSPEAK Protocol block has no end" };
+  const opening = source.indexOf(RULE_START);
+  if (opening === -1) return { skip: `no YOUSPEAK_RULE in ${RULE_FILE}` };
+  const start = opening + RULE_START.length;
+  const end = source.indexOf(RULE_END, start);
+  if (end === -1) return { skip: `YOUSPEAK_RULE in ${RULE_FILE} has no end` };
   const block = source.slice(start, end);
   if (proposal.patch) {
     const text = templateSafe(proposal.patch);
-    if (block.includes(text.trim())) return { skip: "already in sovereign.mjs's YOUSPEAK Protocol block" };
+    if (block.includes(text.trim())) return { skip: `already in the rule in ${RULE_FILE}` };
+    // Sovereign's file-cache line lives in the module outside the shared rule; it is not proposed again.
+    if (source.includes(text.trim())) return { skip: `already in ${RULE_FILE}, outside the shared rule (a line only sovereign adds)` };
     // The patch begins with a newline, so it starts a line of its own.
     return { after: source.slice(0, end) + text + source.slice(end) };
   }
   if (proposal.before && proposal.after) {
     const after = templateSafe(proposal.after);
-    if (block.includes(after)) return { skip: "already in sovereign.mjs's YOUSPEAK Protocol block" };
+    if (block.includes(after)) return { skip: `already in the rule in ${RULE_FILE}` };
     const at = block.indexOf(proposal.before);
-    if (at === -1) return { skip: "the line it replaces is not in the YOUSPEAK Protocol block" };
+    if (at === -1) return { skip: `the line it replaces is not in the rule in ${RULE_FILE}` };
     const from = start + at;
     return { after: source.slice(0, from) + after + source.slice(from + proposal.before.length) };
   }
@@ -376,7 +388,7 @@ function transmute() {
 
   console.log(`${S.bold}${S.magenta}── Proposals (nothing is written) ──${S.reset}\n`);
 
-  const source = existsSync(SOVEREIGN_PATH) ? readFileSync(SOVEREIGN_PATH, "utf-8") : null;
+  const source = existsSync(RULE_PATH) ? readFileSync(RULE_PATH, "utf-8") : null;
   // Only what is actually proposed is counted: a diff, or a described change.
   // A system_prompt proposal that printed "No diff" proposes nothing.
   const proposals = [];
@@ -386,12 +398,12 @@ function transmute() {
     console.log(`  ${S.magenta}⚗${S.reset} ${S.bold}${proposal.action}${S.reset} ${S.dim}[${insight.severity}]${S.reset}`);
     console.log(`    ${proposal.description}`);
     if (proposal.target === "system_prompt") {
-      const edit = source ? proposedSource(source, proposal) : { skip: "sovereign.mjs not found" };
+      const edit = source ? proposedSource(source, proposal) : { skip: `${RULE_FILE} not found` };
       if (edit.skip) {
         console.log(`    ${S.dim}No diff: ${edit.skip}.${S.reset}`);
       } else {
         console.log(`    ${S.dim}Proposed diff (full text; not applied):${S.reset}`);
-        console.log(unifiedDiff("sovereign.mjs", source, edit.after));
+        console.log(unifiedDiff(RULE_FILE, source, edit.after));
         proposals.push({ ...proposal, insight: insight.type, severity: insight.severity, kind: "diff" });
       }
     } else {
@@ -405,7 +417,7 @@ function transmute() {
   const described = proposals.length - diffs;
   console.log(`${S.dim}${diffs} proposed diff(s) and ${described} described proposal(s). Nothing was written: to adopt one, edit the file by hand, review it and commit it.${S.reset}`);
   if (diffs > 1) {
-    console.log(`${S.dim}Each diff is drawn against the unmodified sovereign.mjs, so after one is applied the others no longer apply as printed: run transmute again for fresh diffs.${S.reset}`);
+    console.log(`${S.dim}Each diff is drawn against the unmodified ${RULE_FILE}, so after one is applied the others no longer apply as printed: run transmute again for fresh diffs.${S.reset}`);
   }
   return proposals;
 }
@@ -447,7 +459,8 @@ function showHistory() {
     console.log(`\n${S.bold}Legacy record${S.reset} ${S.dim}(youspeak-history.json, tracked, read only)${S.reset}`);
     console.log(`  ${legacy.rows} rows${legacy.span ? `, ${legacy.span}` : ""}; ${legacy.note}.`);
     console.log(`  ${legacy.mutations} mutation record(s). The June 2026 entries marked "applied" in youspeak-config.json`);
-    console.log(`  never took effect: nothing reads that file. Only add_cache_reminder reached a prompt (sovereign.mjs).`);
+    console.log(`  never took effect: nothing reads that file. Only add_cache_reminder reached a prompt: sovereign's, as the`);
+    console.log(`  file-cache line youspeak-rule.mjs now keeps for sovereign alone (YOUSPEAK_FILE_CACHE_LINE).`);
   }
 }
 

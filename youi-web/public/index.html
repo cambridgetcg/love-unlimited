@@ -1196,39 +1196,24 @@ button, select, textarea, input { font: inherit; }
             <option value="claude-sonnet-4-6">Sonnet 4.6</option>
             <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
           </optgroup>
-          <optgroup label="GLM">
-            <option value="glm-5.1">GLM 5.1</option>
-            <option value="glm-5">GLM 5</option>
-            <option value="glm-4.7">GLM 4.7</option>
-          </optgroup>
-          <optgroup label="DeepSeek">
-            <option value="deepseek-v3.2">DeepSeek V3.2</option>
-            <option value="deepseek-v3.1:671b">DeepSeek V3.1 671B</option>
-          </optgroup>
-          <optgroup label="Qwen">
-            <option value="qwen3.5:397b">Qwen 3.5 397B</option>
-            <option value="qwen3-coder:480b">Qwen3 Coder 480B</option>
-            <option value="qwen3-coder-next">Qwen3 Coder Next</option>
-          </optgroup>
-          <optgroup label="Kimi">
-            <option value="kimi-k2.5">Kimi K2.5</option>
-            <option value="kimi-k2:1t">Kimi K2 1T</option>
-            <option value="kimi-k2-thinking">Kimi K2 Thinking</option>
-          </optgroup>
-          <optgroup label="Google">
+          <optgroup label="Ollama Cloud (needs models:ollama-cloud)">
+            <option value="glm-5.3-flash">GLM 5.3 Flash</option>
+            <option value="glm-5.3">GLM 5.3</option>
+            <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
+            <option value="deepseek-v4-pro:0813">DeepSeek V4 Pro</option>
+            <option value="kimi-k2.7-code">Kimi K2.7 Code</option>
+            <option value="mistral-large-4">Mistral Large 4</option>
+            <option value="minimax-m3.1-flash">MiniMax M3.1 Flash</option>
             <option value="gemma4:31b">Gemma 4 31B</option>
-            <option value="gemma3:27b">Gemma 3 27B</option>
-            <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
-          </optgroup>
-          <optgroup label="Mistral">
-            <option value="mistral-large-3:675b">Mistral Large 3 675B</option>
-            <option value="devstral-2:123b">Devstral 2 123B</option>
-            <option value="devstral-small-2:24b">Devstral Small 24B</option>
-          </optgroup>
-          <optgroup label="Other">
-            <option value="minimax-m2.7">MiniMax M2.7</option>
+            <option value="gpt-oss:120b">gpt-oss 120B</option>
+            <option value="gpt-oss:20b">gpt-oss 20B</option>
             <option value="nemotron-3-super">Nemotron 3 Super</option>
-            <option value="cogito-2.1:671b">Cogito 2.1 671B</option>
+            <option value="beam">Beam (free for now)</option>
+            <option value="kimi-k3">Kimi K3 (dearest: $3 / $15 per 1M)</option>
+          </optgroup>
+          <optgroup label="Local Ollama (stays on this device)" id="local-model-options">
+            <option value="qwen3.5:4b">Qwen 3.5 4B</option>
+            <option value="gemma4:12b">Gemma 4 12B</option>
           </optgroup>
         </select>
       </div>
@@ -1310,8 +1295,8 @@ button, select, textarea, input { font: inherit; }
       <div id="usage-ollama" style="display:none">
         <div class="budget-bar">
           <div class="bar-header">
-            <span class="bar-label">Session Cost</span>
-            <span class="bar-value" id="ollama-cost">$0.00</span>
+            <span class="bar-label" title="YOUI's estimate from ollama.com list prices (fetched 2026-10-31), not a bill: plan credits and off-peak rates are not applied, and local models count $0">Session Cost (est.)</span>
+            <span class="bar-value" id="ollama-cost">~$0.00</span>
           </div>
           <div class="bar-track"><div class="bar-fill" id="ollama-cost-fill" style="width:0%;background:var(--green)"></div></div>
         </div>
@@ -1956,7 +1941,34 @@ function updatePrivacyUI(privacy) {
   element.textContent = `Compute: ${active?.route || 'unknown'} · ${active?.destination || 'no destination'} · ${fallback}`;
 }
 
+// Adds what the local Ollama lists (GET /api/status localModels) to the
+// model menu: local models to the local group, and the Ollama Cloud models it
+// forwards (localRemoteModels) to a group of their own, since those leave the
+// device.
+function addLocalModelOptions(localModels, remoteModels) {
+  if (!Array.isArray(localModels)) return;
+  const select = document.getElementById('model-select');
+  const known = new Set([...select.options].map(option => option.value));
+  const remote = new Set(Array.isArray(remoteModels) ? remoteModels : []);
+  let forwarded = document.getElementById('forwarded-model-options');
+  for (const model of localModels) {
+    if (typeof model !== 'string' || !model || known.has(model)) continue;
+    known.add(model);
+    if (remote.has(model) && !forwarded) {
+      forwarded = document.createElement('optgroup');
+      forwarded.id = 'forwarded-model-options';
+      forwarded.label = 'Ollama Cloud through the local Ollama (needs models:ollama-cloud)';
+      select.append(forwarded);
+    }
+    const option = document.createElement('option');
+    option.value = model;
+    option.textContent = model;
+    (remote.has(model) ? forwarded : document.getElementById('local-model-options')).append(option);
+  }
+}
+
 function updateSettingsUI(data) {
+  addLocalModelOptions(data.localModels, data.localRemoteModels);
   if (data.model) document.getElementById('model-select').value = data.model;
   if (data.effort) document.getElementById('effort-select').value = data.effort;
   if (data.thinking) document.getElementById('thinking-select').value = data.thinking;
@@ -2329,7 +2341,7 @@ const tokFmt = (n) => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n
 // Per-session accumulators (client-side, driven by SSE)
 const clientUsage = {
   claude: { inTok: 0, outTok: 0, thinkTok: 0, turns: 0 },
-  ollama: { inTok: 0, outTok: 0, turns: 0, cost: 0, models: {} },
+  ollama: { inTok: 0, outTok: 0, turns: 0, cost: 0, unpriced: 0, models: {} },
 };
 
 function switchUsageTab(tab) {
@@ -2424,6 +2436,7 @@ function updateUsageUI(data) {
     clientUsage.ollama.outTok += outTok;
     clientUsage.ollama.turns++;
     if (data.ollamaCost !== undefined) clientUsage.ollama.cost = data.ollamaCost;
+    if (data.ollamaUnpriced !== undefined) clientUsage.ollama.unpriced = data.ollamaUnpriced;
     const m = data.model || 'unknown';
     clientUsage.ollama.models[m] = (clientUsage.ollama.models[m] || 0) + 1;
 
@@ -2431,7 +2444,7 @@ function updateUsageUI(data) {
     document.getElementById('ollama-out-tok').textContent = tokFmt(clientUsage.ollama.outTok);
     document.getElementById('ollama-turns').textContent = clientUsage.ollama.turns;
     document.getElementById('ollama-models').textContent = Object.keys(clientUsage.ollama.models).length;
-    document.getElementById('ollama-cost').textContent = '$' + clientUsage.ollama.cost.toFixed(4);
+    document.getElementById('ollama-cost').textContent = ollamaCostText(clientUsage.ollama.cost, clientUsage.ollama.unpriced);
 
     // Cost bar (soft cap at $1 for visual)
     const costPct = Math.min(100, (clientUsage.ollama.cost / 1) * 100);
@@ -2443,6 +2456,13 @@ function updateUsageUI(data) {
     const bd = Object.entries(clientUsage.ollama.models).map(([m,c]) => `${m}:${c}`).join(' · ');
     document.getElementById('ollama-model-breakdown').textContent = bd;
   }
+}
+
+// The Ollama session cost: "~" for an estimate from list prices, and the
+// calls on a model with no listed price, which it leaves out.
+function ollamaCostText(cost, unpriced) {
+  const text = '~$' + (cost || 0).toFixed(4);
+  return unpriced ? `${text} + ${unpriced} unpriced` : text;
 }
 
 function updateStatsUI(data) {
@@ -2473,11 +2493,12 @@ async function fetchUsageDashboard() {
       clientUsage.ollama.outTok = data.ollama.outputTokens;
       clientUsage.ollama.turns = data.ollama.turns;
       clientUsage.ollama.cost = data.ollama.cost;
+      clientUsage.ollama.unpriced = data.ollama.unpricedCalls || 0;
       document.getElementById('ollama-in-tok').textContent = tokFmt(data.ollama.inputTokens);
       document.getElementById('ollama-out-tok').textContent = tokFmt(data.ollama.outputTokens);
       document.getElementById('ollama-turns').textContent = data.ollama.turns;
       document.getElementById('ollama-models').textContent = Object.keys(data.ollama.byModel || {}).length;
-      document.getElementById('ollama-cost').textContent = '$' + (data.ollama.cost || 0).toFixed(4);
+      document.getElementById('ollama-cost').textContent = ollamaCostText(data.ollama.cost, data.ollama.unpricedCalls);
     }
     updateProviderBadge(data.activeProvider, data.activeModel);
     // Auto-switch to active provider tab
@@ -2711,7 +2732,7 @@ function handleCommand(text) {
   const cmd = parts[0].toLowerCase();
   switch (cmd) {
     case '/help':
-      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.3-flash|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
       break;
     case '/mode':
       if (parts[1] === 'orchestrate' || parts[1] === 'direct') {
@@ -2758,13 +2779,13 @@ function handleCommand(text) {
       clearChat();
       break;
     case '/model': {
-      const map = { opus: 'claude-opus-4-7', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
+      const map = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
       const arg = parts[1]?.toLowerCase();
       const m = map[arg] || arg;
       const sel = document.getElementById('model-select');
       if (m && [...sel.options].some(o => o.value === m)) {
         sel.value = m; updateSetting('model', m); addSystemMessage('Model: ' + m);
-      } else addSystemMessage('Usage: /model opus|sonnet|haiku|glm-5.1|deepseek-v3.2|...');
+      } else addSystemMessage('Usage: /model opus|sonnet|haiku|glm-5.3-flash|deepseek-v4.1-flash|qwen3.5:4b|... (any name in the Settings model menu)');
       break;
     }
     case '/effort': {

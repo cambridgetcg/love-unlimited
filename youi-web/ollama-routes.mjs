@@ -12,6 +12,11 @@
 // without the suffix ("glm-5.3", "gpt-oss:120b"). The bridge and the server
 // both decide routes here, so the two agree.
 
+// The local models YOUI offers by name (Ollama has no cloud tag for either).
+// A chat on one stays on this device whether it is pulled or not: if it is
+// not, the local Ollama says so; it is never sent to Ollama Cloud instead.
+export const OLLAMA_LOCAL_PICKS = ["qwen3.5:4b", "gemma4:12b"];
+
 // "glm-5.3:cloud" and "gpt-oss:120b-cloud" are daemon names for Ollama Cloud models.
 export function isOllamaCloudName(model) {
   const name = String(model ?? "");
@@ -55,7 +60,8 @@ export function readOllamaTags(data) {
  * The route a chat on `model` takes. Only an exact name match counts as
  * installed: "gemma4:31b" is not local because "gemma4:12b" is pulled.
  *
- *   ollama_local / local    installed locally and not a remote stub
+ *   ollama_local / local    installed locally and not a remote stub, or one
+ *                           of OLLAMA_LOCAL_PICKS, pulled or not
  *   ollama_cloud / daemon   through the local Ollama to Ollama Cloud: a remote
  *                           stub it lists, a cloud name while it runs, or any
  *                           other name while it runs and no key is set
@@ -72,6 +78,7 @@ export function ollamaRoute(model, { running = false, models = [], remote = [], 
       ? { provider: "ollama_cloud", via: "daemon", model: name }
       : { provider: "ollama_local", via: "local", model: name };
   }
+  if (OLLAMA_LOCAL_PICKS.includes(name)) return { provider: "ollama_local", via: "local", model: name };
   if (running && (isOllamaCloudName(name) || !keyConfigured)) {
     return { provider: "ollama_cloud", via: "daemon", model: ollamaDaemonName(name) };
   }

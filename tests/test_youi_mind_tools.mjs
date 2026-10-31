@@ -280,10 +280,10 @@ test("the per-message ceiling refuses before calling, even for tool calls runnin
 
 test("a named mind that is not offered is refused with the offered list, never substituted", async () => {
   const minds = fakeMinds();
-  const result = await run("ensemble", { question: "q", minds: ["ollama_cloud:glm-5.1", LLAMA.id] }, { minds });
+  const result = await run("ensemble", { question: "q", minds: ["ollama_cloud:glm-5.3", LLAMA.id] }, { minds });
   assert.equal(result.refused, true);
   assert.equal(minds.calls.length, 0);
-  assert.match(result.text, /"ollama_cloud:glm-5\.1" is not offered to this session/);
+  assert.match(result.text, /"ollama_cloud:glm-5\.3" is not offered to this session/);
   assert.match(result.text, /no other mind was put in its place/);
   for (const offered of OFFERED) assert.ok(result.text.includes(`${offered.id} (${offered.privacy}, ${offered.state})`));
 
@@ -429,14 +429,14 @@ test("layerthink refuses a bad depth, a missing claim or bad minds before callin
     run("layerthink", { claim: CLAIM, minds: [QWEN.id, LLAMA.id, SONNET.id, OPUS.id] }, { minds }),
     run("layerthink", { claim: CLAIM, minds: "vllm:Qwen" }, { minds }),
     run("layerthink", { claim: CLAIM, minds: [QWEN.id, QWEN.model] }, { minds }),
-    run("layerthink", { claim: CLAIM, minds: ["ollama_cloud:glm-5.1"] }, { minds }),
+    run("layerthink", { claim: CLAIM, minds: ["ollama_cloud:glm-5.3"] }, { minds }),
     run("layerthink", { claim: CLAIM }, { minds, offered: [] }),
   ]);
   assert.ok(refusals.every(result => result.refused), refusals.map(result => result.text).join("\n"));
   assert.match(refusals[0].text, /claim is required/);
   assert.match(refusals[2].text, /at most 3 take turns/);
   assert.match(refusals[4].text, /the same mind is named twice/);
-  assert.match(refusals[5].text, /"ollama_cloud:glm-5\.1" is not offered to this session/);
+  assert.match(refusals[5].text, /"ollama_cloud:glm-5\.3" is not offered to this session/);
   assert.match(refusals[6].text, /no minds are offered/);
   assert.equal(minds.calls.length, 0, "a refused call sends nothing");
 

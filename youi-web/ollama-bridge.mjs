@@ -276,8 +276,9 @@ function abortableDelay(milliseconds, signal) {
 // ── Timeout presets by model tier ───────────────────────────────────
 function selectTimeout(model = "") {
   const m = model.toLowerCase();
-  if (/devstral|gemma4|ministral/.test(m)) return 30000;   // economy: 30s
-  if (/glm-5|cogito|kimi|qwen3-coder|qwen2\.5/.test(m)) return 180000; // premium: 3min
+  if (/gpt-oss:20b/.test(m)) return 30000;   // economy: 30s
+  // premium: 3min (the large thinking models, and local models on a small GPU)
+  if (/kimi|glm-5\.3(?!-flash)|deepseek-v4-pro|mistral-large|qwen2\.5|qwen3\.5:4b|gemma4:12b/.test(m)) return 180000;
   return 120000;  // standard: 2min
 }
 
@@ -378,7 +379,7 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
  */
 function buildV1Body(oaiMessages, options) {
   const {
-    model = "glm-5.1",
+    model = "glm-5.3-flash",
     maxTokens = 8000,
     temperature = 0.7,
     tools = null,
@@ -408,7 +409,9 @@ function buildV1Body(oaiMessages, options) {
       type: "function",
       function: { name: t.name, description: t.description, parameters: t.input_schema || t.parameters }
     });
-    body.tool_choice = "auto";
+    // vLLM takes tool_choice; Ollama's /v1 lists it as unsupported, so it is
+    // left out there (the model decides whether to call a tool either way).
+    if (options.passEffort) body.tool_choice = "auto";
   }
 
   return body;
@@ -421,7 +424,7 @@ function buildV1Body(oaiMessages, options) {
  */
 function buildNativeBody(oaiMessages, options) {
   const {
-    model = "glm-5.1",
+    model = "glm-5.3-flash",
     maxTokens = 8000,
     temperature = 0.7,
     tools = null,
@@ -525,7 +528,7 @@ function parseV1Response(data, model) {
  *
  * Native response format:
  *   {
- *     "model": "glm-5.1",
+ *     "model": "glm-5.3-flash",
  *     "message": { "role": "assistant", "content": "...", "thinking": "...", "tool_calls": [...] },
  *     "done": true,
  *     "done_reason": "stop",
@@ -727,7 +730,7 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
  */
 export async function ollamaChat(messages, options = {}) {
   const {
-    model = "glm-5.1",
+    model = "glm-5.3-flash",
     system = null,
     maxTokens = 8000,
     temperature = 0.7,
@@ -1109,7 +1112,7 @@ export async function ollamaTest({
     : [];
   const testModel = installed.length > 0
     ? installed[0]  // first local model
-    : "glm-5.1";    // cloud fallback
+    : "glm-5.3-flash";    // cloud fallback
   try {
     const chat = await ollamaChat(
       [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
@@ -1206,7 +1209,7 @@ export async function handleOllamaRoute(path, req, res, parseBody, policy = {}) 
     const result = await ollamaChat(
       body.messages || [{ role: "user", content: body.prompt || body.message || "" }],
       {
-        model: body.model || "glm-5.1",
+        model: body.model || "glm-5.3-flash",
         system: body.system || null,
         maxTokens: body.max_tokens || 4096,
         temperature: body.temperature ?? 0.7,
@@ -1266,7 +1269,7 @@ export async function executeOllamaTool(input, policy = {}) {
     const r = await ollamaChat(
       [{ role: "user", content: input.message || input.prompt || "" }],
       {
-        model: input.model || "glm-5.1",
+        model: input.model || "glm-5.3-flash",
         system: input.system || null,
         maxTokens: input.max_tokens || 8000,
         temperature: input.temperature ?? 0.7,
@@ -1291,7 +1294,7 @@ export async function executeOllamaTool(input, policy = {}) {
       const r = await ollamaChat(
         [{ role: "user", content: prompts[i] }],
         {
-          model: input.model || "glm-5.1",
+          model: input.model || "glm-5.3-flash",
           maxTokens: 500,
           temperature: 0.3,
           signal: policy.signal,
@@ -1316,5 +1319,5 @@ export async function executeOllamaTool(input, policy = {}) {
       `\n\nAvg latency: ${avgLat}s | Avg throughput: ${avgRate} tok/s`;
   }
 
-  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.1'";
+  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.3-flash'";
 }

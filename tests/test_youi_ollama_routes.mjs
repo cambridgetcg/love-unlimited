@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaRoute, ollamaThinkValue, readOllamaTags,
+  OLLAMA_LOCAL_PICKS, isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaRoute, ollamaThinkValue, readOllamaTags,
 } from "../youi-web/ollama-routes.mjs";
 import { createMindsRegistry } from "../youi-web/minds.mjs";
 
@@ -64,6 +64,12 @@ test("/api/tags remote stubs are cloud, and only an exact name is installed", ()
   // No daemon: the direct key route, with the suffix stripped.
   assert.deepEqual(ollamaRoute("glm-5.3:cloud", { keyConfigured: true }), { provider: "ollama_cloud", via: "direct", model: "glm-5.3" });
   assert.deepEqual(ollamaRoute("gpt-oss:20b-cloud"), { provider: "ollama_cloud", via: "direct", model: "gpt-oss:20b" });
+  // A local pick stays local whether it is pulled or not, key or no key.
+  for (const pick of OLLAMA_LOCAL_PICKS) {
+    for (const local of [{}, running, keyed, { keyConfigured: true }]) {
+      assert.deepEqual(ollamaRoute(pick, local), { provider: "ollama_local", via: "local", model: pick });
+    }
+  }
 });
 
 test("think is sent only when the model's /api/show lists the value", () => {
@@ -344,7 +350,9 @@ test("developer profile: cloud through the local Ollama is REMOTE, estimated, nu
   assert.equal(report.usage.inputTokens, 400, "the uncached part: 1000 less the 600 Ollama said it cached");
   assert.equal(report.usage.cacheReadTokens, 600);
   assert.equal(report.usage.outputTokens, 200);
-  assert.ok(report.usage.costUsd > 0);
+  // gemma4:31b lists $0.14 in, $0.05 cached, $0.40 out per 1M: 400 uncached, 600 cached, 200 out.
+  const listed = (400 * 0.14 + 600 * 0.05 + 200 * 0.40) / 1_000_000;
+  assert.ok(Math.abs(report.usage.costUsd - listed) < 1e-12, `${report.usage.costUsd} is the list-price estimate ${listed}`);
   assert.equal(report.usage.evidence.costUsd, "estimated");
   const usage = (await request(port, { path: "/api/usage", headers: session.read })).json;
   assert.equal(usage.activeProvider, "ollama_cloud");
@@ -353,6 +361,20 @@ test("developer profile: cloud through the local Ollama is REMOTE, estimated, nu
   assert.ok(usage.ollamaCloud.byModel["gemma4:31b"].cost > 0);
   assert.equal(usage.ollama.cost, usage.ollamaCloud.cost, "the page's Ollama total includes the cloud bucket");
   assert.equal(events.find(e => e.event === "usage").data.ollamaCost, usage.ollamaCloud.cost);
+  assert.equal(usage.ollama.unpricedCalls, 0);
+
+  // 2b. A cloud model with no listed price (beam): counted as unpriced, its cost null, not a guess.
+  assert.equal((await settings(session, { model: "beam" })).json.privacy.direct.route, "REMOTE_MODEL:ollama-cloud");
+  events = await chat(session, "unpriced");
+  assert.equal(chats(daemon).at(-1).body.model, "beam:cloud");
+  report = (await request(port, { path: "/api/youspeak", headers: session.read })).json;
+  assert.ok(Math.abs(report.usage.costUsd - listed) < 1e-12, "the session's estimate gains nothing from an unpriced turn");
+  const afterBeam = (await request(port, { path: "/api/usage", headers: session.read })).json;
+  assert.equal(afterBeam.ollama.unpricedCalls, 1);
+  assert.equal(afterBeam.ollama.cost, usage.ollama.cost, "an unpriced call adds nothing to the estimate");
+  assert.equal(afterBeam.ollamaCloud.byModel.beam.unpricedCalls, 1);
+  assert.equal(afterBeam.ollamaCloud.byModel.beam.cost, 0);
+  assert.equal(events.find(e => e.event === "usage").data.ollamaUnpriced, 1);
 
   // 3. The pulled local model: think "low" (the session default, which it lists) and num_ctx.
   assert.equal((await settings(session, { model: "gemma4:12b" })).json.privacy.direct.route, "LOCAL_MODEL:ollama");
@@ -378,7 +400,7 @@ test("with no local Ollama, a daemon name goes to the direct API stripped of its
     OLLAMA_LOCAL_BASE_URL: await closedUrl(),
     OLLAMA_CLOUD_BASE_URL: cloud.baseUrl,
     OLLAMA_API_KEY: "test-only-key",
-    YOUI_MODEL: "glm-5.1",
+    YOUI_MODEL: "glm-5.3",
     YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use,models:ollama-cloud,youspeak:read",
   });
   const session = await openSession(port, "direct-key");
@@ -387,14 +409,14 @@ test("with no local Ollama, a daemon name goes to the direct API stripped of its
   assert.equal(status.json.privacy.direct.destination, cloud.baseUrl);
   const answer = await request(port, {
     path: "/api/ollama/chat", method: "POST", headers: session.unsafe,
-    body: { model: "glm-5.1:cloud", prompt: "hello", reasoning_effort: "low" },
+    body: { model: "glm-5.3:cloud", prompt: "hello", reasoning_effort: "low" },
   });
   assert.equal(answer.status, 200, answer.text);
   assert.equal(answer.json.ok, true);
   assert.equal(answer.json._provider, "ollama_cloud");
   const sent = cloud.requests.find(r => r.path === "/v1/chat/completions");
-  assert.equal(sent.body.model, "glm-5.1", "the direct API gets the name without :cloud");
+  assert.equal(sent.body.model, "glm-5.3", "the direct API gets the name without :cloud");
   assert.equal(sent.body.reasoning_effort, "low", "the model lists \"low\"");
   assert.equal(sent.headers.authorization, "Bearer test-only-key");
-  assert.equal(cloud.requests.find(r => r.path === "/api/show").body.model, "glm-5.1");
+  assert.equal(cloud.requests.find(r => r.path === "/api/show").body.model, "glm-5.3");
 });

@@ -171,6 +171,21 @@ a key, a model that is neither listed nor named with a cloud suffix goes to
 the direct API; so does a cloud name when no local Ollama answers, with the
 suffix removed, since the direct API names models without it.
 
+The Settings model menu lists the Ollama Cloud models named by
+`https://ollama.com/api/tags` on 2026-10-31, the local picks `qwen3.5:4b` and
+`gemma4:12b`, and whatever the local Ollama lists when it runs. The local
+picks never go to Ollama Cloud: if one is not pulled, the local Ollama says
+so. Ollama retires cloud models often, so the static list goes stale; a
+retired name fails when called. `glm-5.3-flash` is the default where a call
+names no model. `kimi-k3` has the highest list price ($3.00 in, $15.00 out
+per 1M tokens) and is used only when picked in Settings: it is not listed as
+a mind, so the minds tools never call it. `beam` is free on Ollama Cloud for a limited time and is never a
+default. The price table (`OLLAMA_PRICING` in `youi-web/server.mjs`) copies
+`https://ollama.com/pricing` as fetched on 2026-10-31, with DeepSeek at its
+peak rate. Its costs are estimates from list price, not a bill; plan credits
+are not applied. A cloud model not in the table is counted as unpriced, and
+the usage panel shows `+ N unpriced` instead of a guessed cost.
+
 Model-facing subprocesses receive an allowlisted environment. Provider or
 adapter credentials are delegated only by explicit variable name for that
 child purpose. This blocks ambient credential inheritance; it does not

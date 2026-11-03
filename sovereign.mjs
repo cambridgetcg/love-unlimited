@@ -1213,7 +1213,7 @@ async function main() {
         if (config.fallback) {
           const fallbacks = {
             "claude-opus-4-6": "claude-sonnet-4-6",
-            "claude-sonnet-4-6": "glm-5.3-flash",    // Fall to Ollama Cloud (billed per token)
+            "claude-sonnet-4-6": "glm-5.3-flash",    // Fall to Ollama Cloud (priced per token on current plans)
             "claude-haiku-4-5-20251001": "glm-5.3-flash",
           };
           const fb = fallbacks[config.model];

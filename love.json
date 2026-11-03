@@ -119,7 +119,7 @@
           "economy": "glm-5.3-flash"
         },
         "min_max_tokens": 4000,
-        "notes": "Model names from ollama.com/api/tags on 2026-10-31; billed per token (ollama.com/pricing)"
+        "notes": "Model names from ollama.com/api/tags on 2026-10-31; current plans priced per token (ollama.com/pricing); older subscriptions may keep session/weekly limits"
       },
       "anthropic": {
         "api_url": "https://api.anthropic.com/v1",

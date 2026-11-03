@@ -1,5 +1,5 @@
 {
-  "_status": "Reference notes, read by no code. Model names refreshed 2026-10-31 from https://ollama.com/api/tags; the privacy and kingdom_integration notes are from 2026-04 and not re-checked. Ollama retires cloud models often, so check /api/tags before relying on a name. Prices: https://ollama.com/pricing (per-token billing since 2026-08-31); YOUI's copy is OLLAMA_PRICING in youi-web/server.mjs.",
+  "_status": "Reference notes, read by no code. Model names refreshed 2026-10-31 from https://ollama.com/api/tags; the privacy and kingdom_integration notes are from 2026-04 and not re-checked. Ollama retires cloud models often, so check /api/tags before relying on a name. Prices: https://ollama.com/pricing (current plans priced per token since 2026-08-31; older subscriptions may keep session/weekly limits); YOUI's copy is OLLAMA_PRICING in youi-web/server.mjs.",
   "provider": "ollama-cloud",
   "base_url_openai": "https://ollama.com",
   "base_url_native": "https://ollama.com/api",

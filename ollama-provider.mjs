@@ -110,8 +110,9 @@ export async function ollamaChat(messages, options = {}) {
     stream,
   };
 
-  // Levels are per model, so any named level is passed on; Ollama applies the
-  // model's default for a name the model does not define.
+  // Levels are per model, so any named level is passed on. Ollama's docs say
+  // an undefined level falls back to the model default where the model states
+  // its levels; not checked live on /v1.
   if (typeof reasoningEffort === "string" && reasoningEffort) {
     body.reasoning_effort = reasoningEffort;
   }

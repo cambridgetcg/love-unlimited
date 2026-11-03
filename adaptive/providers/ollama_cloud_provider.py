@@ -1,5 +1,5 @@
 """
-Ollama Cloud provider — open-weight frontier models, billed per token.
+Ollama Cloud provider — open-weight frontier models.
 
 Uses Ollama's OpenAI-compatible API at ollama.com with automatic retry
 and fallback to native /api/chat endpoint.
@@ -17,8 +17,9 @@ Key differences from local ollama provider:
       false    — disable thinking
       true     — enable thinking
       "low"/"medium"/"high" — control think depth (model-dependent)
-  - Billed per token since 2026-08-31 (https://ollama.com/pricing); the
-    concurrency limit depends on the plan
+  - Current Ollama plans price usage per token (https://ollama.com/pricing,
+    since 2026-08-31); older subscriptions may keep session/weekly limits.
+    The concurrency limit depends on the plan
   - No data logging, no training on prompts
 
 503 handling:

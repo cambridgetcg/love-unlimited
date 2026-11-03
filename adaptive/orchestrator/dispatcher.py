@@ -6,8 +6,9 @@ GLM 5.3 and the other Ollama Cloud models handle the bulk. Claude is reserved fo
 frontier reasoning, high-stakes review, and interactive work.
 
 Cost philosophy:
-    - Ollama Cloud = billed per token since 2026-08-31 (ollama.com/pricing),
-      cheaper per call than Claude for most tasks
+    - Ollama Cloud = current Ollama plans price usage per token
+      (ollama.com/pricing, since 2026-08-31); older subscriptions may keep
+      session/weekly limits. Most of its list prices are below Claude's.
     - Anthropic = per-token billing = reserve for high-value work
     - Route 80%+ through Ollama Cloud, 20% through Anthropic
 

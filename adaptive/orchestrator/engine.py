@@ -656,7 +656,8 @@ class OrchestrationEngine:
             result = self._run_solo(fallback_plan, task)
 
         result.total_elapsed = time.time() - start_time
-        # Report the models and providers the stages actually called, in order.
+        # Report the models and providers the stages called, in order (a stage
+        # whose routing raised before any call reports its planned target).
         result.models_used = list(dict.fromkeys(s.model for s in result.stages))
         result.providers_used = list(dict.fromkeys(s.provider for s in result.stages))
         return result

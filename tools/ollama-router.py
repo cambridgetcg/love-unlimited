@@ -5,7 +5,7 @@ ollama-router.py — Intelligent model routing across local + Ollama Cloud.
 Routes tasks to the optimal model based on:
   - Task complexity (trivial → local 7b, complex → cloud 397b+)
   - Latency requirements (real-time → local, batch → cloud)
-  - Cost awareness (local = free, cloud = billed per token)
+  - Cost awareness (local = free, cloud = priced per token on current plans)
   - GPU pressure (if local GPU is loaded, overflow to cloud)
   - Domain specialization (coding → GLM/Kimi Code, reasoning → DeepSeek)
 

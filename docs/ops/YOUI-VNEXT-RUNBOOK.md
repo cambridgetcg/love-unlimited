@@ -92,12 +92,11 @@ worktree whose changes you have inspected. A selected remote model receives
 the prompt, selected context, tool schema, and returned tool results needed
 for its call.
 
-Terminal and web OAuth refresh use the same exact-account Keychain helper. It
-updates the existing service/account entry without delete-first, preserves
-unrelated entry metadata, and re-reads that same account before reporting
-success. A missing entry fails closed, and the serialized credential is sent
-to the Keychain CLI through stdin rather than process arguments. This protects
-update semantics; it does not make the provider request private.
+The terminal and the web reach Claude through the Claude Code installed on
+the machine (2.1.299 or later), signed in with its own `claude` login; neither
+reads or refreshes that login itself (`docs/YOUI-CLAUDE-CODE-DESIGN.md` §4).
+This changes who holds the login; it does not make the provider request
+private, and Claude Code keeps a transcript of each conversation.
 
 Exit through `/exit` when possible so the runtime writes its normal session
 summary. A clean exit is not proof that every memory or external write

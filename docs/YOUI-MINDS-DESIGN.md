@@ -165,8 +165,9 @@ where the practice calls for more than one. Their state files carry over.
   council outcome authorises only through Yu's own act at the table, as in
   the consent design.
 - **Terminal.** The terminal (`youi.mjs`) is unchanged by this work: it
-  offers the model no mind tools. Since 2026-10-31 it reaches Claude
-  through the same Claude Code runner as YOUI Web
+  offers the model no mind tools. With the terminal slice (built
+  2026-10-31, a draft branch) it reaches Claude through the same Claude
+  Code runner as YOUI Web
   (docs/YOUI-CLAUDE-CODE-DESIGN.md §4); giving it minds is a separate
   question.
 

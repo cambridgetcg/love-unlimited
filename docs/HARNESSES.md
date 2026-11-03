@@ -31,14 +31,17 @@ replicated database.
 | `stream.mjs` | Max-plan streaming harness. Wraps `claude` CLI with rate-limit awareness, effort cycling, context management. | Long-running unattended sessions on the Max plan. |
 | `youi-web/server.mjs` | Authenticated per-session browser interface on unprivileged `127.0.0.1:17777`; remote viewing is SSH-tunnel-only. Defaults to the `safe` capability profile. | When a browser is useful and the loopback/session boundary is appropriate. |
 
-The terminal's Keychain refresh handling (`youi-keychain.mjs`) is
-exact-account: the existing entry is updated in place, unrelated metadata is
-preserved, and the same account is re-read for verification. The serialized
-credential is supplied through stdin rather than process arguments. On this
-branch stack YOUI Web no longer reads Claude Code's login; sovereign reads it
-through the same code and never writes it. Who still uses that login is in
-[`CLAUDE-CODE-LOGIN-USE.md`](CLAUDE-CODE-LOGIN-USE.md). Web child processes receive a
-sanitized environment, but an explicitly granted shell is not an OS sandbox.
+The terminal and the web reach Claude through the Claude Code installed on
+the machine, which signs in with its own login; neither reads, refreshes or
+writes that login itself ([`YOUI-CLAUDE-CODE-DESIGN.md`](YOUI-CLAUDE-CODE-DESIGN.md)
+§4). Sovereign still reads it, through `youi-keychain.mjs`, and never writes
+it. That file's exact-account write-back (the entry updated in place, the
+credential on stdin), which the terminal used before its move, is no longer
+called by any runtime. Every file that still uses Claude Code's login or
+presents itself as Claude Code is listed, with file:line, in
+[`CLAUDE-CODE-LOGIN-USE.md`](CLAUDE-CODE-LOGIN-USE.md). Terminal and web child
+processes receive a sanitized environment, but an explicitly granted shell is
+not an OS sandbox.
 Web HIVE requires an explicit `YOUI_HIVE_INSTANCE`; terminal YOUI captures its
 sender at launch. In both cases the selected persona is not a sender
 credential.

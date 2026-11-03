@@ -135,7 +135,7 @@ function startTerminal(t, { args = [], env = {}, version } = {}) {
 
 // The prompt the terminal prints once it is ready for the next line.
 const READY = /Alpha › $/;
-async function ask(terminal, line, done = /\[\d+\] \d+in \d+out/g) {
+async function ask(terminal, line, done = /\[\d+\] (?:\d+|—)in (?:\d+|—)out/g) {
   const before = (terminal.output().match(done) || []).length;
   terminal.send(line);
   const started = Date.now();
@@ -209,7 +209,7 @@ test("youi.mjs reads no Keychain or OAuth token and sends no Claude Code headers
   assert.match(SOURCE, /from "\.\/youi-web\/claude-models\.mjs"/);
   assert.match(SOURCE, /createKernel\(\{ agent, route: "claude-code", surface: "terminal"/);
   assert.match(SOURCE, /ys\.decide\(state\.effort, model, kernelBudget\(\), \{ route: "claude-code" \}\)/);
-  assert.match(SOURCE, /defaultModel: "claude-opus-5-5",\n    defaultEffort: "high"/, "Alpha is on Opus 5.5 at high, as in YOUI Web");
+  assert.match(SOURCE, /defaultModel: "claude-opus-4-6",\n    defaultEffort: "max"/, "Alpha keeps the terminal's own default; following YOUI Web is a separate choice");
 });
 
 // ── The version gate ────────────────────────────────────────────────
@@ -258,7 +258,7 @@ test("the version gate fails closed: unreadable or too old is refused, and a fai
 test("the terminal will not start on a Claude Code below the floor, nor without one", async t => {
   const old = startTerminal(t, { version: "2.1.298" });
   assert.deepEqual(await old.exited, { code: 1, signal: null });
-  assert.match(old.output(), /Fatal: Claude Code 2\.1\.298 is older than 2\.1\.299, which claude-opus-5-5 needs through YOUI/);
+  assert.match(old.output(), /Fatal: Claude Code 2\.1\.298 is older than 2\.1\.299, which claude-opus-4-6 needs through YOUI/);
   assert.equal(old.fake.runs().length, 0, "no turn was run");
   assert.equal(old.fake.step("version").length, 1);
 
@@ -316,10 +316,13 @@ test("the bridge listener is loopback only and refuses a wrong bearer, Host or O
 
 // ── A conversation through Claude Code ──────────────────────────────
 
+// The telemetry and traffic opt-outs the Kingdom VM sets for Claude Code.
+const OPT_OUTS = { DISABLE_TELEMETRY: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", CLAUDE_CODE_ATTRIBUTION_HEADER: "false" };
+
 test("a message runs claude -p on the session's own conversation, with the context block and the reported usage", async t => {
-  const terminal = startTerminal(t);
+  const terminal = startTerminal(t, { env: OPT_OUTS });
   await terminal.waitFor(READY);
-  assert.match(terminal.output(), /via Claude Code 2\.1\.314 \| Model: claude-opus-5-5/);
+  assert.match(terminal.output(), /via Claude Code 2\.1\.314 \| Model: claude-opus-4-6/);
 
   await ask(terminal, "hello there 你好，我哋傾吓偈");
   assert.match(terminal.output(), /Echo: hello there 你好，我哋傾吓偈/);
@@ -328,8 +331,8 @@ test("a message runs claude -p on the session's own conversation, with the conte
   const runs = terminal.fake.runs();
   assert.equal(runs.length, 2);
   const flag = (run, name) => run.argv[run.argv.indexOf(name) + 1];
-  assert.equal(flag(runs[0], "--model"), "claude-opus-5-5");
-  assert.equal(flag(runs[0], "--effort"), "high");
+  assert.equal(flag(runs[0], "--model"), "claude-opus-4-6", "the terminal's own default, as before");
+  assert.equal(flag(runs[0], "--effort"), "max");
   assert.equal(flag(runs[0], "--max-turns"), "50");
   const sessionId = flag(runs[0], "--session-id");
   assert.match(sessionId, /^[0-9a-f-]{36}$/);
@@ -341,6 +344,7 @@ test("a message runs claude -p on the session's own conversation, with the conte
     assert.equal(run.env.CLAUDE_CODE_DISABLE_FILE_MENTIONS, "1");
     assert.equal(run.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, "1");
     assert.equal(run.env.HOME, terminal.dir);
+    for (const [name, value] of Object.entries(OPT_OUTS)) assert.equal(run.env[name], value, `${name} reaches Claude Code`);
     for (const name of Object.keys(SECRETS)) assert.equal(run.env[name], undefined, `${name} must not reach Claude Code`);
   }
   // The bridge is on loopback; the prompt carries no billing line and stays the same between messages.
@@ -350,14 +354,14 @@ test("a message runs claude -p on the session's own conversation, with the conte
   assert.doesNotMatch(runs[0].systemPrompt.content, /billing|cc_version|Date:/);
   assert.equal(runs[0].systemPrompt.content, runs[1].systemPrompt.content);
   const messages = terminal.fake.step("message");
-  assert.match(messages[0].context, /^\[YOUI context\]\n[\s\S]*- Model: claude-opus-5-5\n- Effort: high[\s\S]*\[\/YOUI context\]\n\n$/);
+  assert.match(messages[0].context, /^\[YOUI context\]\n[\s\S]*- Model: claude-opus-4-6\n- Effort: max[\s\S]*\[\/YOUI context\]\n\n$/);
   assert.equal(messages[0].message, "hello there 你好，我哋傾吓偈");
 
   terminal.send("/exit");
   assert.deepEqual(await terminal.exited, { code: 0, signal: null });
   const [row] = terminal.rows();
   assert.equal(row.route, "claude-code");
-  assert.equal(row.model, "claude-opus-5-5");
+  assert.equal(row.model, "claude-opus-4-6");
   assert.equal(row.endReason, "exit");
   assert.deepEqual(row.exchanges, { ok: 2, failed: 0 });
   assert.equal(row.costUsd, 0.0246, "the fake's two turns, as Claude Code reported them");
@@ -378,7 +382,7 @@ test("/model maps to the models YOUI offers, /switch starts a new conversation, 
   await terminal.waitFor(/Model: claude-haiku-4-5-20251001/);
   await ask(terminal, "on haiku");
   terminal.send("/model gpt");
-  await terminal.waitFor(/Usage: \/model opus\|opus-4-7\|opus-4-6\|sonnet\|haiku/);
+  await terminal.waitFor(/Usage: \/model opus\|opus-5-5\|opus-4-7\|sonnet\|haiku/);
 
   // Claude Code loses the conversation: a new one starts, carrying the text, said before it is sent.
   rmSync(terminal.fake.sessions, { recursive: true, force: true });
@@ -406,6 +410,21 @@ test("/model maps to the models YOUI offers, /switch starts a new conversation, 
   assert.ok(flag(gamma, "--session-id") && flag(gamma, "--session-id") !== fresh, "/switch starts a new conversation");
 });
 
+test("a conversation Claude Code kept but never reported is resumed on the next message, not started again", async t => {
+  const terminal = startTerminal(t);
+  await terminal.waitFor(READY);
+  await ask(terminal, "FAKE:die-before-init");
+  await ask(terminal, "hello again");
+  assert.match(terminal.output(), /Echo: hello again/);
+  const runs = terminal.fake.runs();
+  const flag = (run, name) => (run.argv.includes(name) ? run.argv[run.argv.indexOf(name) + 1] : null);
+  assert.equal(runs.length, 3);
+  const id = flag(runs[0], "--session-id");
+  assert.ok(id);
+  assert.equal(flag(runs[1], "--session-id"), id, "the second message tries the same conversation");
+  assert.equal(flag(runs[2], "--resume"), id, "and, told it is in use, resumes it");
+});
+
 // ── Tool profiles through the bridge ────────────────────────────────
 
 test("the observe profile lists and runs only the read tools, scoped to the workspace", async t => {
@@ -419,6 +438,14 @@ test("the observe profile lists and runs only the read tools, scoped to the work
   await ask(terminal, 'FAKE:call read_file {"path":"../outside.txt"}');
   assert.match(terminal.output(), /Tool said: read_file \(error\): Error: /);
   assert.doesNotMatch(terminal.output(), /outside the workspace/);
+  // A pattern that starts with "-" is searched for, never read as an rg option ("--files" would list the files).
+  await ask(terminal, 'FAKE:call grep {"pattern":"--files"}');
+  assert.match(terminal.output(), /Tool said: grep: \(no matches\)\n/);
+  // Read as an option, "-ealpha" would match a.txt's "alpha line"; searched for, it matches nothing.
+  const noMatches = () => (terminal.output().match(/Tool said: grep: \(no matches\)\n/g) || []).length;
+  const before = noMatches();
+  await ask(terminal, 'FAKE:call grep {"pattern":"-ealpha"}');
+  assert.equal(noMatches(), before + 1);
   await ask(terminal, 'FAKE:call bash {"command":"echo should-not-run"}');
   assert.match(terminal.output(), /bash \(error\): Permission denied: tool "bash" is not enabled for this session \(profile observe\)/);
   await ask(terminal, 'FAKE:call write_file {"path":"new.txt","content":"x"}');
@@ -446,6 +473,12 @@ test("the build profile runs the shell with the allowlisted environment, and the
   assert.equal(run.argv.includes("--allowedTools"), false);
 });
 
+// Sends `line` as one message with FAKE:ignore-eof, so the fake Claude Code does
+// not leave by itself when its stdin closes: only the terminal can stop it.
+function sendHeld(terminal, line) {
+  for (const part of ["```", "FAKE:ignore-eof", line, "```"]) terminal.send(part);
+}
+
 // A command that starts a long sleep and writes its pid where the test can read it.
 const LONG_COMMAND = 'FAKE:call bash {"command":"sleep 30 & echo $! > sleep.pid; wait; echo late"}';
 async function sleepPid(terminal) {
@@ -470,17 +503,26 @@ test("the shell is async: the turn's time limit stops a long command, all of it,
   assert.match(terminal.output(), /Echo: still here/);
 });
 
-test("exiting while a shell command runs stops the command and Claude Code", async t => {
+// Claude Code's own stop on each way out is checked by the exit-path tests below:
+// here the fake, waiting on its tool call, would die anyway on writing to a closed pipe.
+test("exiting while a shell command runs stops the command, what it started included", async t => {
   const terminal = startTerminal(t, { args: ["--profile", "build"] });
   await terminal.waitFor(READY);
   terminal.send(LONG_COMMAND);
   const pid = await sleepPid(terminal);
-  const [{ pid: claudePid }] = terminal.fake.runs();
-  assert.ok(alive(pid) && alive(claudePid));
+  assert.ok(alive(pid));
   terminal.child.kill("SIGTERM");
   assert.deepEqual(await terminal.exited, { code: 143, signal: null });
   assert.ok(await gone(pid), "the command is stopped");
-  assert.ok(await gone(claudePid), "Claude Code is stopped");
+});
+
+test("a job the command leaves in the background, its output redirected, is stopped when the turn ends", async t => {
+  const terminal = startTerminal(t, { args: ["--profile", "build"] });
+  await terminal.waitFor(READY);
+  // The shell exits at once and its pipes close; the job keeps the process group alive.
+  await ask(terminal, 'FAKE:call bash {"command":"sleep 30 >/dev/null 2>&1 & echo $! > sleep.pid"}');
+  assert.match(terminal.output(), /Tool said: bash: \(no output\)/);
+  assert.ok(await gone(await sleepPid(terminal)), "the background job ended with the turn");
 });
 
 // ── Exit paths ──────────────────────────────────────────────────────
@@ -496,7 +538,7 @@ for (const [how, expected, reason] of [
   test(`${how} mid-task stops the running Claude Code and still writes the YOUSPEAK row`, async t => {
     const terminal = startTerminal(t);
     await terminal.waitFor(READY);
-    terminal.send("FAKE:text-then-sleep a partial answer before the end");
+    sendHeld(terminal, "FAKE:text-then-sleep a partial answer before the end");
     await terminal.waitFor(/a partial answer before the end/);
     const started = Date.now();
     while (terminal.fake.step("sleeping").length === 0) {

@@ -45,7 +45,8 @@ export function startBridgeListener(bridge, { host = "127.0.0.1" } = {}) {
     server.once("error", rejectPromise);
     server.listen(0, host, () => {
       server.off("error", rejectPromise);
-      // An idle keep-alive socket from Claude Code must not hold the terminal open.
+      // The listening socket alone does not keep the process alive (open
+      // connections still do; the terminal leaves through process.exit).
       server.unref();
       const { port } = server.address();
       resolvePromise({

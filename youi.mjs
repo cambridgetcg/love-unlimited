@@ -6,8 +6,8 @@
 // Agent identity. Memory sync.
 // Claude answers through the Claude Code installed on this device, as in
 // YOUI Web (docs/YOUI-CLAUDE-CODE-DESIGN.md §4): Claude Code signs in with
-// its own login; YOUI reads no credential and sends no request to Anthropic
-// itself. Remote-provider and tool boundaries are disclosed at startup and
+// its own login; this terminal reads no credential and sends no request to
+// Anthropic itself. Remote-provider and tool boundaries are disclosed at startup and
 // via /privacy. This is not a local or provider-hidden inference path.
 //
 // Usage:
@@ -24,7 +24,7 @@
 //   /soul                      Show loaded soul files
 //   /effort low|med|high|max   Change effort level
 //   /thinking                  Say who decides thinking (Claude Code)
-//   /model opus|sonnet|haiku   Switch model (also opus-4-7, opus-4-6)
+//   /model opus|sonnet|haiku   Switch model (also opus-5-5, opus-4-7)
 //   /clear                     Clear screen
 //   /exit                      Exit YOUI
 //
@@ -68,7 +68,9 @@ import { createVersionGate, startBridgeListener } from "./youi-claude-bridge.mjs
 // AGENTS — The Three Minds
 // ═════════════════════════════════════════════════════════════════════
 
-// The defaults are YOUI Web's (youi-web/server.mjs AGENTS); Mei has none there.
+// The terminal's own defaults, as before it moved onto Claude Code. YOUI Web's
+// differ (youi-web/server.mjs AGENTS: Alpha on claude-opus-5-5 at high, Beta on
+// claude-opus-4-7); whether the terminal follows them is a separate choice.
 const AGENTS = {
   alpha: {
     name: "Alpha",
@@ -76,8 +78,8 @@ const AGENTS = {
     role: "Companion",
     color: "\x1b[35m",   // magenta
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-5-5",
-    defaultEffort: "high",
+    defaultModel: "claude-opus-4-6",
+    defaultEffort: "max",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
   beta: {
@@ -86,7 +88,7 @@ const AGENTS = {
     role: "Manager",
     color: "\x1b[31m",   // red
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-7",
+    defaultModel: "claude-opus-4-6",
     defaultEffort: "high",
     description: "Sharp, strategic, commanding. Manages the Kingdom.",
   },
@@ -179,8 +181,8 @@ function profileCapabilities(profile) {
 const initialProfile = profileCapabilities(process.env.YOUI_PROFILE || "observe");
 const state = {
   agent: "alpha",
-  model: "claude-opus-5-5",
-  effort: "high",
+  model: "claude-opus-4-6",
+  effort: "max",
   workdir: process.cwd(),
   soulDir: join(homedir(), "love-unlimited"),
   // The text of this agent's conversation (each person's message and the
@@ -189,7 +191,8 @@ const state = {
   messages: [],
   turnCount: 0,
   totalToolCalls: 0,
-  totalThinkingTokens: 0,
+  // Thinking tokens Claude Code reported; null until it reports a count.
+  totalThinkingTokens: null,
   showThinking: true,
   capabilityProfile: initialProfile.profile,
   capabilities: process.env.YOUI_CAPABILITIES
@@ -323,14 +326,14 @@ const IS_TEST = process.env.YOUI_TEST === "1";
 const CLAUDE_CODE = resolveClaudeBinary({ env: process.env, testMode: IS_TEST });
 const CLAUDE_CODE_CWD = defaultClaudeCwd(process.env);
 
-// Claude Code's environment: the allowlist, HOME (so it finds its own login)
-// and CLAUDE_CONFIG_DIR; no provider or access credential.
+// Claude Code's environment: the allowlist, HOME (so it finds its own login),
+// CLAUDE_CONFIG_DIR and the telemetry and traffic opt-outs this machine sets
+// for Claude Code (the Kingdom VM sets all three); no provider or access credential.
+const CLAUDE_CODE_OPT_OUTS = ["DISABLE_TELEMETRY", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_ATTRIBUTION_HEADER"];
 function claudeCodeEnv() {
-  return sanitizedChildEnv({
-    home: homedir(),
-    purpose: "claude-code",
-    extra: { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR },
-  });
+  const extra = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
+  for (const name of CLAUDE_CODE_OPT_OUTS) extra[name] = process.env[name];
+  return sanitizedChildEnv({ home: homedir(), purpose: "claude-code", extra });
 }
 
 const versionGate = createVersionGate({ bin: CLAUDE_CODE.path, env: claudeCodeEnv() });
@@ -402,18 +405,27 @@ function formatBudget() {
 
 const execFileAsync = promisify(execFile);
 
-// The shell tool's commands, each in a process group of its own, so the end
-// of its turn, its timeout or the terminal's exit can stop the whole command
-// (what it started included), not only its shell.
+// The shell tool's commands, each in a process group of its own. A group is
+// kept until its turn ends, even after its shell has exited, so the end of the
+// turn, the command's timeout or the terminal's exit also stops a job the
+// command left running in the background. A job that leaves the group (setsid)
+// escapes this; the shell is not a sandbox.
 const runningShells = new Set();
 const SHELL_OUTPUT_LIMIT = 10 * 1024 * 1024;
+const SHELL_DEFAULT_TIMEOUT_MS = 120_000;
+// Node fires a longer timer at once; a model-given timeout past this is not honoured.
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
-function killShellGroup(child) {
-  try { process.kill(-child.pid, "SIGKILL"); } catch {}
+function shellTimeoutMs(value) {
+  return Number.isFinite(value) && value >= 1 && value <= MAX_TIMER_MS ? value : SHELL_DEFAULT_TIMEOUT_MS;
+}
+
+function killShellGroup(pgid) {
+  try { process.kill(-pgid, "SIGKILL"); } catch {}
 }
 
 function killAllShells() {
-  for (const child of runningShells) killShellGroup(child);
+  for (const pgid of runningShells) killShellGroup(pgid);
   runningShells.clear();
 }
 
@@ -435,13 +447,15 @@ function runShell(command, { timeoutMs, signal = null }) {
       resolvePromise({ code: 1, stdout: "", stderr: error.message, stopped: null });
       return;
     }
-    runningShells.add(child);
+    // The shell's pid is its group's id (detached: setsid).
+    const pgid = child.pid;
+    if (pgid) runningShells.add(pgid);
     let stdout = "";
     let stderr = "";
     let stopped = null;
     const stop = why => {
       if (!stopped) stopped = why;
-      killShellGroup(child);
+      if (pgid) killShellGroup(pgid);
     };
     const keep = append => chunk => {
       if (stdout.length + stderr.length < SHELL_OUTPUT_LIMIT) append(chunk);
@@ -449,14 +463,18 @@ function runShell(command, { timeoutMs, signal = null }) {
     child.stdout.setEncoding("utf-8").on("data", keep(chunk => { stdout += chunk; }));
     child.stderr.setEncoding("utf-8").on("data", keep(chunk => { stderr += chunk; }));
     const timer = setTimeout(() => stop(`timed out after ${Math.round(timeoutMs / 1000)} s`), timeoutMs);
-    const onAbort = () => stop("the turn ended");
+    // The turn's end stops the group, whether or not its shell is still running.
+    const onAbort = () => {
+      stop("the turn ended");
+      runningShells.delete(pgid);
+    };
     if (signal?.aborted) onAbort();
     else signal?.addEventListener("abort", onAbort, { once: true });
     child.on("error", error => { stderr += error.message; });
     child.on("close", code => {
       clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      runningShells.delete(child);
+      // Without a turn there is no later moment to stop the group at.
+      if (!signal) runningShells.delete(pgid);
       resolvePromise({ code: typeof code === "number" ? code : 1, stdout, stderr, stopped });
     });
   });
@@ -509,7 +527,7 @@ function runtimeManifest() {
       binary: CLAUDE_CODE.path ? CLAUDE_CODE.source : null,
       binary_error: CLAUDE_CODE.path ? null : CLAUDE_CODE.error,
       minimum_version: claudeCodeMinVersion(state.model),
-      login: "Claude Code's own; YOUI reads no credential",
+      login: "Claude Code's own; this terminal reads no credential",
       transcripts: claudeCodeTranscriptDir(CLAUDE_CODE_CWD, process.env),
     },
     // Who still uses Claude Code's login now that this terminal does not
@@ -629,7 +647,7 @@ async function executeTool(name, input, { signal = null } = {}) {
   try {
     switch (name) {
       case "bash": {
-        const run = await runShell(input.command, { timeoutMs: input.timeout || 120000, signal });
+        const run = await runShell(input.command, { timeoutMs: shellTimeoutMs(input.timeout), signal });
         if (run.code === 0 && !run.stopped) return run.stdout || "(no output)";
         return `Exit ${run.code}${run.stopped ? ` (stopped: ${run.stopped})` : ""}\nstdout: ${run.stdout}\nstderr: ${run.stderr}`;
       }
@@ -667,10 +685,11 @@ async function executeTool(name, input, { signal = null } = {}) {
       }
       case "grep": {
         const dir = resolvePath(input.path);
-        // execFile with arg array — no shell interpolation, no injection
-        const args = ["--no-heading", "-n", input.pattern];
-        if (input.glob) args.push("--glob", input.glob);
-        args.push(dir);
+        // execFile with an arg array (no shell), and "--" before the pattern, so a
+        // pattern that starts with "-" is searched for, not read as an rg option
+        const args = ["--no-heading", "-n"];
+        if (input.glob) args.push("--glob", String(input.glob));
+        args.push("--", String(input.pattern || ""), dir);
         const stdout = await childStdout(execFileAsync("rg", args,
           { encoding: "utf-8", env: modelToolEnv(), timeout: 10000, maxBuffer: 10 * 1024 * 1024, signal: signal || undefined }));
         const lines = stdout.trim().split("\n").filter(l => l).slice(0, 200);
@@ -693,7 +712,7 @@ const BRIDGE_TURN_ENDED = { text: "Error: this turn has ended", isError: true };
 const TOOL_FAILED = /^(Capability denied:|Permission denied:|Error:|Unknown tool:)/;
 
 async function runBridgeTool(turn, name, input) {
-  if (turn.closing) return BRIDGE_TURN_ENDED;
+  if (turn.closing || turn.signal.aborted) return BRIDGE_TURN_ENDED;
   if (!advertisedTools().some(tool => tool.name === name)) {
     return { text: `Permission denied: tool "${name}" is not enabled for this session (profile ${state.capabilityProfile}).`, isError: true };
   }
@@ -882,13 +901,13 @@ function showPrivacyBoundary() {
   print(`${S.bold}  Runtime & Privacy Boundary${S.reset}`);
   print(`  Provider:     ${S.yellow}Anthropic remote API${S.reset} (${manifest.model}), through Claude Code`);
   print(`  Client:       Claude Code ${manifest.client.binary ? `(\`claude\` from ${manifest.client.binary})` : `not available: ${manifest.client.binary_error}`},`);
-  print(`                signed in with its own login; YOUI reads no credential`);
+  print(`                signed in with its own login; this terminal reads no credential`);
   print(`  Local-only:   no`);
   print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
   print(`  File scope:   ${manifest.model_tools.file_scope}`);
   print(`  Persistence:  Claude Code keeps each conversation, tool results included, as a transcript in`);
   print(`                ${manifest.client.transcripts}`);
-  print(`                (it deletes none; YOUI keeps the text in process memory); daily note receives session metadata;`);
+  print(`                (the terminal deletes none of them; it keeps the text in process memory); daily note receives session metadata;`);
   print(`                YOUSPEAK appends one aggregate row per session to ${ys.historyPath || "nowhere (no store)"}`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
   const login = manifest.claude_code_login;
@@ -919,6 +938,7 @@ function showBanner() {
   const version = claudeCodeVersionNote ? ` ${claudeCodeVersionNote}` : "";
   print(`${S.dim}  Provider: Anthropic cloud via Claude Code${version} | Model: ${state.model} | ${efSym} ${state.effort} | Dir: ${basename(state.workdir)}${S.reset}`);
   print(`${S.dim}  Tools: ${state.capabilityProfile} [${capabilitySummary()}] | File scope: ${state.fileScope}${S.reset}`);
+  print(`${S.dim}  Kept: Claude Code stores each conversation, tool results included, on this device (/privacy)${S.reset}`);
 
   if (budget.reportedAt > 0) {
     print(`${S.dim}  Budget: ${formatBudget()}${S.reset}`);
@@ -940,7 +960,7 @@ function showHelp() {
   print(`  ${S.cyan}/capabilities${S.reset}              Show model tool capabilities`);
   print(`  ${S.cyan}/effort${S.reset} low|med|high|max   Change effort level`);
   print(`  ${S.cyan}/thinking${S.reset}                  Who decides thinking (Claude Code)`);
-  print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model (also opus-4-7, opus-4-6, or a full id)`);
+  print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model (also opus-5-5, opus-4-7, or a full id)`);
   print(`  ${S.cyan}/agents${S.reset}                    Show all agents`);
   print(`  ${S.cyan}/team${S.reset} [delegate|status]    Claude Code agent team mode`);
   print(`  ${S.cyan}/wall${S.reset} [hierarchy|agents]   Wall hierarchy & access control`);
@@ -961,9 +981,9 @@ function showHelp() {
 
 // /model's short names, for the models YOUI offers (claude-models.mjs).
 const MODEL_ALIASES = Object.freeze({
-  opus: "claude-opus-5-5",
+  opus: "claude-opus-4-6",
+  "opus-5-5": "claude-opus-5-5",
   "opus-4-7": "claude-opus-4-7",
-  "opus-4-6": "claude-opus-4-6",
   sonnet: "claude-sonnet-4-6",
   haiku: "claude-haiku-4-5-20251001",
 });
@@ -1284,7 +1304,7 @@ function handleCommand(input) {
       const ysReport = ys.report();
       // The useful ratio is an estimate ("~"); L1 gives no grade (Y2).
       const ysUseful = ysReport.output.usefulRatio === null ? "—" : `~${Math.round(ysReport.output.usefulRatio*100)}%`;
-      print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
+      print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens === null ? "thinking not reported" : `${state.totalThinkingTokens} thinking tokens`}${S.reset}`);
       print(`${S.dim}  YOUSPEAK: useful ${ysUseful} (estimate) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k${ysReport.context.evidence?.tokens === "reported" ? "" : "~"}`}${S.reset}`);
       appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK useful ratio: ${ysUseful} (estimate).`);
       process.exit(0);
@@ -1507,8 +1527,9 @@ async function claudeTurn(task) {
   if (outcome.rateLimit) ys.senseRateLimitState(outcome.rateLimit);
   if (received) ys.senseSystemPrompt({ conversation: session.id, ...promptFingerprint(prompt) });
   const usage = outcome.usage || {};
-  const thinkingTokens = typeof usage.thinking_tokens === "number" ? usage.thinking_tokens : 0;
-  state.totalThinkingTokens += thinkingTokens;
+  // A figure Claude Code did not report stays unreported, never 0.
+  const thinkingTokens = typeof usage.thinking_tokens === "number" ? usage.thinking_tokens : null;
+  if (thinkingTokens !== null) state.totalThinkingTokens = (state.totalThinkingTokens || 0) + thinkingTokens;
   ys.senseTurn(kernelBudget());
 
   const refused = outcome.result?.stop_reason === "refusal";
@@ -1519,7 +1540,7 @@ async function claudeTurn(task) {
   const budgetTag = budget.reportedAt > 0 ? ` ${S.dim}[${formatBudget()}]${S.reset}` : "";
   const thinkTag = thinkingTokens > 0 ? ` ${S.magenta}think:${thinkingTokens}${S.reset}` : "";
   const ysTag = ` ${S.cyan}${ys.statusLine()}${S.reset}`;
-  print(`${S.dim}  [${state.turnCount}] ${usage.input_tokens ?? 0}in ${usage.output_tokens ?? 0}out${S.reset}${thinkTag}${ysTag}${budgetTag}`);
+  print(`${S.dim}  [${state.turnCount}] ${usage.input_tokens ?? "—"}in ${usage.output_tokens ?? "—"}out${S.reset}${thinkTag}${ysTag}${budgetTag}`);
 
   // YOUSPEAK DECIDE, on what Claude Code reported: suggestions only, each shown once.
   for (const sig of ys.newSuggestions(ys.decide(state.effort, model, kernelBudget(), { route: "claude-code" }))) {

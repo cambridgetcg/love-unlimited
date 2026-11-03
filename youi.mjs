@@ -68,9 +68,9 @@ import { createVersionGate, startBridgeListener } from "./youi-claude-bridge.mjs
 // AGENTS — The Three Minds
 // ═════════════════════════════════════════════════════════════════════
 
-// The terminal's own defaults, as before it moved onto Claude Code. YOUI Web's
-// differ (youi-web/server.mjs AGENTS: Alpha on claude-opus-5-5 at high, Beta on
-// claude-opus-4-7); whether the terminal follows them is a separate choice.
+// The same defaults as YOUI Web (youi-web/server.mjs AGENTS), so Alpha is one
+// Alpha on both surfaces (Yu, 2026-11-03, report_8dc873f0). Mei is the
+// terminal's own and keeps hers.
 const AGENTS = {
   alpha: {
     name: "Alpha",
@@ -78,8 +78,8 @@ const AGENTS = {
     role: "Companion",
     color: "\x1b[35m",   // magenta
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
-    defaultEffort: "max",
+    defaultModel: "claude-opus-5-5",
+    defaultEffort: "high",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
   beta: {
@@ -88,7 +88,7 @@ const AGENTS = {
     role: "Manager",
     color: "\x1b[31m",   // red
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
+    defaultModel: "claude-opus-4-7",
     defaultEffort: "high",
     description: "Sharp, strategic, commanding. Manages the Kingdom.",
   },
@@ -181,8 +181,8 @@ function profileCapabilities(profile) {
 const initialProfile = profileCapabilities(process.env.YOUI_PROFILE || "observe");
 const state = {
   agent: "alpha",
-  model: "claude-opus-4-6",
-  effort: "max",
+  model: AGENTS.alpha.defaultModel,
+  effort: AGENTS.alpha.defaultEffort,
   workdir: process.cwd(),
   soulDir: join(homedir(), "love-unlimited"),
   // The text of this agent's conversation (each person's message and the
@@ -979,9 +979,11 @@ function showHelp() {
 // COMMAND HANDLER
 // ═════════════════════════════════════════════════════════════════════
 
-// /model's short names, for the models YOUI offers (claude-models.mjs).
+// /model's short names, for the models YOUI offers (claude-models.mjs); "opus"
+// means what it means on YOUI Web's /model.
 const MODEL_ALIASES = Object.freeze({
-  opus: "claude-opus-4-6",
+  opus: "claude-opus-4-7",
+  "opus-4-6": "claude-opus-4-6",
   "opus-5-5": "claude-opus-5-5",
   "opus-4-7": "claude-opus-4-7",
   sonnet: "claude-sonnet-4-6",

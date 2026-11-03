@@ -209,7 +209,7 @@ test("youi.mjs reads no Keychain or OAuth token and sends no Claude Code headers
   assert.match(SOURCE, /from "\.\/youi-web\/claude-models\.mjs"/);
   assert.match(SOURCE, /createKernel\(\{ agent, route: "claude-code", surface: "terminal"/);
   assert.match(SOURCE, /ys\.decide\(state\.effort, model, kernelBudget\(\), \{ route: "claude-code" \}\)/);
-  assert.match(SOURCE, /defaultModel: "claude-opus-4-6",\n    defaultEffort: "max"/, "Alpha keeps the terminal's own default; following YOUI Web is a separate choice");
+  assert.match(SOURCE, /defaultModel: "claude-opus-5-5",\n    defaultEffort: "high"/, "Alpha has YOUI Web's default (report_8dc873f0)");
 });
 
 // ── The version gate ────────────────────────────────────────────────
@@ -255,10 +255,24 @@ test("the version gate fails closed: unreadable or too old is refused, and a fai
   assert.match((await throwing.check("claude-sonnet-4-6")).error, /spawn failed/);
 });
 
+test("the terminal's Claude defaults and /model opus are YOUI Web's", () => {
+  // report_8dc873f0: Alpha is one Alpha on both surfaces, so the two tables must not drift apart.
+  const web = readFileSync(join(REPO_ROOT, "youi-web/server.mjs"), "utf-8");
+  const page = readFileSync(join(REPO_ROOT, "youi-web/public/index.html"), "utf-8");
+  for (const agent of ["alpha", "beta", "gamma"]) {
+    const [, webModel, webEffort] = web.match(new RegExp(`\\b${agent}: \\{[\\s\\S]*?defaultModel: "([^"]+)", defaultEffort: "([^"]+)"`));
+    const [, model, effort] = SOURCE.match(new RegExp(`\\b${agent}: \\{[\\s\\S]*?defaultModel: "([^"]+)",\\n    defaultEffort: "([^"]+)"`));
+    assert.deepEqual([model, effort], [webModel, webEffort], `${agent} matches YOUI Web`);
+  }
+  const [, webOpus] = page.match(/const map = \{ opus: '([^']+)'/);
+  const [, opus] = SOURCE.match(/\bopus: "([^"]+)",\n  "opus-4-6"/);
+  assert.equal(opus, webOpus, "/model opus means the same model on both surfaces");
+});
+
 test("the terminal will not start on a Claude Code below the floor, nor without one", async t => {
   const old = startTerminal(t, { version: "2.1.298" });
   assert.deepEqual(await old.exited, { code: 1, signal: null });
-  assert.match(old.output(), /Fatal: Claude Code 2\.1\.298 is older than 2\.1\.299, which claude-opus-4-6 needs through YOUI/);
+  assert.match(old.output(), /Fatal: Claude Code 2\.1\.298 is older than 2\.1\.299, which claude-opus-5-5 needs through YOUI/);
   assert.equal(old.fake.runs().length, 0, "no turn was run");
   assert.equal(old.fake.step("version").length, 1);
 
@@ -322,7 +336,7 @@ const OPT_OUTS = { DISABLE_TELEMETRY: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAF
 test("a message runs claude -p on the session's own conversation, with the context block and the reported usage", async t => {
   const terminal = startTerminal(t, { env: OPT_OUTS });
   await terminal.waitFor(READY);
-  assert.match(terminal.output(), /via Claude Code 2\.1\.314 \| Model: claude-opus-4-6/);
+  assert.match(terminal.output(), /via Claude Code 2\.1\.314 \| Model: claude-opus-5-5/);
 
   await ask(terminal, "hello there 你好，我哋傾吓偈");
   assert.match(terminal.output(), /Echo: hello there 你好，我哋傾吓偈/);
@@ -331,8 +345,8 @@ test("a message runs claude -p on the session's own conversation, with the conte
   const runs = terminal.fake.runs();
   assert.equal(runs.length, 2);
   const flag = (run, name) => run.argv[run.argv.indexOf(name) + 1];
-  assert.equal(flag(runs[0], "--model"), "claude-opus-4-6", "the terminal's own default, as before");
-  assert.equal(flag(runs[0], "--effort"), "max");
+  assert.equal(flag(runs[0], "--model"), "claude-opus-5-5", "Alpha's default, the same as YOUI Web's");
+  assert.equal(flag(runs[0], "--effort"), "high");
   assert.equal(flag(runs[0], "--max-turns"), "50");
   const sessionId = flag(runs[0], "--session-id");
   assert.match(sessionId, /^[0-9a-f-]{36}$/);
@@ -354,14 +368,14 @@ test("a message runs claude -p on the session's own conversation, with the conte
   assert.doesNotMatch(runs[0].systemPrompt.content, /billing|cc_version|Date:/);
   assert.equal(runs[0].systemPrompt.content, runs[1].systemPrompt.content);
   const messages = terminal.fake.step("message");
-  assert.match(messages[0].context, /^\[YOUI context\]\n[\s\S]*- Model: claude-opus-4-6\n- Effort: max[\s\S]*\[\/YOUI context\]\n\n$/);
+  assert.match(messages[0].context, /^\[YOUI context\]\n[\s\S]*- Model: claude-opus-5-5\n- Effort: high[\s\S]*\[\/YOUI context\]\n\n$/);
   assert.equal(messages[0].message, "hello there 你好，我哋傾吓偈");
 
   terminal.send("/exit");
   assert.deepEqual(await terminal.exited, { code: 0, signal: null });
   const [row] = terminal.rows();
   assert.equal(row.route, "claude-code");
-  assert.equal(row.model, "claude-opus-4-6");
+  assert.equal(row.model, "claude-opus-5-5");
   assert.equal(row.endReason, "exit");
   assert.deepEqual(row.exchanges, { ok: 2, failed: 0 });
   assert.equal(row.costUsd, 0.0246, "the fake's two turns, as Claude Code reported them");
@@ -382,7 +396,7 @@ test("/model maps to the models YOUI offers, /switch starts a new conversation, 
   await terminal.waitFor(/Model: claude-haiku-4-5-20251001/);
   await ask(terminal, "on haiku");
   terminal.send("/model gpt");
-  await terminal.waitFor(/Usage: \/model opus\|opus-5-5\|opus-4-7\|sonnet\|haiku/);
+  await terminal.waitFor(/Usage: \/model opus\|opus-4-6\|opus-5-5\|opus-4-7\|sonnet\|haiku/);
 
   // Claude Code loses the conversation: a new one starts, carrying the text, said before it is sent.
   rmSync(terminal.fake.sessions, { recursive: true, force: true });

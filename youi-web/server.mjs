@@ -286,14 +286,15 @@ function fireDetection(state, assistantContent) {
 // Ollama models available in settings. The Ollama Cloud names are the direct
 // API's (GET https://ollama.com/api/tags, 2026-10-31, the same on
 // 2026-11-03); through a signed-in local Ollama the same model is
-// "<name>:cloud" or "<name:tag>-cloud" (ollama-routes.mjs). Ollama retires cloud models often (13 between June and
-// September 2026), so this list goes stale; a local Ollama's own list is read
-// at runtime as well.
+// "<name>:cloud" or "<name:tag>-cloud" (ollama-routes.mjs). Ollama retires
+// cloud models often (13 between June and September 2026), so this list goes
+// stale; a local Ollama's own list is read at runtime as well.
 const OLLAMA_CLOUD_MODELS = [
   // The latest open-weights model of each family (Yu chose the latest
   // open-weights models over local ones, 2026-11-03), ordered for family
   // diversity with the default first, not cheapest first: the minds tools pick
   // unnamed minds in this order, so the first nine span different families.
+  // Kimi's place is kimi-k2.7-code; the newer kimi-k3 is opt-in only (below).
   // muse-spark-open is left out (its licence limits commercial use), as is
   // clef:27b (a decision model, not chat).
   "deepseek-v4.1-flash", "glm-5.3", "minimax-m3.1-flash", "mistral-large-4",

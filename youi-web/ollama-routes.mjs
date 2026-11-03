@@ -13,9 +13,9 @@
 // both decide routes here, so the two agree.
 
 // YOUI names no local models of its own (Yu, 2026-11-03: the latest
-// open-weights models on Ollama Cloud, none run locally). A model counts as
-// local only when the local Ollama lists it, so one pulled later still routes
-// to the local Ollama by its exact name.
+// open-weights models on Ollama Cloud instead). A model counts as local only
+// when the local Ollama lists it, so one pulled later still routes to the
+// local Ollama by its exact name.
 
 // "glm-5.3:cloud" and "gpt-oss:120b-cloud" are daemon names for Ollama Cloud models.
 export function isOllamaCloudName(model) {

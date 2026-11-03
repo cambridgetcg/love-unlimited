@@ -87,6 +87,12 @@ test("/api/tags remote stubs are cloud, and only an exact name is installed", ()
   for (const local of [{}, running, keyed, { keyConfigured: true }]) {
     assert.equal(ollamaRoute("llama3.2:latest", local).provider, "ollama_cloud", JSON.stringify(local));
   }
+  // The former local picks are local only when listed, like any other name.
+  for (const name of ["qwen3.5:4b", "gemma4:12b"]) {
+    for (const local of [{}, { keyConfigured: true }, { running: true }, { running: true, keyConfigured: true }]) {
+      assert.equal(ollamaRoute(name, local).provider, "ollama_cloud", `${name} ${JSON.stringify(local)}`);
+    }
+  }
 });
 
 // ── The model list ──────────────────────────────────────────────────
@@ -107,6 +113,9 @@ test("the Ollama Cloud list is the same in Settings and the server, default firs
   for (const gone of ["nemotron-3-super", "qwen3.5:4b", "gemma4:12b", "muse-spark-open", "clef:27b"]) {
     assert.ok(!listed.includes(gone), `${gone} is not listed`);
   }
+  // The former local picks lived in OLLAMA_MODELS; neither is named there now.
+  const models = server.match(/const OLLAMA_MODELS = \[([\s\S]*?)\];/)[1];
+  for (const pick of ["qwen3.5:4b", "gemma4:12b"]) assert.ok(!models.includes(pick), `${pick} is not in OLLAMA_MODELS`);
   // No static local options: the local group appears only for what the local Ollama lists.
   assert.doesNotMatch(page, /id="local-model-options"/);
   const priced = new Set(names(server.match(/const OLLAMA_PRICING = \{([\s\S]*?)\n\};/)[1].replace(/\/\/.*$/gm, "")));

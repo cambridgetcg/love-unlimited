@@ -426,7 +426,11 @@ test("GET /api/minds needs a browser session, a YOUI session and status:read", a
   assert.equal(minds["ollama_cloud:kimi-k3"], undefined, "kimi-k3 is picked by name in Settings, never fanned out to as a mind");
   assert.equal(minds["ollama_cloud:deepseek-v4.1-flash"].state, "not_granted", "the default is a mind");
   assert.equal(minds["ollama_cloud:mimo-v2.6-pro"].state, "not_granted");
+  assert.equal(minds["ollama_cloud:nemotron-3-ultra"].state, "not_granted");
   assert.equal(minds["ollama_cloud:nemotron-3-super"], undefined, "superseded by nemotron-3-ultra");
+  // Unnamed minds are picked in list order, so the minds keep the list's order.
+  const cloudOrder = read.json.minds.filter(mind => mind.provider === "ollama_cloud").map(mind => mind.model);
+  assert.deepEqual(cloudOrder.slice(0, 3), ["deepseek-v4.1-flash", "glm-5.3", "minimax-m3.1-flash"]);
   assert.equal(minds["ollama_cloud:glm-5.1"], undefined, "a retired name is gone");
 
   await request(port, { path: "/api/minds", headers: sessionHeaders(browser, credential) });

@@ -1,0 +1,37 @@
+{
+  "author_attestation": {
+    "check_patterns_changed_after_comparison": "The numeric check patterns were rewritten and the two Cantonese checks dropped after the comparison; no prompt's input changed.",
+    "date": "2026-10-31",
+    "kind": "project-authored-synthetic",
+    "new_prompt_count": 72,
+    "prompts_changed_after_comparison": false,
+    "prompts_written_before_comparison": true,
+    "status": "author-attested-not-independently-proven"
+  },
+  "benchmark_id": "youspeak-onoff-v0",
+  "comparison": {
+    "compared_against": {
+      "bytes": 3379843,
+      "contents_recorded": false,
+      "files": 420,
+      "selection": "git-tracked .md, .txt, .json, .jsonl, .yaml and .yml files under USER.md, SOUL.md, identity/alpha, instances/alpha and memory, at commit 798e1c35bdde937aed6fa328b195a54d3dbf1888"
+    },
+    "exact_normalized_matches": 0,
+    "limitations": [
+      "Short prompts share common phrases (\"what is the\") with any large English text, so containment above zero is expected.",
+      "A lexical comparison cannot prove that no idea, situation or persona was drawn from the compared files.",
+      "Only git-tracked files were compared; untracked local files and real conversations held elsewhere were not."
+    ],
+    "maximum_trigram_containment": {
+      "found": 2,
+      "of": 5,
+      "prompt_id": "onoff-fact-07",
+      "value": 0.4
+    },
+    "mean_trigram_containment": 0.0743,
+    "method": "Each text becomes a set of trigrams: lowercase ASCII alphanumeric token trigrams, plus trigrams of consecutive CJK characters (U+3400 to U+9FFF). For each prompt, containment is the share of its trigrams found anywhere in the compared files.",
+    "normalized_exact_method": "A prompt's ASCII tokens and CJK characters joined by single spaces, searched for in the same normalisation of each compared file.",
+    "result": "zero-normalized-exact-matches; the highest containment is two common three-word phrases in a five-trigram factual question"
+  },
+  "schema": "kingdom.youspeak-onoff-contamination-receipt/v0"
+}

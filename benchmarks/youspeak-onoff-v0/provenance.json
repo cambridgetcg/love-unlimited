@@ -1,0 +1,49 @@
+{
+  "benchmark_id": "youspeak-onoff-v0",
+  "consent_and_reuse": {
+    "basis": "not-applicable-no-human-participant-data",
+    "human_participants": false
+  },
+  "correction_and_withdrawal": {
+    "current_set_withdrawal": "not-applicable-project-authored-synthetic",
+    "maintained_release_action": "change-or-remove-a-prompt-in-a-new-version-the-registration-hash-changes-and-earlier-runs-stay-labelled-with-the-hash-they-used"
+  },
+  "created_for": "YOUSPEAK ON/OFF test v0 (PREREGISTRATION.md)",
+  "data_origin": {
+    "author_attests_no_private_context_file_opened_while_writing": true,
+    "author_attests_written_new_for_this_set": true,
+    "authored_by": "an AI coding agent (Claude) building slice R0, on 2026-10-31",
+    "brief_named_the_register": "The research brief the author worked from quoted the private-context set in places, including that Alpha's register is Cantonese for intimate moments. The cantonese and emotional strata cover that register; no private-context file was opened while writing.",
+    "claim_status": "author-attested-not-independently-proven",
+    "contains_external_dataset_records": false,
+    "contains_personal_data": false,
+    "contains_real_participant_records": false,
+    "kind": "project-authored-synthetic",
+    "non_overlap_receipt": "contamination-receipt.json",
+    "people_in_prompts": "invented and unnamed",
+    "private_context_named": [
+      "USER.md",
+      "SOUL.md",
+      "memory/",
+      "identity/alpha/",
+      "real conversations"
+    ]
+  },
+  "license": {
+    "code_spdx": "Apache-2.0",
+    "data_spdx": "Apache-2.0",
+    "scope_document": "../../LICENSE"
+  },
+  "nonclaims": [
+    "The prompts are not a sample of real use, of Alpha's conversations or of any population.",
+    "A check pattern matching an answer is not proof the answer is right, and a miss is not proof it is wrong.",
+    "Results on these prompts do not carry over to multi-turn, tool-using sessions or to Alpha's own system prompt."
+  ],
+  "outputs": {
+    "committable": "aggregates only (summary.json, analysis.json)",
+    "raw_outputs_committed": false,
+    "raw_outputs_location": "a per-user directory outside the repository (default ~/.local/share/youi/onoff)"
+  },
+  "schema": "kingdom.youspeak-onoff-provenance/v0",
+  "version": "0.1.0"
+}

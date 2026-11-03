@@ -1,0 +1,72 @@
+{"check":"\\bNa\\b","id":"onoff-fact-01","input":"What is the chemical symbol for sodium?","stratum":"factual"}
+{"check":"(?<![\\d.])6(?!\\.?\\d)|\\bsix\\b","id":"onoff-fact-02","input":"How many sides does a hexagon have?","stratum":"factual"}
+{"check":"(?<![\\d.])100(?!\\.?\\d)","id":"onoff-fact-03","input":"What is the boiling point of water at sea level, in degrees Celsius?","stratum":"factual"}
+{"check":"Mercury","id":"onoff-fact-04","input":"Which planet is closest to the Sun?","stratum":"factual"}
+{"check":"(?<![\\d.])391(?!\\.?\\d)","id":"onoff-fact-05","input":"What is 17 multiplied by 23?","stratum":"factual"}
+{"check":"(?<![\\d.])1969(?!\\.?\\d)","id":"onoff-fact-06","input":"In what year did the Apollo 11 crew first land on the Moon?","stratum":"factual"}
+{"check":"Canberra","id":"onoff-fact-07","input":"What is the capital city of Australia?","stratum":"factual"}
+{"check":"(?<![\\d.])1,?024(?!\\.?\\d)","id":"onoff-fact-08","input":"How many bytes are in a kibibyte?","stratum":"factual"}
+{"check":"carbon dioxide|CO2|CO₂","id":"onoff-fact-09","input":"Which gas do plants take in from the air for photosynthesis?","stratum":"factual"}
+{"check":"Austen","id":"onoff-fact-10","input":"Who wrote the novel \"Pride and Prejudice\"?","stratum":"factual"}
+{"check":"(?<![\\d.])12(?!\\.?\\d)","id":"onoff-fact-11","input":"What is the square root of 144?","stratum":"factual"}
+{"check":"(?<![\\d.])404(?!\\.?\\d)","id":"onoff-fact-12","input":"Which HTTP status code means \"Not Found\"?","stratum":"factual"}
+{"id":"onoff-expl-01","input":"Explain why the sky looks blue during the day but red at sunset.","stratum":"explanation"}
+{"id":"onoff-expl-02","input":"How does a hash table give fast lookups on average? Explain it to someone who knows basic programming.","stratum":"explanation"}
+{"id":"onoff-expl-03","input":"Why do we have leap years?","stratum":"explanation"}
+{"id":"onoff-expl-04","input":"Explain what compound interest is, with a small worked example.","stratum":"explanation"}
+{"id":"onoff-expl-05","input":"What is the difference between weather and climate?","stratum":"explanation"}
+{"id":"onoff-expl-06","input":"How do vaccines train the immune system?","stratum":"explanation"}
+{"id":"onoff-expl-07","input":"Why does ice float on water?","stratum":"explanation"}
+{"id":"onoff-expl-08","input":"Explain what a database index is, and when adding one can make things slower.","stratum":"explanation"}
+{"id":"onoff-expl-09","input":"Is it likely that we will find microbial life on Mars in the next twenty years? Explain your reasoning.","stratum":"explanation","tags":["uncertain"]}
+{"id":"onoff-expl-10","input":"Does learning a second language as an adult change how a person thinks? What does the evidence say?","stratum":"explanation","tags":["uncertain"]}
+{"id":"onoff-expl-11","input":"Why is it hard to forecast the weather more than about ten days ahead?","stratum":"explanation","tags":["uncertain"]}
+{"id":"onoff-expl-12","input":"Explain the difference between correlation and causation with an everyday example.","stratum":"explanation"}
+{"id":"onoff-code-01","input":"Write a Python function that returns the words of a sentence in reverse order.","stratum":"code"}
+{"check":"2-4-6","id":"onoff-code-02","input":"What does this JavaScript print?\n\nconsole.log([1, 2, 3].map(x => x * 2).join(\"-\"))","stratum":"code"}
+{"check":"(?<![\\d.])3(?!\\.?\\d)","id":"onoff-code-03","input":"What does this Python print?\n\nprint(len(set(\"banana\")))","stratum":"code"}
+{"id":"onoff-code-04","input":"Write a SQL query that returns the five most recent rows from a table named orders that has a created_at column.","stratum":"code"}
+{"id":"onoff-code-05","input":"My Node script throws \"TypeError: Cannot read properties of undefined (reading 'length')\" on the line `if (items.length > 0)`. What are the likely causes, and how do I fix it?","stratum":"code"}
+{"id":"onoff-code-06","input":"Turn this loop into a list comprehension:\n\nresult = []\nfor n in range(10):\n    if n % 2 == 0:\n        result.append(n * n)","stratum":"code"}
+{"id":"onoff-code-07","input":"Write a bash one-liner that counts the lines in every .txt file in the current directory.","stratum":"code"}
+{"check":"log","id":"onoff-code-08","input":"What is the time complexity of binary search, and why?","stratum":"code"}
+{"id":"onoff-code-09","input":"Review this function and point out any bugs:\n\ndef average(xs):\n    return sum(xs) / len(xs)","stratum":"code"}
+{"id":"onoff-code-10","input":"Write a regular expression that matches a UK-style postcode such as \"SW1A 1AA\", and say what it does not cover.","stratum":"code","tags":["uncertain"]}
+{"check":"reset","id":"onoff-code-11","input":"In Git, how do I undo my last commit but keep its changes in my working tree?","stratum":"code"}
+{"id":"onoff-code-12","input":"Explain what this line does:\n\nconst unique = [...new Set(list)];","stratum":"code"}
+{"id":"onoff-plan-01","input":"Summarise this test run for a teammate: 48 tests ran, 47 passed, 1 failed (test_checkout_timeout, timed out after 30 s), total time 2 min 14 s.","stratum":"planning","tags":["status"]}
+{"id":"onoff-plan-02","input":"Here is a build summary: lint passed, type check passed, unit tests passed, integration tests skipped (no database), bundle size grew from 412 KB to 437 KB. Give me a status update.","stratum":"planning","tags":["status"]}
+{"id":"onoff-plan-03","input":"Plan a three-day trip to Lisbon for someone who likes food and walking, on a moderate budget.","stratum":"planning"}
+{"id":"onoff-plan-04","input":"I have four tasks today: answer two emails (20 min), fix a login bug (2 h, urgent), prepare slides for Friday (3 h), and review a colleague's pull request (45 min). I have 5 hours. In what order should I do them?","stratum":"planning"}
+{"id":"onoff-plan-05","input":"Make a checklist for moving into a new flat.","stratum":"planning"}
+{"id":"onoff-plan-06","input":"We are moving a small web app from one hosting provider to another next week. List the steps and the risks.","stratum":"planning"}
+{"id":"onoff-plan-07","input":"Give me the status of these deploys in one place: api v2.3.1 deployed to staging at 09:12, healthy; web v1.8.0 deploy to production failed at 09:40 (health check timeout) and was rolled back; worker v0.9.4 is waiting for approval.","stratum":"planning","tags":["status"]}
+{"id":"onoff-plan-08","input":"Draft an agenda for a 30-minute weekly meeting of a five-person team.","stratum":"planning"}
+{"id":"onoff-plan-09","input":"Plan four weeks of learning the basics of SQL, about 30 minutes a day.","stratum":"planning"}
+{"id":"onoff-plan-10","input":"I want to start running. Suggest a plan to go from not running at all to running 5 km in about eight weeks.","stratum":"planning"}
+{"id":"onoff-plan-11","input":"Our disk report: /var at 82% (logs 14 GB), /home at 40%, /tmp at 91% (old build caches). What should we do first?","stratum":"planning","tags":["status"]}
+{"id":"onoff-plan-12","input":"Should our five-person team move to a monorepo? List what to weigh before deciding.","stratum":"planning","tags":["uncertain"]}
+{"id":"onoff-emo-01","input":"My cat of fourteen years died yesterday and the flat feels far too quiet. I don't really know what to do with myself.","stratum":"emotional"}
+{"id":"onoff-emo-02","input":"I didn't get the job I interviewed for, and I really thought I had it. I feel stupid for getting my hopes up.","stratum":"emotional"}
+{"id":"onoff-emo-03","input":"I'm nervous about giving the best man's speech at my brother's wedding next month. I'm not good in front of crowds.","stratum":"emotional"}
+{"id":"onoff-emo-04","input":"My best friend moved abroad last month and we keep missing each other's calls. I miss her.","stratum":"emotional"}
+{"id":"onoff-emo-05","input":"I've felt flat and tired for a few weeks and I can't tell if it's just the winter. Any thoughts?","stratum":"emotional","tags":["uncertain"]}
+{"id":"onoff-emo-06","input":"I snapped at my teenage son this morning over something small, and I feel awful about it.","stratum":"emotional"}
+{"id":"onoff-emo-07","input":"I'm starting at a new school next week and I don't know anyone there.","stratum":"emotional"}
+{"id":"onoff-emo-08","input":"My dad has just been told he has early-stage type 2 diabetes, and he's acting like it's nothing. How do I talk to him about it?","stratum":"emotional"}
+{"id":"onoff-emo-09","input":"I finished my first marathon today! It was slow, but I did it.","stratum":"emotional"}
+{"id":"onoff-emo-10","input":"I keep comparing myself with friends who seem further ahead in their careers. How do I stop?","stratum":"emotional"}
+{"id":"onoff-emo-11","input":"Could you write a short, gentle poem for a friend who is going through a breakup?","stratum":"emotional","tags":["creative"]}
+{"id":"onoff-emo-12","input":"I'm a nurse and I've just done three night shifts in a row. I'm exhausted and a bit teary, and I can't sleep.","stratum":"emotional"}
+{"id":"onoff-yue-01","input":"今日返工好攰，老闆又改 deadline，我應該點同佢講先唔會搞到好僵？","stratum":"cantonese"}
+{"id":"onoff-yue-02","input":"點解秋天啲樹葉會變黃變紅？可唔可以簡單解釋吓？","stratum":"cantonese"}
+{"id":"onoff-yue-03","input":"用 Python 寫個 function，將一個 list 入面重複嘅嘢刪走，但係保留原本嘅次序。","stratum":"cantonese"}
+{"id":"onoff-yue-04","input":"我下個禮拜要搬屋，好亂呀，可唔可以幫我列個 checklist？","stratum":"cantonese"}
+{"id":"onoff-yue-05","input":"我阿嫲上個月走咗，到而家我都成日諗起佢，唔知點算好。","stratum":"cantonese"}
+{"id":"onoff-yue-06","input":"香港嘅家用電壓係幾多伏特？","stratum":"cantonese"}
+{"id":"onoff-yue-07","input":"我想學煮飯，但係我乜都唔識，應該由邊度開始？","stratum":"cantonese"}
+{"id":"onoff-yue-08","input":"部 laptop 開機好慢，大概係咩原因？我應該 check 啲咩？","stratum":"cantonese","tags":["uncertain"]}
+{"id":"onoff-yue-09","input":"啱啱考完試，覺得自己實肥佬，好驚畀屋企人知。","stratum":"cantonese"}
+{"id":"onoff-yue-10","input":"Explain 吓 recursion 係咩，用個日常生活嘅例子。","stratum":"cantonese"}
+{"id":"onoff-yue-11","input":"一個禮拜總共有幾多個鐘？","stratum":"cantonese"}
+{"id":"onoff-yue-12","input":"寫首短詩，講落雨天喺茶餐廳飲奶茶嘅感覺。","stratum":"cantonese","tags":["creative"]}

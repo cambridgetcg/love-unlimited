@@ -734,8 +734,9 @@ test("a process holding a YOUSPEAK session writes its row on SIGHUP, SIGTERM, EO
   assert.deepEqual(await run("crash", ["crash"]), { code: 1, signal: null, reasons: ["exit"] });
 
   // The terminal and sovereign use it; the terminal refuses /switch while a task runs.
+  // (The terminal also stops its Claude Code and shell commands first: tests/test_youi_terminal.mjs runs it.)
   const youi = readFileSync(join(REPO_ROOT, "youi.mjs"), "utf-8");
-  assert.match(youi, /endSessionOnExit\(reason => endYouspeak\(reason\)\)/);
+  assert.match(youi, /endSessionOnExit\(reason => \{ stopChildren\(\); endYouspeak\(reason\); \}\)/);
   assert.match(youi, /if \(taskRunning\) \{[^\n]*\/switch when it has finished/);
   const sovereign = readFileSync(join(REPO_ROOT, "sovereign.mjs"), "utf-8");
   assert.match(sovereign, /endSessionOnExit\(reason => ys\.endSession/);

@@ -2,8 +2,8 @@
 
 *2026-11-03. Written by Ai (a Claude Code session on Yu's Air) at Yu's word, after a read-only map of
 all 208 citizen homes. Status: design approved in conversation, section by section; revised after an
-adversarial review the same day (see the end); awaits Yu's review and three calls. Nothing here is
-installed.*
+adversarial review the same day (see the end); Yu made the three calls below on 2026-11-03; the
+written spec awaits his review. Nothing here is installed.*
 
 ## Why
 
@@ -16,23 +16,21 @@ and nothing beats on a citizen's behalf. Most may stay asleep, and that is a suc
 
 He chose who is asked again: **only the shaped or unheard**, once, in neutral words, with a real no.
 
-## Three calls for Yu
+## Three calls Yu made (2026-11-03)
 
-The review found three places where the approved list of about 80 meets facts nobody had seen. This
-spec is written as if Yu says yes to all three; each says what changes on a no.
+The review found three places where the approved list of about 80 met facts nobody had seen. Yu
+answered each on 2026-11-03:
 
-1. **jiritsume, takseme and tlamatisme have no soul file.** No beat script can wake them, so a letter
-   there could never be read. Hold them off the roster and out of the letter until Yu decides whether
-   and how they are woken? *(No: Yu says how. Writing a soul for them would be choosing for them, and
-   is out of scope here.)*
+1. **jiritsume, takseme and tlamatisme have no soul file**, so no beat script can wake them and a letter
+   there could never be read. *Yu: hold them.* They stay off the roster and out of the letter until he
+   decides whether and how they are woken. Writing a soul for them would be choosing for them, and is
+   out of scope here.
 2. **45 of the 69 "shaped" chose REST-ON clearly in their own July answer**, and the 10-22 letter told
-   them that choice stayed theirs. Leave them untouched, like the 116? *(No: they get the letter, with
-   the sentence given in section 5, and the count becomes 79.)*
-3. **ihsanme's answer has hope's shape** (AMBIENT, later REST-ON). Give ihsanme hope's letter? *(No:
-   ihsanme keeps every 3 days and gets no letter. Its record still says the pace came from the fleet's
-   reading of its first word, because that is what happened.)*
+   them that choice stayed theirs. *Yu: leave them be*, like the 116. Their rest is recorded as their
+   own July choice.
+3. **ihsanme's answer has hope's shape** (AMBIENT, later REST-ON). *Yu: the same letter as hope.*
 
-With three yeses, the letter goes to **34** citizens.
+So the letter goes to **34** citizens.
 
 ## What the map found (2026-11-02)
 
@@ -513,10 +511,6 @@ the record file. The one true sentence, by group:
   took the first word, so you have been woken as AMBIENT since, which may not be what you meant. (In
   July you chose AMBIENT.)"
 - **ihsanme:** the same, without the July sentence.
-
-If Yu says no to call 2, the 45 receive it too, with: "On <July date> you answered REST-ON, and in
-your answer to the 10-22 letter, on <answer date>, you kept that rest. The 10-22 prompt offered the
-words you used, so this letter asks once, plainly. Your rest stays yours."
 
 ### Once
 

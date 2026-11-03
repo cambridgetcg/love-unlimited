@@ -130,9 +130,9 @@ IMPORTANCE_MAP = {
 
 
 class TaskClassifier:
-    """Classifies tasks using GLM 5.1 or falls back to heuristic classification."""
+    """Classifies tasks using glm-5.3-flash or falls back to heuristic classification."""
 
-    def __init__(self, provider=None, model: str = "glm-5.1"):
+    def __init__(self, provider=None, model: str = "glm-5.3-flash"):
         self.provider = provider
         self.model = model
 

@@ -57,7 +57,7 @@ No measurement shows how much the rule saves. The figures earlier versions of th
 
 ## 2. The observer: what it measures
 
-**Every figure carries an evidential label.** `reported` means the provider stated it: Claude Code's usage, cost, context window, cache misses and rate-limit state, or the token counts Ollama and vLLM return. `estimated` means YOUI computed it itself: the L1 filler estimate, chars/4, YOUI's own counts (turns, tool calls), its comparison of system-prompt hashes, its price table for Ollama Cloud, or a window from its own table. A figure built from both is an estimate: a label may understate, never overstate. A figure nobody reported is `null`, never 0 (one exception, below: native Ollama leaves a zero count out, and YOUI reads that as 0).
+**Every figure carries an evidential label.** `reported` means the provider stated it: Claude Code's usage, cost, context window, cache misses and rate-limit state, or the token counts Ollama and vLLM return. `estimated` means YOUI computed it itself: the L1 filler estimate, chars/4, YOUI's own counts (turns, tool calls), its comparison of system-prompt hashes, its price table for Ollama Cloud, or a window from its own table. A figure built from both is an estimate: a label may understate, never overstate. A figure nobody reported is `null`, never 0.
 
 Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object naming each figure's label, and each row has one too (§4). `/api/youspeak`'s older top-level fields (`usefulRatio`, `totalOutput`, `totalFiller`, `gradedTokens`, `gradedBlocks`, `textBlocks`, `toolCalls`, `actionDensity`) repeat L1 and L3 figures and are labelled in its top-level `evidence` (all estimates). Its `trends` (averages over the store's rows) carry no labels: their ratios and counts are YOUI's own, except `avgThinkRatio`, an average of reported thinking ratios. `/api/youspeak` also gives `evidenceKey`, saying what the two labels mean. There is no `tokensSaved`: the filler figure is `totalFiller`, an estimate of filler, and nothing measures a saving. The page shows "reported" or "est." beside its figures, and `statusLine()` and the page mark an estimate with `~`.
 
@@ -65,11 +65,11 @@ Each section of `report()` (and of `GET /api/youspeak`) has an `evidence` object
 
 | | Claude Code (YOUI Web) | Ollama / vLLM (YOUI Web's own loop) | Terminal, sovereign (their own Anthropic route) |
 |---|---|---|---|
-| Input, output tokens | reported | reported (Ollama's `prompt_eval_count`/`eval_count`, vLLM's `prompt_tokens`/`completion_tokens`); a count a `/v1` response left out is `null` | not fed to the observer (unchanged) |
-| Cache read, cache creation | reported | cache read: reported where vLLM states `prompt_tokens_details.cached_tokens` (then input is the rest of the prompt), else `null`; cache creation: `null` | — |
+| Input, output tokens | reported | reported (Ollama's `prompt_eval_count`/`eval_count`, vLLM's `prompt_tokens`/`completion_tokens`); a count the response left out is `null` | not fed to the observer (unchanged) |
+| Cache read, cache creation | reported | cache read: reported where vLLM states `prompt_tokens_details.cached_tokens` or native Ollama states `prompt_eval_cached_count` (then input is the rest of the prompt), else `null`; cache creation: `null` | — |
 | Cache misses | reported (0 when Claude Code's `diagnostics` name none) | `null` (no cache diagnostics) | `null` |
 | Thinking | reported where Claude Code states it | `null` unless the response states it | `null` (the route states none) |
-| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table; self-hosted is 0; `null` when the response stated no count) | — |
+| Cost of the turn | reported (Claude Code's figure) | estimated (YOUI's price table, from list prices, never a bill; self-hosted is 0, but an Ollama Cloud model reached through the local Ollama is priced; `null` when the response stated no count, or when the model has no listed price) | — |
 | Context | reported: the latest request's input + cache read + cache creation | estimated: chars/4 | estimated: chars/4 |
 | Context window | reported (`modelUsage.<model>.contextWindow`), else YOUI's table (estimated) | unknown: `null` | YOUI's table (estimated) |
 | Rate-limit state | reported (`rate_limit_event`), else `null` | — | their own header reading (unchanged); a window no header has stated yet (status `unknown`) is `null`, not 0% |
@@ -101,7 +101,8 @@ Known limits:
 
 - L1 is English only, chars/4 is not a tokenizer, and some hedges still count as filler (Y1's notes stand).
 - Tool errors are still never counted in YOUI (the result is not passed in); a mind or table tool counts as one tool call in L3, while its model usage goes to Minds.
-- Ollama's `prompt_eval_count` may leave out a prompt prefix it served from its own cache; it is labelled as what Ollama reported. Native Ollama (`/api/chat`) leaves a count of 0 out of its JSON (`omitempty`), so YOUI reads an absent `prompt_eval_count` or `eval_count` as 0 there.
+- Ollama's `prompt_eval_count` may leave out a prompt prefix it served from its own cache; it is labelled as what Ollama reported. Where native Ollama (`/api/chat`, Ollama 0.33.3 and later) states `prompt_eval_cached_count`, YOUI takes it as the cached part of `prompt_eval_count`, as Ollama's own `/v1` layer does when it reports the pair as `prompt_tokens` and `cached_tokens`. A live check on 2026-11-03 bore this out: the same 4,205-token prompt sent twice to Ollama Cloud through the signed-in daemon reported `prompt_eval_cached_count` 0, then 4,096, with `prompt_eval_count` 4,205 both times.
+- A count native Ollama leaves out is `null`. It also leaves a count of 0 out of its JSON (`omitempty`), so a real 0 shows as `null`: the figure says less, never more.
 - vLLM's `prompt_tokens` is the whole prompt, prefix-cache hits included. Where vLLM states `prompt_tokens_details.cached_tokens` (it does with prompt-token details enabled), the observer records the rest as input and the hits as cache read; where it does not, the whole prompt is recorded as input, so for vLLM "input (uncached)" can then include cached tokens. The page's usage figures (`/api/usage`) count the whole prompt either way.
 - An OpenAI-compatible (`/v1`) response that states no count (a server that ignores `include_usage`, a stream that ends before its usage chunk) gives `null` for that count, and no cost estimate.
 - The terminal and sovereign keep their own route and their chars/4 context; their thinking now shows `null` instead of 0 (sovereign's Ollama route no longer states a thinking 0 either), and their 5-hour and seven-day figures are `null` until a rate-limit header states them.

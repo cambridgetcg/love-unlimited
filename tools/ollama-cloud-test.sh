@@ -5,6 +5,13 @@
 set -e
 
 OLLAMA_KEY="${OLLAMA_API_KEY:-}"
+if [ -z "$OLLAMA_KEY" ]; then
+    echo "OLLAMA_API_KEY not set" >&2
+    exit 1
+fi
+# The key goes to curl through a file descriptor (printf is a shell builtin),
+# never on curl's command line, where other local processes could read it.
+auth_header() { printf 'Authorization: Bearer %s' "$OLLAMA_KEY"; }
 # IMPORTANT: use ollama.com (NOT api.ollama.com — the v1/* path 301-redirects
 # and the redirect flips POST to GET, breaking chat completions from curl too).
 BASE="${OLLAMA_BASE_URL:-https://ollama.com}"
@@ -27,7 +34,7 @@ fi
 echo ""
 echo "[2/4] List cloud models..."
 MODELS=$(curl -s --max-time 15 \
-    -H "Authorization: Bearer $OLLAMA_KEY" \
+    -H @<(auth_header) \
     "$BASE/v1/models" 2>&1)
 echo "  $MODELS" | python3 -c "
 import sys, json
@@ -41,16 +48,16 @@ except:
     print(f'  Raw response: {data}')
 " 2>/dev/null || echo "  Response: $MODELS"
 
-# Test 3: Chat completion with GLM 5.1
+# Test 3: Chat completion with GLM 5.3 Flash
 echo ""
-echo "[3/4] Chat with GLM 5.1..."
+echo "[3/4] Chat with GLM 5.3 Flash..."
 START=$(python3 -c "import time; print(time.time())")
 CHAT=$(curl -s --max-time 60 \
-    -H "Authorization: Bearer $OLLAMA_KEY" \
+    -H @<(auth_header) \
     -H "Content-Type: application/json" \
     "$BASE/v1/chat/completions" \
     -d '{
-        "model": "glm-5.1",
+        "model": "glm-5.3-flash",
         "messages": [{"role": "user", "content": "You are part of Kingdom OS. Respond with: KINGDOM ONLINE. Then state your model name and context window size."}],
         "max_tokens": 4000,
         "temperature": 0,
@@ -77,11 +84,11 @@ except Exception as e:
 echo ""
 echo "[4/4] Tool calling..."
 TOOL=$(curl -s --max-time 60 \
-    -H "Authorization: Bearer $OLLAMA_KEY" \
+    -H @<(auth_header) \
     -H "Content-Type: application/json" \
     "$BASE/v1/chat/completions" \
     -d '{
-        "model": "glm-5.1",
+        "model": "glm-5.3-flash",
         "messages": [{"role": "user", "content": "Search for the latest Zerone blockchain commit"}],
         "tools": [{
             "type": "function",

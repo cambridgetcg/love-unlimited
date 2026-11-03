@@ -42,11 +42,25 @@ class StageResult:
     usage: TokenUsage = field(default_factory=TokenUsage)
     elapsed_seconds: float = 0.0
     error: str = ""
+    # What the runner actually routed to; the router picks by role, so this
+    # can differ from the planned target. Empty when nothing was routed.
+    called_provider: str = ""
+    called_model: str = ""
+
+    @property
+    def provider(self) -> str:
+        return self.called_provider or self.target.provider
+
+    @property
+    def model(self) -> str:
+        return self.called_model or self.target.model
 
     def to_dict(self) -> dict:
         return {
-            "provider": self.target.provider,
-            "model": self.target.model,
+            "provider": self.provider,
+            "model": self.model,
+            "planned_provider": self.target.provider,
+            "planned_model": self.target.model,
             "role": self.target.role,
             "success": self.success,
             "content_length": len(self.content),
@@ -73,6 +87,14 @@ class OrchestrationResult:
     def success(self) -> bool:
         return bool(self.content) and any(s.success for s in self.stages)
 
+    @property
+    def error(self) -> str:
+        """Why the run failed: each failed stage's error, or that it gave no output."""
+        if self.success:
+            return ""
+        errors = [f"{s.model}: {s.error}" for s in self.stages if s.error]
+        return "; ".join(errors) or "no stage produced output"
+
     def summary(self) -> str:
         lines = [
             f"═══ Orchestration Result ═══",
@@ -84,6 +106,8 @@ class OrchestrationResult:
             f"  Total time: {self.total_elapsed:.1f}s",
             f"  Output: {len(self.content)} chars",
         ]
+        if self.error:
+            lines.append(f"  Error: {self.error}")
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
@@ -96,6 +120,7 @@ class OrchestrationResult:
             "total_elapsed": round(self.total_elapsed, 2),
             "output_length": len(self.content),
             "success": self.success,
+            "error": self.error,
             "profile": self.profile.to_dict() if self.profile else None,
         }
 
@@ -124,11 +149,11 @@ class OrchestrationEngine:
         self.verbose = verbose
 
     def _get_classifier(self) -> TaskClassifier:
-        """Lazy-init classifier with GLM 5.1 provider."""
+        """Lazy-init classifier with the cheap glm-5.3-flash provider."""
         if self.classifier is None:
             try:
                 provider = self.router._get_provider("ollama_cloud")
-                self.classifier = TaskClassifier(provider=provider, model="glm-5.1")
+                self.classifier = TaskClassifier(provider=provider, model="glm-5.3-flash")
             except Exception:
                 self.classifier = TaskClassifier()  # Heuristic fallback
         return self.classifier
@@ -181,6 +206,8 @@ class OrchestrationEngine:
                 success=True,
                 usage=runner.total_usage,
                 elapsed_seconds=elapsed,
+                called_provider=runner.last_provider or "",
+                called_model=runner.last_model or "",
             )
         except Exception as e:
             elapsed = time.time() - start
@@ -192,6 +219,8 @@ class OrchestrationEngine:
                 usage=runner.total_usage,
                 elapsed_seconds=elapsed,
                 error=str(e),
+                called_provider=runner.last_provider or "",
+                called_model=runner.last_model or "",
             )
 
     # ── Collaboration Mode Executors ──────────────────────────────────────
@@ -304,7 +333,7 @@ class OrchestrationEngine:
     ) -> OrchestrationResult:
         """Decompose into sub-tasks, execute in parallel, merge results.
 
-        GLM 5.1 orchestrates: decomposes → dispatches workers → synthesises.
+        GLM 5.3 orchestrates: decomposes → dispatches workers → synthesises.
         """
         stages = []
         total_usage = TokenUsage()
@@ -335,7 +364,7 @@ class OrchestrationEngine:
                 total_usage.input_tokens += result.usage.input_tokens
                 total_usage.output_tokens += result.usage.output_tokens
 
-        # Synthesis: GLM 5.1 merges all sub-results
+        # Synthesis: GLM 5.3 merges all sub-results
         if plan.reviewer:
             synthesis_parts = []
             for sub_task, result in sub_results:
@@ -388,7 +417,7 @@ class OrchestrationEngine:
     ) -> OrchestrationResult:
         """Multiple models attempt the same task. Best result wins.
 
-        All candidates run in parallel. GLM 5.1 judges the outputs.
+        All candidates run in parallel. GLM 5.3 judges the outputs.
         """
         stages = []
         total_usage = TokenUsage()
@@ -434,7 +463,7 @@ class OrchestrationEngine:
         if len(candidate_results) == 1:
             final_content = candidate_results[0].content
         else:
-            # Judge: GLM 5.1 picks the best
+            # Judge: GLM 5.3 picks the best
             judge_parts = []
             for i, r in enumerate(candidate_results):
                 judge_parts.append(
@@ -612,11 +641,11 @@ class OrchestrationEngine:
             result = executor(plan, task)
         except Exception as e:
             log.error(f"Orchestration failed: {e}\n{traceback.format_exc()}")
-            # Emergency fallback: solo with GLM 5.1
+            # Emergency fallback: solo with glm-5.3
             fallback_plan = DispatchPlan(
                 primary=DispatchTarget(
                     provider="ollama_cloud",
-                    model="glm-5.1",
+                    model="glm-5.3",
                     role="coordinator",
                     reason="Emergency fallback after orchestration failure",
                 ),
@@ -627,6 +656,10 @@ class OrchestrationEngine:
             result = self._run_solo(fallback_plan, task)
 
         result.total_elapsed = time.time() - start_time
+        # Report the models and providers the stages called, in order (a stage
+        # whose routing raised before any call reports its planned target).
+        result.models_used = list(dict.fromkeys(s.model for s in result.stages))
+        result.providers_used = list(dict.fromkeys(s.provider for s in result.stages))
         return result
 
     def classify_only(self, task: str, context: str = "") -> TaskProfile:

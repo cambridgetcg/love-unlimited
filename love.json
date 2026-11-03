@@ -114,12 +114,12 @@
         "api_url": "https://ollama.com",
         "api_key_env": "OLLAMA_API_KEY",
         "models": {
-          "premium": "glm-5.1",
-          "standard": "deepseek-v3.2",
-          "economy": "devstral-small-2:24b"
+          "premium": "glm-5.3",
+          "standard": "deepseek-v4.1-flash",
+          "economy": "glm-5.3-flash"
         },
         "min_max_tokens": 4000,
-        "notes": "36 models, $100/mo flat, unlimited, no data logging"
+        "notes": "Model names from ollama.com/api/tags on 2026-10-31; current plans priced per token (ollama.com/pricing); older subscriptions may keep session/weekly limits"
       },
       "anthropic": {
         "api_url": "https://api.anthropic.com/v1",

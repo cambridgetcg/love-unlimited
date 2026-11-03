@@ -104,7 +104,7 @@ for (let i = 0; i < args.length; i++) {
     case "--append-soul":     config.appendSoul = args[++i]; break;
     case "--fallback":        config.fallback = true; break;
     case "--provider":        config.provider = args[++i]; break;
-    case "--ollama":          config.provider = "ollama"; config.model = args[++i] || "glm-5.1"; break;
+    case "--ollama":          config.provider = "ollama"; config.model = args[++i] || "deepseek-v4.1-flash"; break;
     case "--no-lazy":         config.lazyLoad = false; break;
     case "--no-youspeak":     config.youspeak = false; break;
     case "--no-efficiency":   config.trackEfficiency = false; break;
@@ -146,7 +146,7 @@ Efficiency (YOUSPEAK):
 
 Provider:
   --provider PROVIDER   anthropic|ollama|auto (default: auto-detect from model)
-  --ollama [MODEL]      Shortcut for --provider ollama --model MODEL (default: glm-5.1)
+  --ollama [MODEL]      Shortcut for --provider ollama --model MODEL (default: deepseek-v4.1-flash)
 
 Execution:
   --workdir DIR         Working directory
@@ -378,7 +378,7 @@ function formatBudgetStatus() {
 
 // ── Provider Detection ──
 // Auto-detect provider from model name. Ollama models use OpenAI-compatible API.
-const OLLAMA_MODEL_PREFIXES = ["glm", "qwen", "deepseek", "gemma", "kimi", "minimax", "mistral", "cogito", "devstral", "nemotron", "rnj", "gpt-oss", "ministral"];
+const OLLAMA_MODEL_PREFIXES = ["glm", "qwen", "deepseek", "gemma", "kimi", "minimax", "mistral", "cogito", "devstral", "nemotron", "rnj", "gpt-oss", "ministral", "beam", "mimo"];
 
 function detectProvider(model) {
   if (config.provider !== "auto") return config.provider;
@@ -520,7 +520,9 @@ async function callOllamaAPI(messages, systemPrompt) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${config.ollamaApiKey}`,
+      // No key, no header: a local Ollama (OLLAMA_BASE_URL=http://localhost:11434)
+      // needs none, and ollama.com answers a missing key with 401 either way.
+      ...(config.ollamaApiKey ? { "Authorization": `Bearer ${config.ollamaApiKey}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -1211,8 +1213,8 @@ async function main() {
         if (config.fallback) {
           const fallbacks = {
             "claude-opus-4-6": "claude-sonnet-4-6",
-            "claude-sonnet-4-6": "glm-5.1",          // Fall to Ollama Cloud — free tier!
-            "claude-haiku-4-5-20251001": "glm-5.1",
+            "claude-sonnet-4-6": "deepseek-v4.1-flash",    // Fall to Ollama Cloud (priced per token on current plans)
+            "claude-haiku-4-5-20251001": "deepseek-v4.1-flash",
           };
           const fb = fallbacks[config.model];
           if (fb) {

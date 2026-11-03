@@ -133,9 +133,10 @@ mutations also require same-origin CSRF validation and the active page lease.
 The default `safe` profile grants chat/status/session/settings and selected
 read/orchestration operations, not filesystem write, shell, HIVE, autonomous,
 publish, or deploy authority. `YOUI_CAPABILITY_PROFILE=developer` adds local
-filesystem read/write, Git read/commit, memory write, and YOUSPEAK reset, but
-still does not add shell, unrestricted filesystem, HIVE, AgentTool mutation,
-autonomous, push, publication, deploy, or Ollama Cloud fallback.
+filesystem read/write, Git read/commit, memory write, YOUSPEAK reset, and
+Ollama Cloud models (`models:ollama-cloud`), but still does not add shell,
+unrestricted filesystem, HIVE, AgentTool mutation, autonomous, push,
+publication, deploy, or Ollama Cloud fallback.
 
 `safe` means reduced tool/side-effect authority, not local-only inference:
 chat, model use, and adaptive orchestration can send selected input to the
@@ -155,7 +156,62 @@ include `REMOTE_MODEL:anthropic`, `REMOTE_MODEL:vllm`,
 `BLOCKED:ollama-cloud-capability-required`; orchestration is labelled
 separately. Local Ollama never routes directly to cloud without
 `models:ollama-cloud`, and local-to-cloud fallback additionally requires
-`models:cloud-fallback`. Neither grant is in `safe` or `developer`.
+`models:cloud-fallback`. `developer` has the first grant and not the second;
+`safe` has neither. `models:ollama-cloud` also permits a non-loopback
+`OLLAMA_LOCAL_BASE_URL` (labelled `REMOTE_MODEL:ollama-configured-endpoint`),
+so `developer` allows one; without the grant, nothing is sent to such an
+endpoint, and the route shows as `BLOCKED`. The grant covers YOUI's own
+Ollama routes only: the adaptive orchestrator (`/api/orchestrate/*`, labelled
+`REMOTE_MODEL:adaptive-orchestrator`) finds its own provider credentials and
+can reach Ollama Cloud from `safe` too.
+
+A signed-in local Ollama also serves Ollama Cloud models: a name whose tag
+is `:cloud` or ends in `-cloud`, or a model its `GET /api/tags` lists with
+`remote_host` or `remote_model`. YOUI counts those as Ollama Cloud even
+though they go through localhost, because the content leaves the device:
+they need `models:ollama-cloud`, show as `REMOTE_MODEL:ollama-cloud`, and
+their cost is estimated from YOUI's price table. Only an exact name counts as
+installed, so `gemma4:31b` is not local because `gemma4:12b` is pulled; the
+one alias is Ollama's default tag, so `llama3.2` matches `llama3.2:latest`.
+When a `GET /api/tags` read fails, the last list that answered is kept, so a
+listed model still goes to the local Ollama (which reports it down) rather
+than to Ollama Cloud. The privacy label and the bridge read the same list. With
+no `OLLAMA_API_KEY`, a running local Ollama is the route to Ollama Cloud. With
+a key, a model that is neither listed nor named with a cloud suffix goes to
+the direct API; so does a cloud name when no local Ollama answers, with the
+suffix removed, since the direct API names models without it.
+
+The Settings model menu lists Ollama Cloud models and whatever the local
+Ollama lists when it runs. YOUI has no local picks of its own: Yu chose the
+latest open-weights models on Ollama Cloud rather than local ones
+(2026-11-03), so nothing is local unless the local Ollama lists it, and a
+model pulled later goes to the local Ollama by its exact name. The Ollama
+Cloud list is the latest open-weights model of each family in
+`https://ollama.com/api/tags` as of 2026-11-03. The first nine are one per
+family, the default first, since the minds tools pick unnamed minds in list
+order: `deepseek-v4.1-flash`, `glm-5.3`, `minimax-m3.1-flash`,
+`mistral-large-4`, `mimo-v2.6-pro`, `kimi-k2.7-code`, `nemotron-3-ultra`,
+`gemma4:31b`, `gpt-oss:120b` (Kimi's place is `kimi-k2.7-code`; the newer
+`kimi-k3` is opt-in only, see below). Then come smaller or heavier siblings
+(`glm-5.3-flash`, `mimo-v2.6-flash`, `gpt-oss:20b`, `deepseek-v4-pro:0813`),
+then `beam` and `kimi-k3`. `nemotron-3-ultra` replaces `nemotron-3-super`.
+`muse-spark-open` is left out because its licence limits commercial use, and
+`clef:27b` because it is a decision model, not a chat model. Ollama retires
+cloud models often, so the static list goes stale; a retired name fails when
+called. `deepseek-v4.1-flash` is the default where a call names no model.
+`kimi-k3` has the highest list price ($3.00 in, $15.00 out per 1M tokens) and
+is never a default and never a mind, even as a stub the local Ollama lists, so
+the minds tools never call it; the `ollama` tool and `POST /api/ollama/chat`
+still call any model named to them, and their calls are not in the session
+cost. `beam` is unpriced (Ollama listed it free for a limited time in 2026-10,
+end date not stated) and is never a default. The price table (`OLLAMA_PRICING`
+in `youi-web/server.mjs`) copies `https://ollama.com/pricing` as fetched on
+2026-10-31 (the `mimo-v2.6-pro`, `mimo-v2.6-flash` and `nemotron-3-ultra` rows
+again on 2026-11-03, unchanged), with DeepSeek at its peak rate. Its costs are
+estimates from list price, not a bill; plan credits are not applied. A cloud
+call on a model not in the table, or whose response states no token count, is
+counted as unpriced, and the usage panel shows `+ N unpriced` instead of a
+guessed cost.
 
 Model-facing subprocesses receive an allowlisted environment. Provider or
 adapter credentials are delegated only by explicit variable name for that

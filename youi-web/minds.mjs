@@ -8,8 +8,9 @@
 //   reachable       a cheap probe of its endpoint answered and lists the model
 //   unreachable     the probe failed, or the endpoint does not serve the model
 //   not_granted     this session lacks the capability; nothing was probed
-//   not_configured  a required setting is missing (no Ollama Cloud key, no
-//                   local models pulled); nothing was called
+//   not_configured  a required setting is missing (neither an Ollama Cloud
+//                   key nor a local Ollama to go through, no local models
+//                   pulled); nothing was called
 //   unchecked       not probed by design; the first real call proves it
 //
 // Probes are GET /api/tags (local Ollama) and GET /v1/models (vLLM), about
@@ -18,10 +19,19 @@
 // cached for about a minute. The registry never calls a model, never reads a
 // credential and never contacts Ollama Cloud to find out.
 //
+// A model the local Ollama lists as remote (a ":cloud" or "-cloud" name, or
+// remote_host / remote_model in /api/tags) is an Ollama Cloud mind, not a
+// local one: its content leaves the device, so it needs models:ollama-cloud.
+// A running local Ollama also counts as a way to reach the Ollama Cloud
+// minds without a key (it forwards them with its own sign-in, which the
+// registry does not check; the first call proves it).
+//
 // Claude minds are not_configured when Claude Code is missing, unreachable
 // when its version is below what a model needs (every model needs YOUI's floor, 2.1.299) or
 // cannot be read, and otherwise unchecked until a real answer.
 // Only granted minds that are reachable or unchecked are offered.
+
+import { ollamaDirectName, readOllamaTags } from "./ollama-routes.mjs";
 
 export const MIND_STATES = Object.freeze([
   "reachable", "unreachable", "not_granted", "not_configured", "unchecked",
@@ -48,7 +58,7 @@ function probeError(error, timeoutMs) {
  * @param {string} options.vllmBaseUrl      OLLAMA_VLLM_BASE_URL
  * @param {boolean} options.localEndpointIsLoopback
  * @param {() => boolean} options.cloudKeyConfigured  whether OLLAMA_API_KEY is set
- * @param {(provider: string) => {route: string, destination: string|null}} options.computeRoute
+ * @param {(provider: string, options?: {throughDaemon?: boolean}) => {route: string, destination: string|null}} options.computeRoute
  *   the server's privacy labels, so each label is spelt in one place
  * @param {string|null} [options.claudeCodeMissing]  why Claude Code cannot be
  *   run (no binary), or null when it can
@@ -61,6 +71,8 @@ export function createMindsRegistry({
   claudeModels = [],
   vllmModels = [],
   cloudModels = [],
+  // Direct-API names never offered as minds, even as a stub the local Ollama lists (opt-in models).
+  excludeModels = new Set(),
   isVllmModel = () => false,
   localBaseUrl,
   vllmBaseUrl,
@@ -90,11 +102,12 @@ export function createMindsRegistry({
         method: "GET",
         signal: AbortSignal.timeout(probeTimeoutMs),
       });
-      if (!response.ok) return { at, ok: false, models: [], error: `status ${response.status}` };
-      const models = readModels(await response.json()).filter(model => typeof model === "string");
-      return { at, ok: true, models, error: null };
+      if (!response.ok) return { at, ok: false, models: [], remote: [], error: `status ${response.status}` };
+      const read = readModels(await response.json());
+      const models = read.models.filter(model => typeof model === "string");
+      return { at, ok: true, models, remote: read.remote || [], error: null };
     } catch (error) {
-      return { at, ok: false, models: [], error: probeError(error, probeTimeoutMs) };
+      return { at, ok: false, models: [], remote: [], error: probeError(error, probeTimeoutMs) };
     }
   }
 
@@ -129,17 +142,14 @@ export function createMindsRegistry({
     return pending;
   }
 
-  const probeLocal = () => probe(
-    `${localBaseUrl}/api/tags`,
-    data => (data?.models || []).map(model => model?.name || model?.model),
-  );
+  const probeLocal = () => probe(`${localBaseUrl}/api/tags`, readOllamaTags);
   const probeVllm = () => probe(
     `${vllmBaseUrl}/v1/models`,
-    data => (data?.data || []).map(model => model?.id),
+    data => ({ models: (data?.data || []).map(model => model?.id) }),
   );
 
-  function entry(provider, model, capability, state, note, checkedAt = null) {
-    const { route, destination } = computeRoute(provider);
+  function entry(provider, model, capability, state, note, checkedAt = null, routeOptions = undefined) {
+    const { route, destination } = computeRoute(provider, routeOptions);
     return {
       id: model ? `${provider}:${model}` : provider,
       provider,
@@ -209,24 +219,49 @@ export function createMindsRegistry({
     if (!result.ok) {
       return [entry("ollama", null, capability, "unreachable", `GET /api/tags: ${result.error}`, result.at)];
     }
-    if (result.models.length === 0) {
-      return [entry("ollama", null, capability, "not_configured", "Ollama answered with no models pulled", result.at)];
+    const installed = result.models.filter(model => !result.remote.includes(model));
+    if (installed.length === 0) {
+      return [entry("ollama", null, capability, "not_configured", "Ollama answered with no local models pulled", result.at)];
     }
-    return result.models.map(model =>
+    return installed.map(model =>
       entry("ollama", model, capability, "reachable", "listed by GET /api/tags", result.at));
   }
 
-  function cloudMinds(capabilities) {
+  async function cloudMinds(capabilities) {
     const granted = capabilities.has("models:use") && capabilities.has("models:ollama-cloud");
-    const configured = granted && cloudKeyConfigured();
-    return cloudModels.map(model => {
-      if (!granted) return entry("ollama_cloud", model, "models:ollama-cloud", "not_granted", "needs models:ollama-cloud");
-      if (!configured) return entry("ollama_cloud", model, "models:ollama-cloud", "not_configured", "OLLAMA_API_KEY is not set");
+    if (!granted) {
+      return cloudModels.map(model =>
+        entry("ollama_cloud", model, "models:ollama-cloud", "not_granted", "needs models:ollama-cloud"));
+    }
+    // The local Ollama is read only with the grant: it is the other way to Ollama Cloud.
+    const local = await probeLocal();
+    const keyed = cloudKeyConfigured();
+    const viaLocal = !keyed && local.ok;
+    const listed = cloudModels.map(model => {
+      if (!keyed && !local.ok) {
+        return entry(
+          "ollama_cloud", model, "models:ollama-cloud", "not_configured",
+          "OLLAMA_API_KEY is not set and no local Ollama answered GET /api/tags", local.at,
+        );
+      }
       return entry(
         "ollama_cloud", model, "models:ollama-cloud", "unchecked",
-        "not probed: YOUI does not contact Ollama Cloud to probe; the first call proves it",
+        viaLocal
+          ? "through the local Ollama, whose sign-in is not checked; not probed: the first call proves it"
+          : "not probed: YOUI does not contact Ollama Cloud to probe; the first call proves it",
+        viaLocal ? local.at : null,
+        { throughDaemon: viaLocal },
       );
     });
+    // A stub is the same model as a static entry when its direct name is ("glm-5.3-flash:cloud").
+    const stubs = local.ok
+      ? local.remote.filter(model => !cloudModels.includes(ollamaDirectName(model)) && !excludeModels.has(ollamaDirectName(model)))
+      : [];
+    return [...listed, ...stubs.map(model => entry(
+      "ollama_cloud", model, "models:ollama-cloud", "unchecked",
+      "listed by GET /api/tags as an Ollama Cloud model the local Ollama forwards; not probed: the first call proves it",
+      local.at, { throughDaemon: true },
+    ))];
   }
 
   return {
@@ -237,10 +272,10 @@ export function createMindsRegistry({
      */
     async list({ capabilities = new Set() } = {}) {
       const granted = capabilities.has("models:use");
-      const [anthropic, vllm, local] = await Promise.all([
-        anthropicMinds(granted), vllmMinds(granted), localMinds(capabilities),
+      const [anthropic, vllm, local, cloud] = await Promise.all([
+        anthropicMinds(granted), vllmMinds(granted), localMinds(capabilities), cloudMinds(capabilities),
       ]);
-      const minds = [...anthropic, ...vllm, ...local, ...cloudMinds(capabilities)];
+      const minds = [...anthropic, ...vllm, ...local, ...cloud];
       const probedAt = minds.map(mind => mind.checked_at).filter(Boolean).sort();
       return { minds, checked_at: probedAt[0] || null, cache_ttl_ms: cacheTtlMs };
     },

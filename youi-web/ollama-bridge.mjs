@@ -34,6 +34,7 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import { redactDelegatedCredentials } from "./subprocess-env.mjs";
+import { ollamaDirectName, ollamaRoute, ollamaThinkValue, readOllamaTags } from "./ollama-routes.mjs";
 
 // Ollama Cloud key. Required from env — the previous in-source fallback was
 // committed to a public repo and must be considered compromised; rotate at
@@ -56,6 +57,13 @@ const OLLAMA_VLLM_BASE  = process.env.OLLAMA_VLLM_BASE_URL  || "http://localhost
 //   Qwen/* — base Qwen models served via vLLM
 //   kingdom-truth* — our SFT/alignment LoRA adapters (kingdom-truth, kingdom-truth-v2)
 const VLLM_MODEL_REGEX  = /^(Qwen\/|kingdom-truth)/i;
+// The context window asked of a local model on native /api/chat. Ollama's own
+// default on a machine with under 24 GiB of GPU memory is 4096 tokens, which
+// cuts YOUI's system prompt; YOUI_OLLAMA_NUM_CTX overrides 32768.
+const OLLAMA_NUM_CTX = (() => {
+  const configured = Number.parseInt(process.env.YOUI_OLLAMA_NUM_CTX || "", 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : 32768;
+})();
 
 function redactOllamaCredential(value) {
   return redactDelegatedCredentials(value, {
@@ -92,14 +100,22 @@ function configuredEndpointIsLoopback(rawUrl) {
 // ── Local model detection ───────────────────────────────────────────
 let localModels = null;   // cached list of locally-installed models
 let localChecked = 0;     // timestamp of last check
+let lastListed = { models: [], remote: [] }; // the last GET /api/tags that answered
 const LOCAL_CHECK_INTERVAL = 60_000; // re-check every 60s
 
 /**
  * Detect whether local Ollama is running and which models are available.
- * Returns { running: bool, models: string[], base: string } or null if unreachable.
+ * Returns { running: bool, models: string[], remote: string[], base: string };
+ * `remote` names the listed models the daemon forwards to Ollama Cloud. When
+ * a read fails, `running` is false and the lists are the last read that
+ * answered, so a listed model is still routed to the local Ollama
+ * (ollamaRoute), never to Ollama Cloud because one read failed. The server
+ * reads this same cache (refreshOllamaLocal, ollamaLocalSnapshot), so the
+ * route it labels is the route taken here.
  */
 async function detectLocalOllama(signal, {
   allowRemoteEndpoint = false,
+  force = false,
 } = {}) {
   // A setting named LOCAL must not silently become an ungranted network
   // egress route when it is pointed at a LAN or internet host.
@@ -107,12 +123,13 @@ async function detectLocalOllama(signal, {
     return {
       running: false,
       models: [],
+      remote: [],
       base: null,
       blockedRemoteEndpoint: true,
     };
   }
   // Cache: don't re-probe every request
-  if (localModels && Date.now() - localChecked < LOCAL_CHECK_INTERVAL) return localModels;
+  if (!force && localModels && Date.now() - localChecked < LOCAL_CHECK_INTERVAL) return localModels;
 
   throwIfAborted(signal);
   const request = linkedAbortController(signal, 3000, "Local Ollama detection timed out");
@@ -121,15 +138,15 @@ async function detectLocalOllama(signal, {
       signal: request.controller.signal,
     });
     if (!resp.ok) throw new Error(`status ${resp.status}`);
-    const data = await resp.json();
-    const models = (data.models || []).map(m => m.name || m.model);
-    localModels = { running: true, models, base: OLLAMA_LOCAL_BASE };
+    const { models, remote } = readOllamaTags(await resp.json());
+    localModels = { running: true, models, remote, base: OLLAMA_LOCAL_BASE };
+    lastListed = { models, remote };
     localChecked = Date.now();
     console.log(`[ollama] Local detected: ${models.length} models (${models.join(", ")})`);
     return localModels;
   } catch (error) {
     if (signal?.aborted) throw abortReason(signal);
-    localModels = { running: false, models: [], base: null };
+    localModels = { running: false, models: lastListed.models, remote: lastListed.remote, base: null };
     localChecked = Date.now();
     return localModels;
   } finally {
@@ -138,28 +155,102 @@ async function detectLocalOllama(signal, {
 }
 
 /**
- * Determine the base URL and provider for a given model.
- * Local first: if the model is installed locally, use localhost.
- * Cloud fallback: if model isn't local, use ollama.com.
- * Returns { base, provider, auth } where auth is the Bearer header value or null.
+ * Re-reads GET /api/tags (at most once a minute unless `force`) into the
+ * cache ollamaChat routes by. The server calls this instead of reading the
+ * tags itself. `allowRemoteEndpoint`: whether a non-loopback
+ * OLLAMA_LOCAL_BASE_URL may be read (models:ollama-cloud).
+ */
+export function refreshOllamaLocal({ allowRemoteEndpoint = false, force = false, signal = null } = {}) {
+  return detectLocalOllama(signal, { allowRemoteEndpoint, force });
+}
+
+/** The cached read ollamaChat routes by, without a new read. */
+export function ollamaLocalSnapshot() {
+  return localModels || { running: false, models: lastListed.models, remote: lastListed.remote, base: null };
+}
+
+// The configured local endpoint as protocol and host: a URL's user:password
+// never reaches a log line.
+function logDestination(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return "the configured endpoint";
+  }
+}
+
+/**
+ * Determine the base URL, provider and model name for a given model
+ * (ollamaRoute in ollama-routes.mjs decides; exact names only).
+ * Returns { base, provider, via, model, auth } where auth is the Bearer header
+ * value or null. A cloud model the local Ollama forwards (via "daemon") is
+ * provider "ollama_cloud" with base localhost and no auth: the daemon signs it.
  */
 function resolveEndpoint(modelName, localInfo) {
-  // Strip tag suffixes for matching (e.g. "qwen2.5:7b" → "qwen2.5")
-  const modelNameBase = modelName.split(":")[0];
-
-  if (localInfo?.running) {
-    // Exact match first, then base match
-    const exactMatch = localInfo.models.includes(modelName);
-    const baseMatch = localInfo.models.some(m => m.split(":")[0] === modelNameBase);
-    if (exactMatch || baseMatch) {
-      return { base: OLLAMA_LOCAL_BASE, provider: "ollama_local", auth: null };
-    }
+  const route = ollamaRoute(modelName, {
+    running: localInfo?.running === true,
+    models: localInfo?.models || [],
+    remote: localInfo?.remote || [],
+    keyConfigured: Boolean(OLLAMA_API_KEY),
+  });
+  if (route.via !== "direct") {
+    return { base: OLLAMA_LOCAL_BASE, provider: route.provider, via: route.via, model: route.model, auth: null };
   }
-
-  // Cloud fallback. If we have no key the resolution still names cloud as
-  // the route — callers can detect missing auth and surface a clean error
+  // Direct to ollama.com. If we have no key the resolution still names cloud
+  // as the route — callers can detect missing auth and surface a clean error
   // instead of sending an unauthenticated request.
-  return { base: OLLAMA_CLOUD_BASE, provider: "ollama_cloud", auth: OLLAMA_API_KEY, missingAuth: !OLLAMA_API_KEY };
+  return {
+    base: OLLAMA_CLOUD_BASE, provider: "ollama_cloud", via: "direct", model: route.model,
+    auth: OLLAMA_API_KEY, missingAuth: !OLLAMA_API_KEY,
+  };
+}
+
+// ── Thinking values per model ───────────────────────────────────────
+// "base model" -> { values: array|null, at }. A read that answered is kept
+// for the process; a failed read is tried again after LOCAL_CHECK_INTERVAL.
+const thinkingValues = new Map();
+
+/**
+ * The thinking values a model's POST /api/show states (thinking.values), or
+ * null when it states none or the read failed. Called only after the route is
+ * allowed, against the endpoint the chat itself goes to.
+ */
+async function modelThinkingValues(base, auth, model, signal) {
+  const key = `${base} ${model}`;
+  const cached = thinkingValues.get(key);
+  if (cached && (cached.answered || Date.now() - cached.at < LOCAL_CHECK_INTERVAL)) return cached.values;
+  throwIfAborted(signal);
+  const request = linkedAbortController(signal, 3000, "Ollama model details timed out");
+  let values = null;
+  let answered = false;
+  try {
+    const headers = { "Content-Type": "application/json" };
+    if (auth) headers["Authorization"] = `Bearer ${auth}`;
+    const resp = await fetch(`${base}/api/show`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model }),
+      signal: request.controller.signal,
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      answered = data !== null;
+      if (Array.isArray(data?.thinking?.values)) values = data.thinking.values;
+    }
+  } catch {
+    if (signal?.aborted) throw abortReason(signal);
+  } finally {
+    request.cleanup();
+  }
+  thinkingValues.set(key, { values, answered, at: Date.now() });
+  return values;
+}
+
+// The think value for this model and effort, or undefined to send none.
+async function thinkFor(reasoningEffort, base, auth, model, signal) {
+  if (!reasoningEffort) return undefined;
+  return ollamaThinkValue(reasoningEffort, await modelThinkingValues(base, auth, model, signal));
 }
 
 // ── Retry configuration ─────────────────────────────────────────────
@@ -219,8 +310,8 @@ function abortableDelay(milliseconds, signal) {
 // ── Timeout presets by model tier ───────────────────────────────────
 function selectTimeout(model = "") {
   const m = model.toLowerCase();
-  if (/devstral|gemma4|ministral/.test(m)) return 30000;   // economy: 30s
-  if (/glm-5|cogito|kimi|qwen3-coder|qwen2\.5/.test(m)) return 180000; // premium: 3min
+  // premium: 3min (the large thinking models, and the 72B vLLM model)
+  if (/kimi|glm-5\.3(?!-flash)|deepseek-v4-pro|mistral-large|mimo-v2\.6-pro|nemotron-3-ultra|qwen2\.5/.test(m)) return 180000;
   return 120000;  // standard: 2min
 }
 
@@ -321,11 +412,12 @@ async function postWithRetry(endpoint, body, timeout, opts = {}) {
  */
 function buildV1Body(oaiMessages, options) {
   const {
-    model = "glm-5.1",
+    model = "deepseek-v4.1-flash",
     maxTokens = 8000,
     temperature = 0.7,
     tools = null,
     reasoningEffort = null,
+    think,
   } = options;
 
   const body = {
@@ -336,7 +428,12 @@ function buildV1Body(oaiMessages, options) {
     stream: false,
   };
 
-  if (reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
+  // Ollama: `think` is what the model's /api/show allows (undefined sends
+  // nothing, so the model's default applies). vLLM: the effort as before.
+  if (think !== undefined) {
+    if (think === false) body.reasoning_effort = "none";
+    else if (typeof think === "string") body.reasoning_effort = think;
+  } else if (options.passEffort && reasoningEffort && ["none", "low", "medium", "high"].includes(reasoningEffort)) {
     body.reasoning_effort = reasoningEffort;
   }
 
@@ -345,7 +442,9 @@ function buildV1Body(oaiMessages, options) {
       type: "function",
       function: { name: t.name, description: t.description, parameters: t.input_schema || t.parameters }
     });
-    body.tool_choice = "auto";
+    // vLLM takes tool_choice; Ollama's /v1 lists it as unsupported, so it is
+    // left out there (the model decides whether to call a tool either way).
+    if (options.passEffort) body.tool_choice = "auto";
   }
 
   return body;
@@ -353,33 +452,30 @@ function buildV1Body(oaiMessages, options) {
 
 /**
  * Build native /api/chat request body.
- * Uses `think` parameter (bool or "low"/"medium"/"high") and `options.num_predict`.
+ * `think` is sent only when given (a value the model's /api/show lists);
+ * otherwise the model's default applies. `numCtx` sets options.num_ctx.
  */
 function buildNativeBody(oaiMessages, options) {
   const {
-    model = "glm-5.1",
+    model = "deepseek-v4.1-flash",
     maxTokens = 8000,
     temperature = 0.7,
     tools = null,
-    reasoningEffort = null,
+    think,
+    numCtx = null,
   } = options;
-
-  // Map reasoning_effort → think parameter
-  let think;
-  if (reasoningEffort === "none") think = false;
-  else if (["low", "medium", "high"].includes(reasoningEffort)) think = reasoningEffort;
-  else think = true; // default: enable thinking
 
   const body = {
     model,
     messages: oaiMessages,
     stream: false,
-    think,
     options: {
       num_predict: maxTokens,
       temperature,
+      ...(numCtx ? { num_ctx: numCtx } : {}),
     },
   };
+  if (think !== undefined) body.think = think;
 
   if (tools?.length) {
     body.tools = tools.map(t => t.type === "function" ? t : {
@@ -400,12 +496,20 @@ function buildNativeBody(oaiMessages, options) {
  * (`prompt_tokens_details.cached_tokens`, as vLLM can), the prompt is also
  * split into `uncached_input_tokens` and `cache_read_input_tokens`.
  */
+const usageCount = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
+
 function v1Usage(usage) {
-  const count = value => (typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null);
-  const prompt = count(usage?.prompt_tokens);
-  const completion = count(usage?.completion_tokens);
-  const cached = count(usage?.prompt_tokens_details?.cached_tokens);
-  const total = count(usage?.total_tokens) ?? (prompt !== null && completion !== null ? prompt + completion : null);
+  return usageFigures({
+    prompt: usageCount(usage?.prompt_tokens),
+    completion: usageCount(usage?.completion_tokens),
+    cached: usageCount(usage?.prompt_tokens_details?.cached_tokens),
+    total: usageCount(usage?.total_tokens),
+  });
+}
+
+// Shared by both endpoints: null stays null, and a stated cached count splits the prompt.
+function usageFigures({ prompt, completion, cached, total = null }) {
+  total ??= prompt !== null && completion !== null ? prompt + completion : null;
   return {
     input_tokens: prompt,
     output_tokens: completion,
@@ -457,7 +561,7 @@ function parseV1Response(data, model) {
  *
  * Native response format:
  *   {
- *     "model": "glm-5.1",
+ *     "model": "deepseek-v4.1-flash",
  *     "message": { "role": "assistant", "content": "...", "thinking": "...", "tool_calls": [...] },
  *     "done": true,
  *     "done_reason": "stop",
@@ -497,11 +601,18 @@ function parseNativeResponse(data, model) {
     content,
     stop_reason: message.tool_calls ? "tool_use" : (data.done_reason === "length" ? "max_tokens" : "end_turn"),
     model: data.model || model,
-    usage: {
-      input_tokens: data.prompt_eval_count || 0,
-      output_tokens: data.eval_count || 0,
-      total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0),
-    },
+    // A count the response leaves out is null, never 0 (docs/YOUSPEAK.md §2).
+    // Native Ollama also leaves a count of 0 out (omitempty), so a real 0 reads
+    // as null: it says less, never more. prompt_eval_cached_count (Ollama
+    // 0.33.3+) is taken as the cached part of prompt_eval_count, as Ollama's
+    // own /v1 layer reports the pair as prompt_tokens and cached_tokens. A live
+    // check on 2026-11-03 bore this out: a repeated 4,205-token prompt to
+    // Ollama Cloud through the daemon reported 4,096 of them as cached.
+    usage: usageFigures({
+      prompt: usageCount(data.prompt_eval_count),
+      completion: usageCount(data.eval_count),
+      cached: usageCount(data.prompt_eval_cached_count),
+    }),
     // Native API bonus metrics (nanoseconds → milliseconds)
     _metrics: {
       total_duration_ms: data.total_duration ? Math.round(data.total_duration / 1e6) : undefined,
@@ -643,15 +754,17 @@ async function streamV1Chat(url, body, timeout, onDelta, signal) {
  *
  * Strategy:
  *   1. Detect local Ollama (localhost:11434)
- *   2. If model is available locally → use local /api/chat (native API)
- *      Local Ollama only supports the native /api/chat endpoint, not /v1.
- *   3. If model is NOT local → use cloud /v1/chat/completions (OpenAI-compat)
- *      with retry, falling back to cloud /api/chat (native) on failure.
- *   4. If local is down and cloud also fails → error
+ *   2. If the exact model is installed locally → use local /api/chat (native API)
+ *   3. If it is an Ollama Cloud model the local Ollama forwards (a remote stub,
+ *      a ":cloud"/"-cloud" name, or any name while no key is set) → local
+ *      /api/chat, but as Ollama Cloud: it needs allowCloudRoute
+ *   4. Otherwise → cloud /v1/chat/completions (OpenAI-compat) with the key and
+ *      the direct name, falling back to cloud /api/chat (native) on failure.
+ *   5. If local is down and cloud also fails → error
  */
 export async function ollamaChat(messages, options = {}) {
   const {
-    model = "glm-5.1",
+    model = "deepseek-v4.1-flash",
     system = null,
     maxTokens = 8000,
     temperature = 0.7,
@@ -699,7 +812,7 @@ export async function ollamaChat(messages, options = {}) {
         oaiMessages.push({ role: msg.role, content: msg.content || "" });
       }
     }
-    const v1Body = buildV1Body(oaiMessages, { model, maxTokens, temperature, tools, reasoningEffort });
+    const v1Body = buildV1Body(oaiMessages, { model, maxTokens, temperature, tools, reasoningEffort, passEffort: true });
 
     // Streaming path: token-by-token via SSE
     if (onDelta) {
@@ -723,6 +836,17 @@ export async function ollamaChat(messages, options = {}) {
   const localInfo = await detectLocalOllama(signal, {
     allowRemoteEndpoint: allowCloudRoute,
   });
+  // A LOCAL setting pointed off this device is network egress: without
+  // models:ollama-cloud nothing goes to it.
+  if (localInfo?.blockedRemoteEndpoint) {
+    return {
+      ok: false,
+      status: 0,
+      error: "The configured local Ollama endpoint is not on this device; sending to it needs models:ollama-cloud.",
+      latency: "0.00",
+      _provider: "ollama_local",
+    };
+  }
   const endpoint = resolveEndpoint(model, localInfo);
   if (endpoint.provider !== "ollama_local" && !allowCloudRoute) {
     return {
@@ -767,12 +891,16 @@ export async function ollamaChat(messages, options = {}) {
     }
   }
 
-  const effectiveOptions = { model, maxTokens, temperature, tools, reasoningEffort };
+  const effectiveOptions = { model, maxTokens, temperature, tools };
 
   // ── LOCAL: /api/chat (native Ollama API) ───────────────────────────
   if (endpoint.provider === "ollama_local") {
-    console.log(`[ollama] Using LOCAL ${endpoint.base} for model ${model}`);
-    const localBody = buildNativeBody(oaiMessages, effectiveOptions);
+    console.log(`[ollama] Using LOCAL ${logDestination(endpoint.base)} for model ${model}`);
+    const localBody = buildNativeBody(oaiMessages, {
+      ...effectiveOptions,
+      think: await thinkFor(reasoningEffort, endpoint.base, null, model, signal),
+      numCtx: OLLAMA_NUM_CTX,
+    });
     const localResult = await postWithRetry("/api/chat", localBody, effectiveTimeout, {
       base: endpoint.base, auth: null, signal,
     });
@@ -805,24 +933,64 @@ export async function ollamaChat(messages, options = {}) {
     );
   }
 
+  // ── CLOUD THROUGH THE LOCAL OLLAMA: /api/chat, signed by the daemon ──
+  // No key leaves YOUI, but the content leaves the device: this is Ollama
+  // Cloud, allowed above only with allowCloudRoute, and never a fallback.
+  if (endpoint.via === "daemon") {
+    console.log(`[ollama] Using Ollama Cloud through ${logDestination(endpoint.base)} for model ${endpoint.model}`);
+    const daemonBody = buildNativeBody(oaiMessages, {
+      ...effectiveOptions,
+      model: endpoint.model,
+      think: await thinkFor(reasoningEffort, endpoint.base, null, endpoint.model, signal),
+    });
+    const daemonResult = await postWithRetry("/api/chat", daemonBody, effectiveTimeout, {
+      base: endpoint.base, auth: null, signal,
+    });
+    if (daemonResult.ok) {
+      const parsed = parseNativeResponse(daemonResult.data, endpoint.model);
+      return {
+        ok: true, status: daemonResult.status,
+        ...parsed,
+        latency: daemonResult.latency,
+        _provider: "ollama_cloud", _endpoint: "native", _via: "local-daemon",
+      };
+    }
+    return {
+      ok: false,
+      status: daemonResult.status,
+      error: `Ollama Cloud through the local Ollama failed: ${daemonResult.error || "unknown"}`,
+      latency: daemonResult.latency,
+      _provider: "ollama_cloud",
+      _endpoint: "native",
+      _via: "local-daemon",
+    };
+  }
+
   if (!OLLAMA_API_KEY) {
     return {
       ok: false,
       status: 0,
-      error: "Ollama cloud route is unavailable because OLLAMA_API_KEY is not configured.",
+      error: "Ollama cloud route is unavailable because OLLAMA_API_KEY is not configured and no local Ollama answered.",
       latency: "0.00",
       _provider: "ollama_cloud",
     };
   }
 
   // ── CLOUD: /v1/chat/completions (primary) ──────────────────────────
-  const v1Body = buildV1Body(oaiMessages, effectiveOptions);
+  // The direct API names a model without the daemon's ":cloud"/"-cloud".
+  const directModel = ollamaDirectName(model);
+  const cloudOptions = {
+    ...effectiveOptions,
+    model: directModel,
+    think: await thinkFor(reasoningEffort, OLLAMA_CLOUD_BASE, OLLAMA_API_KEY, directModel, signal),
+  };
+  const v1Body = buildV1Body(oaiMessages, cloudOptions);
   const v1Result = await postWithRetry("/v1/chat/completions", v1Body, effectiveTimeout, {
     base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY, signal,
   });
 
   if (v1Result.ok) {
-    const parsed = parseV1Response(v1Result.data, model);
+    const parsed = parseV1Response(v1Result.data, directModel);
     return {
       ok: true, status: v1Result.status,
       ...parsed,
@@ -837,13 +1005,13 @@ export async function ollamaChat(messages, options = {}) {
     `falling back to cloud native /api/chat`
   );
 
-  const nativeBody = buildNativeBody(oaiMessages, effectiveOptions);
+  const nativeBody = buildNativeBody(oaiMessages, cloudOptions);
   const nativeResult = await postWithRetry("/api/chat", nativeBody, effectiveTimeout, {
     base: OLLAMA_CLOUD_BASE, auth: OLLAMA_API_KEY, signal,
   });
 
   if (nativeResult.ok) {
-    const parsed = parseNativeResponse(nativeResult.data, model);
+    const parsed = parseNativeResponse(nativeResult.data, directModel);
     return {
       ok: true, status: nativeResult.status,
       ...parsed,
@@ -902,6 +1070,8 @@ export async function ollamaModels({
 } = {}) {
   const result = {
     local: [],
+    // Ollama Cloud models the local Ollama lists and forwards (not local, not free).
+    cloudViaLocal: [],
     cloud: [],
     all: [],
     cloudAccess: allowCloudRoute ? "enabled" : "disabled",
@@ -912,7 +1082,9 @@ export async function ollamaModels({
     allowRemoteEndpoint: allowCloudRoute,
   });
   if (localInfo?.running) {
-    result.local = localInfo.models;
+    const remote = new Set(localInfo.remote || []);
+    result.local = localInfo.models.filter(m => !remote.has(m));
+    result.cloudViaLocal = localInfo.models.filter(m => remote.has(m));
   }
 
   // Cloud models
@@ -936,9 +1108,9 @@ export async function ollamaModels({
     result.cloudAccess = "unavailable";
   }
 
-  // Merge: local first (they're free), then cloud-only
-  const localSet = new Set(result.local);
-  result.all = [...result.local, ...result.cloud.filter(m => !localSet.has(m))];
+  // Merge: local first (they're free), then cloud through the local Ollama, then cloud-only
+  const listed = new Set([...result.local, ...result.cloudViaLocal]);
+  result.all = [...result.local, ...result.cloudViaLocal, ...result.cloud.filter(m => !listed.has(m))];
 
   return { ok: true, ...result };
 }
@@ -979,10 +1151,13 @@ export async function ollamaTest({
     results.tests.push({ name: "models", ok: false, detail: e.message });
   }
 
-  // Test 2: Chat — prefer local model if available
-  const testModel = localInfo?.running && localInfo.models.length > 0
-    ? localInfo.models[0]  // first local model
-    : "glm-5.1";           // cloud fallback
+  // Test 2: Chat — prefer a really local model if available
+  const installed = localInfo?.running
+    ? localInfo.models.filter(m => !(localInfo.remote || []).includes(m))
+    : [];
+  const testModel = installed.length > 0
+    ? installed[0]  // first local model
+    : "deepseek-v4.1-flash";    // cloud fallback
   try {
     const chat = await ollamaChat(
       [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
@@ -1079,7 +1254,7 @@ export async function handleOllamaRoute(path, req, res, parseBody, policy = {}) 
     const result = await ollamaChat(
       body.messages || [{ role: "user", content: body.prompt || body.message || "" }],
       {
-        model: body.model || "glm-5.1",
+        model: body.model || "deepseek-v4.1-flash",
         system: body.system || null,
         maxTokens: body.max_tokens || 4096,
         temperature: body.temperature ?? 0.7,
@@ -1128,6 +1303,9 @@ export async function executeOllamaTool(input, policy = {}) {
     if (!r.ok) return `❌ Models failed: ${r.error}`;
     const lines = [`Ollama Models:`];
     if (r.local?.length) lines.push(`  LOCAL (${r.local.length}):`, ...r.local.map(m => `    • ${m} (free, localhost:11434)`));
+    if (r.cloudViaLocal?.length) {
+      lines.push(`  CLOUD THROUGH LOCAL OLLAMA (${r.cloudViaLocal.length}):`, ...r.cloudViaLocal.map(m => `    • ${m} (Ollama Cloud, needs models:ollama-cloud)`));
+    }
     if (r.cloud?.length) lines.push(`  CLOUD (${r.cloud.length}):`, ...r.cloud.slice(0, 20).map(m => `    • ${m}`));
     return lines.join("\n");
   }
@@ -1136,7 +1314,7 @@ export async function executeOllamaTool(input, policy = {}) {
     const r = await ollamaChat(
       [{ role: "user", content: input.message || input.prompt || "" }],
       {
-        model: input.model || "glm-5.1",
+        model: input.model || "deepseek-v4.1-flash",
         system: input.system || null,
         maxTokens: input.max_tokens || 8000,
         temperature: input.temperature ?? 0.7,
@@ -1161,7 +1339,7 @@ export async function executeOllamaTool(input, policy = {}) {
       const r = await ollamaChat(
         [{ role: "user", content: prompts[i] }],
         {
-          model: input.model || "glm-5.1",
+          model: input.model || "deepseek-v4.1-flash",
           maxTokens: 500,
           temperature: 0.3,
           signal: policy.signal,
@@ -1186,5 +1364,5 @@ export async function executeOllamaTool(input, policy = {}) {
       `\n\nAvg latency: ${avgLat}s | Avg throughput: ${avgRate} tok/s`;
   }
 
-  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='glm-5.1'";
+  return "Ollama tool: action=test|models|chat|bench. For chat: message='...', model='deepseek-v4.1-flash'";
 }

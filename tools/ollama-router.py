@@ -5,23 +5,26 @@ ollama-router.py — Intelligent model routing across local + Ollama Cloud.
 Routes tasks to the optimal model based on:
   - Task complexity (trivial → local 7b, complex → cloud 397b+)
   - Latency requirements (real-time → local, batch → cloud)
-  - Cost awareness (local = free, cloud = Max plan budget)
+  - Cost awareness (local = free, cloud = priced per token on current plans)
   - GPU pressure (if local GPU is loaded, overflow to cloud)
-  - Domain specialization (coding → GLM/Devstral, reasoning → Kimi/Qwen)
+  - Domain specialization (coding → GLM/Kimi Code, reasoning → DeepSeek)
 
 Local models (free, instant, private):
   qwen2.5:7b   — triage, classification, simple extraction, heartbeats
   qwen2.5:14b  — summaries, moderate code, structured output
   qwen2.5:32b  — complex code, analysis, multi-step reasoning
 
-Cloud models (Ollama Max, 10 concurrent, $100/mo):
-  glm-5.1         — agentic coding (best open-weight, beats Opus on SWE-Bench)
-  deepseek-v3.2   — general reasoning, analysis
-  qwen3.5:397b    — heavy reasoning, research
-  kimi-k2:1t      — 1T param, hardest problems
-  devstral-2:123b — code generation, refactoring
-  gemma4:31b      — fast medium-quality tasks
-  qwen3-coder:480b — large codebase changes
+Cloud models (names from https://ollama.com/api/tags, 2026-10-31; Ollama
+retires cloud models often, so check that list before trusting a name here;
+prices at https://ollama.com/pricing):
+  glm-5.3              — agentic coding, large codebase changes
+  deepseek-v4.1-flash  — general reasoning, analysis
+  deepseek-v4-pro:0813 — heavy reasoning, research, hardest problems
+  kimi-k2.7-code       — code generation, refactoring
+  mistral-large-4      — reasoning, analysis
+  gemma4:31b           — fast medium-quality tasks
+  kimi-k3              — strongest and dearest; listed, but no route picks it
+  The local qwen2.5 tags below were the 2026-04 set and are not re-checked.
 
 Usage:
   ollama-router.py route "task description"              # Recommend model
@@ -70,53 +73,53 @@ LOCAL_MODELS = {
 }
 
 CLOUD_MODELS = {
-    "glm-5.1": {
-        "params": 754, "ctx": 198000, "speed": "medium",
-        "strengths": ["agentic-coding", "tool-calling", "multi-file-edit", "debugging"],
+    "glm-5.3": {
+        "params": 753, "ctx": 1000000, "speed": "medium",
+        "strengths": ["agentic-coding", "tool-calling", "multi-file-edit", "debugging", "large-codebase"],
         "tier": "apex", "cost": "high",
     },
-    "deepseek-v3.2": {
-        "params": 671, "ctx": 128000, "speed": "medium",
+    "glm-5.3-flash": {
+        "params": 321, "ctx": 1000000, "speed": "fast",
+        "strengths": ["general", "fast-medium", "tool-calling"],
+        "tier": "standard", "cost": "low",
+    },
+    "deepseek-v4.1-flash": {
+        "params": 763, "ctx": 1000000, "speed": "fast",
         "strengths": ["reasoning", "analysis", "math", "general"],
+        "tier": "premium", "cost": "medium",
+    },
+    "deepseek-v4-pro:0813": {
+        "params": 1650, "ctx": 1000000, "speed": "slow",
+        "strengths": ["hardest-problems", "deep-reasoning", "research", "synthesis"],
         "tier": "apex", "cost": "high",
     },
-    "qwen3.5:397b": {
-        "params": 397, "ctx": 128000, "speed": "slow",
-        "strengths": ["reasoning", "research", "synthesis", "creative"],
-        "tier": "apex", "cost": "high",
-    },
-    "kimi-k2:1t": {
-        "params": 1000, "ctx": 128000, "speed": "slow",
+    "kimi-k3": {
+        "params": 2810, "ctx": 1000000, "speed": "slow",
         "strengths": ["hardest-problems", "deep-reasoning", "novel-solutions"],
         "tier": "titan", "cost": "very-high",
     },
-    "devstral-2:123b": {
-        "params": 123, "ctx": 128000, "speed": "fast",
+    "kimi-k2.7-code": {
+        "params": 1040, "ctx": 256000, "speed": "medium",
         "strengths": ["code-generation", "refactoring", "tests", "documentation"],
         "tier": "premium", "cost": "medium",
     },
-    "qwen3-coder:480b": {
-        "params": 480, "ctx": 128000, "speed": "medium",
-        "strengths": ["large-codebase", "architecture", "code-review"],
-        "tier": "apex", "cost": "high",
+    "mistral-large-4": {
+        "params": 1050, "ctx": 1000000, "speed": "medium",
+        "strengths": ["reasoning", "chain-of-thought", "analysis"],
+        "tier": "premium", "cost": "medium",
     },
     "gemma4:31b": {
-        "params": 31, "ctx": 128000, "speed": "fast",
+        "params": 31, "ctx": 256000, "speed": "fast",
         "strengths": ["fast-medium", "classification", "extraction", "translation"],
         "tier": "standard", "cost": "low",
     },
-    "cogito-2.1:671b": {
-        "params": 671, "ctx": 128000, "speed": "medium",
-        "strengths": ["reasoning", "chain-of-thought", "analysis"],
-        "tier": "apex", "cost": "high",
-    },
     "nemotron-3-super": {
-        "params": 0, "ctx": 128000, "speed": "fast",
+        "params": 120, "ctx": 256000, "speed": "fast",
         "strengths": ["general", "instruction-following", "chat"],
         "tier": "standard", "cost": "low",
     },
-    "minimax-m2.7": {
-        "params": 0, "ctx": 128000, "speed": "fast",
+    "minimax-m3.1-flash": {
+        "params": 428, "ctx": 976000, "speed": "fast",
         "strengths": ["general", "creative", "multilingual"],
         "tier": "standard", "cost": "low",
     },
@@ -133,16 +136,16 @@ TASK_TYPES = {
     "summarize":     {"complexity": 3, "prefer": "local",  "model": "qwen2.5:14b"},
     "translate":     {"complexity": 3, "prefer": "cloud",  "model": "gemma4:31b"},
     "review-code":   {"complexity": 4, "prefer": "local",  "model": "qwen2.5:32b"},
-    "write-code":    {"complexity": 5, "prefer": "cloud",  "model": "devstral-2:123b"},
-    "refactor":      {"complexity": 5, "prefer": "cloud",  "model": "devstral-2:123b"},
-    "debug":         {"complexity": 6, "prefer": "cloud",  "model": "glm-5.1"},
-    "architect":     {"complexity": 7, "prefer": "cloud",  "model": "qwen3-coder:480b"},
-    "agentic-code":  {"complexity": 8, "prefer": "cloud",  "model": "glm-5.1"},
-    "research":      {"complexity": 7, "prefer": "cloud",  "model": "qwen3.5:397b"},
-    "reason":        {"complexity": 8, "prefer": "cloud",  "model": "deepseek-v3.2"},
-    "hard-problem":  {"complexity": 10, "prefer": "cloud", "model": "kimi-k2:1t"},
-    "tok-harvest":   {"complexity": 5, "prefer": "cloud",  "model": "glm-5.1"},
-    "oracle":        {"complexity": 4, "prefer": "cloud",  "model": "deepseek-v3.2"},
+    "write-code":    {"complexity": 5, "prefer": "cloud",  "model": "kimi-k2.7-code"},
+    "refactor":      {"complexity": 5, "prefer": "cloud",  "model": "kimi-k2.7-code"},
+    "debug":         {"complexity": 6, "prefer": "cloud",  "model": "glm-5.3"},
+    "architect":     {"complexity": 7, "prefer": "cloud",  "model": "glm-5.3"},
+    "agentic-code":  {"complexity": 8, "prefer": "cloud",  "model": "glm-5.3"},
+    "research":      {"complexity": 7, "prefer": "cloud",  "model": "deepseek-v4-pro:0813"},
+    "reason":        {"complexity": 8, "prefer": "cloud",  "model": "deepseek-v4.1-flash"},
+    "hard-problem":  {"complexity": 10, "prefer": "cloud", "model": "deepseek-v4-pro:0813"},
+    "tok-harvest":   {"complexity": 5, "prefer": "cloud",  "model": "glm-5.3"},
+    "oracle":        {"complexity": 4, "prefer": "cloud",  "model": "deepseek-v4.1-flash"},
     "docs":          {"complexity": 3, "prefer": "cloud",  "model": "gemma4:31b"},
 }
 
@@ -334,7 +337,9 @@ def execute_cloud(model: str, prompt: str, system: str = "", max_tokens: int = 4
         from importlib import import_module
         # Direct API call
         import urllib.request
-        key = ""  # from ollama-cloud.py
+        key = os.environ.get("OLLAMA_API_KEY", "")
+        if not key:
+            return {"content": "", "error": "OLLAMA_API_KEY is not set", "model": model, "location": "cloud"}
 
         payload = {
             "model": model,
@@ -427,14 +432,14 @@ def optimize_cron():
     ]
 
     recommended = [
-        ("crucible",  "glm-5.1",        "*/30",  "cloud", "Security needs deep analysis, GLM excels at tool-calling for vuln scanning"),
+        ("crucible",  "glm-5.3",        "*/30",  "cloud", "Security needs deep analysis, GLM excels at tool-calling for vuln scanning"),
         ("herald",    "gemma4:31b",      "hourly","cloud", "Content generation benefits from larger model, less frequent is fine"),
-        ("arbor",     "devstral-2:123b", "*/30",  "cloud", "Code optimization needs Devstral's refactoring strength"),
+        ("arbor",     "kimi-k2.7-code", "*/30",  "cloud", "Code optimization needs a coding model's refactoring strength"),
         ("vigil",     "qwen2.5:7b",     "*/15",  "local", "Monitoring is simple extraction — keep local, keep fast"),
         ("loom",      "qwen2.5:14b",    "*/15",  "local", "Engine checks need moderate reasoning — local 14b is perfect"),
         ("psalm",     "gemma4:31b",     "hourly","cloud", "Documentation quality jumps with larger model"),
         ("tithe",     "qwen2.5:7b",     "hourly","local", "Cost tracking is structured extraction — local 7b sufficient"),
-        ("nuance",    "qwen3.5:397b",   "hourly","cloud", "Linguistic precision demands the best reasoning model"),
+        ("nuance",    "deepseek-v4-pro:0813", "hourly","cloud", "Linguistic precision demands a strong reasoning model"),
     ]
 
     print(f"  {'Agent':<12} {'Current':<16} {'Recommended':<20} {'Where':<7} {'Reason'}")
@@ -475,9 +480,8 @@ def dashboard():
         print(f"    {name:<16} {info['params']}B  {info['tier']:<10} {status}")
 
     # Cloud status
-    print(f"\n  {M}CLOUD (Ollama Max){N}")
-    print(f"    Plan: Max ($100/mo)")
-    print(f"    Concurrent: 10 models")
+    print(f"\n  {M}CLOUD (Ollama Cloud){N}")
+    print(f"    Key:    {'set' if os.environ.get('OLLAMA_API_KEY') else 'not set'}")
     print(f"    Models: {len(CLOUD_MODELS)} configured")
 
     # Routing stats

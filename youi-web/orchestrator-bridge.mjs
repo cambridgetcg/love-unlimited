@@ -224,6 +224,18 @@ export async function handleOrchestratorRoute(path, req, res, parseBody, {
         provider: body.provider || "",
         signal,
       });
+      // A run that produced nothing is a failure, not an empty success: 502
+      // with the stage errors, the envelope kept so the caller sees each stage.
+      if (result?.success === false) {
+        const stageErrors = (Array.isArray(result.stages) ? result.stages : [])
+          .filter(stage => stage?.error)
+          .map(stage => `${stage.model}: ${stage.error}`);
+        json({
+          ...result,
+          error: result.error || stageErrors.join("; ") || "The orchestrator produced no output.",
+        }, 502);
+        return true;
+      }
       json(result);
     } catch (e) {
       json({ error: e.message }, 500);

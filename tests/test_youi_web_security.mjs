@@ -747,7 +747,7 @@ test("YOUI Web does not turn a local-model miss into an ungranted cloud request"
       "X-YOUI-CSRF": browser.csrf,
       "X-YOUI-Page": page,
     },
-    body: { label: "local only", agent: "alpha", model: "glm-5.1" },
+    body: { label: "local only", agent: "alpha", model: "glm-5.3-flash" },
   });
   assert.equal(created.status, 201);
   const credential = {

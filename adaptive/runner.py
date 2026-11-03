@@ -258,6 +258,10 @@ class AgentRunner:
         self.verbose = verbose
         self.inject_context = inject_context
         self.total_usage = TokenUsage()
+        # The provider and model run() or single_shot() last routed to (after
+        # any fallback), so a caller can report what was called, not planned.
+        self.last_provider: str | None = None
+        self.last_model: str | None = None
 
     def run(
         self,
@@ -278,6 +282,7 @@ class AgentRunner:
             The final text response from the model
         """
         provider, model = self.router.route(role, preferred_provider=provider_name, prompt=prompt)
+        self.last_provider, self.last_model = provider.name, model
         role_config = ROLES.get(role, ROLES["builder"])
 
         # Build rich system prompt: role guidance + context injection + user additions
@@ -318,6 +323,7 @@ class AgentRunner:
                             if self.verbose:
                                 print(f"[adaptive] fallback -> {fb_provider.name}/{fb_model}", file=sys.stderr)
                             request.model = fb_model
+                            self.last_provider, self.last_model = fb_provider.name, fb_model
                             response = fb_provider.complete(request)
                             provider = fb_provider
                             model = fb_model
@@ -406,6 +412,7 @@ class AgentRunner:
     ) -> str:
         """Single completion without tool use. For simple generation tasks."""
         provider, model = self.router.route(role, preferred_provider=provider_name, prompt=prompt)
+        self.last_provider, self.last_model = provider.name, model
         role_config = ROLES.get(role, ROLES["builder"])
 
         full_system = build_system_prompt(

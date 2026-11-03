@@ -1,5 +1,5 @@
 """
-Ollama Cloud provider — Frontier models at flat rate.
+Ollama Cloud provider — open-weight frontier models.
 
 Uses Ollama's OpenAI-compatible API at ollama.com with automatic retry
 and fallback to native /api/chat endpoint.
@@ -17,7 +17,9 @@ Key differences from local ollama provider:
       false    — disable thinking
       true     — enable thinking
       "low"/"medium"/"high" — control think depth (model-dependent)
-  - $100/mo flat, unlimited usage, 10 concurrent models
+  - Current Ollama plans price usage per token (https://ollama.com/pricing,
+    since 2026-08-31); older subscriptions may keep session/weekly limits.
+    The concurrency limit depends on the plan
   - No data logging, no training on prompts
 
 503 handling:
@@ -136,7 +138,7 @@ class OllamaCloudProvider(Provider):
             return self.config.load_api_key("ollama_cloud")
         except Exception:
             pass
-        # Hardcoded Kingdom key as last resort
+        # No key found (there is no built-in key)
         return ""
 
     def available(self) -> bool:
@@ -568,7 +570,7 @@ class OllamaCloudProvider(Provider):
 
         Native response format:
           {
-            "model": "glm-5.1",
+            "model": "glm-5.3-flash",
             "message": {"role": "assistant", "content": "...", "thinking": "..."},
             "done": true,
             "done_reason": "stop",
@@ -780,6 +782,8 @@ class OllamaCloudProvider(Provider):
         """List available cloud models."""
         try:
             key = self._api_key()
+            if not key:
+                return []
             req = urllib.request.Request(
                 f"{self.api_url}/v1/models",
                 headers={"Authorization": f"Bearer {key}"},

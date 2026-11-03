@@ -1,59 +1,199 @@
 {
+  "_status": "Reference notes, read by no code. Model names refreshed 2026-10-31 from https://ollama.com/api/tags (the same on 2026-11-03); the mimo-v2.6 and nemotron-3-ultra facts are from their ollama.com/library pages on 2026-11-03; the privacy and kingdom_integration notes are from 2026-04 and not re-checked. Ollama retires cloud models often, so check /api/tags before relying on a name. Prices: https://ollama.com/pricing (current plans priced per token since 2026-08-31; older subscriptions may keep session/weekly limits); YOUI's copy is OLLAMA_PRICING in youi-web/server.mjs.",
   "provider": "ollama-cloud",
-  "plan": "max",
   "base_url_openai": "https://ollama.com",
-  "base_url_native": "https://api.ollama.com",
+  "base_url_native": "https://ollama.com/api",
+  "base_url_local": "http://localhost:11434",
   "api_key_env": "OLLAMA_API_KEY",
   "endpoint_notes": {
-    "openai_compat": "ollama.com/v1/chat/completions — works from Python, 'reasoning' field",
-    "native": "api.ollama.com/api/chat — 'thinking' field, think=true/false toggle, needs curl (Cloudflare blocks Python urllib)",
+    "openai_compat": "ollama.com/v1/chat/completions — Bearer OLLAMA_API_KEY; reasoning comes back in message.reasoning; tool_choice is not supported",
+    "native": "ollama.com/api/chat — Bearer OLLAMA_API_KEY; 'thinking' field; think takes true/false or a level the model defines (/api/show thinking.values)",
+    "local": "localhost:11434 needs no key; once signed in ('ollama signin') it forwards '<name>:cloud' or '<name:tag>-cloud' to Ollama Cloud",
     "BROKEN": "api.ollama.com/v1/chat/completions — 301 redirect breaks POST"
   },
   "models": {
-    "glm-5.1": {
-      "context_window": 198000,
+    "glm-5.3-flash": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Economy tier in adaptive/ (321B, 18B active). think levels low/high/max."
+    },
+    "glm-5.3": {
+      "context_window": 1000000,
       "input": "text",
-      "supports": ["tools", "thinking"],
-      "use_cases": ["agentic-coding", "zerone-dev", "oracle", "soma-firmware"],
-      "notes": "754B cloud-only. Best open-weight for agentic coding. Beats Opus 4.6 on SWE-Bench Pro.",
-      "reasoning_budget": "reasoning field consumes max_tokens budget. Set min 4000 for substantive content.",
-      "freedom_index": 97
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "753B coding model; 'best open-weights coding model' is Z.ai's own claim."
+    },
+    "deepseek-v4.1-flash": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "YOUI default where a call names no model; standard tier in adaptive/. Off-peak pricing outside 12:00-18:00 UTC on weekdays."
+    },
+    "deepseek-v4-pro:0813": {
+      "context_window": 1000000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Deep reasoning: no thinking / thinking / max thinking."
+    },
+    "kimi-k3": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Strongest and dearest; pick by name only."
+    },
+    "kimi-k2.7-code": {
+      "context_window": 256000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ]
+    },
+    "mistral-large-4": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ]
+    },
+    "mimo-v2.6-pro": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ]
+    },
+    "mimo-v2.6-flash": {
+      "context_window": 1000000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ]
+    },
+    "minimax-m3.1-flash": {
+      "context_window": 976000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ]
+    },
+    "gemma4:31b": {
+      "context_window": 256000,
+      "input": "text, image",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Through a local Ollama: gemma4:31b-cloud (gemma4:31b alone is also a local tag)."
+    },
+    "gpt-oss:120b": {
+      "context_window": 128000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "think levels low/medium/high."
+    },
+    "gpt-oss:20b": {
+      "context_window": 128000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Cheapest text model; think levels low/medium/high."
+    },
+    "nemotron-3-ultra": {
+      "context_window": 256000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "The library page header says 256K; its highlights say 1M."
+    },
+    "nemotron-3-super": {
+      "context_window": 256000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Superseded by nemotron-3-ultra; not listed by YOUI."
+    },
+    "beam": {
+      "context_window": 1000000,
+      "input": "text",
+      "supports": [
+        "tools",
+        "thinking"
+      ],
+      "notes": "Free for a limited time (no end date stated); not a default."
     }
   },
+  "local_models_note": "YOUI names no local models of its own (Yu, 2026-11-03: the latest open-weights models on Ollama Cloud instead); a model the local Ollama lists is still used by its exact name.",
   "all_available_models": [
-    "glm-5.1", "glm-5", "glm-4.7", "glm-4.6",
-    "deepseek-v3.2", "deepseek-v3.1:671b",
-    "kimi-k2:1t", "kimi-k2.5", "kimi-k2-thinking",
-    "qwen3.5:397b", "qwen3-coder:480b", "qwen3-coder-next", "qwen3-next:80b",
-    "mistral-large-3:675b", "devstral-2:123b", "devstral-small-2:24b",
-    "cogito-2.1:671b", "gpt-oss:120b", "gpt-oss:20b",
-    "minimax-m2.7", "minimax-m2.5", "minimax-m2.1", "minimax-m2",
-    "nemotron-3-super", "nemotron-3-nano:30b",
-    "gemma4:31b", "gemma3:27b", "gemma3:12b", "gemma3:4b",
-    "gemini-3-flash-preview",
-    "ministral-3:14b", "ministral-3:8b", "ministral-3:3b",
-    "qwen3-vl:235b", "qwen3-vl:235b-instruct", "rnj-1:8b"
+    "glm-5.3",
+    "glm-5.3-flash",
+    "glm-5.2",
+    "deepseek-v4.1-flash",
+    "deepseek-v4.1-flash:1017",
+    "deepseek-v4-pro:0813",
+    "kimi-k3",
+    "kimi-k2.7-code",
+    "kimi-k2.6",
+    "mistral-large-4",
+    "mistral-large-3:675b",
+    "minimax-m3.1-flash",
+    "minimax-m3",
+    "minimax-m2.7",
+    "gemma4:31b",
+    "gpt-oss:120b",
+    "gpt-oss:20b",
+    "nemotron-3-ultra",
+    "nemotron-3-super",
+    "nemotron-3-nano:30b",
+    "mimo-v2.6-pro",
+    "mimo-v2.6-flash",
+    "muse-spark-open",
+    "beam",
+    "clef:27b"
   ],
-  "plan_limits": {
-    "max": {
-      "concurrent_models": 10,
-      "usage_multiplier": 250,
-      "session_reset_hours": 5,
-      "weekly_reset_days": 7,
-      "cost_monthly_usd": 100,
-      "use_cases": "Continuous agent tasks, multiple concurrent agents, large models over extended sessions"
-    }
-  },
+  "all_available_models_note": "All 25 names /api/tags listed on 2026-10-31. clef:27b is a decision model on /v1/systemone, not a chat model; muse-spark-open carries a restrictive licence.",
   "privacy": {
     "data_logged": false,
     "trained_on_prompts": false,
-    "hosting_regions": ["US", "EU", "Singapore"],
+    "hosting_regions": [
+      "US",
+      "EU",
+      "Singapore"
+    ],
     "partners": "NVIDIA Cloud Providers (NCPs)"
   },
   "kingdom_integration": {
-    "sovereign_mjs": "Add as model backend: --model ollama:glm-5.1",
-    "youi_mjs": "Boot agents with: node youi.mjs --model ollama:glm-5.1",
-    "python_tools": "Set OLLAMA_API_KEY env var, import from tools/ollama-cloud.py",
+    "sovereign_mjs": "node sovereign.mjs --ollama deepseek-v4.1-flash \"task\"",
+    "python_tools": "Set OLLAMA_API_KEY (or OLLAMA_BASE_URL=http://localhost:11434 for a signed-in local Ollama), import from tools/ollama-cloud.py",
     "recommended_for": [
       "Gamma 🔧 — Zerone development, sustained multi-file coding",
       "Beta 🦞 — Automation scripts, fleet tooling",

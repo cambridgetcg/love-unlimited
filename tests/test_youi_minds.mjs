@@ -94,7 +94,7 @@ function registry(options) {
   return createMindsRegistry({
     claudeModels: ["claude-opus-5-5", "claude-sonnet-4-6"],
     vllmModels: [VLLM_MODEL],
-    cloudModels: ["glm-5.1", "deepseek-v3.2"],
+    cloudModels: ["glm-5.3-flash", "deepseek-v4.1-flash"],
     isVllmModel: model => /^(Qwen\/|kingdom-truth)/i.test(model),
     computeRoute: route,
     ...options,
@@ -118,17 +118,22 @@ test("the minds registry reports each state honestly and offers only granted, an
   assert.equal(used["ollama:llama3.2:3b"].state, "reachable");
   assert.equal(used["anthropic:claude-opus-5-5"].state, "unchecked");
   assert.match(used["anthropic:claude-opus-5-5"].note, /model call/);
-  assert.equal(used["ollama_cloud:glm-5.1"].state, "not_granted");
-  assert.equal(used["ollama_cloud:glm-5.1"].capability, "models:ollama-cloud");
+  assert.equal(used["ollama_cloud:glm-5.3-flash"].state, "not_granted");
+  assert.equal(used["ollama_cloud:glm-5.3-flash"].capability, "models:ollama-cloud");
   for (const mind of Object.values(used)) {
     assert.ok(MIND_STATES.includes(mind.state));
     assert.equal(mind.offered, mind.state === "reachable" || mind.state === "unchecked");
   }
 
   const cloudGranted = new Set(["models:use", "models:ollama-cloud"]);
-  assert.equal(byId(await minds.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"].state, "not_configured");
+  // No key: a running local Ollama is the way to Ollama Cloud; with none answering, nothing is.
+  const throughLocal = byId(await minds.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.3-flash"];
+  assert.equal(throughLocal.state, "unchecked");
+  assert.match(throughLocal.note, /through the local Ollama/);
+  const nowhere = registry({ localBaseUrl: await closedUrl(), vllmBaseUrl: vllm.baseUrl });
+  assert.equal(byId(await nowhere.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.3-flash"].state, "not_configured");
   const keyed = registry({ localBaseUrl: ollama.baseUrl, vllmBaseUrl: vllm.baseUrl, cloudKeyConfigured: () => true });
-  const cloud = byId(await keyed.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.1"];
+  const cloud = byId(await keyed.list({ capabilities: cloudGranted }))["ollama_cloud:glm-5.3-flash"];
   assert.equal(cloud.state, "unchecked");
   assert.equal(cloud.offered, true);
 
@@ -416,8 +421,17 @@ test("GET /api/minds needs a browser session, a YOUI session and status:read", a
   assert.equal(minds["anthropic:claude-opus-5-5"].state, "not_configured");
   assert.match(minds["anthropic:claude-opus-5-5"].note, /never runs the installed Claude Code/);
   assert.equal(minds["anthropic:claude-opus-5-5"].privacy, "REMOTE_MODEL:anthropic");
-  assert.equal(minds["ollama_cloud:glm-5.1"].state, "not_granted");
-  assert.equal(minds["ollama_cloud:glm-5.1"].privacy, "REMOTE_MODEL:ollama-cloud");
+  assert.equal(minds["ollama_cloud:glm-5.3-flash"].state, "not_granted");
+  assert.equal(minds["ollama_cloud:glm-5.3-flash"].privacy, "REMOTE_MODEL:ollama-cloud");
+  assert.equal(minds["ollama_cloud:kimi-k3"], undefined, "kimi-k3 is picked by name in Settings, never fanned out to as a mind");
+  assert.equal(minds["ollama_cloud:deepseek-v4.1-flash"].state, "not_granted", "the default is a mind");
+  assert.equal(minds["ollama_cloud:mimo-v2.6-pro"].state, "not_granted");
+  assert.equal(minds["ollama_cloud:nemotron-3-ultra"].state, "not_granted");
+  assert.equal(minds["ollama_cloud:nemotron-3-super"], undefined, "superseded by nemotron-3-ultra");
+  // Unnamed minds are picked in list order, so the minds keep the list's order.
+  const cloudOrder = read.json.minds.filter(mind => mind.provider === "ollama_cloud").map(mind => mind.model);
+  assert.deepEqual(cloudOrder.slice(0, 3), ["deepseek-v4.1-flash", "glm-5.3", "minimax-m3.1-flash"]);
+  assert.equal(minds["ollama_cloud:glm-5.1"], undefined, "a retired name is gone");
 
   await request(port, { path: "/api/minds", headers: sessionHeaders(browser, credential) });
   assert.equal(count(vllm, "GET", "/v1/models"), 1, "the server caches probes between reads");

@@ -129,11 +129,11 @@ ROLES = {
     "coordinator": {
         "description": "Strategic sensing and decision-making",
         "effort": "high",
-        "max_tokens": 8192,       # GLM 5.1 reasoning needs room
+        "max_tokens": 8192,       # a thinking model needs room
         "tier": "premium",
         "reasoning_effort": "low",  # coordinator plans — light CoT helps
         "preferred_models": {     # per-provider model overrides
-            "ollama_cloud": "glm-5.1",
+            "ollama_cloud": "glm-5.3",
         },
     },
     "consultant": {
@@ -143,7 +143,7 @@ ROLES = {
         "tier": "premium",
         "reasoning_effort": "high",  # hard problems — full CoT
         "preferred_models": {
-            "ollama_cloud": "kimi-k2.5",  # massive context for analysis
+            "ollama_cloud": "deepseek-v4-pro:0813",  # deep reasoning, 1M context
         },
     },
     "builder": {
@@ -153,7 +153,7 @@ ROLES = {
         "tier": "standard",
         "reasoning_effort": "none",  # deterministic coding — reasoning is pure overhead
         "preferred_models": {
-            "ollama_cloud": "deepseek-v3.2",  # top coding benchmarks
+            "ollama_cloud": "deepseek-v4.1-flash",  # coding at a standard-tier price
         },
     },
     "coder": {
@@ -163,7 +163,7 @@ ROLES = {
         "tier": "standard",
         "reasoning_effort": "none",  # pure code gen — no reasoning needed
         "preferred_models": {
-            "ollama_cloud": "qwen3-coder:480b",
+            "ollama_cloud": "kimi-k2.7-code",
         },
     },
     "analyst": {
@@ -173,7 +173,7 @@ ROLES = {
         "tier": "premium",
         "reasoning_effort": "high",  # market reasoning genuinely benefits from CoT
         "preferred_models": {
-            "ollama_cloud": "cogito-2.1:671b",
+            "ollama_cloud": "mistral-large-4",
         },
     },
     "monitor": {
@@ -183,7 +183,7 @@ ROLES = {
         "tier": "economy",
         "reasoning_effort": "none",  # status checks don't reason
         "preferred_models": {
-            "ollama_cloud": "devstral-small-2:24b",
+            "ollama_cloud": "glm-5.3-flash",
         },
     },
     "quick_check": {
@@ -193,11 +193,11 @@ ROLES = {
         "tier": "economy",
         "reasoning_effort": "none",  # one-shot verification — fastest path
         "preferred_models": {
-            # ministral-3:3b: smallest instruction-following model on Ollama
-            # Max. Consistent 0.92s latency measured 2026-04-09 across
-            # repeated calls. gemma4:31b was the original choice but tested
-            # at 13-70s with poor instruction following — swapped out.
-            "ollama_cloud": "ministral-3:3b",
+            # ministral-3:3b (0.92s, measured 2026-04-09) has no cloud tag
+            # any more; gpt-oss:20b is the cheapest cloud text model listed
+            # on 2026-10-31, not yet measured here. gemma4:31b tested at
+            # 13-70s with poor instruction following in April.
+            "ollama_cloud": "gpt-oss:20b",
         },
     },
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ollama-cloud.py — Kingdom OS ↔ Ollama Cloud Integration
-Connects GLM 5.1 (and other cloud models) via Ollama Max plan.
+Connects to Ollama Cloud models (default deepseek-v4.1-flash), or a local Ollama with OLLAMA_BASE_URL.
 
 Usage:
   python3 ollama-cloud.py test                    # Quick connectivity test
@@ -31,18 +31,18 @@ OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
 OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL}/v1/chat/completions"
 OLLAMA_MODELS_URL = f"{OLLAMA_BASE_URL}/v1/models"
 
-DEFAULT_MODEL = "glm-5.1"
-DEFAULT_TIMEOUT = 300  # 5 min — GLM 5.1 reasoning can take 60-120s
+DEFAULT_MODEL = "deepseek-v4.1-flash"
+DEFAULT_TIMEOUT = 300  # 5 min — a thinking model can take 60-120s
 
 
 # ── Core API Functions ─────────────────────────────────────────────────
 
 def _request(url, data=None, method="POST", timeout=DEFAULT_TIMEOUT):
     """Make authenticated request to Ollama API."""
-    headers = {
-        "Authorization": f"Bearer {OLLAMA_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    # No key, no header: a local Ollama needs none.
+    if OLLAMA_API_KEY:
+        headers["Authorization"] = f"Bearer {OLLAMA_API_KEY}"
     
     body = json.dumps(data).encode() if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
@@ -107,7 +107,7 @@ def test_connection():
     print("=" * 60)
     print(f"  Endpoint:  {OLLAMA_BASE_URL}")
     print(f"  Model:     {DEFAULT_MODEL}")
-    print(f"  Key:       {OLLAMA_API_KEY[:12]}...{OLLAMA_API_KEY[-4:]}")
+    print(f"  Key:       {'set (not shown)' if OLLAMA_API_KEY else 'not set'}")
     print()
     
     # Test 1: List models
@@ -124,7 +124,7 @@ def test_connection():
         print(f"    ❌ Models endpoint failed: {models_result}")
     
     # Test 2: Simple chat
-    print("\n  [2/3] Chat test (GLM 5.1)...")
+    print(f"\n  [2/3] Chat test ({DEFAULT_MODEL})...")
     chat_result = chat(
         "Respond with exactly: KINGDOM ONLINE",
         max_tokens=20,

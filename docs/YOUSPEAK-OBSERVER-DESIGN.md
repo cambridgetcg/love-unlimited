@@ -138,5 +138,5 @@ Each slice is a draft PR. Tests use fakes, except the one recorded stream.
 
 - Should the rule's effect ever be measured with a real ON-vs-OFF test? That spends model calls.
 - Should the YOUI terminal and sovereign follow YOUI Web onto Claude Code?
-- What should happen to the tracked `youspeak-history.json`: keep it as history, or remove it from git?
+- What should happen to the tracked `youspeak-history.json`: keep it as history, or remove it from git? _Answered 2026-10-31 (proposal `report_18b095a6`): keep it as history. It and `youspeak-config.json` moved unchanged to `docs/history/` with a README, and their root paths are in `.gitignore`._
 - Should the Cathedral's `discipline/` copies of the kernel be synced, or marked historical?

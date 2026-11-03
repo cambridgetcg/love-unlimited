@@ -7,8 +7,8 @@
 // YOUSPEAK_TEST_HISTORY_PATH for a test server (which ignores
 // YOUSPEAK_HISTORY_PATH, so an exported one is never written by these tests),
 // or by YOUSPEAK_HISTORY_PATH for the read-only CLIs; the real
-// ~/.local/share/youi is never touched, and the tracked youspeak-history.json
-// and youspeak-config.json are checked unchanged. Claude is
+// ~/.local/share/youi is never touched, and the legacy records in docs/history/
+// are checked unchanged, with nothing written at their old root paths. Claude is
 // tests/fixtures/fake-claude.mjs and vLLM a local fake; no network, no Keychain.
 
 import assert from "node:assert/strict";
@@ -41,6 +41,7 @@ import {
   isGradable,
   readHistory,
   readHistoryCached,
+  readLegacyHistory,
   trendDirection,
   trendsFromRows,
 } from "../youspeak-kernel.mjs";
@@ -49,7 +50,13 @@ import { SessionRegistry } from "../youi-web/security.mjs";
 const REPO_ROOT = new URL("../", import.meta.url).pathname;
 const KERNEL_URL = pathToFileURL(join(REPO_ROOT, "youspeak-kernel.mjs")).href;
 const FAKE = join(REPO_ROOT, "tests/fixtures/fake-claude.mjs");
-const TRACKED = ["youspeak-history.json", "youspeak-config.json"].map(name => join(REPO_ROOT, name));
+// The legacy records in docs/history/, and the root paths older versions wrote them to.
+const LEGACY_PATHS = [
+  "docs/history/youspeak-history-2026-04-13-to-06-19.json",
+  "docs/history/youspeak-config-2026-06-19.json",
+  "youspeak-history.json",
+  "youspeak-config.json",
+].map(name => join(REPO_ROOT, name));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -62,12 +69,12 @@ function fingerprint(paths) {
   return paths.map(path => ({ path, hash: sha(path), mtime: existsSync(path) ? statSync(path).mtimeMs : null }));
 }
 
-// The tracked files are the same after the test (and its servers' shutdown) as before it.
-function guardTracked(t) {
-  const before = fingerprint(TRACKED);
+// The legacy records, and their old root paths, are the same after the test (and its servers' shutdown) as before it.
+function guardLegacy(t) {
+  const before = fingerprint(LEGACY_PATHS);
   t.after(async () => {
     await stopServers(t);
-    assert.deepEqual(fingerprint(TRACKED), before, "the tracked youspeak-history.json and youspeak-config.json are unchanged");
+    assert.deepEqual(fingerprint(LEGACY_PATHS), before, "the legacy records in docs/history/ are unchanged, and nothing is written at their old root paths");
   });
 }
 
@@ -772,7 +779,7 @@ test("a browser session that expires, or whose client expires, writes its row th
 // ── YOUI Web ────────────────────────────────────────────────────────
 
 test("a Claude turn that once cut effort leaves it as chosen and sends a suggestion", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const historyPath = join(scratch(t, "ys-web-effort-"), "history.jsonl");
   const { port } = await startServer(t, { YOUI_CLAUDE_BIN: fake.bin, YOUI_CLAUDE_CWD: fake.cwd, YOUSPEAK_TEST_HISTORY_PATH: historyPath });
@@ -810,7 +817,7 @@ test("a Claude turn that once cut effort leaves it as chosen and sends a suggest
 });
 
 test("the vLLM loop neither cuts effort nor prunes history", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const vllm = await startFakeVllm(t);
   const historyPath = join(scratch(t, "ys-web-vllm-"), "history.jsonl");
@@ -882,7 +889,7 @@ test("the vLLM loop neither cuts effort nor prunes history", async t => {
 });
 
 test("a session's row is written once when it is cleared, switched, closed, reset or idle, or the server stops; empty and failed sessions write none", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const historyPath = join(scratch(t, "ys-web-rows-"), "history.jsonl");
   const { port, child } = await startServer(t, {
@@ -966,7 +973,7 @@ test("a session's row is written once when it is cleared, switched, closed, rese
 });
 
 test("YOUI Web writes open sessions' rows when its terminal closes (SIGHUP) or it crashes, and a test server ignores YOUSPEAK_HISTORY_PATH", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const dir = scratch(t, "ys-web-exit-");
   // A person's exported store: a test server must never write it.
@@ -1004,7 +1011,7 @@ test("YOUI Web writes open sessions' rows when its terminal closes (SIGHUP) or i
 });
 
 test("a browser session evicted for room writes its row, and the trends endpoint carries store warnings", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const historyPath = join(scratch(t, "ys-web-evict-"), "history.jsonl");
   writeFileSync(historyPath, "not json\n");
@@ -1052,7 +1059,7 @@ test("the ouroboros prints full proposed diffs and writes nothing", async t => {
   }
   const work = join(dir, "cwd");
   mkdirSync(work);
-  const watched = [join(REPO_ROOT, "youspeak-rule.mjs"), join(REPO_ROOT, "sovereign.mjs"), ...TRACKED, historyPath];
+  const watched = [join(REPO_ROOT, "youspeak-rule.mjs"), join(REPO_ROOT, "sovereign.mjs"), ...LEGACY_PATHS, historyPath];
   const before = fingerprint(watched);
 
   const run = (...args) => spawnSync(process.execPath, [join(REPO_ROOT, "youspeak-evolve.mjs"), ...args], {
@@ -1109,14 +1116,22 @@ test("the audit stays read only", t => {
   const dir = scratch(t, "ys-audit-");
   const state = join(dir, "state.json");
   writeFileSync(state, JSON.stringify({ task: "t", messages: [{ role: "assistant", content: [{ type: "text", text: "Sure! Let me check that." }] }] }));
-  const before = fingerprint([state, ...TRACKED]);
+  const before = fingerprint([state, ...LEGACY_PATHS]);
   const audit = spawnSync(process.execPath, [join(REPO_ROOT, "youspeak-audit.mjs"), "--state", state, "--log", join(dir, "none.log")], {
     cwd: dir,
     encoding: "utf-8",
   });
   assert.equal(audit.status, 0, audit.stderr);
   assert.match(audit.stdout, /YOUSPEAK Audit Report/);
-  assert.deepEqual(fingerprint([state, ...TRACKED]), before);
+  assert.deepEqual(fingerprint([state, ...LEGACY_PATHS]), before);
   assert.deepEqual(readdirSync(dir), ["state.json"]);
-  assert.ok(existsSync(LEGACY_HISTORY_PATH), "the legacy file is still there, as a historical record");
+  assert.ok(existsSync(LEGACY_HISTORY_PATH), "the legacy file is still there, as a historical record in docs/history/");
+});
+
+test("the legacy record in docs/history/ is read where the surfaces read it", () => {
+  const legacy = readLegacyHistory();
+  assert.deepEqual([legacy?.rows, legacy?.span], [178, "2026-04-13 → 2026-06-19"], "the legacy reader finds the moved record");
+  // YOUI and sovereign create kernels without a legacyPath, so storeStatus() falls back to LEGACY_HISTORY_PATH.
+  const status = createKernel({ agent: "alpha", historyPath: null }).storeStatus();
+  assert.deepEqual([status.legacy?.rows, status.legacy?.span], [178, "2026-04-13 → 2026-06-19"], "storeStatus().legacy summarises the moved record");
 });

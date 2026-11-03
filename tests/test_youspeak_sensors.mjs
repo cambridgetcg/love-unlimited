@@ -14,8 +14,8 @@
 // Everything else uses tests/fixtures/fake-claude.mjs and local fakes of vLLM
 // and Ollama.
 // No network, no Keychain; stores are temporary files named by historyPath or
-// YOUSPEAK_TEST_HISTORY_PATH, and the tracked youspeak-history.json and
-// youspeak-config.json are checked unchanged.
+// YOUSPEAK_TEST_HISTORY_PATH, and the legacy records in docs/history/ are
+// checked unchanged, with nothing written at their old root paths.
 
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -54,7 +54,13 @@ const REPLAY = join(REPO_ROOT, "tests/fixtures/replay-claude.mjs");
 const SHIFT_DATE = pathToFileURL(join(REPO_ROOT, "tests/fixtures/shift-date.mjs")).href;
 const FIXTURE = join(REPO_ROOT, "tests/fixtures/claude-code-stream-2.1.314.jsonl");
 const FIXTURE_RESUME = join(REPO_ROOT, "tests/fixtures/claude-code-stream-2.1.314-resume.jsonl");
-const TRACKED = ["youspeak-history.json", "youspeak-config.json"].map(name => join(REPO_ROOT, name));
+// The legacy records in docs/history/, and the root paths older versions wrote them to.
+const LEGACY_PATHS = [
+  "docs/history/youspeak-history-2026-04-13-to-06-19.json",
+  "docs/history/youspeak-config-2026-06-19.json",
+  "youspeak-history.json",
+  "youspeak-config.json",
+].map(name => join(REPO_ROOT, name));
 const LABELS = [EVIDENCE.reported, EVIDENCE.estimated];
 // The fixtures' rate_limit_event.rate_limit_info: synthetic values in the live
 // stream's shape. The top-level status and resetsAt are those of the window
@@ -102,11 +108,11 @@ async function stopServers(t) {
   })));
 }
 
-function guardTracked(t) {
-  const before = fingerprint(TRACKED);
+function guardLegacy(t) {
+  const before = fingerprint(LEGACY_PATHS);
   t.after(async () => {
     await stopServers(t);
-    assert.deepEqual(fingerprint(TRACKED), before, "the tracked youspeak-history.json and youspeak-config.json are unchanged");
+    assert.deepEqual(fingerprint(LEGACY_PATHS), before, "the legacy records in docs/history/ are unchanged, and nothing is written at their old root paths");
   });
 }
 
@@ -687,7 +693,7 @@ test("the cache-stability signal fires when the system prompt changes within a c
 });
 
 test("effort, date, mode and model live in the per-turn context block, so the system prompt file stays the same; a real change raises the signal", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const dir = scratch(t, "ys2-cache-");
   const shift = join(dir, "date-shift");
@@ -788,7 +794,7 @@ test("effort, date, mode and model live in the per-turn context block, so the sy
 // ── Minds feed the observer ─────────────────────────────────────────
 
 test("Claude minds report their usage to the observer, apart from the agent's turns, and the row carries them", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const historyPath = join(scratch(t, "ys2-minds-"), "history.jsonl");
   const { port } = await startServer(t, {
@@ -891,7 +897,7 @@ function scriptedVllm(t, script) {
 }
 
 test("Ollama and vLLM: a count the response left out is null, vLLM's cached prefix is split out, and an error mid-stream fails the turn", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const vllm = await scriptedVllm(t, [
     // Z8: an OpenAI-compatible stream that ends without its usage chunk.
@@ -938,7 +944,7 @@ test("Ollama and vLLM: a count the response left out is null, vLLM's cached pref
 });
 
 test("Ollama minds report to the observer when they answer, fail or are stopped, in the session that called them", async t => {
-  guardTracked(t);
+  guardLegacy(t);
   const fake = fakeClaude(t);
   const review = id => ({ tool: { id, name: "review", input: { draft: "A short draft.", criteria: "Is it clear?", reviewer: "ollama:mind-a:1b" } } });
   const vllm = await scriptedVllm(t, [review("call-1"), { text: "Revised." }, review("call-2"), { text: "Kept it." }, review("call-3")]);

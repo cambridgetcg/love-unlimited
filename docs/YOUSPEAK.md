@@ -232,7 +232,7 @@ It never holds message text, file paths, tool inputs or prompt hashes.
 
 The file itself is left as it is. While it is unchanged (same size, mtime and inode), a process reads it once, not on every finished turn.
 
-**The legacy file.** `youspeak-history.json` is tracked in git. Its 178 committed rows end on 2026-06-19 and are cumulative per-message snapshots with no session id, so one session appears many times. YOUI no longer writes it. It is read only, and shown separately as "legacy", never mixed into the store's trends. Whether to keep it in git is Yu's open question.
+**The legacy file.** The old `youspeak-history.json` is kept as history in [`history/youspeak-history-2026-04-13-to-06-19.json`](history/youspeak-history-2026-04-13-to-06-19.json), moved there unchanged on 2026-10-31 ([`history/README.md`](history/README.md) says what its fields mean). Its 178 rows end on 2026-06-19 and are cumulative snapshots with no session id, so one session can appear many times. YOUI no longer writes it. It is read only, and shown separately as "legacy", never mixed into the store's trends. In a checkout that has this change the old root path is in `.gitignore`, so a file older code writes there (a YOUI still running after the checkout moved forward, or old code started from this directory) stays untracked. A checkout still on older code tracks the root file and can still commit it.
 
 ---
 
@@ -268,14 +268,14 @@ The CI workflow `.github/workflows/ouroboros.yml` runs `trends`, `reflect`, `dis
 
 On 2026-06-19, `integrate --apply` recorded three mutations as applied: commit `5986a93` wrote them into `youspeak-config.json` and `sovereign.mjs`, and `15ab6d7` committed the history with the `applied` flag:
 
-- **`dynamic_effort` and `enable_pacing`** went into `youspeak-config.json` with an `appliedAt` date. **They never took effect: no code has ever read that file.** Both also came from broken inputs:
+- **`dynamic_effort` and `enable_pacing`** went into `youspeak-config.json` with an `appliedAt` date. **They never took effect: no code has ever acted on that file** (only its writer read it back). Both also came from broken inputs:
   - `dynamic_effort` came from the L2 ratio, which was always 0.
   - `dynamic_effort` passed its 5-session gate only because one session was counted many times.
 - **`add_cache_reminder`** was spliced into `sovereign.mjs`'s YOUSPEAK Protocol block as the "File cache" line. Since Y2 it is `YOUSPEAK_FILE_CACHE_LINE` in `youspeak-rule.mjs`, still added only by sovereign (§1).
   - It reaches sovereign's prompt only, not YOUI Web's or the terminal's.
   - It fired only because the cumulative rows counted one session's repeated reads many times.
 
-`youspeak-config.json` and the tracked history stay as historical records; their contents are not changed.
+`youspeak-config.json` and the history file stay as historical records in [`history/`](history/README.md); their contents are not changed.
 
 ---
 
@@ -297,4 +297,4 @@ Left open (see [`YOUSPEAK-OBSERVER-DESIGN.md`](YOUSPEAK-OBSERVER-DESIGN.md) §4.
 - The `ollama` tool's own chat and bench calls feed neither Minds nor YOUSPEAK's usage.
 - The per-turn context block's markers are fixed strings, so text a person pastes can carry a look-alike block; it unlocks nothing (model and effort are flags, minds are gated by capability).
 - `youspeak-audit.mjs` keeps its own grade scale for `sovereign.log` (§5); it is a separate, read-only tool.
-- The open questions for Yu in the design (§7) stand.
+- The other open questions for Yu in the design (§7) stand.

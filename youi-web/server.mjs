@@ -35,7 +35,7 @@ import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import {
   handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured, ollamaLocalSnapshot, refreshOllamaLocal,
 } from "./ollama-bridge.mjs";
-import { OLLAMA_LOCAL_PICKS, ollamaDirectName, ollamaRoute } from "./ollama-routes.mjs";
+import { ollamaDirectName, ollamaRoute } from "./ollama-routes.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
@@ -284,17 +284,23 @@ function fireDetection(state, assistantContent) {
 }
 
 // Ollama models available in settings. The Ollama Cloud names are the direct
-// API's (GET https://ollama.com/api/tags, 2026-10-31); through a signed-in
-// local Ollama the same model is "<name>:cloud" or "<name:tag>-cloud"
-// (ollama-routes.mjs). Ollama retires cloud models often (13 between June and
+// API's (GET https://ollama.com/api/tags, 2026-10-31, the same on
+// 2026-11-03); through a signed-in local Ollama the same model is
+// "<name>:cloud" or "<name:tag>-cloud" (ollama-routes.mjs). Ollama retires cloud models often (13 between June and
 // September 2026), so this list goes stale; a local Ollama's own list is read
 // at runtime as well.
 const OLLAMA_CLOUD_MODELS = [
-  // Roughly cheapest first by list price, glm-5.3-flash first as the default:
-  // the minds tools pick unnamed minds in this order.
-  "glm-5.3-flash", "gpt-oss:20b", "minimax-m3.1-flash", "gemma4:31b",
-  "deepseek-v4.1-flash", "gpt-oss:120b", "nemotron-3-super", "mistral-large-4",
-  "kimi-k2.7-code", "glm-5.3", "deepseek-v4-pro:0813",
+  // The latest open-weights model of each family (Yu chose the latest
+  // open-weights models over local ones, 2026-11-03), ordered for family
+  // diversity with the default first, not cheapest first: the minds tools pick
+  // unnamed minds in this order, so the first nine span different families.
+  // muse-spark-open is left out (its licence limits commercial use), as is
+  // clef:27b (a decision model, not chat).
+  "deepseek-v4.1-flash", "glm-5.3", "minimax-m3.1-flash", "mistral-large-4",
+  "mimo-v2.6-pro", "kimi-k2.7-code", "nemotron-3-ultra", "gemma4:31b",
+  "gpt-oss:120b",
+  // Smaller or heavier siblings of the families above.
+  "glm-5.3-flash", "mimo-v2.6-flash", "gpt-oss:20b", "deepseek-v4-pro:0813",
   // Free on Ollama Cloud for a limited time, end date not stated: never a default.
   "beam",
   // The dearest list price here ($3.00 in / $15.00 out per 1M): picked only by name.
@@ -306,8 +312,7 @@ const OLLAMA_MODELS = [
   // Remote vLLM (pod H200) — routed to OLLAMA_VLLM_BASE_URL via ollama-bridge
   "Qwen/Qwen2.5-72B-Instruct-AWQ",
   ...OLLAMA_CLOUD_MODELS,
-  // Local; Ollama Cloud only as the explicit cloud fallback (ollama-routes.mjs).
-  ...OLLAMA_LOCAL_PICKS,
+  // No local models of YOUI's own: the local Ollama's list is added at runtime.
 ];
 // Every model the local Ollama lists (GET /api/tags), mirrored by
 // refreshLocalModels from ollama-bridge.mjs's read (the last read that
@@ -376,14 +381,17 @@ async function detectLocalModels() {
 
 // Ollama Cloud list prices, US$ per 1M tokens: input, cached input, output.
 // Source: https://ollama.com/pricing as fetched 2026-10-31 (per-token billing
-// since 2026-08-31). Every cost YOUI draws from this table is an estimate from
-// list price, never a bill: a plan's included credits, discounts and
-// off-peak rates are not applied, and only ollama.com/api/usage reports what
-// an account was actually charged. DeepSeek rows are the peak rate (weekdays
-// 12:00-18:00 UTC), so off-peak calls cost at most this; cached: null means the
-// page lists no cached price, and cached tokens are then priced as input. A
-// model not in the table (beam, listed free for a limited time, included) is
-// unpriced: its cost is null, not a guess.
+// since 2026-08-31); the mimo-v2.6-pro, mimo-v2.6-flash and nemotron-3-ultra
+// rows were fetched again on 2026-11-03 and had not changed. Every cost YOUI
+// draws from this table is an estimate from list price, never a bill: a
+// plan's included credits, discounts and off-peak rates are not applied, and
+// only ollama.com/api/usage reports what an account was actually charged.
+// DeepSeek rows are the peak rate (weekdays 12:00-18:00 UTC), so off-peak
+// calls cost at most this; cached: null means the page lists no cached price,
+// and cached tokens are then priced as input. A model not in the table (beam,
+// listed free for a limited time, included) is unpriced: its cost is null,
+// not a guess. Rows for models YOUI no longer lists (nemotron-3-super among
+// them) stay while the page prices them, since any model can be named.
 const OLLAMA_PRICING = {
   "glm-5.3":                  { input: 1.40,  cached: 0.26,   output: 4.40 },
   "glm-5.3-flash":            { input: 0.15,  cached: 0.03,   output: 0.50 },
@@ -1238,11 +1246,11 @@ const TOOLS = [
       scope: { type: "string", description: "Audit scope: full|quick|critical" },
     }, required: ["action"] } },
   { name: "ollama",
-    description: "OLLAMA — Call Ollama models: local ones, and Ollama Cloud ones such as glm-5.3-flash, deepseek-v4.1-flash or kimi-k2.7-code (cloud needs models:ollama-cloud). Runs in-process (bypasses sandbox). Actions: test (connectivity+chat+tools test), models (list available), chat (send message to model), bench (latency/throughput benchmark).",
+    description: "OLLAMA — Call Ollama models: ones the local Ollama lists, and Ollama Cloud ones such as deepseek-v4.1-flash, glm-5.3 or kimi-k2.7-code (cloud needs models:ollama-cloud). Runs in-process (bypasses sandbox). Actions: test (connectivity+chat+tools test), models (list available), chat (send message to model), bench (latency/throughput benchmark).",
     input_schema: { type: "object", properties: {
       action: { type: "string", description: "test|models|chat|bench" },
       message: { type: "string", description: "Chat message/prompt" },
-      model: { type: "string", description: "Model name (default: glm-5.3-flash)" },
+      model: { type: "string", description: "Model name (default: deepseek-v4.1-flash)" },
       system: { type: "string", description: "System prompt" },
       max_tokens: { type: "number", description: "Max response tokens (default: 4096)" },
       temperature: { type: "number", description: "Temperature 0-1 (default: 0.7)" },

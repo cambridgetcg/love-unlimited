@@ -1197,23 +1197,21 @@ button, select, textarea, input { font: inherit; }
             <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
           </optgroup>
           <optgroup label="Ollama Cloud (needs models:ollama-cloud)">
-            <option value="glm-5.3-flash">GLM 5.3 Flash</option>
-            <option value="glm-5.3">GLM 5.3</option>
             <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
-            <option value="deepseek-v4-pro:0813">DeepSeek V4 Pro</option>
-            <option value="kimi-k2.7-code">Kimi K2.7 Code</option>
-            <option value="mistral-large-4">Mistral Large 4</option>
+            <option value="glm-5.3">GLM 5.3</option>
             <option value="minimax-m3.1-flash">MiniMax M3.1 Flash</option>
+            <option value="mistral-large-4">Mistral Large 4</option>
+            <option value="mimo-v2.6-pro">MiMo V2.6 Pro</option>
+            <option value="kimi-k2.7-code">Kimi K2.7 Code</option>
+            <option value="nemotron-3-ultra">Nemotron 3 Ultra</option>
             <option value="gemma4:31b">Gemma 4 31B</option>
             <option value="gpt-oss:120b">gpt-oss 120B</option>
+            <option value="glm-5.3-flash">GLM 5.3 Flash</option>
+            <option value="mimo-v2.6-flash">MiMo V2.6 Flash</option>
             <option value="gpt-oss:20b">gpt-oss 20B</option>
-            <option value="nemotron-3-super">Nemotron 3 Super</option>
+            <option value="deepseek-v4-pro:0813">DeepSeek V4 Pro</option>
             <option value="beam">Beam (unpriced; listed free for a limited time, 2026-10)</option>
             <option value="kimi-k3">Kimi K3 (dearest: $3 / $15 per 1M)</option>
-          </optgroup>
-          <optgroup label="Local Ollama" id="local-model-options">
-            <option value="qwen3.5:4b">Qwen 3.5 4B</option>
-            <option value="gemma4:12b">Gemma 4 12B</option>
           </optgroup>
         </select>
       </div>
@@ -1942,35 +1940,42 @@ function updatePrivacyUI(privacy) {
 }
 
 // Adds what the local Ollama lists (GET /api/status localModels) to the
-// model menu: local models to the local group, and the Ollama Cloud models it
+// model menu: local models to a local group, and the Ollama Cloud models it
 // forwards (localRemoteModels) to a group of their own, since those leave the
-// device. A listed Ollama Cloud option that is pulled locally (gemma4:31b)
-// moves to the local group, since that is the route it takes.
+// device. YOUI names no local models of its own, so the local group exists
+// only once the local Ollama lists one. A listed Ollama Cloud option that is
+// pulled locally (gemma4:31b) moves to the local group, since that is the
+// route it takes.
 function addLocalModelOptions(localModels, remoteModels) {
   if (!Array.isArray(localModels)) return;
   const select = document.getElementById('model-select');
-  const localGroup = document.getElementById('local-model-options');
   const known = new Set([...select.options].map(option => option.value));
   const remote = new Set(Array.isArray(remoteModels) ? remoteModels : []);
-  let forwarded = document.getElementById('forwarded-model-options');
+  // A group is made on first use; the local one goes before the forwarded one.
+  const group = (id, label, before = null) => {
+    let found = document.getElementById(id);
+    if (!found) {
+      found = document.createElement('optgroup');
+      found.id = id;
+      found.label = label;
+      select.insertBefore(found, before);
+    }
+    return found;
+  };
+  const localGroup = () => group('local-model-options', 'Local Ollama', document.getElementById('forwarded-model-options'));
+  const forwarded = () => group('forwarded-model-options', 'Ollama Cloud through the local Ollama (needs models:ollama-cloud)');
   for (const model of localModels) {
     if (typeof model !== 'string' || !model) continue;
     if (known.has(model)) {
       const existing = [...select.options].find(option => option.value === model);
-      if (!remote.has(model) && existing && existing.parentElement?.id !== 'local-model-options') localGroup.append(existing);
+      if (!remote.has(model) && existing && existing.parentElement?.id !== 'local-model-options') localGroup().append(existing);
       continue;
     }
     known.add(model);
-    if (remote.has(model) && !forwarded) {
-      forwarded = document.createElement('optgroup');
-      forwarded.id = 'forwarded-model-options';
-      forwarded.label = 'Ollama Cloud through the local Ollama (needs models:ollama-cloud)';
-      select.append(forwarded);
-    }
     const option = document.createElement('option');
     option.value = model;
     option.textContent = model;
-    (remote.has(model) ? forwarded : localGroup).append(option);
+    (remote.has(model) ? forwarded() : localGroup()).append(option);
   }
 }
 
@@ -2739,7 +2744,7 @@ function handleCommand(text) {
   const cmd = parts[0].toLowerCase();
   switch (cmd) {
     case '/help':
-      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.3-flash|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|deepseek-v4.1-flash|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
       break;
     case '/mode':
       if (parts[1] === 'orchestrate' || parts[1] === 'direct') {
@@ -2792,7 +2797,7 @@ function handleCommand(text) {
       const sel = document.getElementById('model-select');
       if (m && [...sel.options].some(o => o.value === m)) {
         sel.value = m; updateSetting('model', m); addSystemMessage('Model: ' + m);
-      } else addSystemMessage('Usage: /model opus|sonnet|haiku|glm-5.3-flash|deepseek-v4.1-flash|qwen3.5:4b|... (any name in the Settings model menu)');
+      } else addSystemMessage('Usage: /model opus|sonnet|haiku|deepseek-v4.1-flash|glm-5.3|... (any name in the Settings model menu)');
       break;
     }
     case '/effort': {

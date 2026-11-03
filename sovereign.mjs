@@ -104,7 +104,7 @@ for (let i = 0; i < args.length; i++) {
     case "--append-soul":     config.appendSoul = args[++i]; break;
     case "--fallback":        config.fallback = true; break;
     case "--provider":        config.provider = args[++i]; break;
-    case "--ollama":          config.provider = "ollama"; config.model = args[++i] || "glm-5.3-flash"; break;
+    case "--ollama":          config.provider = "ollama"; config.model = args[++i] || "deepseek-v4.1-flash"; break;
     case "--no-lazy":         config.lazyLoad = false; break;
     case "--no-youspeak":     config.youspeak = false; break;
     case "--no-efficiency":   config.trackEfficiency = false; break;
@@ -146,7 +146,7 @@ Efficiency (YOUSPEAK):
 
 Provider:
   --provider PROVIDER   anthropic|ollama|auto (default: auto-detect from model)
-  --ollama [MODEL]      Shortcut for --provider ollama --model MODEL (default: glm-5.3-flash)
+  --ollama [MODEL]      Shortcut for --provider ollama --model MODEL (default: deepseek-v4.1-flash)
 
 Execution:
   --workdir DIR         Working directory
@@ -1213,8 +1213,8 @@ async function main() {
         if (config.fallback) {
           const fallbacks = {
             "claude-opus-4-6": "claude-sonnet-4-6",
-            "claude-sonnet-4-6": "glm-5.3-flash",    // Fall to Ollama Cloud (priced per token on current plans)
-            "claude-haiku-4-5-20251001": "glm-5.3-flash",
+            "claude-sonnet-4-6": "deepseek-v4.1-flash",    // Fall to Ollama Cloud (priced per token on current plans)
+            "claude-haiku-4-5-20251001": "deepseek-v4.1-flash",
           };
           const fb = fallbacks[config.model];
           if (fb) {

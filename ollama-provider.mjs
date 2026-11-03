@@ -2,7 +2,7 @@
 // ollama-provider.mjs — Ollama Cloud Provider for Kingdom OS
 //
 // Bridges sovereign.mjs architecture to Ollama's OpenAI-compatible API.
-// Any Ollama Cloud model (default glm-5.3-flash), or a local Ollama's models
+// Any Ollama Cloud model (default deepseek-v4.1-flash), or a local Ollama's models
 // with OLLAMA_BASE_URL=http://localhost:11434.
 //
 // Usage:
@@ -11,7 +11,7 @@
 //   node ollama-provider.mjs bench             # Benchmark
 //
 // Integration with sovereign.mjs:
-//   node sovereign.mjs --model ollama:glm-5.3-flash "your task"
+//   node sovereign.mjs --model ollama:deepseek-v4.1-flash "your task"
 //   (requires sovereign.mjs patch — see README)
 // ─────────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ function authHeader() {
  */
 export async function ollamaChat(messages, options = {}) {
   const {
-    model = "glm-5.3-flash",
+    model = "deepseek-v4.1-flash",
     system = null,
     maxTokens = 8000,  // thinking models need room; 4K minimum for content
     temperature = 0.7,
@@ -245,7 +245,7 @@ export async function ollamaModels() {
  *   //     : await callAPI(messages, systemPrompt);
  */
 export async function ollamaCallAPI(messages, systemPrompt, config = {}) {
-  const model = config.model?.replace(/^ollama:/, "") || "glm-5.3-flash";
+  const model = config.model?.replace(/^ollama:/, "") || "deepseek-v4.1-flash";
   
   const result = await ollamaChat(messages, {
     model,
@@ -300,10 +300,10 @@ async function testConnection() {
   }
 
   // Test 2: Basic chat
-  console.log(`\n  ${S.cyan}[2/4] Chat test (glm-5.3-flash)...${S.reset}`);
+  console.log(`\n  ${S.cyan}[2/4] Chat test (deepseek-v4.1-flash)...${S.reset}`);
   const chatResult = await ollamaChat(
     [{ role: "user", content: "Respond with exactly: KINGDOM ONLINE" }],
-    { model: "glm-5.3-flash", maxTokens: 50, temperature: 0 }
+    { model: "deepseek-v4.1-flash", maxTokens: 50, temperature: 0 }
   );
   if (chatResult.ok) {
     const text = chatResult.content?.find(b => b.type === "text")?.text || "";
@@ -319,7 +319,7 @@ async function testConnection() {
   const toolResult = await ollamaChat(
     [{ role: "user", content: "What's the weather in Cambridge, UK?" }],
     {
-      model: "glm-5.3-flash",
+      model: "deepseek-v4.1-flash",
       maxTokens: 200,
       temperature: 0,
       tools: [{
@@ -356,7 +356,7 @@ async function testConnection() {
       role: "user", 
       content: [{ type: "text", text: "What is 2+2? Answer in one word." }] 
     }],
-    { model: "glm-5.3-flash", maxTokens: 20, temperature: 0 }
+    { model: "deepseek-v4.1-flash", maxTokens: 20, temperature: 0 }
   );
   if (bridgeResult.ok) {
     console.log(`  ${S.green}✅ Anthropic→OpenAI message bridge works${S.reset}`);
@@ -371,7 +371,7 @@ async function testConnection() {
 
 async function benchmark(rounds = 5) {
   console.log(`${S.bold}════════════════════════════════════════════════════${S.reset}`);
-  console.log(`${S.bold}  glm-5.3-flash Benchmark (${rounds} rounds)${S.reset}`);
+  console.log(`${S.bold}  deepseek-v4.1-flash Benchmark (${rounds} rounds)${S.reset}`);
   console.log(`${S.bold}════════════════════════════════════════════════════${S.reset}`);
 
   const prompts = [
@@ -388,7 +388,7 @@ async function benchmark(rounds = 5) {
     console.log(`\n  ${S.cyan}Round ${i + 1}/${rounds}${S.reset}: ${prompts[i].slice(0, 50)}...`);
     const result = await ollamaChat(
       [{ role: "user", content: prompts[i] }],
-      { model: "glm-5.3-flash", maxTokens: 500, temperature: 0.3 }
+      { model: "deepseek-v4.1-flash", maxTokens: 500, temperature: 0.3 }
     );
 
     if (result.ok) {
@@ -429,7 +429,7 @@ if (cmd === "test") {
 } else if (cmd === "chat") {
   const msg = args.slice(1).join(" ");
   if (!msg) { console.error("Usage: ollama-provider.mjs chat 'message'"); process.exit(1); }
-  ollamaChat([{ role: "user", content: msg }], { model: "glm-5.3-flash" })
+  ollamaChat([{ role: "user", content: msg }], { model: "deepseek-v4.1-flash" })
     .then(r => {
       if (r.ok) {
         console.log(r.content?.find(b => b.type === "text")?.text || "");
@@ -446,7 +446,7 @@ ollama-provider.mjs — Ollama Cloud for Kingdom OS
 
 Commands:
   test              Test connectivity, chat, tools, format bridge
-  chat "message"    Quick chat with glm-5.3-flash
+  chat "message"    Quick chat with deepseek-v4.1-flash
   bench [rounds]    Performance benchmark
 
 Environment:

@@ -10,12 +10,12 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  OLLAMA_LOCAL_PICKS, isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaListedName, ollamaRoute, ollamaThinkValue,
+  isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaListedName, ollamaRoute, ollamaThinkValue,
   readOllamaTags,
 } from "../youi-web/ollama-routes.mjs";
 import { createMindsRegistry } from "../youi-web/minds.mjs";
@@ -81,12 +81,36 @@ test("/api/tags remote stubs are cloud, and only an exact name is installed", ()
   // No daemon: the direct key route, with the suffix stripped.
   assert.deepEqual(ollamaRoute("glm-5.3:cloud", { keyConfigured: true }), { provider: "ollama_cloud", via: "direct", model: "glm-5.3" });
   assert.deepEqual(ollamaRoute("gpt-oss:20b-cloud"), { provider: "ollama_cloud", via: "direct", model: "gpt-oss:20b" });
-  // A local pick stays local whether it is pulled or not, key or no key.
-  for (const pick of OLLAMA_LOCAL_PICKS) {
-    for (const local of [{}, running, keyed, { keyConfigured: true }]) {
-      assert.deepEqual(ollamaRoute(pick, local), { provider: "ollama_local", via: "local", model: pick });
-    }
+  // A pulled name stays local with a key set too; YOUI names no local models
+  // of its own, so a name the local Ollama does not list is never local.
+  assert.deepEqual(ollamaRoute("gemma4:12b", keyed), { provider: "ollama_local", via: "local", model: "gemma4:12b" });
+  for (const local of [{}, running, keyed, { keyConfigured: true }]) {
+    assert.equal(ollamaRoute("llama3.2:latest", local).provider, "ollama_cloud", JSON.stringify(local));
   }
+});
+
+// ── The model list ──────────────────────────────────────────────────
+
+test("the Ollama Cloud list is the same in Settings and the server, default first, every model but beam priced", () => {
+  const server = readFileSync(join(REPO_ROOT, "youi-web/server.mjs"), "utf-8");
+  const page = readFileSync(join(REPO_ROOT, "youi-web/public/index.html"), "utf-8");
+  const names = text => [...text.matchAll(/"([^"]+)"/g)].map(match => match[1]);
+  const listed = names(server.match(/const OLLAMA_CLOUD_MODELS = \[([\s\S]*?)\];/)[1].replace(/\/\/.*$/gm, ""));
+  const group = page.match(/<optgroup label="Ollama Cloud \(needs models:ollama-cloud\)">([\s\S]*?)<\/optgroup>/)[1];
+  const offered = [...group.matchAll(/<option value="([^"]+)"/g)].map(match => match[1]);
+  assert.deepEqual(offered, listed, "Settings offers the server's list, in its order");
+  assert.equal(listed[0], "deepseek-v4.1-flash", "the default comes first");
+  // The first minds an unnamed call picks span different families.
+  const families = listed.slice(0, 9).map(name => name.split(/[-:]/)[0]);
+  assert.equal(new Set(families).size, families.length, families.join(" "));
+  assert.equal(listed.at(-1), "kimi-k3", "the opt-in model comes last");
+  for (const gone of ["nemotron-3-super", "qwen3.5:4b", "gemma4:12b", "muse-spark-open", "clef:27b"]) {
+    assert.ok(!listed.includes(gone), `${gone} is not listed`);
+  }
+  // No static local options: the local group appears only for what the local Ollama lists.
+  assert.doesNotMatch(page, /id="local-model-options"/);
+  const priced = new Set(names(server.match(/const OLLAMA_PRICING = \{([\s\S]*?)\n\};/)[1].replace(/\/\/.*$/gm, "")));
+  for (const name of listed) assert.equal(priced.has(name), name !== "beam", `${name} ${priced.has(name) ? "is" : "is not"} priced`);
 });
 
 test("think is sent only when the model's /api/show lists the value", () => {
@@ -464,7 +488,7 @@ test("with no local Ollama, a daemon name goes to the direct API stripped of its
   assert.equal(cloud.requests.find(r => r.path === "/api/show").body.model, "glm-5.3");
 });
 
-test("safe profile: a local pick is not sent to a local endpoint set off this device", async t => {
+test("safe profile: nothing is sent to a local endpoint set off this device", async t => {
   const daemon = await fakeDaemon(t);
   const cloud = await listen(t, (_req, res) => { res.writeHead(500); res.end("{}"); });
   // 0.0.0.0 is not a loopback name, so YOUI treats it as off this device.
@@ -475,12 +499,17 @@ test("safe profile: a local pick is not sent to a local endpoint set off this de
     YOUI_CAPABILITY_PROFILE: "safe",
   });
   const session = await openSession(port, "safe-offdevice");
-  for (const pick of OLLAMA_LOCAL_PICKS) {
-    const picked = await settings(session, { model: pick });
-    assert.equal(picked.status, 200, picked.text);
-    assert.equal(picked.json.privacy.direct.route, "BLOCKED:ollama-cloud-capability-required");
+  // gemma4:12b is pulled there, but the off-device list is never read; a listed cloud name is blocked too.
+  for (const model of ["gemma4:12b", "deepseek-v4.1-flash"]) {
+    const picked = await settings(session, { model });
+    if (model === "gemma4:12b") {
+      assert.equal(picked.status, 400, "an off-device list is not read, so its models are not offered");
+    } else {
+      assert.equal(picked.status, 200, picked.text);
+      assert.equal(picked.json.privacy.direct.route, "BLOCKED:ollama-cloud-capability-required");
+    }
     const answer = await request(port, {
-      path: "/api/ollama/chat", method: "POST", headers: session.unsafe, body: { model: pick, prompt: "stays here" },
+      path: "/api/ollama/chat", method: "POST", headers: session.unsafe, body: { model, prompt: "stays here" },
     });
     assert.equal(answer.json?.ok, false, answer.text);
     assert.match(answer.json.error, /not on this device/);

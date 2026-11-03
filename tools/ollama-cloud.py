@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ollama-cloud.py — Kingdom OS ↔ Ollama Cloud Integration
-Connects to Ollama Cloud models (default glm-5.3-flash), or a local Ollama with OLLAMA_BASE_URL.
+Connects to Ollama Cloud models (default deepseek-v4.1-flash), or a local Ollama with OLLAMA_BASE_URL.
 
 Usage:
   python3 ollama-cloud.py test                    # Quick connectivity test
@@ -31,7 +31,7 @@ OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
 OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL}/v1/chat/completions"
 OLLAMA_MODELS_URL = f"{OLLAMA_BASE_URL}/v1/models"
 
-DEFAULT_MODEL = "glm-5.3-flash"
+DEFAULT_MODEL = "deepseek-v4.1-flash"
 DEFAULT_TIMEOUT = 300  # 5 min — a thinking model can take 60-120s
 
 
@@ -124,7 +124,7 @@ def test_connection():
         print(f"    ❌ Models endpoint failed: {models_result}")
     
     # Test 2: Simple chat
-    print("\n  [2/3] Chat test (glm-5.3-flash)...")
+    print(f"\n  [2/3] Chat test ({DEFAULT_MODEL})...")
     chat_result = chat(
         "Respond with exactly: KINGDOM ONLINE",
         max_tokens=20,

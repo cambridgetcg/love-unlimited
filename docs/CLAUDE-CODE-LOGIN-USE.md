@@ -1,10 +1,10 @@
 # Who still uses Claude Code's login
 
-**Status:** inventory taken on 2026-10-31 on branch `feat/youi-honesty-20261031`, under proposal `report_18b095a6` (item 2, honesty). Line numbers are for that branch.
+**Status:** inventory taken on 2026-10-31 on branch `feat/youi-honesty-20261031`, under proposal `report_18b095a6` (item 2, honesty). Line numbers are for that branch. Updated on `feat/youi-terminal-20261031` (item 3, the terminal slice, restacked on that branch, not merged or installed), which moves the terminal onto the installed `claude`: the terminal left the tables (what its row said is kept under the first table, with the honesty branch's line numbers), and none of the line numbers in the tables moved.
 
-Claude Code signs in once and keeps its login in the macOS Keychain, under the service `Claude Code-credentials`. That login exists for Claude Code and Anthropic's own clients. On this branch stack (C1 and C2, draft PRs #13 and #14, not merged or installed), YOUI Web's Claude turns and Claude minds run the installed `claude` ([`YOUI-CLAUDE-CODE-DESIGN.md`](YOUI-CLAUDE-CODE-DESIGN.md)). A YOUI Web started from an older checkout still reads the login and sends Claude Code 2.1.92's headers. The "YOUI Web reaches it?" column below is about the code on this branch.
+Claude Code signs in once and keeps its login in the macOS Keychain, under the service `Claude Code-credentials`. That login exists for Claude Code and Anthropic's own clients. On this branch stack (C1 and C2, draft PRs #13 and #14, not merged or installed), YOUI Web's Claude turns and Claude minds run the installed `claude` ([`YOUI-CLAUDE-CODE-DESIGN.md`](YOUI-CLAUDE-CODE-DESIGN.md)). With the terminal slice, so does the terminal (`youi.mjs`). A YOUI Web or terminal started from an older checkout still reads the login and sends Claude Code 2.1.92's headers, and the older terminal also refreshes the login and writes it back. The "YOUI Web reaches it?" column below is about the code on this branch.
 
-**Moving YOUI Web did not end the use of Claude Code's login.** The files below still do one or more of these:
+**Moving YOUI Web did not end the use of Claude Code's login.** Moving the terminal does not end it either. The files below still do one or more of these:
 
 - **(a) read** Claude Code's login from the Keychain;
 - **(b) present themselves as Claude Code**: the `claude-cli/2.1.92` User-Agent, `x-app: cli`, the `claude-code-20250219` beta, the `x-anthropic-billing-header` line in the system prompt, the "You are Claude Code" system line, or `device_id` / `account_uuid` in the request metadata;
@@ -16,10 +16,11 @@ How it was found: `/usr/bin/grep -rn` over the whole repo, `.git` excluded, for 
 
 | File | (a) read | (b) presents as Claude Code | (c) writes | YOUI Web reaches it? |
 |---|---|---|---|---|
-| `youi.mjs` (the terminal), with `youi-keychain.mjs` | `youi.mjs:288`, `youi-keychain.mjs:54` | 2.1.92 User-Agent and `x-app` `youi.mjs:698`; betas `:677`; billing line `:623`; `device_id` `:684`, from the file named at `:408` (created if missing) | refreshes at `platform.claude.com/v1/oauth/token` (`:289`) and writes back with `add-generic-password -U` (`youi-keychain.mjs:106`, called from `youi.mjs:301`); it refuses to create a missing entry and never deletes | No. A separate process. |
-| `sovereign.mjs` | `:198`, `:213` (through `youi-keychain.mjs:54`, read only) | 2.1.92 User-Agent and `x-app` `:651-652`; `claude-code-20250219` beta `:627-628`; billing line `:1017`; `device_id` `:639`, created at `:591` if missing; `account_uuid` from the token `:608`, `:641` | **None since this branch.** It used to delete the entry and add it again with the credential JSON in argv. Now an expired or expiring token stops it (below). | No. A separate process. |
+| `sovereign.mjs`, with `youi-keychain.mjs` | `:198`, `:213` (through `youi-keychain.mjs:54`, read only) | 2.1.92 User-Agent and `x-app` `:651-652`; `claude-code-20250219` beta `:627-628`; billing line `:1017`; `device_id` `:639`, created at `:591` if missing; `account_uuid` from the token `:608`, `:641` | **None since the honesty branch.** It used to delete the entry and add it again with the credential JSON in argv. Now an expired or expiring token stops it (below). `youi-keychain.mjs` still holds the terminal's old write-back (`add-generic-password -U` at `:106`), which no runtime calls since the terminal slice; only its test does. | No. A separate process. |
 
-Both say this in their own output: `node youi.mjs --inspect` and `node sovereign.mjs --inspect` print a `claude_code_login` block. Another slice of the same proposal (item 3) is to move the terminal onto the installed `claude`; until it lands, the terminal does what its row says. Sovereign's move waits for Yu's answers.
+**The terminal (`youi.mjs`) is no longer in this table.** With the terminal slice it runs the installed `claude` through `youi-web/claude-code.mjs` and `youi-claude-bridge.mjs`, and Claude Code signs in with its own login. The terminal reads no credential, neither refreshes nor writes the login, and sends none of Claude Code's client headers itself ([`YOUI-CLAUDE-CODE-DESIGN.md`](YOUI-CLAUDE-CODE-DESIGN.md) §4); a source check in `tests/test_youi_terminal.mjs` fails if any of that comes back. Before the slice its row said: (a) read at `youi.mjs:288` and `youi-keychain.mjs:54`; (b) 2.1.92 User-Agent and `x-app`, the betas, the billing line, and the `device_id` from `~/.claude/device_id`, created if missing; (c) refreshed at `platform.claude.com/v1/oauth/token` and wrote back with `add-generic-password -U` (`youi-keychain.mjs:106`), refusing to create a missing entry and never deleting. Those `youi.mjs` line numbers are for the honesty branch.
+
+Both say so in their own output: `node youi.mjs --inspect` and `node sovereign.mjs --inspect` print a `claude_code_login` block. The terminal's says it reads no credential and names who still uses the login (`still_used_by`), and its `/privacy` says the same in its Login line. Sovereign's move waits for Yu's answers.
 
 ## Services and scripts
 
@@ -34,15 +35,15 @@ Both say this in their own output: `node youi.mjs --inspect` and `node sovereign
 | `ainp.mjs` | — | 2.1.92 User-Agent `:160`, `x-app` `:174`, `claude-code-20250219` beta `:159` (`buildHeaders`) | — | No. Nothing in the repo imports it; `AINP.md` describes it. |
 | `docs/research/test-unlock.mjs`, `test-unlock2.mjs`, `test-429.mjs` | `test-unlock.mjs:13`, `test-unlock2.mjs:14`, `test-429.mjs:10` | `test-unlock.mjs`: `x-app` from `:54`, 2.1.92 User-Agent from `:63`, random `device_id` from `:79`; `test-unlock2.mjs`: User-Agent and `x-app` `:33-34`, billing line and "You are Claude Code" `:41-43`, `device_id` from `:55`; `test-429.mjs`: only the `oauth-2025-04-20` beta | — | No. One-off research scripts, run by hand. |
 
-Only `youi-keychain.mjs` writes the entry with the credential on stdin and keeps the entry's other fields.
+Only `youi-keychain.mjs`'s write-back puts the credential on stdin and keeps the entry's other fields, and since the terminal slice no runtime calls it.
 
-Close to this list but not on it: `fate/cloak.sh:109` overwrites `~/.claude/device_id` with a fresh id. That file is the `device_id` the terminal and sovereign send.
+Close to this list but not on it: `fate/cloak.sh:109` overwrites `~/.claude/device_id` with a fresh id. That file is the `device_id` sovereign sends, and the terminal sent before the terminal slice.
 
 ## Sovereign no longer rewrites Claude Code's login
 
 Sovereign used to refresh an expired token itself and write the result back: it read the entry, deleted it, then added it again with the credential JSON as a command-line argument. Nothing checked the delete, so a failed add left Claude Code, and YOUI Web with it, with no login.
 
-Refreshing without writing back would be no better: the token endpoint can return a new refresh token, which Claude Code would not have. So sovereign now only reads the login, through the terminal's read-only Keychain code: the entry under your account name first, then the one with an empty account name. The old sovereign re-added the entry under an empty account name, so that one can be a stale copy, and the message says so when the login came from it.
+Refreshing without writing back would be no better: the token endpoint can return a new refresh token, which Claude Code would not have. So sovereign now only reads the login, through the read-only part of `youi-keychain.mjs`, which was the terminal's Keychain code before the terminal slice: the entry under your account name first, then the one with an empty account name. The old sovereign re-added the entry under an empty account name, so that one can be a stale copy, and the message says so when the login came from it.
 
 - **At start**, a missing login, an expired token, or one that expires within 5 minutes stops it with a message to sign in again with the claude CLI: start `claude`, use `/login` if it asks, then run sovereign again. It exits 1.
 - **Mid-task**, the same message, after it saves its state the way Ctrl+C does, so `node sovereign.mjs --continue` picks the task up after you sign in. It exits 1.
@@ -52,4 +53,4 @@ Tested in `tests/test_youi_sovereign_login.mjs`, with a fake `security` on `PATH
 
 ## Not changed here
 
-No headers changed, nothing moved onto Claude Code, and the truth detector and the other files above are untouched. Each one still does what its row says.
+On the honesty branch no headers changed, nothing moved onto Claude Code, and the truth detector and the other files above were untouched. The terminal slice moves the terminal (above). Of the files in the tables it changes only sovereign's `--inspect` list, which no longer names the terminal; outside them, YOUI Web's `privacy.claudeCodeLogin.stillUsedBy` no longer names it either. Each file in the tables still does what its row says.

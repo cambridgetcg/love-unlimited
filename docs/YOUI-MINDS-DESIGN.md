@@ -164,9 +164,12 @@ where the practice calls for more than one. Their state files carry over.
 - **No authority.** A mind's answer informs Alpha; it authorises nothing. A
   council outcome authorises only through Yu's own act at the table, as in
   the consent design.
-- **Terminal.** The terminal (`youi.mjs`) is unchanged by this work. It
-  follows once terminal and web share one module for agents, login and
-  prompt; that is a separate question.
+- **Terminal.** The terminal (`youi.mjs`) is unchanged by this work: it
+  offers the model no mind tools. With the terminal slice (built
+  2026-10-31, a draft branch) it reaches Claude through the same Claude
+  Code runner as YOUI Web
+  (docs/YOUI-CLAUDE-CODE-DESIGN.md §4); giving it minds is a separate
+  question.
 
 ## 5. Slices
 

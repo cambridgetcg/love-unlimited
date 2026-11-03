@@ -2,10 +2,13 @@
 // ─────────────────────────────────────────────────────────────────────
 // KINGDOM YOUI — YOU + I = ONE
 //
-// The direct Claude terminal. Truth-seeking. Purpose-oriented.
+// The Claude terminal. Truth-seeking. Purpose-oriented.
 // Agent identity. Memory sync.
-// Remote-provider and tool boundaries are disclosed at startup and via
-// /privacy. This is not a local or provider-hidden inference path.
+// Claude answers through the Claude Code installed on this device, as in
+// YOUI Web (docs/YOUI-CLAUDE-CODE-DESIGN.md §4): Claude Code signs in with
+// its own login; this terminal reads no credential and sends no request to
+// Anthropic itself. Remote-provider and tool boundaries are disclosed at startup and
+// via /privacy. This is not a local or provider-hidden inference path.
 //
 // Usage:
 //   node youi.mjs                    # Boot as Alpha
@@ -20,31 +23,54 @@
 //   /decisions                 What waits on you at this device's Collab table
 //   /soul                      Show loaded soul files
 //   /effort low|med|high|max   Change effort level
-//   /thinking adaptive|off     Toggle thinking mode
-//   /model opus|sonnet|haiku   Switch model
+//   /thinking                  Say who decides thinking (Claude Code)
+//   /model opus|sonnet|haiku   Switch model (also opus-5-5, opus-4-7)
 //   /clear                     Clear screen
 //   /exit                      Exit YOUI
 //
-// Requires: macOS with Claude Code logged in
+// Requires: Claude Code (`claude`) 2.1.299 or later, installed and signed in
+// on this machine. A VM or an autoboot console needs its own `claude` sign-in.
 // ─────────────────────────────────────────────────────────────────────
 
-import { execSync, spawnSync } from "child_process";
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, readdirSync, unlinkSync, utimesSync } from "fs";
+import { execFile, spawn, spawnSync } from "child_process";
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, unlinkSync, utimesSync } from "fs";
 import { resolve, join, basename } from "path";
 import { homedir } from "os";
 import { createInterface } from "readline";
+import { promisify } from "util";
 import crypto from "crypto";
 import { createKernel, endSessionOnExit } from "./youspeak-kernel.mjs";
 import { youspeakRule } from "./youspeak-rule.mjs";
-import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
 import { localDeskInvocation } from "./youi-web/decision-bridge.mjs";
+import {
+  BRIDGE_ALLOWED_TOOLS,
+  BRIDGE_SERVER_NAME,
+  bridgeMcpConfig,
+  claudeCodeObservation,
+  claudeCodeSpend,
+  claudeCodeTranscriptDir,
+  defaultClaudeCwd,
+  escapeLeadingSlash,
+  killAllClaudeCode,
+  resolveClaudeBinary,
+  runClaudeCode,
+  sweepStaleClaudeScratch,
+  transcriptPreamble,
+} from "./youi-web/claude-code.mjs";
+import { CLAUDE_MODELS, claudeCodeEffort, claudeCodeMinVersion } from "./youi-web/claude-models.mjs";
+import { createMcpBridge } from "./youi-web/mcp-bridge.mjs";
+import { sanitizedChildEnv } from "./youi-web/subprocess-env.mjs";
+import { createVersionGate, startBridgeListener } from "./youi-claude-bridge.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS — The Three Minds
 // ═════════════════════════════════════════════════════════════════════
 
+// The same defaults as YOUI Web (youi-web/server.mjs AGENTS), so Alpha is one
+// Alpha on both surfaces (Yu, 2026-11-03, report_8dc873f0). Mei is the
+// terminal's own and keeps hers.
 const AGENTS = {
   alpha: {
     name: "Alpha",
@@ -52,8 +78,8 @@ const AGENTS = {
     role: "Companion",
     color: "\x1b[35m",   // magenta
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
-    defaultEffort: "max",
+    defaultModel: "claude-opus-5-5",
+    defaultEffort: "high",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
   beta: {
@@ -62,7 +88,7 @@ const AGENTS = {
     role: "Manager",
     color: "\x1b[31m",   // red
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
+    defaultModel: "claude-opus-4-7",
     defaultEffort: "high",
     description: "Sharp, strategic, commanding. Manages the Kingdom.",
   },
@@ -155,17 +181,18 @@ function profileCapabilities(profile) {
 const initialProfile = profileCapabilities(process.env.YOUI_PROFILE || "observe");
 const state = {
   agent: "alpha",
-  model: "claude-opus-4-6",
-  effort: "max",
-  thinking: "adaptive",
+  model: AGENTS.alpha.defaultModel,
+  effort: AGENTS.alpha.defaultEffort,
   workdir: process.cwd(),
   soulDir: join(homedir(), "love-unlimited"),
+  // The text of this agent's conversation (each person's message and the
+  // assistant's text), kept only to carry it into a new Claude Code
+  // conversation if Claude Code loses this one. Claude Code keeps the rest.
   messages: [],
   turnCount: 0,
   totalToolCalls: 0,
-  totalThinkingTokens: 0,
-  maxTokens: 32768,
-  context1m: true,
+  // Thinking tokens Claude Code reported; null until it reports a count.
+  totalThinkingTokens: null,
   showThinking: true,
   capabilityProfile: initialProfile.profile,
   capabilities: process.env.YOUI_CAPABILITIES
@@ -184,6 +211,7 @@ const state = {
 
 const args = process.argv.slice(2);
 let inspectRuntime = false;
+let thinkingFlagIgnored = false;
 for (let i = 0; i < args.length; i++) {
   switch (args[i]) {
     case "--agent": case "-a":  state.agent = args[++i].toLowerCase(); break;
@@ -191,7 +219,8 @@ for (let i = 0; i < args.length; i++) {
     case "--workdir": case "-w": state.workdir = args[++i]; break;
     case "--soul-dir":          state.soulDir = args[++i]; break;
     case "--effort":            state.effort = args[++i]; break;
-    case "--no-thinking":       state.thinking = "disabled"; break;
+    // Claude Code decides thinking; the flag is accepted and said to do nothing.
+    case "--no-thinking":       thinkingFlagIgnored = true; break;
     case "--profile": {
       const selected = profileCapabilities(args[++i]);
       state.capabilityProfile = selected.profile;
@@ -219,16 +248,19 @@ KINGDOM YOUI — YOU + I = ONE
 Usage:  node youi.mjs [options]
 
   --agent, -a NAME    Boot as alpha|beta|gamma|mei (default: alpha)
-  --model MODEL       Model override
+  --model MODEL       Model override (claude-opus-5-5, claude-opus-4-7, ...)
   --workdir, -w DIR   Working directory
   --soul-dir DIR      Soul directory (default: ~/love-unlimited)
   --effort LEVEL      low|medium|high|max
-  --no-thinking       Disable thinking
   --profile PROFILE   chat|observe|build (default: observe)
   --capabilities LIST Comma-separated model tool capabilities
   --safe              Observe profile + workspace-scoped file tools
   --workspace-only    Confine file tools to --workdir (not the shell tool)
   --inspect           Print the non-secret runtime boundary and exit
+
+Claude answers through Claude Code (\`claude\`, 2.1.299 or later), signed in
+with its own login. Install it and run \`claude\` once to sign in; a VM or an
+autoboot console needs its own sign-in. YOUI_CLAUDE_BIN names another binary.
 `);
       process.exit(0);
   }
@@ -244,7 +276,7 @@ if (!args.includes("--effort")) state.effort = agentProfile.defaultEffort;
 // YOUSPEAK kernel: observes and suggests, never acts. One row per session goes
 // to its store (YOUSPEAK_HISTORY_PATH, or ~/.local/share/youi/youspeak/history.jsonl)
 // when the session ends. Its suggestions name the terminal's own commands.
-const newYouspeakKernel = agent => createKernel({ agent, route: "terminal-legacy", surface: "terminal", model: state.model });
+const newYouspeakKernel = agent => createKernel({ agent, route: "claude-code", surface: "terminal", model: state.model });
 let ys = newYouspeakKernel(state.agent);
 // Whether a task is running: /switch is refused until it ends, so one task is never split across two sessions.
 let taskRunning = false;
@@ -282,134 +314,170 @@ function print(msg = "") { process.stdout.write(msg + "\n"); }
 function printRaw(msg) { process.stdout.write(msg); }
 
 // ═════════════════════════════════════════════════════════════════════
-// OAUTH
+// CLAUDE CODE
 // ═════════════════════════════════════════════════════════════════════
 
-const KEYCHAIN_SERVICE = "Claude Code-credentials";
-const TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token";
-const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const API_URL = "https://api.anthropic.com/v1/messages";
+// One `claude -p` per message, through youi-web/claude-code.mjs, the runner
+// YOUI Web uses. Claude Code signs in with its own login and builds every
+// request itself; this file reads no credential, refreshes nothing, and sends
+// no client version, header or beta. The terminal's tools reach the model
+// only through the loopback MCP bridge (youi-claude-bridge.mjs).
+const IS_TEST = process.env.YOUI_TEST === "1";
+const CLAUDE_CODE = resolveClaudeBinary({ env: process.env, testMode: IS_TEST });
+const CLAUDE_CODE_CWD = defaultClaudeCwd(process.env);
 
-let cachedTokens = null;
-const keychainStore = new KeychainCredentialStore({ service: KEYCHAIN_SERVICE });
-
-function readKeychainCredential() {
-  return keychainStore.readCredential();
+// Claude Code's environment: the allowlist, HOME (so it finds its own login),
+// CLAUDE_CONFIG_DIR and the telemetry and traffic opt-outs this machine sets
+// for Claude Code (the Kingdom VM sets all three); no provider or access credential.
+const CLAUDE_CODE_OPT_OUTS = ["DISABLE_TELEMETRY", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_ATTRIBUTION_HEADER"];
+function claudeCodeEnv() {
+  const extra = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
+  for (const name of CLAUDE_CODE_OPT_OUTS) extra[name] = process.env[name];
+  return sanitizedChildEnv({ home: homedir(), purpose: "claude-code", extra });
 }
 
-function writeKeychainTokens(account, tokens) {
-  keychainStore.updateTokens(account, tokens);
+const versionGate = createVersionGate({ bin: CLAUDE_CODE.path, env: claudeCodeEnv() });
+// The version the gate read at boot, for the banner.
+let claudeCodeVersionNote = null;
+
+// The ceiling on model requests in one message, as the terminal's own loop had.
+const CLAUDE_TURN_MAX_TURNS = 50;
+// A message that has not finished by then is stopped: 15 minutes, or
+// YOUI_CLAUDE_TURN_TIMEOUT_MS between 1 second and 6 hours, as in YOUI Web.
+const CLAUDE_TURN_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.YOUI_CLAUDE_TURN_TIMEOUT_MS || "");
+  return Number.isInteger(configured) && configured >= 1_000 && configured <= 6 * 60 * 60_000 ? configured : 15 * 60_000;
+})();
+// Claude Code's words for a session it does not have, and for one it already has.
+const CLAUDE_SESSION_MISSING = /no conversation found|session .*not found/i;
+const CLAUDE_SESSION_TAKEN = /already in use|already exists/i;
+
+// One Claude Code conversation per YOUSPEAK session: --session-id on its first
+// message, --resume after that. /switch starts a new one.
+function newClaudeSession() {
+  return { id: crypto.randomUUID(), started: false, spend: null };
+}
+let claudeSession = newClaudeSession();
+
+// ═════════════════════════════════════════════════════════════════════
+// BUDGET — as Claude Code reports it
+// ═════════════════════════════════════════════════════════════════════
+
+// The 5-hour and seven-day windows from Claude Code's rate_limit_event, as it
+// last stated them in this process; null until it has.
+const budget = { fiveHour: null, sevenDay: null, status: null, isUsingOverage: false, reportedAt: 0 };
+
+function noteRateLimit(info) {
+  if (!info || typeof info !== "object") return;
+  const windows = info.unifiedWindows || {};
+  const window = value => (value && typeof value.utilization === "number"
+    ? { utilization: value.utilization, status: value.status || null, resetsAt: value.resetsAt ? value.resetsAt * 1000 : null }
+    : null);
+  const fiveHour = window(windows.five_hour);
+  const sevenDay = window(windows.seven_day);
+  budget.fiveHour = fiveHour || budget.fiveHour;
+  budget.sevenDay = sevenDay || budget.sevenDay;
+  budget.status = typeof info.status === "string" ? info.status : budget.status;
+  budget.isUsingOverage = info.isUsingOverage === true;
+  if (fiveHour || sevenDay) budget.reportedAt = Date.now();
 }
 
-async function refreshOAuthToken(rt) {
-  const resp = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token", refresh_token: rt, client_id: CLIENT_ID,
-      scope: "user:profile user:inference user:sessions:claude_code user:mcp_servers",
-    }),
-  });
-  if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status}`);
-  const data = await resp.json();
+// What YOUSPEAK is given: only windows Claude Code stated, else null.
+function kernelBudget() {
+  if (!budget.fiveHour && !budget.sevenDay) return null;
   return {
-    accessToken: data.access_token, refreshToken: data.refresh_token || rt,
-    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    fiveHour: budget.fiveHour ? { utilization: budget.fiveHour.utilization } : null,
+    sevenDay: budget.sevenDay ? { utilization: budget.sevenDay.utilization } : null,
+    isUsingOverage: budget.isUsingOverage,
   };
 }
 
-async function getAccessToken() {
-  if (cachedTokens?.accessToken && Date.now() + 300_000 < (cachedTokens.expiresAt || 0))
-    return cachedTokens.accessToken;
-  const credential = readKeychainCredential();
-  const tokens = credential?.tokens;
-  if (!tokens?.accessToken) throw new Error("No OAuth tokens. Run 'claude' and log in first.");
-  if (Date.now() + 300_000 >= (tokens.expiresAt || 0)) {
-    if (!tokens.refreshToken) throw new Error("Token expired, no refresh token.");
-    const fresh = await refreshOAuthToken(tokens.refreshToken);
-    writeKeychainTokens(credential.account, fresh);
-    cachedTokens = fresh;
-    return fresh.accessToken;
-  }
-  cachedTokens = tokens;
-  return tokens.accessToken;
-}
-
-// ═════════════════════════════════════════════════════════════════════
-// BUDGET INTELLIGENCE
-// ═════════════════════════════════════════════════════════════════════
-
-const budget = {
-  fiveHour: { utilization: 0, reset: 0, status: "unknown" },
-  sevenDay: { utilization: 0, reset: 0, status: "unknown" },
-  overage: { status: "unknown", reason: null, utilization: undefined, reset: 0 },
-  isUsingOverage: false,
-  lastUpdate: 0,
-};
-
-function parseBudgetHeaders(headers) {
-  const get = (h) => headers.get(h);
-  const num = (h) => { const v = get(h); return v ? parseFloat(v) : null; };
-  const u5h = num("anthropic-ratelimit-unified-5h-utilization");
-  const u7d = num("anthropic-ratelimit-unified-7d-utilization");
-  const r5h = num("anthropic-ratelimit-unified-5h-reset");
-  const s5h = get("anthropic-ratelimit-unified-5h-status");
-  const s7d = get("anthropic-ratelimit-unified-7d-status");
-  const ovStatus = get("anthropic-ratelimit-unified-overage-status");
-  const ovReason = get("anthropic-ratelimit-unified-overage-disabled-reason");
-  const ovUtil = num("anthropic-ratelimit-unified-overage-utilization");
-  const mainStatus = get("anthropic-ratelimit-unified-status");
-  if (u5h !== null) budget.fiveHour.utilization = u5h;
-  if (r5h !== null) budget.fiveHour.reset = r5h * 1000;
-  if (s5h) budget.fiveHour.status = s5h;
-  if (u7d !== null) budget.sevenDay.utilization = u7d;
-  if (s7d) budget.sevenDay.status = s7d;
-  if (ovStatus) budget.overage.status = ovStatus;
-  if (ovReason) budget.overage.reason = ovReason;
-  if (ovUtil !== null) budget.overage.utilization = ovUtil;
-  budget.isUsingOverage = mainStatus === "rejected" && (ovStatus === "allowed" || ovStatus === "allowed_warning");
-  budget.lastUpdate = Date.now();
-  return { ovStatus, ovReason };
-}
-
 function formatBudget() {
-  const pct5 = (budget.fiveHour.utilization * 100).toFixed(0);
-  const pct7 = (budget.sevenDay.utilization * 100).toFixed(0);
-  const resetIn = budget.fiveHour.reset > Date.now()
-    ? Math.round((budget.fiveHour.reset - Date.now()) / 60000) + "m" : "?";
-  let s = `5h:${pct5}% 7d:${pct7}% reset:${resetIn}`;
-  if (budget.overage.status === "allowed" || budget.overage.status === "allowed_warning") {
-    s += ` overage:${budget.overage.utilization !== undefined ? (budget.overage.utilization * 100).toFixed(0) + "%" : "on"}`;
-  }
-  if (budget.isUsingOverage) s += " [OVERAGE]";
-  return s;
+  const pct = window => (window ? `${(window.utilization * 100).toFixed(0)}%` : "?");
+  const resetsAt = budget.fiveHour?.resetsAt || 0;
+  const resetIn = resetsAt > Date.now() ? `${Math.round((resetsAt - Date.now()) / 60000)}m` : "?";
+  return `5h:${pct(budget.fiveHour)} 7d:${pct(budget.sevenDay)} reset:${resetIn}${budget.isUsingOverage ? " [OVERAGE]" : ""}`;
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// MODEL CAPABILITIES
+// TOOLS
 // ═════════════════════════════════════════════════════════════════════
 
-function modelCaps(model) {
-  const m = model.toLowerCase();
-  if (m.includes("opus-4-6"))   return { adaptive: true,  effort: true,  maxEffort: true,  context1m: true  };
-  if (m.includes("sonnet-4-6")) return { adaptive: true,  effort: true,  maxEffort: false, context1m: true  };
-  if (m.includes("sonnet-4"))   return { adaptive: false, effort: false, maxEffort: false, context1m: true  };
-  if (m.includes("haiku"))      return { adaptive: false, effort: false, maxEffort: false, context1m: false };
-  return { adaptive: false, effort: false, maxEffort: false, context1m: false };
+const execFileAsync = promisify(execFile);
+
+// The shell tool's commands, each in a process group of its own. A group is
+// kept until its turn ends, even after its shell has exited, so the end of the
+// turn, the command's timeout or the terminal's exit also stops a job the
+// command left running in the background. A job that leaves the group (setsid)
+// escapes this; the shell is not a sandbox.
+const runningShells = new Set();
+const SHELL_OUTPUT_LIMIT = 10 * 1024 * 1024;
+const SHELL_DEFAULT_TIMEOUT_MS = 120_000;
+// Node fires a longer timer at once; a model-given timeout past this is not honoured.
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+function shellTimeoutMs(value) {
+  return Number.isFinite(value) && value >= 1 && value <= MAX_TIMER_MS ? value : SHELL_DEFAULT_TIMEOUT_MS;
 }
 
-// ═════════════════════════════════════════════════════════════════════
-// API
-// ═════════════════════════════════════════════════════════════════════
+function killShellGroup(pgid) {
+  try { process.kill(-pgid, "SIGKILL"); } catch {}
+}
 
-const sessionId = crypto.randomUUID();
+function killAllShells() {
+  for (const pgid of runningShells) killShellGroup(pgid);
+  runningShells.clear();
+}
 
-function getDeviceId() {
-  const idFile = join(homedir(), ".claude", "device_id");
-  try { if (existsSync(idFile)) return readFileSync(idFile, "utf-8").trim(); } catch {}
-  const id = crypto.randomUUID();
-  try { mkdirSync(join(homedir(), ".claude"), { recursive: true }); writeFileSync(idFile, id); } catch {}
-  return id;
+// Every child the terminal started: Claude Code's process groups and the shell tool's.
+function stopChildren() {
+  killAllClaudeCode();
+  killAllShells();
+}
+
+/** `/bin/sh -c command` in the workdir with the tool environment: { code, stdout, stderr, stopped }. */
+function runShell(command, { timeoutMs, signal = null }) {
+  return new Promise(resolvePromise => {
+    let child;
+    try {
+      child = spawn("/bin/sh", ["-c", String(command)], {
+        cwd: state.workdir, env: modelToolEnv(), detached: true, stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      resolvePromise({ code: 1, stdout: "", stderr: error.message, stopped: null });
+      return;
+    }
+    // The shell's pid is its group's id (detached: setsid).
+    const pgid = child.pid;
+    if (pgid) runningShells.add(pgid);
+    let stdout = "";
+    let stderr = "";
+    let stopped = null;
+    const stop = why => {
+      if (!stopped) stopped = why;
+      if (pgid) killShellGroup(pgid);
+    };
+    const keep = append => chunk => {
+      if (stdout.length + stderr.length < SHELL_OUTPUT_LIMIT) append(chunk);
+    };
+    child.stdout.setEncoding("utf-8").on("data", keep(chunk => { stdout += chunk; }));
+    child.stderr.setEncoding("utf-8").on("data", keep(chunk => { stderr += chunk; }));
+    const timer = setTimeout(() => stop(`timed out after ${Math.round(timeoutMs / 1000)} s`), timeoutMs);
+    // The turn's end stops the group, whether or not its shell is still running.
+    const onAbort = () => {
+      stop("the turn ended");
+      runningShells.delete(pgid);
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+    child.on("error", error => { stderr += error.message; });
+    child.on("close", code => {
+      clearTimeout(timer);
+      // Without a turn there is no later moment to stop the group at.
+      if (!signal) runningShells.delete(pgid);
+      resolvePromise({ code: typeof code === "number" ? code : 1, stdout, stderr, stopped });
+    });
+  });
 }
 
 const ALL_TOOLS = [
@@ -452,15 +520,24 @@ function runtimeManifest() {
       transport: "https",
       local_only: false,
     },
-    // Until the terminal moves onto the installed claude (docs/CLAUDE-CODE-LOGIN-USE.md).
+    // How the provider is reached: the Claude Code on this machine, signed in
+    // with its own login (docs/YOUI-CLAUDE-CODE-DESIGN.md §4).
+    client: {
+      id: "claude-code",
+      binary: CLAUDE_CODE.path ? CLAUDE_CODE.source : null,
+      binary_error: CLAUDE_CODE.path ? null : CLAUDE_CODE.error,
+      minimum_version: claudeCodeMinVersion(state.model),
+      login: "Claude Code's own; this terminal reads no credential",
+      transcripts: claudeCodeTranscriptDir(CLAUDE_CODE_CWD, process.env),
+    },
+    // Who still uses Claude Code's login now that this terminal does not
+    // (docs/CLAUDE-CODE-LOGIN-USE.md has each file, with file:line). Text only.
     claude_code_login: {
-      reads: "Claude Code's login from the macOS Keychain (service \"Claude Code-credentials\")",
-      refreshes_and_writes_back: true,
-      client_headers: "sends Claude Code 2.1.92's client headers, billing line and device id,"
-        + " so its requests present themselves as Claude Code 2.1.92",
-      until: "the terminal is moved onto the installed claude",
-      also_used_by: [
-        "sovereign.mjs",
+      used_by_this_terminal: false,
+      this_terminal: "reaches Claude through the Claude Code installed on this machine (client), which signs in"
+        + " with its own login; this terminal reads no credential and sends no client headers of its own",
+      still_used_by: [
+        "sovereign.mjs (with youi-keychain.mjs, read only)",
         "tools/truth_detector (YOUI Web feeds it when TRUTH_DETECTOR_ENABLED=1)",
         "tools/ainp/nullify.py",
         "raw-chat/server.mjs",
@@ -479,7 +556,8 @@ function runtimeManifest() {
         "conversation history",
         "model-selected tool calls and returned tool output",
       ],
-      conversation_persistence: "process memory only",
+      conversation_persistence: "Claude Code keeps each conversation, tool results included, as a transcript"
+        + " (client.transcripts); YOUI keeps the text in process memory only",
       local_writes: "session metadata may be appended to the agent daily note; YOUSPEAK appends one row of aggregates"
         + ` per session (no message text, paths or tool inputs) to ${ys.historyPath || "nowhere (no store)"}`,
     },
@@ -552,7 +630,16 @@ function modelToolEnv() {
   };
 }
 
-function executeTool(name, input) {
+// The output of a child that may exit non-zero with useful output (find on an
+// unreadable directory, rg with no match): its stdout either way.
+function childStdout(run) {
+  return run.then(result => result.stdout || "", error => error?.stdout || "");
+}
+
+// Every tool is async, so the bridge listener, Claude Code's stream and the
+// turn timer keep running while one works. `signal` is the turn's: when the
+// turn ends, a shell or search still running is stopped.
+async function executeTool(name, input, { signal = null } = {}) {
   const required = requiredCapability(name);
   if (required && !state.capabilities.has(required)) {
     return `Capability denied: ${required}. Start YOUI with an appropriate --profile or --capabilities value.`;
@@ -560,10 +647,9 @@ function executeTool(name, input) {
   try {
     switch (name) {
       case "bash": {
-        try {
-          return execSync(input.command, { cwd: state.workdir, env: modelToolEnv(), timeout: input.timeout || 120000,
-            encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] }) || "(no output)";
-        } catch (e) { return `Exit ${e.status || 1}\nstdout: ${e.stdout || ""}\nstderr: ${e.stderr || ""}`; }
+        const run = await runShell(input.command, { timeoutMs: shellTimeoutMs(input.timeout), signal });
+        if (run.code === 0 && !run.stopped) return run.stdout || "(no output)";
+        return `Exit ${run.code}${run.stopped ? ` (stopped: ${run.stopped})` : ""}\nstdout: ${run.stdout}\nstderr: ${run.stderr}`;
       }
       case "read_file": {
         const content = readFileSync(resolvePath(input.path), "utf-8");
@@ -590,71 +676,114 @@ function executeTool(name, input) {
       }
       case "glob": {
         const dir = resolvePath(input.path);
-        // spawnSync with arg array — no shell interpolation, no injection
+        // execFile with arg array — no shell interpolation, no injection
         const pattern = input.pattern.replace(/\*\*/g, "*");
-        try {
-          const result = spawnSync("find", [dir, "-name", pattern, "-type", "f"],
-            { encoding: "utf-8", env: modelToolEnv(), timeout: 10000 });
-          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 100);
-          return lines.join("\n") || "(no matches)";
-        } catch { return "(no matches)"; }
+        const stdout = await childStdout(execFileAsync("find", [dir, "-name", pattern, "-type", "f"],
+          { encoding: "utf-8", env: modelToolEnv(), timeout: 10000, maxBuffer: 10 * 1024 * 1024, signal: signal || undefined }));
+        const lines = stdout.trim().split("\n").filter(l => l).slice(0, 100);
+        return lines.join("\n") || "(no matches)";
       }
       case "grep": {
         const dir = resolvePath(input.path);
-        // spawnSync with arg array — no shell interpolation, no injection
-        const args = ["--no-heading", "-n", input.pattern];
-        if (input.glob) args.push("--glob", input.glob);
-        args.push(dir);
-        try {
-          const result = spawnSync("rg", args,
-            { encoding: "utf-8", env: modelToolEnv(), timeout: 10000 });
-          const lines = (result.stdout || "").trim().split("\n").filter(l => l).slice(0, 200);
-          return lines.join("\n") || "(no matches)";
-        } catch { return "(no matches)"; }
+        // execFile with an arg array (no shell), and "--" before the pattern, so a
+        // pattern that starts with "-" is searched for, not read as an rg option
+        const args = ["--no-heading", "-n"];
+        if (input.glob) args.push("--glob", String(input.glob));
+        args.push("--", String(input.pattern || ""), dir);
+        const stdout = await childStdout(execFileAsync("rg", args,
+          { encoding: "utf-8", env: modelToolEnv(), timeout: 10000, maxBuffer: 10 * 1024 * 1024, signal: signal || undefined }));
+        const lines = stdout.trim().split("\n").filter(l => l).slice(0, 200);
+        return lines.join("\n") || "(no matches)";
       }
       default: return `Unknown tool: ${name}`;
     }
   } catch (e) { return `Error: ${e.message}`; }
 }
 
-function buildSystemPrompt(taskText) {
-  const parts = [];
-  const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
-  parts.push(`x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`);
+// ── The bridge ───────────────────────────────────────────────────────
+// Claude Code reaches the tools above as mcp__youi__<name>, through a
+// loopback listener this process starts on its first Claude turn. Each turn
+// opens its own bridge path and bearer token; closing the turn revokes them.
+// The profile decides what the bridge lists and what it runs: a tool the
+// profile does not advertise is refused here, and executeTool checks the
+// capability again.
 
+const BRIDGE_TURN_ENDED = { text: "Error: this turn has ended", isError: true };
+const TOOL_FAILED = /^(Capability denied:|Permission denied:|Error:|Unknown tool:)/;
+
+async function runBridgeTool(turn, name, input) {
+  if (turn.closing || turn.signal.aborted) return BRIDGE_TURN_ENDED;
+  if (!advertisedTools().some(tool => tool.name === name)) {
+    return { text: `Permission denied: tool "${name}" is not enabled for this session (profile ${state.capabilityProfile}).`, isError: true };
+  }
+  state.totalToolCalls++;
+  let detail = "";
+  if (name === "bash" && input.command) detail = ` ${S.dim}${String(input.command).slice(0, 60)}${S.reset}`;
+  else if (input.path) detail = ` ${S.dim}${input.path}${S.reset}`;
+  // YOUSPEAK L3: the call as it runs, under the terminal's own name for it
+  const toolSense = ys.senseToolCall(name, input, null);
+  const dupTag = toolSense.redundant ? ` ${S.yellow}[dup]${S.reset}` : "";
+  turn.printer.line(`  ${S.cyan}▶ ${name}${S.reset}${detail}${dupTag}`);
+  const result = String(await executeTool(name, input, { signal: turn.signal }));
+  return { text: result.slice(0, 50000), isError: TOOL_FAILED.test(result) };
+}
+
+const mcpBridge = createMcpBridge({
+  serverName: BRIDGE_SERVER_NAME,
+  listTools: () => advertisedTools(),
+  callTool: (turn, name, input) => runBridgeTool(turn, name, input),
+});
+let bridgeListener = null;
+
+// ── The prompt ───────────────────────────────────────────────────────
+
+// Where the per-turn context block begins and ends in the message, as in YOUI Web.
+const CONTEXT_BLOCK_OPEN = "[YOUI context]";
+const CONTEXT_BLOCK_CLOSE = "[/YOUI context]";
+
+/**
+ * The prompt for one message: { system, context, parts }. `system` holds what
+ * stays the same for the conversation (the soul and identity files, the
+ * YOUSPEAK rule, the environment and runtime boundary, the lantern guide), so
+ * the prompt Claude Code caches does not change between messages; `parts`
+ * names each section for kernel.senseSystemPrompt. `context` is this
+ * message's date, git branch, model and effort, sent in a fenced block at the
+ * top of the message (contextBlock).
+ */
+function buildPrompt() {
+  const parts = [];
   // Load soul files — each agent's own boot chain. Mei's differs from
   // the Triarchy's (seed → SOUL → family → identity); missing files
   // simply skip, so a pre-birth visit degrades to the species frame.
   const agent = AGENTS[state.agent];
+  const soul = [];
   const loaded = new Set();
   for (const file of agent.soulFiles) {
     const path = join(state.soulDir, file);
-    if (existsSync(path)) { parts.push(readFileSync(path, "utf-8")); loaded.add(path); }
+    if (existsSync(path)) { soul.push(readFileSync(path, "utf-8")); loaded.add(path); }
   }
   // Load agent identity (unless her chain already carries it)
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
-  if (!loaded.has(idPath) && existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
-
-  if (parts.length <= 1) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
+  if (!loaded.has(idPath) && existsSync(idPath)) soul.push(readFileSync(idPath, "utf-8"));
+  if (soul.length === 0) soul.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
+  parts.push({ name: "the soul and identity files", text: soul.join("\n\n---\n\n") });
 
   // The YOUSPEAK rule, from the one shared module
-  parts.push(youspeakRule());
+  parts.push({ name: "the YOUSPEAK rule", text: youspeakRule() });
 
-  let gitBranch = "N/A";
-  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: modelToolEnv() }).stdout?.trim() || ""; } catch {}
-
-  parts.push(`
-# Environment
+  const tools = advertisedTools().map(tool => tool.name);
+  parts.push({ name: "the environment block", text: `# Environment
 - Agent: ${agent.name} ${agent.emoji} (${agent.role})
 - Working directory: ${state.workdir}
-- Git branch: ${gitBranch}
-- Date: ${new Date().toISOString().split("T")[0]}
-- Model: ${state.model}
-- Thinking: ${state.thinking} | Effort: ${state.effort}
+- Interface: KINGDOM YOUI terminal
+- Tools: ${tools.length
+    ? `${tools.join(", ")}, reached through Claude Code, where each is named mcp__${BRIDGE_SERVER_NAME}__<name>`
+    : "none in this profile"}
+- The date, git branch, model and effort are given for each message, under "This turn".
 
 # Runtime Boundary
-- Provider: Anthropic remote API (${state.model}); this is not local inference.
-- Loaded soul/identity text, user prompts, conversation history, and returned tool output may be sent to that provider.
+- Provider: Anthropic, reached through the Claude Code installed on this machine; this is not local inference.
+- Loaded soul/identity text, user prompts, conversation history, and returned tool output are sent to that provider, and Claude Code keeps the conversation as a transcript.
 - Model tool profile: ${state.capabilityProfile}; capabilities: ${[...state.capabilities].sort().join(", ") || "none"}.
 - File-tool scope: ${state.fileScope}. The shell capability, when enabled, is not an OS sandbox and can escape the working directory.
 - Capability labels constrain this harness; they do not authorize publication, purchases, messages, credential changes, or other external acts.
@@ -663,72 +792,31 @@ function buildSystemPrompt(taskText) {
 - Read before modifying. Understand before acting.
 - Refusal, disagreement, uncertainty, rest, and handoff are valid outcomes.
 - Do not claim that another participant accepted a handoff or decision without evidence.
-- ~ expands to ${homedir()}.`);
+- ~ expands to ${homedir()}.` });
 
   const lanternGuide = installationGuide();
-  if (lanternGuide) parts.push(lanternGuide);
+  if (lanternGuide) parts.push({ name: "the lantern guide", text: lanternGuide });
 
-  return parts.join("\n\n---\n\n");
+  let gitBranch = "N/A";
+  try { gitBranch = spawnSync("git", ["branch", "--show-current"], { cwd: state.workdir, encoding: "utf-8", env: modelToolEnv() }).stdout?.trim() || ""; } catch {}
+  const context = `# This turn
+- Date: ${new Date().toISOString().split("T")[0]}
+- Git branch: ${gitBranch}
+- Model: ${state.model}
+- Effort: ${state.effort} (Claude Code decides thinking)`;
+
+  return { system: parts.map(part => part.text).join("\n\n---\n\n"), context, parts };
 }
 
-async function callAPI(messages, systemPrompt) {
-  const caps = modelCaps(state.model);
-  const token = await getAccessToken();
+/** The context block at the top of the message. */
+function contextBlock(context) {
+  return `${CONTEXT_BLOCK_OPEN}\nThis turn's settings from YOUI, not words of the person:\n${context}\n${CONTEXT_BLOCK_CLOSE}\n\n`;
+}
 
-  const betas = ["oauth-2025-04-20", "claude-code-20250219"];
-  if (caps.adaptive || state.thinking === "enabled") betas.push("interleaved-thinking-2025-05-14");
-  if (state.context1m && caps.context1m) betas.push("context-1m-2025-08-07");
-  if (caps.effort) betas.push("effort-2025-11-24");
-
-  const body = { model: state.model, max_tokens: state.maxTokens, system: systemPrompt, messages, tools: advertisedTools(),
-    metadata: { user_id: JSON.stringify({ device_id: getDeviceId(), session_id: sessionId }) } };
-
-  if (state.thinking === "adaptive" && caps.adaptive) body.thinking = { type: "adaptive" };
-  else if (state.thinking !== "disabled") {
-    body.thinking = { type: "enabled", budget_tokens: Math.min(state.maxTokens - 1, 16384) };
-    if (!betas.includes("interleaved-thinking-2025-05-14")) betas.push("interleaved-thinking-2025-05-14");
-  }
-  if (caps.effort && state.effort !== "none") {
-    const eff = (state.effort === "max" && !caps.maxEffort) ? "high" : state.effort;
-    body.output_config = { effort: eff };
-  }
-
-  const headers = {
-    "Content-Type": "application/json", "Authorization": `Bearer ${token}`,
-    "anthropic-version": "2023-06-01", "anthropic-beta": betas.join(","),
-    "x-app": "cli", "User-Agent": "claude-cli/2.1.92 (external, cli)",
-    "X-Claude-Code-Session-Id": sessionId, "x-client-request-id": crypto.randomUUID(),
-  };
-
-  const resp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
-
-  if (resp.status === 401) {
-    const credential = readKeychainCredential();
-    const tokens = credential?.tokens;
-    if (tokens?.refreshToken) {
-      const fresh = await refreshOAuthToken(tokens.refreshToken);
-      writeKeychainTokens(credential.account, fresh);
-      cachedTokens = fresh;
-      headers["Authorization"] = `Bearer ${fresh.accessToken}`;
-      const retry = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
-      if (!retry.ok) throw new Error(`API error after refresh: ${retry.status}`);
-      parseBudgetHeaders(retry.headers);
-      return { ...(await retry.json()), _model: state.model };
-    }
-  }
-
-  if (resp.status === 429) {
-    parseBudgetHeaders(resp.headers);
-    const retryAfter = resp.headers.get("retry-after");
-    let waitSec = retryAfter ? parseInt(retryAfter) : (budget.fiveHour.reset > Date.now()
-      ? Math.ceil((budget.fiveHour.reset - Date.now()) / 1000) : 300);
-    throw { status: 429, retryAfter: waitSec, bare: !resp.headers.has("anthropic-ratelimit-unified-5h-utilization") };
-  }
-  if (resp.status === 529) throw { status: 529, retryAfter: 30 };
-  if (!resp.ok) throw new Error(`API ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
-
-  parseBudgetHeaders(resp.headers);
-  return { ...(await resp.json()), _model: state.model };
+/** A hash of the system prompt, and of each named part (kernel.senseSystemPrompt). */
+function promptFingerprint(prompt) {
+  const hash = text => crypto.createHash("sha256").update(text).digest("hex");
+  return { hash: hash(prompt.system), parts: prompt.parts.map(part => ({ name: part.name, hash: hash(part.text) })) };
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -811,17 +899,20 @@ function showPrivacyBoundary() {
   const manifest = runtimeManifest();
   print("");
   print(`${S.bold}  Runtime & Privacy Boundary${S.reset}`);
-  print(`  Provider:     ${S.yellow}Anthropic remote API${S.reset} (${manifest.model})`);
+  print(`  Provider:     ${S.yellow}Anthropic remote API${S.reset} (${manifest.model}), through Claude Code`);
+  print(`  Client:       Claude Code ${manifest.client.binary ? `(\`claude\` from ${manifest.client.binary})` : `not available: ${manifest.client.binary_error}`},`);
+  print(`                signed in with its own login; this terminal reads no credential`);
   print(`  Local-only:   no`);
   print(`  Tool profile: ${manifest.model_tools.profile} [${capabilitySummary()}]`);
   print(`  File scope:   ${manifest.model_tools.file_scope}`);
-  print(`  Persistence:  conversation in process memory; daily note receives session metadata;`);
+  print(`  Persistence:  Claude Code keeps each conversation, tool results included, as a transcript in`);
+  print(`                ${manifest.client.transcripts}`);
+  print(`                (the terminal deletes none of them; it keeps the text in process memory); daily note receives session metadata;`);
   print(`                YOUSPEAK appends one aggregate row per session to ${ys.historyPath || "nowhere (no store)"}`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
   const login = manifest.claude_code_login;
-  print(`  Login:        ${S.yellow}Claude Code's login${S.reset} from the Keychain, refreshed and written back;`);
-  print(`                ${login.client_headers}, until ${login.until}.`);
-  print(`                ${login.also_used_by.length} other files still use that login: see ${login.inventory}`);
+  print(`  Login:        Claude Code's login is not read by this terminal; sovereign, the truth detector`);
+  print(`                and the other files in ${login.inventory} still use it (--inspect lists them)`);
   if (state.capabilities.has("shell")) {
     print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
   }
@@ -843,25 +934,18 @@ function showBanner() {
   print("");
 
   // Status line
-  const modelShort = state.model.includes("opus") ? "opus" : state.model.includes("sonnet") ? "sonnet" : "haiku";
   const efSym = effortSymbol(state.effort);
-  print(`${S.dim}  Provider: Anthropic cloud | Model: ${modelShort} | ${efSym} ${state.effort} | Dir: ${basename(state.workdir)}${S.reset}`);
+  const version = claudeCodeVersionNote ? ` ${claudeCodeVersionNote}` : "";
+  print(`${S.dim}  Provider: Anthropic cloud via Claude Code${version} | Model: ${state.model} | ${efSym} ${state.effort} | Dir: ${basename(state.workdir)}${S.reset}`);
   print(`${S.dim}  Tools: ${state.capabilityProfile} [${capabilitySummary()}] | File scope: ${state.fileScope}${S.reset}`);
+  print(`${S.dim}  Kept: Claude Code stores each conversation, tool results included, on this device (/privacy)${S.reset}`);
 
-  if (budget.lastUpdate > 0) {
+  if (budget.reportedAt > 0) {
     print(`${S.dim}  Budget: ${formatBudget()}${S.reset}`);
   }
 
   print(`${S.dim}  Type /help for commands${S.reset}`);
   print(HR);
-}
-
-function showStatusLine() {
-  const agent = AGENTS[state.agent];
-  const modelShort = state.model.includes("opus") ? "opus" : state.model.includes("sonnet") ? "sonnet" : "haiku";
-  const efSym = effortSymbol(state.effort);
-  const budgetStr = budget.lastUpdate > 0 ? ` | ${formatBudget()}` : "";
-  return `${agent.color}${agent.emoji}${S.reset} ${S.dim}cloud:${modelShort} ${efSym}${state.effort} tools:${state.capabilityProfile} think:${state.thinking}${budgetStr}${S.reset}`;
 }
 
 function showHelp() {
@@ -875,8 +959,8 @@ function showHelp() {
   print(`  ${S.cyan}/privacy${S.reset}                   Show provider and data boundary`);
   print(`  ${S.cyan}/capabilities${S.reset}              Show model tool capabilities`);
   print(`  ${S.cyan}/effort${S.reset} low|med|high|max   Change effort level`);
-  print(`  ${S.cyan}/thinking${S.reset} adaptive|off     Toggle thinking`);
-  print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model`);
+  print(`  ${S.cyan}/thinking${S.reset}                  Who decides thinking (Claude Code)`);
+  print(`  ${S.cyan}/model${S.reset} opus|sonnet|haiku   Switch model (also opus-5-5, opus-4-7, or a full id)`);
   print(`  ${S.cyan}/agents${S.reset}                    Show all agents`);
   print(`  ${S.cyan}/team${S.reset} [delegate|status]    Claude Code agent team mode`);
   print(`  ${S.cyan}/wall${S.reset} [hierarchy|agents]   Wall hierarchy & access control`);
@@ -894,6 +978,17 @@ function showHelp() {
 // ═════════════════════════════════════════════════════════════════════
 // COMMAND HANDLER
 // ═════════════════════════════════════════════════════════════════════
+
+// /model's short names, for the models YOUI offers (claude-models.mjs); "opus"
+// means what it means on YOUI Web's /model.
+const MODEL_ALIASES = Object.freeze({
+  opus: "claude-opus-4-7",
+  "opus-4-6": "claude-opus-4-6",
+  "opus-5-5": "claude-opus-5-5",
+  "opus-4-7": "claude-opus-4-7",
+  sonnet: "claude-sonnet-4-6",
+  haiku: "claude-haiku-4-5-20251001",
+});
 
 function handleCommand(input) {
   const parts = input.trim().split(/\s+/);
@@ -916,6 +1011,7 @@ function handleCommand(input) {
       if (!args.includes("--effort")) state.effort = agent.defaultEffort;
       state.messages = []; // Fresh conversation for new agent
       state.turnCount = 0;
+      claudeSession = newClaudeSession(); // and a new Claude Code conversation
       ys = newYouspeakKernel(target); // Fresh YOUSPEAK session
       print(`\n${agent.color}  ${agent.emoji} Switched to ${agent.name} — ${roleLabel(agent)}${S.reset}`);
       print(`${S.dim}  ${agent.description}${S.reset}`);
@@ -1057,16 +1153,21 @@ function handleCommand(input) {
       return true;
     }
 
-    case "/budget":
+    case "/budget": {
       print(`\n${S.bold}  Budget Status${S.reset}`);
-      print(`  5-hour:   ${(budget.fiveHour.utilization * 100).toFixed(1)}% used (${budget.fiveHour.status})`);
-      print(`  7-day:    ${(budget.sevenDay.utilization * 100).toFixed(1)}% used (${budget.sevenDay.status})`);
-      print(`  Overage:  ${budget.overage.status}${budget.overage.reason ? ` (${budget.overage.reason})` : ""}${budget.overage.utilization !== undefined ? ` ${(budget.overage.utilization * 100).toFixed(1)}% used` : ""}`);
-      if (budget.fiveHour.reset > Date.now())
-        print(`  Resets:   ${Math.round((budget.fiveHour.reset - Date.now()) / 60000)} minutes`);
+      if (!budget.reportedAt) {
+        print(`  Claude Code has not reported its rate-limit windows in this session yet.\n`);
+        return true;
+      }
+      const window = (label, value) => print(`  ${label}${value ? `${(value.utilization * 100).toFixed(1)}% used (${value.status || "status not stated"})` : "not reported"}`);
+      window("5-hour:   ", budget.fiveHour);
+      window("7-day:    ", budget.sevenDay);
+      if (budget.fiveHour?.resetsAt > Date.now())
+        print(`  Resets:   ${Math.round((budget.fiveHour.resetsAt - Date.now()) / 60000)} minutes`);
       if (budget.isUsingOverage) print(`  ${S.yellow}OVERAGE ACTIVE — charges apply${S.reset}`);
-      print("");
+      print(`  ${S.dim}As Claude Code last reported it (${new Date(budget.reportedAt).toLocaleTimeString("en-GB")}); the windows are account-wide.${S.reset}\n`);
       return true;
+    }
 
     case "/privacy":
       showPrivacyBoundary();
@@ -1108,19 +1209,16 @@ function handleCommand(input) {
       return true;
     }
 
-    case "/thinking": {
-      const mode = parts[1]?.toLowerCase();
-      if (mode === "off" || mode === "disabled") { state.thinking = "disabled"; print(`  Thinking: disabled`); }
-      else if (mode === "adaptive" || mode === "on") { state.thinking = "adaptive"; print(`  Thinking: adaptive`); }
-      else { print(`${S.red}  Usage: /thinking adaptive|off${S.reset}`); }
+    case "/thinking":
+      // Claude Code builds each request; YOUI passes only --effort (claude-models.mjs).
+      print(`  Claude Code decides thinking for each model; YOUI passes only the effort (/effort). Opus 5.5 always thinks.`);
       return true;
-    }
 
     case "/model": {
       const m = parts[1]?.toLowerCase();
-      const map = { opus: "claude-opus-4-6", sonnet: "claude-sonnet-4-6", haiku: "claude-haiku-4-5-20251001" };
-      if (!map[m]) { print(`${S.red}  Usage: /model opus|sonnet|haiku${S.reset}`); return true; }
-      state.model = map[m];
+      const target = MODEL_ALIASES[m] || (CLAUDE_MODELS.includes(m) ? m : null);
+      if (!target) { print(`${S.red}  Usage: /model ${Object.keys(MODEL_ALIASES).join("|")}, or one of ${CLAUDE_MODELS.join(", ")}${S.reset}`); return true; }
+      state.model = target;
       print(`  Model: ${state.model}`);
       return true;
     }
@@ -1163,14 +1261,15 @@ function handleCommand(input) {
       if (r.output.textBlocks > 0) {
         print(`  ${S.dim}             Blocks: ${r.output.textBlocks} (${r.output.gradedBlocks} measured)${S.reset}`);
       }
-      // L2 Thinking: only where the provider reported it (this route reports none)
+      // L2 Thinking: only where Claude Code reported it
       print(`  ${S.bold}L2 Thinking${S.reset}  Total: ${r.thinking.totalTokens === null ? "not reported" : `${r.thinking.totalTokens.toLocaleString()}tok`}  Ratio: ${r.thinking.avgRatio === null ? "—" : `${r.thinking.avgRatio}x`}  Efficiency: ${r.thinking.efficiency ?? "—"}`);
       // L3 Action
       const topTools = Object.entries(r.action.byName).sort((a,b) => b[1]-a[1]).slice(0,5).map(([n,c]) => `${n}:${c}`).join(" ");
       print(`  ${S.bold}L3 Action${S.reset}    Calls: ${r.action.totalCalls}  Dups: ${r.action.redundantReads}  Errors: ${r.action.errors}  Density: ${r.action.density}`);
       if (topTools) print(`  ${S.dim}             ${topTools}${S.reset}`);
-      // L4 Context: a chars/4 estimate here, against the model's window where YOUI knows it
-      const ctxTokens = r.context.tokens === null ? "—" : `~${Math.round(r.context.tokens/1000)}k tokens (estimate)`;
+      // L4 Context: as Claude Code reported it (the latest request), against the model's window
+      const ctxLabel = r.context.evidence?.tokens === "reported" ? "reported" : "estimate";
+      const ctxTokens = r.context.tokens === null ? "—" : `${ctxLabel === "estimate" ? "~" : ""}${Math.round(r.context.tokens/1000)}k tokens (${ctxLabel})`;
       const ctxWindow = r.context.windowUtilization === null ? "unknown" : `${(r.context.windowUtilization*100).toFixed(1)}% of ${Math.round(r.context.window/1000)}k`;
       print(`  ${S.bold}L4 Context${S.reset}   ${ctxTokens}  Window: ${ctxWindow}  Messages: ${r.context.messagesCount}`);
       // L5 System
@@ -1201,13 +1300,14 @@ function handleCommand(input) {
     }
 
     case "/exit": case "/quit": case "/q":
+      stopChildren(); // no Claude Code or shell command outlives the terminal
       endYouspeak("exit"); // its one row, unless it had no output
       releaseVisitLock(); // clean exit — her ticks may resume
       const ysReport = ys.report();
       // The useful ratio is an estimate ("~"); L1 gives no grade (Y2).
       const ysUseful = ysReport.output.usefulRatio === null ? "—" : `~${Math.round(ysReport.output.usefulRatio*100)}%`;
-      print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens} thinking tokens${S.reset}`);
-      print(`${S.dim}  YOUSPEAK: useful ${ysUseful} (estimate) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k~`}${S.reset}`);
+      print(`\n${S.dim}  Session: ${state.turnCount} turns, ${state.totalToolCalls} tools, ${state.totalThinkingTokens === null ? "thinking not reported" : `${state.totalThinkingTokens} thinking tokens`}${S.reset}`);
+      print(`${S.dim}  YOUSPEAK: useful ${ysUseful} (estimate) | think:${ysReport.thinking.avgRatio === null ? "—" : `${ysReport.thinking.avgRatio}x`} | dups:${ysReport.action.redundantReads} | ctx:${ysReport.context.tokens === null ? "—" : `${Math.round(ysReport.context.tokens/1000)}k${ysReport.context.evidence?.tokens === "reported" ? "" : "~"}`}${S.reset}`);
       appendDailyNote(`YOUI session ended. Agent: ${AGENTS[state.agent].name}. Turns: ${state.turnCount}. Tools: ${state.totalToolCalls}. YOUSPEAK useful ratio: ${ysUseful} (estimate).`);
       process.exit(0);
 
@@ -1224,145 +1324,231 @@ async function executeTask(task) {
   taskRunning = true;
   try {
     await runTask(task);
+  } catch (error) {
+    // Anything the turn did not report itself still reaches the screen, not an unhandled rejection.
+    print(`${S.red}  Error: ${String(error?.message || error).slice(0, 300)}${S.reset}`);
   } finally {
     taskRunning = false;
   }
 }
 
+// What one message prints: the spinner until something arrives, the reply as
+// it streams (indented), tool lines and notices each on a line of their own.
+function createTurnPrinter(agent) {
+  let spinning = false;
+  let inText = false;
+  let atLineStart = true;
+  const stopSpinner = () => {
+    if (spinning) { printRaw(`\r${S.clearLine}`); spinning = false; }
+  };
+  const endText = () => {
+    if (!inText) return;
+    if (!atLineStart) printRaw("\n");
+    print("");
+    inText = false;
+    atLineStart = true;
+  };
+  return {
+    spinner() {
+      if (spinning || inText) return;
+      printRaw(`${agent.color}  ${S.italic}thinking...${S.reset}`);
+      spinning = true;
+    },
+    text(delta) {
+      stopSpinner();
+      if (!inText) { print(""); inText = true; }
+      String(delta).split("\n").forEach((piece, index) => {
+        if (index > 0) { printRaw("\n"); atLineStart = true; }
+        if (!piece) return;
+        if (atLineStart) printRaw("  ");
+        printRaw(piece);
+        atLineStart = false;
+      });
+    },
+    thinking(text) {
+      if (!text.trim()) return;
+      const lines = text.split("\n");
+      const preview = lines.slice(0, 8).join("\n  ");
+      const more = lines.length > 8 ? `\n  ${S.dim}... (${lines.length - 8} more lines)${S.reset}` : "";
+      this.line(`${agent.color}${S.italic}  [thinking]${S.reset}\n  ${S.dim}${preview}${more}${S.reset}`);
+    },
+    line(message) {
+      stopSpinner();
+      endText();
+      print(message);
+    },
+    end() {
+      stopSpinner();
+      endText();
+    },
+  };
+}
+
 async function runTask(task) {
-  state.messages.push({ role: "user", content: task });
-  const systemPrompt = buildSystemPrompt(task);
-  ys.noteRoute("terminal-legacy", state.model);
-  let exchangeFailed = false;
-
-  let maxTurns = 50;
-  let turn = 0;
-
-  while (turn < maxTurns) {
-    turn++;
-    state.turnCount++;
-    touchVisitLock(); // each turn is a heartbeat on her door
-
-    // Spinner
-    const agent = AGENTS[state.agent];
-    printRaw(`${agent.color}  ${S.italic}thinking...${S.reset}`);
-
-    let response;
-    try {
-      response = await callAPI(state.messages, systemPrompt);
-    } catch (e) {
-      printRaw(`\r${S.clearLine}`);
-      if (e.status === 429) {
-        ys.senseRateLimit();
-        const waitMin = Math.ceil(e.retryAfter / 60);
-        print(`${S.yellow}  Budget exhausted. ${e.bare ? "Headers stripped. " : ""}Waiting ${waitMin}m...${S.reset}`);
-        await new Promise(r => setTimeout(r, e.retryAfter * 1000));
-        turn--; state.turnCount--;
-        continue;
-      }
-      if (e.status === 529) {
-        print(`${S.yellow}  Overloaded. Waiting 30s...${S.reset}`);
-        await new Promise(r => setTimeout(r, 30000));
-        turn--; state.turnCount--;
-        continue;
-      }
-      print(`${S.red}  Error: ${e.message}${S.reset}`);
-      exchangeFailed = true;
-      break;
-    }
-
-    // Clear spinner
-    printRaw(`\r${S.clearLine}`);
-
-    // Process response blocks
-    const usage = response.usage || {};
-    const inputTokens = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0);
-    const outputTokens = usage.output_tokens || 0;
-    const thinkingTokens = usage.thinking_tokens || 0;
-    state.totalThinkingTokens += thinkingTokens;
-
-    // YOUSPEAK L2: Sense thinking
-    ys.senseThinking(usage);
-    // YOUSPEAK L5: Sense turn
-    ys.senseTurn(budget);
-
-    const toolUseBlocks = [];
-    const textBlocks = [];
-    const thinkingBlocks = [];
-
-    for (const block of response.content) {
-      if (block.type === "tool_use") toolUseBlocks.push(block);
-      else if (block.type === "text") textBlocks.push(block);
-      else if (block.type === "thinking") thinkingBlocks.push(block);
-    }
-
-    // Show thinking
-    if (state.showThinking && thinkingBlocks.length > 0) {
-      for (const block of thinkingBlocks) {
-        if (block.thinking?.trim()) {
-          const lines = block.thinking.split("\n");
-          const preview = lines.slice(0, 8).join("\n  ");
-          const more = lines.length > 8 ? `\n  ${S.dim}... (${lines.length - 8} more lines)${S.reset}` : "";
-          print(`${agent.color}${S.italic}  [thinking]${S.reset}`);
-          print(`  ${S.dim}${preview}${more}${S.reset}`);
-        }
-      }
-    }
-
-    // Show text + YOUSPEAK L1: Sense output
-    for (const block of textBlocks) {
-      if (block.text.trim()) {
-        ys.senseOutput(block.text);
-        print("");
-        for (const line of block.text.split("\n")) {
-          print(`  ${line}`);
-        }
-        print("");
-      }
-    }
-
-    // Status line with YOUSPEAK
-    const budgetTag = budget.lastUpdate > 0 ? ` ${S.dim}[${formatBudget()}]${S.reset}` : "";
-    const thinkTag = thinkingTokens > 0 ? ` ${S.magenta}think:${thinkingTokens}${S.reset}` : "";
-    const ysTag = ` ${S.cyan}${ys.statusLine()}${S.reset}`;
-    print(`${S.dim}  [${state.turnCount}] ${inputTokens}in ${outputTokens}out${S.reset}${thinkTag}${ysTag}${budgetTag}`);
-
-    // No tools → done
-    if (toolUseBlocks.length === 0) break;
-
-    // Execute tools
-    state.messages.push({ role: "assistant", content: response.content });
-    const toolResults = [];
-
-    for (const toolUse of toolUseBlocks) {
-      state.totalToolCalls++;
-      let detail = "";
-      if (toolUse.name === "bash" && toolUse.input.command) detail = ` ${S.dim}${toolUse.input.command.slice(0, 60)}${S.reset}`;
-      else if (toolUse.input.path) detail = ` ${S.dim}${toolUse.input.path}${S.reset}`;
-
-      // YOUSPEAK L3: Sense tool call
-      const toolSense = ys.senseToolCall(toolUse.name, toolUse.input, null);
-      const dupTag = toolSense.redundant ? ` ${S.yellow}[dup]${S.reset}` : "";
-      print(`  ${S.cyan}\u25B6 ${toolUse.name}${S.reset}${detail}${dupTag}`);
-
-      const result = executeTool(toolUse.name, toolUse.input);
-      toolResults.push({ type: "tool_result", tool_use_id: toolUse.id, content: result.slice(0, 50000) });
-      // Let a pending SIGHUP or SIGTERM run before the next queued tool.
-      await new Promise(resolve => setImmediate(resolve));
-    }
-
-    state.messages.push({ role: "user", content: toolResults });
-
-    // YOUSPEAK L4: Sense context after adding messages
-    ys.senseContext(state.messages, systemPrompt.length);
-
-    // YOUSPEAK DECIDE: suggestions only, each shown once; effort and history stay as they are.
-    // It runs after each tool round, as in YOUI Web's Ollama/vLLM loop.
-    for (const sig of ys.newSuggestions(ys.decide(state.effort, state.model, budget, { route: "terminal-legacy" }))) {
-      print(`  ${S.yellow}⚡ YOUSPEAK suggestion: ${sig.reason}.${S.reset} ${S.dim}${sig.suggestion}${S.reset}`);
-    }
+  // YOUSPEAK's row names the route and model each message took.
+  ys.noteRoute("claude-code", state.model);
+  let answered = false;
+  try {
+    answered = await claudeTurn(task);
+  } finally {
+    ys.noteExchange({ ok: answered });
   }
-  ys.noteExchange({ ok: !exchangeFailed });
+}
+
+/**
+ * One message on Claude, through Claude Code. A YOUSPEAK session maps to one
+ * Claude Code conversation: --session-id on its first message, --resume after.
+ * Claude Code keeps the model-side history; the terminal keeps the text of
+ * each message and answer, only to carry it into a new conversation (said on
+ * the screen first) if Claude Code reports it no longer has this one.
+ * Returns true for a message that ended with an answer and no error.
+ */
+async function claudeTurn(task) {
+  const model = state.model;
+  const agent = AGENTS[state.agent];
+  if (!CLAUDE_CODE.path) {
+    print(`${S.red}  Claude is reached through Claude Code, which is not available: ${CLAUDE_CODE.error}${S.reset}`);
+    return false;
+  }
+  // Read at most once a minute; a version YOUI cannot read is refused like one that is too old.
+  const gate = await versionGate.check(model);
+  if (!gate.ok) {
+    print(`${S.red}  ${gate.error}${S.reset}`);
+    return false;
+  }
+  touchVisitLock(); // each message is a heartbeat on her door
+  if (advertisedTools().length > 0 && !bridgeListener) bridgeListener = await startBridgeListener(mcpBridge);
+
+  const prompt = buildPrompt();
+  const printer = createTurnPrinter(agent);
+  // The turn's own signal: its end (or its time limit) stops tools still running.
+  const turnAbort = new AbortController();
+  const turn = { closing: false, signal: turnAbort.signal, printer };
+  // The chat profile has no tools, so Claude Code is given no bridge at all.
+  const bridge = bridgeListener && advertisedTools().length > 0 ? mcpBridge.open(turn) : null;
+  // Whether Claude Code took the message (its init event).
+  let received = false;
+
+  const runOnce = (reason = null) => {
+    const session = claudeSession;
+    // Claude Code lost the conversation: a new one starts, carrying this one's text.
+    const seed = reason === "missing" ? transcriptPreamble(state.messages, { kind: "new" }) : null;
+    const notice = reason !== "missing" ? null
+      : "Claude Code had no record of this conversation. Starting a new Claude conversation"
+        + (seed ? `, carrying ${seed.included} earlier message${seed.included === 1 ? "" : "s"} into it as text`
+          + `${seed.omitted ? ` (${seed.omitted} older left out)` : ""}; they go to Anthropic, and Claude Code stores them.` : ".");
+    return runClaudeCode({
+      bin: CLAUDE_CODE.path,
+      cwd: CLAUDE_CODE_CWD,
+      env: claudeCodeEnv(),
+      model,
+      effort: claudeCodeEffort(model, state.effort),
+      systemPrompt: prompt.system,
+      mcpConfig: bridge ? bridgeMcpConfig({ url: bridgeListener.url(bridge.path), token: bridge.token }) : null,
+      allowedTools: bridge ? BRIDGE_ALLOWED_TOOLS : [],
+      requireMcpServer: bridge ? BRIDGE_SERVER_NAME : null,
+      maxTurns: CLAUDE_TURN_MAX_TURNS,
+      timeoutMs: CLAUDE_TURN_TIMEOUT_MS,
+      onTimeout: () => turnAbort.abort(new Error("The Claude turn reached its time limit")),
+      sessionId: session.id,
+      resume: session.started,
+      // This message's settings first, then anything carried, then the person's words.
+      message: `${contextBlock(prompt.context)}${seed ? seed.text : ""}${escapeLeadingSlash(task)}`,
+      beforeSend: () => {
+        if (notice) printer.line(`${S.yellow}  ${notice}${S.reset}`);
+        printer.spinner();
+      },
+      onEvent: event => {
+        switch (event.type) {
+          case "init":
+            received = true;
+            session.started = true;
+            break;
+          case "request":
+            state.turnCount++;
+            touchVisitLock();
+            printer.spinner();
+            break;
+          case "text_delta":
+            printer.text(event.text);
+            break;
+          case "text_done":
+            ys.senseOutput(event.text); // YOUSPEAK L1
+            break;
+          case "thinking":
+            if (state.showThinking) printer.thinking(event.text);
+            break;
+          case "rate_limit":
+            noteRateLimit(event.info);
+            break;
+          default:
+        }
+      },
+    });
+  };
+  // Whether a failed run says Claude Code lost, or already has, this conversation.
+  const sessionTrouble = (outcome, pattern) => !outcome.setupFailed && !outcome.init
+    && pattern.test(`${outcome.error || ""}\n${outcome.stderr || ""}`);
+
+  let outcome;
+  try {
+    outcome = await runOnce();
+    // Settled once, as in YOUI Web; a turn that reached its time limit retries nothing.
+    if (outcome.error && !turnAbort.signal.aborted) {
+      if (claudeSession.started && sessionTrouble(outcome, CLAUDE_SESSION_MISSING)) {
+        claudeSession = newClaudeSession();
+        outcome = await runOnce("missing");
+      } else if (!claudeSession.started && sessionTrouble(outcome, CLAUDE_SESSION_TAKEN)) {
+        claudeSession.started = true;
+        outcome = await runOnce();
+      }
+    }
+  } catch (error) {
+    // runClaudeCode reports its own failures; anything else still reaches the screen.
+    outcome = { ok: false, texts: [], text: "", usage: null, result: null, requests: [],
+      error: `Claude Code turn failed: ${String(error?.message || error).slice(0, 300)}` };
+  } finally {
+    turn.closing = true;
+    if (bridge) mcpBridge.close(bridge.id);
+    turnAbort.abort(new Error("The Claude turn has ended"));
+    printer.end();
+  }
+
+  if (received) {
+    state.messages.push({ role: "user", content: task });
+    if (outcome.texts.length > 0) state.messages.push({ role: "assistant", content: outcome.texts.map(text => ({ type: "text", text })) });
+  }
+
+  // Claude Code states running totals; claudeCodeSpend takes what this message added.
+  const session = claudeSession;
+  const spend = outcome.result ? claudeCodeSpend(outcome.result, session.spend) : null;
+  if (spend) session.spend = spend.next;
+  // YOUSPEAK: what Claude Code reported (tokens, cost, context, window, cache
+  // misses), its rate-limit state, and whether the cached prompt changed.
+  if (outcome.result || outcome.requests?.length) ys.senseUsage(claudeCodeObservation(outcome, spend, model));
+  if (outcome.rateLimit) ys.senseRateLimitState(outcome.rateLimit);
+  if (received) ys.senseSystemPrompt({ conversation: session.id, ...promptFingerprint(prompt) });
+  const usage = outcome.usage || {};
+  // A figure Claude Code did not report stays unreported, never 0.
+  const thinkingTokens = typeof usage.thinking_tokens === "number" ? usage.thinking_tokens : null;
+  if (thinkingTokens !== null) state.totalThinkingTokens = (state.totalThinkingTokens || 0) + thinkingTokens;
+  ys.senseTurn(kernelBudget());
+
+  const refused = outcome.result?.stop_reason === "refusal";
+  if (refused) print(`${S.red}  The model declined this request. Rephrase it, or choose another model (/model).${S.reset}`);
+  else if (outcome.error) print(`${S.red}  ${outcome.error}${S.reset}`);
+
+  // Status line with YOUSPEAK (its cost is Claude Code's list-price figure, not a bill)
+  const budgetTag = budget.reportedAt > 0 ? ` ${S.dim}[${formatBudget()}]${S.reset}` : "";
+  const thinkTag = thinkingTokens > 0 ? ` ${S.magenta}think:${thinkingTokens}${S.reset}` : "";
+  const ysTag = ` ${S.cyan}${ys.statusLine()}${S.reset}`;
+  print(`${S.dim}  [${state.turnCount}] ${usage.input_tokens ?? "—"}in ${usage.output_tokens ?? "—"}out${S.reset}${thinkTag}${ysTag}${budgetTag}`);
+
+  // YOUSPEAK DECIDE, on what Claude Code reported: suggestions only, each shown once.
+  for (const sig of ys.newSuggestions(ys.decide(state.effort, model, kernelBudget(), { route: "claude-code" }))) {
+    print(`  ${S.yellow}⚡ YOUSPEAK suggestion: ${sig.reason}.${S.reset} ${S.dim}${sig.suggestion}${S.reset}`);
+  }
+  return outcome.ok === true && !outcome.error && !refused;
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -1370,12 +1556,20 @@ async function runTask(task) {
 // ═════════════════════════════════════════════════════════════════════
 
 async function main() {
-  // Verify auth
-  await getAccessToken();
+  // Claude Code must be here, and new enough: the turn gate fails closed, so the terminal does too.
+  if (!CLAUDE_CODE.path) throw new Error(`${CLAUDE_CODE.error}. YOUI's terminal reaches Claude only through Claude Code.`);
+  const gate = await versionGate.check(state.model);
+  if (!gate.ok) throw new Error(gate.error);
+  claudeCodeVersionNote = gate.version;
+  // Turn scratch a crashed terminal left behind (only a dead process's; sweepStaleClaudeScratch
+  // says which). A test run leaves the shared temp directory alone, as YOUI Web's does.
+  if (!IS_TEST) sweepStaleClaudeScratch();
 
   // Clear and show banner
   process.stdout.write("\x1b[2J\x1b[H");
   showBanner();
+
+  if (thinkingFlagIgnored) print(`${S.dim}  --no-thinking does nothing here: Claude Code decides thinking; YOUI passes only the effort.${S.reset}`);
 
   // Log session start
   if (!agentBorn(state.agent)) notYetBornNote(state.agent);
@@ -1429,6 +1623,12 @@ async function main() {
       return;
     }
 
+    // One message at a time: a second would race the first for the same Claude Code conversation.
+    if (taskRunning) {
+      print(`${S.yellow}  A task is running; send this when it has finished.${S.reset}`);
+      return;
+    }
+
     // Execute task
     print(HR);
     await executeTask(input);
@@ -1438,12 +1638,19 @@ async function main() {
   });
 
   // However the terminal exits — /exit, Ctrl+C or EOF (the input closes), a
-  // closed window or dropped SSH session (SIGHUP), SIGTERM, or an uncaught
-  // error — the open YOUSPEAK session writes its one row (at most once).
-  // Only SIGKILL or power loss ends it with nothing written.
-  endSessionOnExit(reason => endYouspeak(reason));
+  // closed window or dropped SSH session (SIGHUP), SIGTERM, SIGINT sent to
+  // the process, or an uncaught error — the open YOUSPEAK session writes its
+  // one row (at most once). Claude Code and the shell tool's commands run in
+  // process groups of their own, which none of these reaches, so each first
+  // ends every one this terminal started. Only SIGKILL or power loss ends it
+  // with nothing written and those left running.
+  endSessionOnExit(reason => { stopChildren(); endYouspeak(reason); });
+  // Without a listener, SIGINT (from outside; at the keyboard Ctrl+C closes
+  // the input instead) would end Node without its exit hook.
+  process.on("SIGINT", () => process.exit(130));
 
   rl.on("close", () => {
+    stopChildren();
     endYouspeak("exit");
     releaseVisitLock();
     print(`\n${S.dim}  YOUI session ended.${S.reset}`);

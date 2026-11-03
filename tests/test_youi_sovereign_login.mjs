@@ -274,7 +274,9 @@ test("sovereign --inspect says it reads the login, never writes it, and still se
   assert.equal(login.refreshes_or_writes, false);
   assert.match(login.client_headers, /Claude Code 2\.1\.92/);
   assert.equal(login.inventory, INVENTORY);
-  assert.ok(login.also_used_by.some(name => name.startsWith("youi.mjs")));
+  // The terminal runs the installed claude, so sovereign's list no longer names it.
+  assert.ok(!login.also_used_by.some(name => name.startsWith("youi.mjs")));
+  assert.ok(login.also_used_by.some(name => name.startsWith("tools/truth_detector")));
   assert.deepEqual(manifest.provider, {
     id: "anthropic", origin: "https://api.anthropic.com", execution: "remote", transport: "https", local_only: false,
   });
@@ -289,18 +291,24 @@ test("sovereign --inspect says it reads the login, never writes it, and still se
   });
 });
 
-test("the terminal's --inspect says it still uses Claude Code's login with the 2.1.92 headers", t => {
-  const login = terminalInspect(scratch(t)).claude_code_login;
-  assert.equal(login.refreshes_and_writes_back, true);
-  assert.match(login.client_headers, /Claude Code 2\.1\.92/);
+test("the terminal's --inspect says it reads no credential and names who still uses Claude Code's login", t => {
+  const manifest = terminalInspect(scratch(t));
+  const login = manifest.claude_code_login;
+  assert.equal(login.used_by_this_terminal, false);
+  assert.match(login.this_terminal, /through the Claude Code installed on this machine/);
+  assert.match(login.this_terminal, /this terminal reads no credential/);
+  assert.match(manifest.client.login, /this terminal reads no credential/);
   assert.equal(login.inventory, INVENTORY);
-  assert.ok(login.also_used_by.includes("sovereign.mjs"));
+  assert.ok(login.still_used_by.some(name => name.startsWith("sovereign.mjs")));
+  assert.ok(login.still_used_by.some(name => name.startsWith("tools/truth_detector")));
+  assert.ok(!login.still_used_by.some(name => name.startsWith("youi.mjs")));
 });
 
 // Each disclosure keeps its own copy of the list. Every file the inventory's
-// tables list must be in each copy (the runtimes and the truth detector are
-// left out of the copies that give them their own sentence), and every file
-// the copies name must be in the tables.
+// tables list must be in each copy (sovereign with its youi-keychain.mjs, and
+// the truth detector, are left out of the copies that give them their own
+// sentence), and every file the copies name must be in the tables. The
+// terminal runs the installed claude, so the tables no longer list it.
 test("the inventory and the three disclosures name the same files", t => {
   const dir = scratch(t);
   const inventory = readFileSync(join(REPO_ROOT, INVENTORY), "utf-8");
@@ -312,8 +320,9 @@ test("the inventory and the three disclosures name the same files", t => {
     const folder = dirname(files[0]);
     for (const file of files) listed.push(file.includes("/") || folder === "." ? file : `${folder}/${file}`);
   }
+  assert.ok(!listed.includes("youi.mjs"), `${INVENTORY} no longer lists the terminal`);
   for (const file of [
-    "youi.mjs", "youi-keychain.mjs", "sovereign.mjs", "tools/truth_detector/_oauth.py", "tools/ainp/nullify.py",
+    "youi-keychain.mjs", "sovereign.mjs", "tools/truth_detector/_oauth.py", "tools/ainp/nullify.py",
     "raw-chat/server.mjs", "subscription-harness.mjs", "training/scripts/soul/oauth_client.py",
     "training/scripts/claude_mode_one_gen.py", "training/scripts/eval_adapter.py", "training/scripts/judge_gate.py",
     "ainp.mjs", "docs/research/test-unlock.mjs", "docs/research/test-unlock2.mjs", "docs/research/test-429.mjs",
@@ -322,9 +331,10 @@ test("the inventory and the three disclosures name the same files", t => {
   const server = readFileSync(join(REPO_ROOT, "youi-web/server.mjs"), "utf-8");
   const copies = [
     ["privacy.claudeCodeLogin.otherFiles", server.match(/otherFiles: \[([^\]]+)\]/)[1].match(/"([^"]+)"/g).map(s => s.slice(1, -1)),
-      ["youi.mjs", "youi-keychain.mjs", "sovereign.mjs", "tools/truth_detector/"]],
-    ["youi.mjs --inspect also_used_by", terminalInspect(dir).claude_code_login.also_used_by, ["youi.mjs", "youi-keychain.mjs"]],
-    ["sovereign.mjs --inspect also_used_by", sovereignInspect(dir).claude_code_login.also_used_by, ["sovereign.mjs"]],
+      ["sovereign.mjs", "youi-keychain.mjs", "tools/truth_detector/"]],
+    ["youi.mjs --inspect still_used_by", terminalInspect(dir).claude_code_login.still_used_by, []],
+    ["sovereign.mjs --inspect also_used_by", sovereignInspect(dir).claude_code_login.also_used_by,
+      ["sovereign.mjs", "youi-keychain.mjs"]],
   ];
   const mentions = (text, file) => text.includes(file) || text.includes(basename(file))
     || (file.startsWith("tools/truth_detector/") && text.includes("tools/truth_detector"));

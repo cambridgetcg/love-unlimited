@@ -284,9 +284,9 @@ function runtimeManifest() {
 }
 
 // The other files that still use Claude Code's login or its client headers
-// (docs/CLAUDE-CODE-LOGIN-USE.md has each one, with file:line).
+// (docs/CLAUDE-CODE-LOGIN-USE.md has each one, with file:line). The terminal
+// (youi.mjs) runs the installed claude and is no longer one of them.
 const CLAUDE_CODE_LOGIN_ALSO_USED_BY = [
-  "youi.mjs (the terminal, with youi-keychain.mjs)",
   "tools/truth_detector (YOUI Web feeds it when TRUTH_DETECTOR_ENABLED=1)",
   "tools/ainp/nullify.py",
   "raw-chat/server.mjs",

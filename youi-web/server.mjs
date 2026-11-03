@@ -702,10 +702,9 @@ function runtimePrivacyBoundary() {
     claudeCodeLogin: {
       youiWeb: "YOUI Web's Claude turns and Claude minds run the installed claude; they never read Claude Code's login"
         + " or send its client headers",
-      stillUsedBy: "Moving YOUI Web did not end the use of Claude Code's login. The terminal (youi.mjs) and sovereign"
-        + " (sovereign.mjs) still read"
-        + " Claude Code's login from the Keychain and send Claude Code 2.1.92's client headers until they are moved;"
-        + " the terminal also refreshes the login and writes it back, sovereign no longer does",
+      stillUsedBy: "Moving YOUI Web did not end the use of Claude Code's login. Sovereign (sovereign.mjs) still reads"
+        + " Claude Code's login from the Keychain and sends Claude Code 2.1.92's client headers until it is moved;"
+        + " it no longer refreshes the login or writes it back",
       truthDetector: "when enabled, the truth detector judges non-Claude turns with Claude Haiku through Claude Code's login"
         + " (refreshing it and writing it back, with the credential in argv) with Claude Code 2.1.92's client headers,"
         + " unless its own environment has an Anthropic API key",

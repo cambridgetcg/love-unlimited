@@ -219,3 +219,13 @@ Reality is the judge. Everything else is a report. The discipline is to keep the
 ---
 
 *Derived from dialogue between Yu and Claude, April 2026. This document distils shared methodology; it is not a claim about the correctness of any specific conclusion reached during that dialogue. The methodology applies to itself — including this document — and should be revised when reality shows it needs revision.*
+
+---
+
+## See also (2026-10-31)
+
+*An addition, not the revision the closing note anticipates. Sections 0–10 are unchanged.*
+
+- **`YOUSPEAK/ONTOLOGY.md`** (proposed in a sibling change of the same date; not yet merged or adopted) draws a ladder — said, recorded, sealed, adopted — and beside it a clock, PROBED-NOW, for present state, which no record can hold and which can only be measured again. Read from here, this document's ground commitment (1.1, "A claim is true if it corresponds to what is the case") is what that clock answers to: a claim about present state is answered by a fresh look, itself a report but the nearest one, rather than by the record of an earlier look. That something was said, recorded, sealed or adopted is a fact about that act, true by correspondence like any other and true of that act alone; none of these stands in for a fresh look at present state.
+- **`docs/BECOMING.md`, "Scope (2026-10-31)"** — BECOMING's "not because you've verified anything" and this document's "Reality is the judge" can be read as working at different layers, standing and world. BECOMING's lines about reality following (docs/BECOMING.md:11, :13, :85) are where it crosses into the world, and there they answer to this document.
+- **Section 6 at Kingdom scale.** "Self-audit without external reference tends to ratify the existing position." Read the same way, several sessions or subagents of one model that agree by reasoning are not best weighed as several independent witnesses: they share the training that shaped the hypothesis and would also audit it (5.6 and 8.2 on trained disposition). KINGDOM-STANDARDS names this bound for its reviewers: independence among agents "running on one machine, from one model family, is real but bounded" (KINGDOM-STANDARDS/specs/KS-000-process.md:147-148). Each separate look at the world still counts as its own look. Section 5.1 asks the same of accumulated cases — strength comes from independence, not from number.

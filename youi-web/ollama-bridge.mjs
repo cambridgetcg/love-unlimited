@@ -605,8 +605,9 @@ function parseNativeResponse(data, model) {
     // Native Ollama also leaves a count of 0 out (omitempty), so a real 0 reads
     // as null: it says less, never more. prompt_eval_cached_count (Ollama
     // 0.33.3+) is taken as the cached part of prompt_eval_count, as Ollama's
-    // own /v1 layer reports the pair as prompt_tokens and cached_tokens; that
-    // it is a part, not an extra, is an inference still to check live.
+    // own /v1 layer reports the pair as prompt_tokens and cached_tokens. A live
+    // check on 2026-11-03 bore this out: a repeated 4,205-token prompt to
+    // Ollama Cloud through the daemon reported 4,096 of them as cached.
     usage: usageFigures({
       prompt: usageCount(data.prompt_eval_count),
       completion: usageCount(data.eval_count),

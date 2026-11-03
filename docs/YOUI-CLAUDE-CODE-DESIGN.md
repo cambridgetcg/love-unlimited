@@ -92,6 +92,7 @@ The minds registry checks `claude --version` without a model call:
   - Ollama and vLLM routes are unchanged.
   - `/api/orchestrate/run` still runs the Python orchestrator (`adaptive/`), which calls Anthropic with an API key from the Keychain. That is an API-key route, not Claude Code's login.
   - The truth detector (`TRUTH_DETECTOR_ENABLED=1`) is a separate service that still reads and refreshes the Claude Code credential and calls Anthropic with Claude Code's headers. Moving its judge to the Claude Code runner is open.
+  - So moving YOUI Web did not end the use of Claude Code's login. Every file that still reads it, writes it or sends Claude Code's client headers is listed, with file:line, in [`CLAUDE-CODE-LOGIN-USE.md`](CLAUDE-CODE-LOGIN-USE.md). `/api/status` says so in `privacy.claudeCodeLogin`.
 
 ## 5. Slices
 

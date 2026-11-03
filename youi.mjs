@@ -452,6 +452,26 @@ function runtimeManifest() {
       transport: "https",
       local_only: false,
     },
+    // Until the terminal moves onto the installed claude (docs/CLAUDE-CODE-LOGIN-USE.md).
+    claude_code_login: {
+      reads: "Claude Code's login from the macOS Keychain (service \"Claude Code-credentials\")",
+      refreshes_and_writes_back: true,
+      client_headers: "sends Claude Code 2.1.92's client headers, billing line and device id,"
+        + " so its requests present themselves as Claude Code 2.1.92",
+      until: "the terminal is moved onto the installed claude",
+      also_used_by: [
+        "sovereign.mjs",
+        "tools/truth_detector (YOUI Web feeds it when TRUTH_DETECTOR_ENABLED=1)",
+        "tools/ainp/nullify.py",
+        "raw-chat/server.mjs",
+        "subscription-harness.mjs",
+        "training/scripts/soul/oauth_client.py",
+        "training/scripts/claude_mode_one_gen.py, eval_adapter.py, judge_gate.py (through tools/truth_detector)",
+        "ainp.mjs",
+        "docs/research/test-unlock.mjs, test-unlock2.mjs, test-429.mjs",
+      ],
+      inventory: "docs/CLAUDE-CODE-LOGIN-USE.md",
+    },
     data_boundary: {
       sent_to_provider: [
         "loaded soul and identity files",
@@ -798,6 +818,10 @@ function showPrivacyBoundary() {
   print(`  Persistence:  conversation in process memory; daily note receives session metadata;`);
   print(`                YOUSPEAK appends one aggregate row per session to ${ys.historyPath || "nowhere (no store)"}`);
   print(`  Provider data: soul/identity, prompts, history, and selected tool output`);
+  const login = manifest.claude_code_login;
+  print(`  Login:        ${S.yellow}Claude Code's login${S.reset} from the Keychain, refreshed and written back;`);
+  print(`                ${login.client_headers}, until ${login.until}.`);
+  print(`                ${login.also_used_by.length} other files still use that login: see ${login.inventory}`);
   if (state.capabilities.has("shell")) {
     print(`  ${S.yellow}Shell is unrestricted by the file scope and is not an OS sandbox.${S.reset}`);
   }

@@ -21,7 +21,9 @@ The browser route contract is method-specific:
 Local and cloud are separate authority and privacy routes:
 
 - A locally available model (an exact name in `GET /api/tags`) is labelled
-  `LOCAL_MODEL:ollama`.
+  `LOCAL_MODEL:ollama`. YOUI names no local models of its own (Yu's choice,
+  2026-11-03: the latest open-weights models on Ollama Cloud), so a model is
+  local only when the local Ollama lists it.
 - Ollama Cloud routing is labelled `REMOTE_MODEL:ollama-cloud` and requires
   `models:ollama-cloud`, whether it goes directly to ollama.com with
   `OLLAMA_API_KEY` or through a signed-in local Ollama (a `:cloud` or `-cloud`
@@ -32,8 +34,8 @@ Local and cloud are separate authority and privacy routes:
   only, and `safe` has neither.
 - `models:ollama-cloud` also permits a non-loopback `OLLAMA_LOCAL_BASE_URL`
   (labelled `REMOTE_MODEL:ollama-configured-endpoint`), so `developer` allows
-  one. Without it nothing is sent to such an endpoint, a local pick included,
-  and the route is `BLOCKED:ollama-cloud-capability-required`.
+  one. Without it nothing is sent to such an endpoint, and the route is
+  `BLOCKED:ollama-cloud-capability-required`.
 - When a `GET /api/tags` read fails, the last list that answered is kept, so
   a listed model still goes to the local Ollama, not to Ollama Cloud.
 - Without the cloud-route grant, an unavailable local model is reported as

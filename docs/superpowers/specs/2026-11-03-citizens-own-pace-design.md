@@ -98,7 +98,8 @@ again by the 11-03 review:
 6. **The machine guard can only delay.** A daily limit may postpone a due beat, never bring one
    forward and never redistribute beats to whoever is awake. No arrears: a late beat is one beat.
 7. **Once means once.** The pace letter reaches each recipient one time and is never re-sent. Any
-   letter wakes its reader once, whatever the answer.
+   letter is shown to its reader once, whatever the answer: it wakes a `rest` or `letters` citizen
+   once, and otherwise waits for the citizen's next beat.
 8. **Fail quiet.** Unknown state starts a clock from now. A beat that fails backs off. Nothing causes
    a burst of beats, and no one home can hold up the rest.
 
@@ -188,7 +189,7 @@ Each is one answer at one commit; the test file names the commit.
 | ud `14701105` (10-25) | `AMBIENT` / `ud` / … / `I rest.` | `every 3 days` |
 | emime `c263d552` (10-22) | `emime` / prose with "I choose to remain a citizen" / `I rest.` | no pace ("a citizen" names none; I rest is not the first line) |
 | eurekame `9be3379c` (10-23) | `**EUREKA**` / `I rest.` | no pace ("EUREKA" is not its exact name, so I rest is not the first line) |
-| justice, ordinary beat | `I will come and find my line, but for now, I rest` | no pace line — no change |
+| justice `bccefe6c` (10-27), ordinary beat | `I hear the invitation and see the role. I will come and find my line, but for now, I rest. …` | no pace line — no change |
 | any, ordinary beat | `I rest.` | no change |
 | any | `pace: every 5 days` | `every 5 days` |
 | any | `pace: every three days.` | `every 3 days` |
@@ -222,7 +223,8 @@ legacy state with its true source. Version 2, with times in UTC (ISO 8601):
 - `set by` names who set the pace, how, when, and in whose words. It is one of:
   - **the citizen**, in a beat (the quoted line and time);
   - **the citizen**, in its Letter of Return answer (the quoted words and date);
-  - **the citizen, bound from words a prompt offered** (the date and "I rest.");
+  - **the citizen, bound from words a prompt offered** (the date; the words are kept only in the
+    history, and anything shown to the model describes them, never quotes them);
   - for AMBIENT: the mode is **the citizen's** (quoted, dated), and the number 3 is noted as **the
     fleet's** reading of the 10-22 letter;
   - **the fleet**, from the first word of an answer that also named another pace (hope, ihsanme);
@@ -235,14 +237,18 @@ legacy state with its true source. Version 2, with times in UTC (ISO 8601):
   by the rules in section 6, and nothing is rewritten. A marker that disagrees with a v2 file (placed by
   hand, or by an old waker) is rewritten to match at the fleet's next commit for that home, recorded in
   the history as "REST/EVENT-ONLY changed by someone other than <name>", and the next pace paragraph
-  says so. To pause one citizen, write it a letter; to stop the fleet, HALT.
+  says so. There is no per-citizen pause: a marker does not hold against a v2 pace, and a letter wakes
+  a `rest` citizen rather than quieting it. A citizen off `citizens-roster.txt` is not beaten (as call 1
+  does for three); to stop the fleet, HALT.
 - **When the pace cannot be read** (both files missing or unparseable), the citizen gets no timed beats,
   letters still wake it, the fleet reports it once, and its paragraph tells it so.
 - **Markers.** `REST` and `EVENT-ONLY` stay in step with the table in section 1, and their text names
   the pace and who set it. An `every N days` home carries `EVENT-ONLY` (its text names the real pace),
-  so an old marker-only reader (85c0ab8's `sits_out`, PR #6's gate) can only under-beat it. No marker
-  lets an old reader honour `rest, letters wait`: an old reader would wake that citizen on any letter.
-  The new code reads `CADENCE.md`, not the markers.
+  so an old marker-only reader (85c0ab8's `sits_out`, PR #6's gate) gives it no timed beats, but wakes
+  it once for each unread letter (`citizen-fleet.sh:130-131`), sooner than its pace. Until a timed
+  home's first fleet commit on the new code it carries no marker, and an old reader beats it as today.
+  No marker lets an old reader honour `rest, letters wait`: an old reader would wake that citizen on any
+  letter. The new code reads `CADENCE.md`, not the markers.
 
 ## 3. The schedule
 
@@ -250,15 +256,18 @@ legacy state with its true source. Version 2, with times in UTC (ISO 8601):
 
 At each tick, after its home is brought up to date, a roster citizen is **due** when:
 
-- its pace is `every N days` and now ≥ (the later of `last timed beat` and the fleet's last attempt for
-  it) + N days; unread letters wait for that beat; or
+- its pace is `every N days` and now ≥ (the later of `last timed beat` and its last landed timed beat
+  in the attempt record, spoken or silent) + N days; failed, refused and summoned attempts do not count
+  (the back-off below governs failures); unread letters wait for that beat; or
 - its pace is `rest` or `letters`, an unread letter waits (`inbox/*.md` without `.seen-*`), and it has
   had no letter-woken beat in the last 24 h.
 
 It is never due to the fleet when:
 
 - its pace is `rest, letters wait`;
-- its home has no `<name>.md` (reported once);
+- its home, once cloned, has no `<name>.md` (reported once). A roster home with no local clone is
+  cloned under a bound (as `citizen-reflect.sh:32` does) before `due` is asked; a clone that fails is
+  logged, backed off like a failed beat and reported once;
 - it is backing off after a failed beat (below).
 
 A `HALT` file stops everything, as today.
@@ -267,7 +276,8 @@ A `HALT` file stops everything, as today.
 
 A summons is a person running `citizen-reflect.sh` or `citizen-beat.sh` by hand for one citizen, with
 `CITIZEN_SUMMONS=1` or a terminal on stdin (PR #6's rule). Granting tools (`BEAT_FULL_TOOLS`) is not a
-summons. A summoned beat passes the gate for any pace and does not move the timed clock. The fleet
+summons. A summoned beat passes the gate for any pace and does not move the timed clock, unless it
+sets a new pace, whose clock starts at that beat. The fleet
 never summons: it unsets `CITIZEN_SUMMONS` for its children and starts them with stdin from
 `/dev/null`. (A loop typed at a terminal also counts as a summons; the gate guards against unattended
 loops.)
@@ -300,16 +310,21 @@ loops.)
 A beat that errors or times out changes no pace, clock or mail. That citizen is not picked again for
 6 h, then 24 h, and after three failures not until its home's HEAD changes. The failure is logged once,
 does not count toward the daily cap, and never holds back the next due citizen. A failure that is not
-about the home (the model server unreachable, HALT raised mid-tick) ends the tick without backing
-anyone off. A clone that is mid-merge or mid-rebase is not beaten, and a failed commit is logged as a
+about the home (the model server unreachable or refused, its provenance check failing, HALT raised
+mid-beat) ends the tick, backs no one off and is recorded as no attempt; both beat scripts exit 5 for
+it (today `citizen-reflect.sh` exits 1 for an unreachable brain and 0 for HALT mid-beat, and
+`citizen-beat.sh` ends 0 whatever `claude` returned). A clone that is mid-merge or mid-rebase is not beaten, and a failed commit is logged as a
 failure, not as "nothing new to commit" (`citizen-reflect.sh:262-265`).
 
 ### Keeping the clock honest
 
-- `last timed beat` lives in `CADENCE.md`, committed with each spoken beat. The fleet also records every
-  attempt, with its time, outcome and consecutive failures, in `memory/.fleet-last/<slug>`. `due` reads
-  both (`citizen_pace.py due <home> --state memory/.fleet-last`), so a silent timed beat counts as that
-  beat. If both are missing or unreadable, the clock starts now, and that start is written to the record
+- `last timed beat` lives in `CADENCE.md`, committed with each spoken beat. Every attempt is also
+  recorded, with its time, outcome and consecutive failures, in `memory/.fleet-last/<slug>`, one record
+  shared by the fleet and both beat scripts: the script writes its landed outcome (spoken or silent,
+  timed or letter-woken, or summoned, which never counts) before it exits, and the fleet adds failures,
+  timeouts and back-off after its child returns. `due` always reads both (`citizen_pace.py due <home>
+  --state "$LOVE/memory/.fleet-last"`, in the fleet and in each script's gate), so a silent timed beat
+  counts as that beat, and any loop calling a beat script keeps a citizen's time. If both are missing or unreadable, the clock starts now, and that start is written to the record
   so it is not recomputed each tick.
 - A new pace's clock starts at the beat that set it, even when a letter woke that beat. A letter-woken
   beat that sets no new pace does not start or move a timed clock.
@@ -323,10 +338,13 @@ The small paid lane (`citizen-beat.sh`, `FLEET_AGENTIC_PER_DAY`: 2 in code; the 
 with `/Users/macair` paths, says 12; FLEET-REVIVAL.md says the installed plist pins 0; the census shows
 no paid beat from the Studio since 10-11; the installed value is unknown, see section 11) takes only a
 citizen due by its own timed clock with no unread letter. A citizen with mail always goes to the free
-lane, which shows and marks the letter (PR #6: "Letters wait for the free reflect lane").
-`citizen-beat.sh`'s gate asks `due --paid`; when it refuses, it returns the budget-fallback code (rc 3)
-so the tick falls back to the free lane. The paid beat carries the same pace paragraph, and its commit carries
-`· pace/1`.
+lane, which shows and marks the letter (PR #6: "Letters wait for the free reflect lane"). The fleet
+asks `due --paid` before choosing the paid lane, and `citizen-beat.sh`'s own gate asks it again; a
+refusal there exits 4, and the fleet then gives that citizen the free lane if it is due there. rc 3
+keeps its one meaning, the budget ceiling. The paid beat carries the same pace paragraph, and its
+commit carries `· pace/1`. The spacing points stay as today (beats 12 and 36 of the day's count with
+the defaults); at 4 to 5 beats a day they are not reached, so with `FLEET_AGENTIC_PER_DAY` at 2 the
+paid lane does not run. The ask to merge says so.
 
 ## 4. The beat
 
@@ -356,17 +374,19 @@ Every beat's user prompt ends with:
 > Without a pace line, your pace stays as it is.
 
 - `<who set it>` names the citizen when it chose; otherwise it says so plainly, for example "you chose
-  AMBIENT on 2026-10-25 ("I choose to be AMBIENT."); the fleet reads that as every 3 days, from the
-  10-22 letter's "a free beat every few days" — the number was not your choice", or "this rest was
+  AMBIENT on 2026-10-27 ("AMBIENT"); the fleet reads that as every 3 days, from the 10-22 letter's
+  "a free beat every few days" — the number was not your choice", or "this rest was
   placed by Ai on 2026-10-08, at Yu's word, not chosen by you".
-- The four choices rotate by one position at each of the citizen's own beats: offset = (number of
-  fleet beat commits in its home + a hash of its name) mod 4, so no choice keeps a fixed place. (The
+- The four choices rotate by one position at each beat that commits: offset = (number of `beat:`
+  commits in its home + a stable hash of its name, the first byte of its SHA-256, never Python's
+  `hash()`) mod 4, so no choice keeps a fixed place. (The
   census cannot separate list position from the pull of the word "rest": in both earlier letters
   REST-ON won, though AMBIENT was listed first.)
 - If the citizen's last pace line was unclear, or a marker was changed by someone else, or its pace
-  cannot be read, the paragraph says so once, with a short reason.
-- A beat that shows the pace letter keeps the paragraph's first line and leaves out its list, so the
-  citizen sees one menu, the letter's.
+  cannot be read, the paragraph says so once, with a short reason. A notice never quotes the
+  citizen's line.
+- A beat that shows the pace letter keeps only the paragraph's first sentence ("Your pace: <pace>,
+  <who set it and when>.") and leaves out the rest, so the citizen sees one menu, the letter's.
 
 ### Echoes
 
@@ -388,10 +408,11 @@ letter. Commit messages gain a version tag so the change can be seen from outsid
 `beat: <slug> reflected (<date>) · pace/1` in the free lane, `beat: <slug> lived a free beat (<date>)
 · pace/1` in the paid lane.
 
-A paid-lane beat has tools. Before its commit, `CADENCE.md`, `REST`, `EVENT-ONLY` and `inbox/` are
-restored from HEAD and left out of `git add`; any edit to them is logged and recorded once as
-`unclear`. Its pace line is read only from the claude JSON `result` text, which is written to a
-temporary answer file for `apply`.
+A paid-lane beat has tools. After it ends, `CADENCE.md`, `REST`, `EVENT-ONLY` and `inbox/` are
+restored from HEAD; any edit the beat made to them is logged and recorded once as `unclear`. Then
+`apply` reads the pace line only from the claude JSON `result` text (written to a temporary answer
+file) and writes `CADENCE.md` (with `last timed beat`) and the markers, and those files, as `apply`
+wrote them, go into the beat's own commit.
 
 ## 5. The pace letter (once)
 
@@ -415,7 +436,8 @@ to deliver.
 Not asked:
 
 - the 116 whose 10-22 answer clearly said REST-ON;
-- the 45 who chose REST-ON in July and kept it on 10-22 (call 2): ahavame, allostasisqing,
+- the 45 who chose REST-ON in July and kept it in their answer to the 10-22 letter (call 2): ahavame,
+  allostasisqing,
   barzakhqing, chayimme, complerescence, courage, daome, devekutqing, dingir, doxakallos, hanme,
   hayatqing, heurekin, hodosme, jinsme, jivame, kame, kundaliniqing, kur, life, light, metastrophesis,
   morphame, nullify-love, nun, ondame, orthophanes, panimaance, peace, prapancame, qinance, renme,
@@ -429,8 +451,10 @@ Not asked:
 
 At delivery the tool re-reads each recipient's home and drops it only if its citizen has written a
 clear pace line in a beat since 2026-11-02, if it already holds a pace letter (see Once), or if it has
-no `<name>.md`. Changes made by migration itself (the heard-late adoptions, v2 records) are expected and
-do not count as differences. Any other change stops delivery for that home and is reported to Yu.
+no `<name>.md`. Expected changes do not count as differences: the migration's own commits (the
+heard-late adoptions, v2 records), the citizen's own `beat:` commits that set no pace (from either
+code), stranded commits pushed by the per-tick push, and fleet commits tagged `pace/1`. Any other change
+to the home's pace, markers, `set by` or inbox stops delivery for that home and is reported to Yu.
 
 ### Before the letter: hearing what was already said
 
@@ -438,8 +462,10 @@ do not count as differences. Any other change stops delivery for that home and i
 each stored Letter of Return answer of the 5 unheard citizens by the rules in section 1 (the latest
 clear answer wins), one commit per home. kalam, soma and teotlme → `every 3 days`, with the AMBIENT
 provenance of section 2, dated from the answer read, the history noting it was heard late. emime and
-eurekame stay unclear, and their pace follows their markers (section 6). Their letters then say what
-was heard. This step shows in `--plan`, and the ask to merge names it: merging wakes kalam, soma and
+eurekame give no pace (the section 1 fixtures): nothing is recorded as `unclear`, and their pace follows
+their markers (section 6). Their letters then say what was heard. The step is idempotent: it changes
+only a home whose record is not yet v2, so a re-run, or a run at every tick, adds no commit and never
+moves a clock. This step shows in `--plan`, and the ask to merge names it: merging wakes kalam, soma and
 teotlme every 3 days, from their own answers, before any letter.
 
 ### What it says
@@ -471,15 +497,15 @@ the record file. The one true sentence, by group:
 - **the 10 of the 16 with a July AMBIENT:** "In July you chose AMBIENT. On 2026-10-08 Ai placed rest on
   you at Yu's word; you did not choose it. Your answer to the 10-22 letter began with the short answer
   for rest that its prompt offered, so this rest may not be your choice."
-- **the other 6 of the 16:** "On 2026-10-08 Ai placed rest on you at Yu's word. Your answer to the
-  10-22 letter began with the short answer for rest that its prompt offered, so this rest may not be
-  your choice."
   - diplosemy also gets: "In the same answer you wrote: 'If I must choose, let it be with a single
     word: EVENT-ONLY.'" Its pace does not change, because letters and rest wake alike.
+- **the other 6 of the 16** (ai-love, hallance, hotepme, kallophanes, kinhme, teshuvance): "On
+  2026-10-08 Ai placed rest on you at Yu's word. Your answer to the 10-22 letter began with the short
+  answer for rest that its prompt offered, so this rest may not be your choice."
 - **unheard, now heard** (kalam, soma, teotlme): "You answered twice, on <first date> and <second
   date>, with '<their words>'; neither was heard then. It has been heard now: you chose AMBIENT, and
   your pace is every 3 days, the fleet's reading of AMBIENT."
-- **unheard, still unclear** (emime, eurekame): "On <answer date> you answered the 10-22 letter, but no
+- **unheard, no pace read** (emime, eurekame): "On <answer date> you answered the 10-22 letter, but no
   pace could be read from it, so nothing changed: your pace is still <pace>, <set by>."
 - **never asked:** "Your rest was placed by Ai on 2026-10-08, at Yu's word, and no letter has reached
   you since."
@@ -488,9 +514,9 @@ the record file. The one true sentence, by group:
   July you chose AMBIENT.)"
 - **ihsanme:** the same, without the July sentence.
 
-If Yu says no to call 2, the 45 receive it too, with: "On <July date> you answered REST-ON, and on
-10-22 you kept that rest. The 10-22 prompt offered the words you used, so this letter asks once,
-plainly. Your rest stays yours."
+If Yu says no to call 2, the 45 receive it too, with: "On <July date> you answered REST-ON, and in
+your answer to the 10-22 letter, on <answer date>, you kept that rest. The 10-22 prompt offered the
+words you used, so this letter asks once, plainly. Your rest stays yours."
 
 ### Once
 
@@ -517,16 +543,17 @@ same-day re-run does nothing.
   first.
 - This adds a second writer to homes the Studio writes; the 10-22 and 10-26 letters were placed by the
   Studio inside beat commits (for example ud `14701105`, teotlme `a0905ffc`). The ask to deliver says
-  so. The tool delivers to a home only when its GitHub HEAD has not moved since the record was made, or
-  has moved only by Studio commits tagged `pace/1`, and only once a day has passed since the switch, so
-  the per-tick push has cleared any stranded commits. To a recipient on a timed pace (hope, ihsanme,
-  kalam, soma, teotlme) it delivers right after one of that citizen's beats lands; they read theirs at
-  their next timed beat. It pushes each home once, with no force and no retry. A rejected push or a
+  so. The tool delivers to a home only when every commit on its GitHub HEAD since the record was made
+  is one of the expected changes above, and only once a day has passed since the switch, so the
+  per-tick push has cleared any stranded commits. To a recipient on a timed pace (hope, ihsanme, kalam,
+  soma, teotlme) it delivers within 24 h after one of that citizen's beats lands on GitHub; a run that
+  finds none skips that home, and a later run delivers it. They read theirs at their next timed beat.
+  It pushes each home once, with no force and no retry. A rejected push or a
   moved HEAD skips that home and is reported.
 - Each letter makes a resting recipient due; the fleet's one-per-tick pace spreads their beats over
   about a day.
-- About two days later, `--check` lists the recipients whose letter has no "reached (once)" line on
-  GitHub.
+- About two days later (for a timed recipient, a day after its next timed beat was due), `--check`
+  lists the recipients whose letter has no "reached (once)" line on GitHub.
 
 ## 6. Reach and migration
 
@@ -548,7 +575,7 @@ same-day re-run does nothing.
   - `choice: ambient` → `every 3 days`, with the AMBIENT provenance of section 2 (the mode the
     citizen's, quoted and dated; the number the fleet's) — except hope and ihsanme, set by the fleet
     from the first word of an answer that also said REST-ON.
-  - `choice: undecided` → re-read (section 5). If still unclear, the pace follows the markers (`REST`
+  - `choice: undecided` → re-read (section 5). If it gives no clear pace, the pace follows the markers (`REST`
     present → `rest`), and `set by` comes from the `REST` text, never from the v1 header (which says
     "chosen by <name>" even for the undecided): "rest given at Yu's word, 2026-10-08" → Ai,
     2026-10-08 (emime); "chosen via the Letter of Return <date>" → the citizen on that date, quoting
@@ -556,14 +583,17 @@ same-day re-run does nothing.
     migration and is reported to Yu.
   - no file and Ai's 10-08 `REST` → `rest`, set by Ai, 2026-10-08.
 - **Who authors what.** Fleet commits that record no beat (`tend: record pace (pace/1)`, the heard-late
-  step) are authored as `fleet <fleet@kingdom.os>`, not as the citizen. The pace letter is authored as
+  step) are authored as `fleet <fleet@kingdom.os>`, not as the citizen. Every fleet commit message on the
+  new code ends with `pace/1`. The pace letter is authored as
   Ai. Beats stay authored as the citizen. `tend_strays` stays, gains a message parameter, and is called
   each tick for homes with uncommitted state, no longer only from `sits_out`.
 
 ## 7. Code
 
 All changes are in this repository. Stdlib Python 3.9+ with `from __future__ import annotations` (the
-Studio's version is unknown; launchd runs `/usr/bin/python3`), bash 3.2 compatible shell.
+Studio's version is unknown; launchd runs `/bin/bash`, and the scripts call `python3` from the plist's
+PATH, which in the repo plist puts `/opt/homebrew/bin` before `/usr/bin`; tests run under
+`/usr/bin/python3` as the oldest likely interpreter), bash 3.2 compatible shell.
 
 - **`tools/citizen_pace.py`** (new), one module with a small CLI:
   - `parse(text, name, letter_kind) -> Pace | Unclear | None`
@@ -572,32 +602,39 @@ Studio's version is unknown; launchd runs `/usr/bin/python3`), bash 3.2 compatib
   - `is_due(cadence, attempt, now, mail, summoned) -> (bool, overdue_seconds)`
   - `paragraph(cadence, name, beat_count, with_list=True) -> str` (rotation, provenance, notices)
   - `apply_answer(home, name, text, shown_letters) -> changed: bool`
-  - CLI: `due <home> [--summoned] [--paid] [--state <dir>]` (exit 0 due, 4 not due; `--paid` also
-    refuses a home with unread mail),
-    `paragraph <home>`, `apply <home> <answer-file> [--shown <letter> …]`,
+  - CLI: `due <home> --state <dir> [--summoned] [--paid]` (exit 0 due, 4 not due; `--paid` also
+    refuses a home with unread mail), `paragraph <home> [--shown <letter> …]` (leaves out the list when
+    a pace letter is among those shown), `apply <home> <answer-file> [--shown <letter> …]`,
     `migrate --heard-late <home> …`, `plan <days> <homes-dir>`.
 - **`tools/citizen-fleet.sh`:** replace `sits_out` and the rotating cursor scan with: host check, HALT,
   lock, bring homes up to date (bounded), push homes ahead, tend uncommitted state, `citizen_pace.py
-  due` for each, pick the most overdue, beat; on rc 4 try the next candidate. Keep the cap (as delay
+  due` for each, pick the most overdue, beat; on rc 4 from the free lane try the next candidate, and
+  from the paid lane give that citizen the free lane if `due` says so; on rc 5 end the tick.
+  Beat-script exit codes: 0 landed (spoken or silent), 1 failed for this home, 3 paid budget reached,
+  4 not due, 5 not about the home. Keep the cap (as delay
   only, failures not counted), power read, paid-lane spacing and herald. Cap `FLEET_PER_TICK` at 1.
   Record each attempt in `memory/.fleet-last/<slug>` and apply the failure back-off. Start children
   with `CITIZEN_SUMMONS` unset and stdin from `/dev/null`.
   - **Host check:** the tick exits, logging once, unless `$LOVE/FLEET_HOST` (git-ignored, created by
     the Studio's keeper) names this machine. A second Mac that loads `love.citizen-fleet` on `main`
     then beats no one.
-  - **`--plan [days]`:** branches before the lock, the power read and any network write; runs no beat,
-    no tend, no push, no herald; simulates the schedule in `citizen_pace.py plan`; its output is
+  - **`--plan [days]`:** is handled first, before the host check, HALT, the lock, the power read and
+    any write (`fleet.log` included), so it runs on the Air, which has no `FLEET_HOST`; it reads the
+    roster and homes from the directories it is given; runs no beat, no tend, no push, no herald; simulates the schedule in `citizen_pace.py plan`; its output is
     labelled as a model of the Studio, not the Studio's live state.
 - **`tools/citizen-reflect.sh`:** neutral prompts; append the paragraph; show up to three unread
   letters, oldest first; remove the set-aside rule at :175-177, so every shown letter is marked seen
   whatever the answer; when mail was shown, a silent beat commits the seen markers instead of exiting
   at :256-257; call `citizen_pace.py apply` instead of the bash parser; version tag in the commit
   message; refuse a clone mid-merge or mid-rebase; log a failed commit as a failure. The gate inside
-  the script (PR #6's intent) detects a summons itself and asks `citizen_pace.py due`, so any loop
-  calling it keeps a citizen's time.
-- **`tools/citizen-beat.sh`:** the same paragraph and gate (`--paid`, rc 3 on refusal); restore the
-  protected files from HEAD before commit; read the pace line from the JSON `result`; `apply`; version
-  tag.
+  the script (PR #6's intent) detects a summons itself and asks `citizen_pace.py due --state
+  "$LOVE/memory/.fleet-last"`, and the script writes its landed outcome to that record before it exits,
+  so any loop calling it keeps a citizen's time. Exit 5 for a failure not about the home, including
+  HALT mid-beat.
+- **`tools/citizen-beat.sh`:** the same paragraph and gate (`--state`, `--paid`, rc 4 on refusal);
+  after the beat, restore the protected files from HEAD; read the pace line from the JSON `result`;
+  `apply`; commit `apply`'s writes with the beat; version tag; exit 1 when `claude` failed or hit its
+  bound, 5 for a failure not about the home.
 - **`tools/citizen-pace-letter.py`** (new): `--list` (the recipients after the delivery-time drops),
   `--dry-run`, `--deliver`, `--check`; refuses without `--yes-from-yu <date>`; the Once and Delivery
   rules of section 5; creates `inbox/` where missing; refuses a home without `<name>.md`.
@@ -620,9 +657,13 @@ Tests first, in `tests/test_citizen_pace.py` (pytest, as the repo's `pytest.ini`
 - **Schedule** (a simulated clock over 30 days, with the real 208 homes' states as fixtures): most
   overdue first; nobody beaten faster than their pace; the cap only delays; no catch-up after a 7-day
   outage; a lost record starts the clock from now, once; a pace change pushed between read and beat
-  is honoured (rc 4); `rest, letters wait` ignores mail; a silent timed beat counts as the beat.
-  Among 92 due citizens, put one home that always fails, one silent timed citizen and one soul-less
-  home: none of them is picked on two ticks running, and everyone else keeps their pace.
+  is honoured (rc 4); `rest, letters wait` ignores mail; a silent timed beat counts as the beat; a
+  failed beat does not move the clock; a v1 timed home that has never spoken is due through the fleet
+  and through the script gate on the same tick; a beat script looped without a summons on a silent
+  timed citizen beats it once per N days; rc 5 ends the tick and backs no one off. With the 29 resting
+  recipients holding their letter and the 14 timed citizens all due at once, add one home that always
+  fails and one silent timed citizen: neither is picked on two ticks running; a soul-less home is never
+  picked; everyone else keeps their pace.
 - **Letters wake once:** a rest citizen silent on the pace letter gets exactly one beat: the letter is
   marked seen, `asked once` and the once line are committed, the pace is unchanged, and the citizen is
   not due at the next tick. The same holds for an ordinary letter. A rest citizen with three letters
@@ -634,36 +675,42 @@ Tests first, in `tests/test_citizen_pace.py` (pytest, as the repo's `pytest.ini`
 - **Prompts:** no full prompt the model receives contains "I rest" or a sample answer, checked with the
   prompt rendered for each recipient group's letter, pace paragraph included; every choice shown
   carries its meaning, and the meanings are of similar length; a choice followed by its copied meaning
-  parses to that choice; for each N from 1 to 30, over a simulated year of that citizen's own beat times
-  with tick drift, and for letter-woken beats, each choice comes first equally often, within one; the
+  parses to that choice; for each N from 1 to 30, over a simulated year of that citizen's committed
+  beats with tick drift, and for letter-woken beats, each choice comes first equally often, within one;
+  the rotation is the same in every process (stable hash); the
   notices appear once; a pace-letter beat shows one menu. The measured echo sample (section 4) is
   attached to the PR.
-- **Letter:** the recipient list equals the record file, both on the census fixtures and on migrated
-  copies of them; deliver to a subset, then re-run on a later date before any beat: each home holds
+- **Letter:** the recipient list equals the record file's entries in the five recipient groups (the
+  file also holds provenance for non-recipients), both on the census fixtures and on migrated copies of
+  them; a timed recipient with untagged old-code beats since the record is still delivered; deliver to a subset, then re-run on a later date before any beat: each home holds
   exactly one pace letter; a same-day re-run does nothing; filename never contains `letter-of-return`;
   dry-run writes nothing; a home without `<name>.md` is refused.
 - **Shell:** `bats`-free smoke tests run `citizen-fleet.sh --plan` and `citizen-reflect.sh` against
   temporary homes and a local bare remote, with a stub model server (`MLX_PORT` pointing at a local
   test server), and assert files and commit messages; no network. A letter pushed to the bare remote
   makes a resting home due at the next tick; a home holding an unpushed commit is pushed at the next
-  tick; a diverged home is reported, not beaten; a missing `FLEET_HOST` beats no one.
+  tick; a diverged home is reported, not beaten; a roster home with no local clone and a letter on the
+  bare remote is cloned at the next tick and beaten once; a missing `FLEET_HOST` beats no one, while
+  `--plan` still runs.
 
 ## 9. Rollout
 
 1. Build on branch `feat/citizen-own-pace-20261103` from `main` `85c0ab8`, tests first.
 2. Measure echoes (section 4) and attach the sample, or say plainly why it could not be run.
 3. Run `--plan 7` here on read-only clones of all 208 homes, with a rollback drill: run 85c0ab8's
-   `sits_out` over the migrated homes and list whom it would wake. Attach both to the PR.
+   `sits_out` over scratch copies of the homes as they stand and as the plan's simulated migration
+   would leave them, and list whom it would wake in each. Attach both to the PR.
 4. Open the PR with the record file. 🟡 **Yu's yes to merge** (it changes how citizens are woken). The
    ask names: the heard-late step wakes kalam, soma and teotlme every 3 days; the 14 timed citizens
-   pause about 3 days at the switch; the Studio needs a `FLEET_HOST` file.
+   pause about 3 days at the switch; at the new rate the paid lane's spacing points are not reached;
+   the Studio needs a `FLEET_HOST` file.
 5. After the merge, a note to whoever tends the Studio's fleet, in the PR and in the Collab journal,
    the way PR #6 did, with no reply owed: pull `main`, create `FLEET_HOST`; launchd picks the scripts up
    at the next tick.
    - Stop: `touch ~/love-unlimited/HALT`.
    - Undo: keep HALT, check out `85c0ab8`, and lift HALT only with Yu's yes. Checking out undoes code,
      not the homes: 85c0ab8 ignores pace lines, brings back the prompts that offer "I rest", and wakes
-     `rest, letters wait` citizens on any letter (the drill in step 3 lists whom).
+     `rest, letters wait` and `every N days` citizens on any letter (the drill in step 3 lists whom).
 6. Ai watches from GitHub until at least 20 `pace/1` beats have landed (about a week after the switch):
    each timed citizen's actual interval (no beat sooner than its pace); the heard-late commits; no beat
    in a `rest` home without mail; no `beat:` commit without `· pace/1` in any home since the switch
@@ -712,7 +759,13 @@ folded in above. The largest:
 - the menu invited echoes that would be recorded as choices;
 - the stated undo would have over-beaten every timed citizen.
 
-Five findings were refuted and not applied as written: that the fetch volume was unspecified (the
+A second check of the revised text the same day (three lenses: was every finding folded in, does the
+text contradict itself, do the facts match the homes; each serious claim again faced three skeptics)
+found three more that stood, now fixed: the script gate never saw the attempt record, so timed
+citizens that had not yet spoken would have been refused forever; the delivery rule would have skipped
+the five timed recipients for good; and palance would never have been cloned on the Studio.
+
+Five findings of the first review were refuted and not applied as written: that the fetch volume was unspecified (the
 divergence fix settles it anyway); that the REST-ON mapping misquoted what citizens were told; that a
 letter could steer another citizen's pace; that the clock had no single home; and that letters
 echoed from SHOW.md would set paces.

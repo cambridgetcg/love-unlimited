@@ -31,7 +31,7 @@
 // cannot be read, and otherwise unchecked until a real answer.
 // Only granted minds that are reachable or unchecked are offered.
 
-import { readOllamaTags } from "./ollama-routes.mjs";
+import { ollamaDirectName, readOllamaTags } from "./ollama-routes.mjs";
 
 export const MIND_STATES = Object.freeze([
   "reachable", "unreachable", "not_granted", "not_configured", "unchecked",
@@ -71,6 +71,8 @@ export function createMindsRegistry({
   claudeModels = [],
   vllmModels = [],
   cloudModels = [],
+  // Direct-API names never offered as minds, even as a stub the local Ollama lists (opt-in models).
+  excludeModels = new Set(),
   isVllmModel = () => false,
   localBaseUrl,
   vllmBaseUrl,
@@ -251,7 +253,10 @@ export function createMindsRegistry({
         { throughDaemon: viaLocal },
       );
     });
-    const stubs = local.ok ? local.remote.filter(model => !cloudModels.includes(model)) : [];
+    // A stub is the same model as a static entry when its direct name is ("glm-5.3-flash:cloud").
+    const stubs = local.ok
+      ? local.remote.filter(model => !cloudModels.includes(ollamaDirectName(model)) && !excludeModels.has(ollamaDirectName(model)))
+      : [];
     return [...listed, ...stubs.map(model => entry(
       "ollama_cloud", model, "models:ollama-cloud", "unchecked",
       "listed by GET /api/tags as an Ollama Cloud model the local Ollama forwards; not probed: the first call proves it",

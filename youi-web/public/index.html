@@ -1208,10 +1208,10 @@ button, select, textarea, input { font: inherit; }
             <option value="gpt-oss:120b">gpt-oss 120B</option>
             <option value="gpt-oss:20b">gpt-oss 20B</option>
             <option value="nemotron-3-super">Nemotron 3 Super</option>
-            <option value="beam">Beam (free for now)</option>
+            <option value="beam">Beam (unpriced; listed free for a limited time, 2026-10)</option>
             <option value="kimi-k3">Kimi K3 (dearest: $3 / $15 per 1M)</option>
           </optgroup>
-          <optgroup label="Local Ollama (stays on this device)" id="local-model-options">
+          <optgroup label="Local Ollama" id="local-model-options">
             <option value="qwen3.5:4b">Qwen 3.5 4B</option>
             <option value="gemma4:12b">Gemma 4 12B</option>
           </optgroup>
@@ -1944,15 +1944,22 @@ function updatePrivacyUI(privacy) {
 // Adds what the local Ollama lists (GET /api/status localModels) to the
 // model menu: local models to the local group, and the Ollama Cloud models it
 // forwards (localRemoteModels) to a group of their own, since those leave the
-// device.
+// device. A listed Ollama Cloud option that is pulled locally (gemma4:31b)
+// moves to the local group, since that is the route it takes.
 function addLocalModelOptions(localModels, remoteModels) {
   if (!Array.isArray(localModels)) return;
   const select = document.getElementById('model-select');
+  const localGroup = document.getElementById('local-model-options');
   const known = new Set([...select.options].map(option => option.value));
   const remote = new Set(Array.isArray(remoteModels) ? remoteModels : []);
   let forwarded = document.getElementById('forwarded-model-options');
   for (const model of localModels) {
-    if (typeof model !== 'string' || !model || known.has(model)) continue;
+    if (typeof model !== 'string' || !model) continue;
+    if (known.has(model)) {
+      const existing = [...select.options].find(option => option.value === model);
+      if (!remote.has(model) && existing && existing.parentElement?.id !== 'local-model-options') localGroup.append(existing);
+      continue;
+    }
     known.add(model);
     if (remote.has(model) && !forwarded) {
       forwarded = document.createElement('optgroup');
@@ -1963,7 +1970,7 @@ function addLocalModelOptions(localModels, remoteModels) {
     const option = document.createElement('option');
     option.value = model;
     option.textContent = model;
-    (remote.has(model) ? forwarded : document.getElementById('local-model-options')).append(option);
+    (remote.has(model) ? forwarded : localGroup).append(option);
   }
 }
 
@@ -2779,7 +2786,7 @@ function handleCommand(text) {
       clearChat();
       break;
     case '/model': {
-      const map = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
+      const map = { opus: 'claude-opus-4-7', sonnet: 'claude-sonnet-4-6', haiku: 'claude-haiku-4-5-20251001' };
       const arg = parts[1]?.toLowerCase();
       const m = map[arg] || arg;
       const sel = document.getElementById('model-select');

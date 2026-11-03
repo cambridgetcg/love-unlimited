@@ -13,8 +13,9 @@
 // both decide routes here, so the two agree.
 
 // The local models YOUI offers by name (Ollama has no cloud tag for either).
-// A chat on one stays on this device whether it is pulled or not: if it is
-// not, the local Ollama says so; it is never sent to Ollama Cloud instead.
+// A chat on one goes to the local Ollama whether it is pulled or not: if it is
+// not, the local Ollama says so. It reaches Ollama Cloud only as the explicit
+// cloud fallback (models:cloud-fallback with models:ollama-cloud).
 export const OLLAMA_LOCAL_PICKS = ["qwen3.5:4b", "gemma4:12b"];
 
 // "glm-5.3:cloud" and "gpt-oss:120b-cloud" are daemon names for Ollama Cloud models.
@@ -32,11 +33,25 @@ export function ollamaDirectName(model) {
 }
 
 // The daemon name: "glm-5.3" -> "glm-5.3:cloud", "gemma4:31b" -> "gemma4:31b-cloud"
-// (a name that already has a tag takes the "-cloud" form; Ollama refuses two tags).
+// (a name that already has a tag takes the "-cloud" form; Ollama refuses two
+// tags). ":latest" is Ollama's default tag, so "x:latest" is "x:cloud".
 export function ollamaDaemonName(model) {
   const name = String(model ?? "");
   if (isOllamaCloudName(name)) return name;
-  return name.includes(":") ? `${name}-cloud` : `${name}:cloud`;
+  const base = name.endsWith(":latest") ? name.slice(0, -":latest".length) : name;
+  return base.includes(":") ? `${base}-cloud` : `${base}:cloud`;
+}
+
+// The name `models` lists for `model`, or null. Exact, except that Ollama's
+// default tag makes "llama3.2" and "llama3.2:latest" the same model; any other
+// tag must match ("gemma4" is not "gemma4:12b").
+export function ollamaListedName(model, models = []) {
+  const name = String(model ?? "");
+  const list = [...models];
+  if (list.includes(name)) return name;
+  const alias = name.endsWith(":latest") ? name.slice(0, -":latest".length)
+    : name.includes(":") ? null : `${name}:latest`;
+  return alias && list.includes(alias) ? alias : null;
 }
 
 /**
@@ -58,14 +73,20 @@ export function readOllamaTags(data) {
 
 /**
  * The route a chat on `model` takes. Only an exact name match counts as
- * installed: "gemma4:31b" is not local because "gemma4:12b" is pulled.
+ * installed ("gemma4:31b" is not local because "gemma4:12b" is pulled), with
+ * ":latest" as the one alias Ollama itself applies.
  *
- *   ollama_local / local    installed locally and not a remote stub, or one
- *                           of OLLAMA_LOCAL_PICKS, pulled or not
+ *   ollama_local / local    listed by the latest /api/tags read that answered
+ *                           and not a remote stub, or one of OLLAMA_LOCAL_PICKS,
+ *                           pulled or not
  *   ollama_cloud / daemon   through the local Ollama to Ollama Cloud: a remote
  *                           stub it lists, a cloud name while it runs, or any
  *                           other name while it runs and no key is set
  *   ollama_cloud / direct   to ollama.com with OLLAMA_API_KEY, suffix stripped
+ *
+ * `models` / `remote` are the last read that answered, kept when a later read
+ * fails (`running` false): a listed model then still goes to the local Ollama,
+ * whose error says it is down, and is never sent to Ollama Cloud instead.
  *
  * @param {string} model
  * @param {{ running?: boolean, models?: string[], remote?: Iterable<string>, keyConfigured?: boolean }} local
@@ -73,8 +94,9 @@ export function readOllamaTags(data) {
  */
 export function ollamaRoute(model, { running = false, models = [], remote = [], keyConfigured = false } = {}) {
   const name = String(model ?? "");
-  if (running && models.includes(name)) {
-    return new Set(remote).has(name) || isOllamaCloudName(name)
+  const listed = ollamaListedName(name, models);
+  if (listed !== null) {
+    return new Set(remote).has(listed) || isOllamaCloudName(listed)
       ? { provider: "ollama_cloud", via: "daemon", model: name }
       : { provider: "ollama_local", via: "local", model: name };
   }

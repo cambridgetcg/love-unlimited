@@ -15,7 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  OLLAMA_LOCAL_PICKS, isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaRoute, ollamaThinkValue, readOllamaTags,
+  OLLAMA_LOCAL_PICKS, isOllamaCloudName, ollamaDaemonName, ollamaDirectName, ollamaListedName, ollamaRoute, ollamaThinkValue,
+  readOllamaTags,
 } from "../youi-web/ollama-routes.mjs";
 import { createMindsRegistry } from "../youi-web/minds.mjs";
 
@@ -34,6 +35,22 @@ test("daemon and direct names translate both ways", () => {
   assert.equal(ollamaDaemonName("glm-5.3"), "glm-5.3:cloud");
   assert.equal(ollamaDaemonName("gemma4:31b"), "gemma4:31b-cloud", "a tagged name takes -cloud, never a second tag");
   assert.equal(ollamaDaemonName("kimi-k2.7-code:cloud"), "kimi-k2.7-code:cloud");
+  assert.equal(ollamaDaemonName("llama3.2:latest"), "llama3.2:cloud", ":latest is the default tag, not a second one");
+});
+
+test(":latest is the one alias; a failed tags read keeps the last list, so a listed model stays local", () => {
+  assert.equal(ollamaListedName("llama3.2", ["llama3.2:latest"]), "llama3.2:latest");
+  assert.equal(ollamaListedName("llama3.2:latest", ["llama3.2"]), "llama3.2");
+  assert.equal(ollamaListedName("gemma4", ["gemma4:12b"]), null, "any other tag must match");
+  const pulled = { running: true, models: ["llama3.2:latest", "gemma4:12b"], remote: [] };
+  assert.deepEqual(ollamaRoute("llama3.2", pulled), { provider: "ollama_local", via: "local", model: "llama3.2" });
+  assert.deepEqual(ollamaRoute("llama3.2", { ...pulled, keyConfigured: true }).provider, "ollama_local");
+  assert.equal(ollamaRoute("gemma4", pulled).provider, "ollama_cloud");
+  // The read failed (running false) but the last list that answered is kept: local, never direct.
+  const stale = { running: false, models: ["gpt-oss:20b", "kimi-k2.7-code:cloud"], remote: ["kimi-k2.7-code:cloud"], keyConfigured: true };
+  assert.deepEqual(ollamaRoute("gpt-oss:20b", stale), { provider: "ollama_local", via: "local", model: "gpt-oss:20b" });
+  assert.deepEqual(ollamaRoute("kimi-k2.7-code:cloud", stale).via, "daemon", "a stub still goes to localhost, which reports it down");
+  assert.deepEqual(ollamaRoute("glm-5.3", stale).via, "direct", "an unlisted name with a key goes direct as before");
 });
 
 test("/api/tags remote stubs are cloud, and only an exact name is installed", () => {
@@ -84,7 +101,7 @@ test("think is sent only when the model's /api/show lists the value", () => {
 
 // ── Fakes ───────────────────────────────────────────────────────────
 
-async function listen(t, handler) {
+async function listen(t, handler, host = "127.0.0.1") {
   const requests = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -98,13 +115,13 @@ async function listen(t, handler) {
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
+    server.listen(0, host, resolve);
   });
   t.after(() => {
     server.closeAllConnections();
     server.close();
   });
-  return { baseUrl: `http://127.0.0.1:${server.address().port}`, requests };
+  return { baseUrl: `http://127.0.0.1:${server.address().port}`, port: server.address().port, requests };
 }
 
 async function closedUrl() {
@@ -172,6 +189,29 @@ test("the minds registry lists a remote stub as an Ollama Cloud mind, refused wi
   // No key, but a running daemon: the static cloud mind is reachable through it.
   assert.equal(granted["ollama_cloud:glm-5.3"].state, "unchecked");
   assert.equal(granted["ollama_cloud:glm-5.3"].destination, "daemon");
+});
+
+test("a stub of a listed or opt-in cloud model is not a second mind", async t => {
+  const daemon = await listen(t, (_req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ models: [
+      { name: "glm-5.3:cloud", remote_model: "glm-5.3" },
+      { name: "kimi-k3:cloud", remote_model: "kimi-k3" },
+      { name: "kimi-k2.7-code:cloud", remote_model: "kimi-k2.7-code" },
+    ] }));
+  });
+  const minds = createMindsRegistry({
+    cloudModels: ["glm-5.3"],
+    excludeModels: new Set(["kimi-k3"]),
+    localBaseUrl: daemon.baseUrl,
+    vllmBaseUrl: await closedUrl(),
+    computeRoute: provider => ({ route: `LABEL:${provider}`, destination: "x" }),
+  });
+  const ids = (await minds.list({ capabilities: new Set(["models:use", "models:ollama-cloud"]) })).minds.map(mind => mind.id);
+  assert.ok(ids.includes("ollama_cloud:glm-5.3"));
+  assert.ok(!ids.includes("ollama_cloud:glm-5.3:cloud"), "the same model as the static entry");
+  assert.ok(!ids.includes("ollama_cloud:kimi-k3:cloud"), "an opt-in model is never a mind");
+  assert.ok(ids.includes("ollama_cloud:kimi-k2.7-code:cloud"));
 });
 
 // ── Server ──────────────────────────────────────────────────────────
@@ -341,6 +381,9 @@ test("developer profile: cloud through the local Ollama is REMOTE, estimated, nu
   assert.equal(report.usage.inputTokens, null, "native Ollama stated no prompt_eval_count: not a reported 0");
   assert.equal(report.usage.outputTokens, null);
   assert.equal(report.usage.costUsd, null, "no cost estimate from no counts");
+  const uncounted = (await request(port, { path: "/api/usage", headers: session.read })).json;
+  assert.equal(uncounted.ollama.unpricedCalls, 1, "a cloud call that stated no counts is unpriced, not a priced $0");
+  assert.equal(uncounted.ollama.cost, 0);
 
   // 2. A direct-form name, not pulled, no key: through the daemon as its -cloud name, priced as an estimate.
   assert.equal((await settings(session, { model: "gemma4:31b" })).json.privacy.direct.route, "REMOTE_MODEL:ollama-cloud");
@@ -361,7 +404,7 @@ test("developer profile: cloud through the local Ollama is REMOTE, estimated, nu
   assert.ok(usage.ollamaCloud.byModel["gemma4:31b"].cost > 0);
   assert.equal(usage.ollama.cost, usage.ollamaCloud.cost, "the page's Ollama total includes the cloud bucket");
   assert.equal(events.find(e => e.event === "usage").data.ollamaCost, usage.ollamaCloud.cost);
-  assert.equal(usage.ollama.unpricedCalls, 0);
+  assert.equal(usage.ollama.unpricedCalls, 1, "still only the uncounted stub turn");
 
   // 2b. A cloud model with no listed price (beam): counted as unpriced, its cost null, not a guess.
   assert.equal((await settings(session, { model: "beam" })).json.privacy.direct.route, "REMOTE_MODEL:ollama-cloud");
@@ -370,11 +413,11 @@ test("developer profile: cloud through the local Ollama is REMOTE, estimated, nu
   report = (await request(port, { path: "/api/youspeak", headers: session.read })).json;
   assert.ok(Math.abs(report.usage.costUsd - listed) < 1e-12, "the session's estimate gains nothing from an unpriced turn");
   const afterBeam = (await request(port, { path: "/api/usage", headers: session.read })).json;
-  assert.equal(afterBeam.ollama.unpricedCalls, 1);
+  assert.equal(afterBeam.ollama.unpricedCalls, 2);
   assert.equal(afterBeam.ollama.cost, usage.ollama.cost, "an unpriced call adds nothing to the estimate");
   assert.equal(afterBeam.ollamaCloud.byModel.beam.unpricedCalls, 1);
   assert.equal(afterBeam.ollamaCloud.byModel.beam.cost, 0);
-  assert.equal(events.find(e => e.event === "usage").data.ollamaUnpriced, 1);
+  assert.equal(events.find(e => e.event === "usage").data.ollamaUnpriced, 2);
 
   // 3. The pulled local model: think "low" (the session default, which it lists) and num_ctx.
   assert.equal((await settings(session, { model: "gemma4:12b" })).json.privacy.direct.route, "LOCAL_MODEL:ollama");
@@ -419,4 +462,60 @@ test("with no local Ollama, a daemon name goes to the direct API stripped of its
   assert.equal(sent.body.reasoning_effort, "low", "the model lists \"low\"");
   assert.equal(sent.headers.authorization, "Bearer test-only-key");
   assert.equal(cloud.requests.find(r => r.path === "/api/show").body.model, "glm-5.3");
+});
+
+test("safe profile: a local pick is not sent to a local endpoint set off this device", async t => {
+  const daemon = await fakeDaemon(t);
+  const cloud = await listen(t, (_req, res) => { res.writeHead(500); res.end("{}"); });
+  // 0.0.0.0 is not a loopback name, so YOUI treats it as off this device.
+  const port = await startServer(t, {
+    OLLAMA_LOCAL_BASE_URL: `http://0.0.0.0:${daemon.port}`,
+    OLLAMA_CLOUD_BASE_URL: cloud.baseUrl,
+    YOUI_CAPABILITIES: null,
+    YOUI_CAPABILITY_PROFILE: "safe",
+  });
+  const session = await openSession(port, "safe-offdevice");
+  for (const pick of OLLAMA_LOCAL_PICKS) {
+    const picked = await settings(session, { model: pick });
+    assert.equal(picked.status, 200, picked.text);
+    assert.equal(picked.json.privacy.direct.route, "BLOCKED:ollama-cloud-capability-required");
+    const answer = await request(port, {
+      path: "/api/ollama/chat", method: "POST", headers: session.unsafe, body: { model: pick, prompt: "stays here" },
+    });
+    assert.equal(answer.json?.ok, false, answer.text);
+    assert.match(answer.json.error, /not on this device/);
+  }
+  assert.equal(daemon.requests.length, 0, "nothing reached the off-device endpoint");
+  assert.equal(cloud.requests.length, 0);
+});
+
+test("a failed tags read keeps the last list: a listed model goes local, label and route agree", async t => {
+  let failing = false;
+  const daemon = await listen(t, (req, res) => {
+    if (failing) { res.writeHead(500); return res.end("{}"); }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/api/tags") return res.end(JSON.stringify({ models: [{ name: "gpt-oss:20b" }] }));
+    res.end("{}");
+  });
+  const cloud = await listen(t, (_req, res) => { res.writeHead(500); res.end("{}"); });
+  const port = await startServer(t, {
+    OLLAMA_LOCAL_BASE_URL: daemon.baseUrl,
+    OLLAMA_CLOUD_BASE_URL: cloud.baseUrl,
+    OLLAMA_API_KEY: "test-only-key",
+    YOUI_CAPABILITIES: "chat,status:read,sessions:manage,settings:write,models:use,models:ollama-cloud,youspeak:read",
+  });
+  const session = await openSession(port, "stale-tags");
+  assert.equal((await settings(session, { model: "gpt-oss:20b" })).json.privacy.direct.route, "LOCAL_MODEL:ollama");
+  failing = true;
+  // An unknown model forces a fresh read, which now fails.
+  await settings(session, { model: "not-a-listed-model" });
+  const picked = await settings(session, { model: "gpt-oss:20b" });
+  assert.equal(picked.json.privacy.direct.route, "LOCAL_MODEL:ollama", "the label keeps the last list");
+  const answer = await request(port, {
+    path: "/api/ollama/chat", method: "POST", headers: session.unsafe, body: { model: "gpt-oss:20b", prompt: "stays here" },
+  });
+  assert.equal(answer.json?.ok, false, answer.text);
+  assert.equal(answer.json._provider, "ollama_local");
+  assert.ok(daemon.requests.some(r => r.path === "/api/chat"), "the route matches the label: the local Ollama");
+  assert.equal(cloud.requests.length, 0, "a down daemon is a local error, never a send to Ollama Cloud");
 });

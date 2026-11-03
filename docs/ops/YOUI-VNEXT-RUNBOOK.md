@@ -157,7 +157,13 @@ include `REMOTE_MODEL:anthropic`, `REMOTE_MODEL:vllm`,
 separately. Local Ollama never routes directly to cloud without
 `models:ollama-cloud`, and local-to-cloud fallback additionally requires
 `models:cloud-fallback`. `developer` has the first grant and not the second;
-`safe` has neither.
+`safe` has neither. `models:ollama-cloud` also permits a non-loopback
+`OLLAMA_LOCAL_BASE_URL` (labelled `REMOTE_MODEL:ollama-configured-endpoint`),
+so `developer` allows one; without the grant, nothing is sent to such an
+endpoint, a local pick included, and the route shows as `BLOCKED`. The grant
+covers YOUI's own Ollama routes only: the adaptive orchestrator
+(`/api/orchestrate/*`, labelled `REMOTE_MODEL:adaptive-orchestrator`) finds
+its own provider credentials and can reach Ollama Cloud from `safe` too.
 
 A signed-in local Ollama also serves Ollama Cloud models: a name whose tag
 is `:cloud` or ends in `-cloud`, or a model its `GET /api/tags` lists with
@@ -165,7 +171,11 @@ is `:cloud` or ends in `-cloud`, or a model its `GET /api/tags` lists with
 though they go through localhost, because the content leaves the device:
 they need `models:ollama-cloud`, show as `REMOTE_MODEL:ollama-cloud`, and
 their cost is estimated from YOUI's price table. Only an exact name counts as
-installed, so `gemma4:31b` is not local because `gemma4:12b` is pulled. With
+installed, so `gemma4:31b` is not local because `gemma4:12b` is pulled; the
+one alias is Ollama's default tag, so `llama3.2` matches `llama3.2:latest`.
+When a `GET /api/tags` read fails, the last list that answered is kept, so a
+listed model still goes to the local Ollama (which reports it down) rather
+than to Ollama Cloud. The privacy label and the bridge read the same list. With
 no `OLLAMA_API_KEY`, a running local Ollama is the route to Ollama Cloud. With
 a key, a model that is neither listed nor named with a cloud suffix goes to
 the direct API; so does a cloud name when no local Ollama answers, with the
@@ -174,17 +184,22 @@ suffix removed, since the direct API names models without it.
 The Settings model menu lists the Ollama Cloud models named by
 `https://ollama.com/api/tags` on 2026-10-31, the local picks `qwen3.5:4b` and
 `gemma4:12b`, and whatever the local Ollama lists when it runs. The local
-picks never go to Ollama Cloud: if one is not pulled, the local Ollama says
-so. Ollama retires cloud models often, so the static list goes stale; a
-retired name fails when called. `glm-5.3-flash` is the default where a call
-names no model. `kimi-k3` has the highest list price ($3.00 in, $15.00 out
-per 1M tokens) and is used only when picked in Settings: it is not listed as
-a mind, so the minds tools never call it. `beam` is free on Ollama Cloud for a limited time and is never a
-default. The price table (`OLLAMA_PRICING` in `youi-web/server.mjs`) copies
+picks go to the local Ollama whether pulled or not (if one is not, it says
+so); they reach Ollama Cloud only as the cloud fallback, when
+`models:cloud-fallback` is also granted. Ollama retires cloud models often,
+so the static list goes stale; a retired name fails when called.
+`glm-5.3-flash` is the default where a call names no model. `kimi-k3` has
+the highest list price ($3.00 in, $15.00 out per 1M tokens) and is never a
+default and never a mind, even as a stub the local Ollama lists, so the minds
+tools never call it; the `ollama` tool and `POST /api/ollama/chat` still call
+any model named to them, and their calls are not in the session cost. `beam`
+is unpriced (Ollama listed it free for a limited time in 2026-10, end date not
+stated) and is never a default. The price table (`OLLAMA_PRICING` in `youi-web/server.mjs`) copies
 `https://ollama.com/pricing` as fetched on 2026-10-31, with DeepSeek at its
 peak rate. Its costs are estimates from list price, not a bill; plan credits
-are not applied. A cloud model not in the table is counted as unpriced, and
-the usage panel shows `+ N unpriced` instead of a guessed cost.
+are not applied. A cloud call on a model not in the table, or whose response
+states no token count, is counted as unpriced, and the usage panel shows
+`+ N unpriced` instead of a guessed cost.
 
 Model-facing subprocesses receive an allowlisted environment. Provider or
 adapter credentials are delegated only by explicit variable name for that

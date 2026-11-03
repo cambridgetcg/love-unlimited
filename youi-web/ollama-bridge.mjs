@@ -100,15 +100,22 @@ function configuredEndpointIsLoopback(rawUrl) {
 // ── Local model detection ───────────────────────────────────────────
 let localModels = null;   // cached list of locally-installed models
 let localChecked = 0;     // timestamp of last check
+let lastListed = { models: [], remote: [] }; // the last GET /api/tags that answered
 const LOCAL_CHECK_INTERVAL = 60_000; // re-check every 60s
 
 /**
  * Detect whether local Ollama is running and which models are available.
  * Returns { running: bool, models: string[], remote: string[], base: string };
- * `remote` names the listed models the daemon forwards to Ollama Cloud.
+ * `remote` names the listed models the daemon forwards to Ollama Cloud. When
+ * a read fails, `running` is false and the lists are the last read that
+ * answered, so a listed model is still routed to the local Ollama
+ * (ollamaRoute), never to Ollama Cloud because one read failed. The server
+ * reads this same cache (refreshOllamaLocal, ollamaLocalSnapshot), so the
+ * route it labels is the route taken here.
  */
 async function detectLocalOllama(signal, {
   allowRemoteEndpoint = false,
+  force = false,
 } = {}) {
   // A setting named LOCAL must not silently become an ungranted network
   // egress route when it is pointed at a LAN or internet host.
@@ -122,7 +129,7 @@ async function detectLocalOllama(signal, {
     };
   }
   // Cache: don't re-probe every request
-  if (localModels && Date.now() - localChecked < LOCAL_CHECK_INTERVAL) return localModels;
+  if (!force && localModels && Date.now() - localChecked < LOCAL_CHECK_INTERVAL) return localModels;
 
   throwIfAborted(signal);
   const request = linkedAbortController(signal, 3000, "Local Ollama detection timed out");
@@ -133,16 +140,43 @@ async function detectLocalOllama(signal, {
     if (!resp.ok) throw new Error(`status ${resp.status}`);
     const { models, remote } = readOllamaTags(await resp.json());
     localModels = { running: true, models, remote, base: OLLAMA_LOCAL_BASE };
+    lastListed = { models, remote };
     localChecked = Date.now();
     console.log(`[ollama] Local detected: ${models.length} models (${models.join(", ")})`);
     return localModels;
   } catch (error) {
     if (signal?.aborted) throw abortReason(signal);
-    localModels = { running: false, models: [], remote: [], base: null };
+    localModels = { running: false, models: lastListed.models, remote: lastListed.remote, base: null };
     localChecked = Date.now();
     return localModels;
   } finally {
     request.cleanup();
+  }
+}
+
+/**
+ * Re-reads GET /api/tags (at most once a minute unless `force`) into the
+ * cache ollamaChat routes by. The server calls this instead of reading the
+ * tags itself. `allowRemoteEndpoint`: whether a non-loopback
+ * OLLAMA_LOCAL_BASE_URL may be read (models:ollama-cloud).
+ */
+export function refreshOllamaLocal({ allowRemoteEndpoint = false, force = false, signal = null } = {}) {
+  return detectLocalOllama(signal, { allowRemoteEndpoint, force });
+}
+
+/** The cached read ollamaChat routes by, without a new read. */
+export function ollamaLocalSnapshot() {
+  return localModels || { running: false, models: lastListed.models, remote: lastListed.remote, base: null };
+}
+
+// The configured local endpoint as protocol and host: a URL's user:password
+// never reaches a log line.
+function logDestination(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return "the configured endpoint";
   }
 }
 
@@ -276,7 +310,6 @@ function abortableDelay(milliseconds, signal) {
 // ── Timeout presets by model tier ───────────────────────────────────
 function selectTimeout(model = "") {
   const m = model.toLowerCase();
-  if (/gpt-oss:20b/.test(m)) return 30000;   // economy: 30s
   // premium: 3min (the large thinking models, and local models on a small GPU)
   if (/kimi|glm-5\.3(?!-flash)|deepseek-v4-pro|mistral-large|qwen2\.5|qwen3\.5:4b|gemma4:12b/.test(m)) return 180000;
   return 120000;  // standard: 2min
@@ -802,6 +835,17 @@ export async function ollamaChat(messages, options = {}) {
   const localInfo = await detectLocalOllama(signal, {
     allowRemoteEndpoint: allowCloudRoute,
   });
+  // A LOCAL setting pointed off this device is network egress: without
+  // models:ollama-cloud nothing goes to it, a local pick included.
+  if (localInfo?.blockedRemoteEndpoint) {
+    return {
+      ok: false,
+      status: 0,
+      error: "The configured local Ollama endpoint is not on this device; sending to it needs models:ollama-cloud.",
+      latency: "0.00",
+      _provider: "ollama_local",
+    };
+  }
   const endpoint = resolveEndpoint(model, localInfo);
   if (endpoint.provider !== "ollama_local" && !allowCloudRoute) {
     return {
@@ -850,7 +894,7 @@ export async function ollamaChat(messages, options = {}) {
 
   // ── LOCAL: /api/chat (native Ollama API) ───────────────────────────
   if (endpoint.provider === "ollama_local") {
-    console.log(`[ollama] Using LOCAL ${endpoint.base} for model ${model}`);
+    console.log(`[ollama] Using LOCAL ${logDestination(endpoint.base)} for model ${model}`);
     const localBody = buildNativeBody(oaiMessages, {
       ...effectiveOptions,
       think: await thinkFor(reasoningEffort, endpoint.base, null, model, signal),
@@ -892,7 +936,7 @@ export async function ollamaChat(messages, options = {}) {
   // No key leaves YOUI, but the content leaves the device: this is Ollama
   // Cloud, allowed above only with allowCloudRoute, and never a fallback.
   if (endpoint.via === "daemon") {
-    console.log(`[ollama] Using Ollama Cloud through ${endpoint.base} for model ${endpoint.model}`);
+    console.log(`[ollama] Using Ollama Cloud through ${logDestination(endpoint.base)} for model ${endpoint.model}`);
     const daemonBody = buildNativeBody(oaiMessages, {
       ...effectiveOptions,
       model: endpoint.model,

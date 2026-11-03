@@ -32,8 +32,10 @@ import crypto from "crypto";
 import { EVIDENCE, createKernel, defaultHistoryPath } from "../youspeak-kernel.mjs";
 import { youspeakRule } from "../youspeak-rule.mjs";
 import { resolveScopedPath } from "../youi-runtime-policy.mjs";
-import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
-import { OLLAMA_LOCAL_PICKS, ollamaDirectName, ollamaRoute, readOllamaTags } from "./ollama-routes.mjs";
+import {
+  handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured, ollamaLocalSnapshot, refreshOllamaLocal,
+} from "./ollama-bridge.mjs";
+import { OLLAMA_LOCAL_PICKS, ollamaDirectName, ollamaRoute } from "./ollama-routes.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
 import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
@@ -179,7 +181,9 @@ const DEVELOPER_CAPABILITIES = new Set([
   "memory:write",
   "youspeak:reset",
   // Ollama Cloud models, direct or through a signed-in local Ollama (Yu's
-  // signed decision, 2026-10-31). Cloud fallback stays out.
+  // signed decision, 2026-10-31). Cloud fallback stays out. The same grant
+  // also permits a non-loopback OLLAMA_LOCAL_BASE_URL (labelled
+  // REMOTE_MODEL:ollama-configured-endpoint), so developer allows one.
   "models:ollama-cloud",
 ]);
 const KNOWN_CAPABILITIES = new Set([
@@ -286,7 +290,8 @@ function fireDetection(state, assistantContent) {
 // September 2026), so this list goes stale; a local Ollama's own list is read
 // at runtime as well.
 const OLLAMA_CLOUD_MODELS = [
-  // Cheapest first: the minds tools pick unnamed minds in this order.
+  // Roughly cheapest first by list price, glm-5.3-flash first as the default:
+  // the minds tools pick unnamed minds in this order.
   "glm-5.3-flash", "gpt-oss:20b", "minimax-m3.1-flash", "gemma4:31b",
   "deepseek-v4.1-flash", "gpt-oss:120b", "nemotron-3-super", "mistral-large-4",
   "kimi-k2.7-code", "glm-5.3", "deepseek-v4-pro:0813",
@@ -301,11 +306,12 @@ const OLLAMA_MODELS = [
   // Remote vLLM (pod H200) — routed to OLLAMA_VLLM_BASE_URL via ollama-bridge
   "Qwen/Qwen2.5-72B-Instruct-AWQ",
   ...OLLAMA_CLOUD_MODELS,
-  // Local only, never sent to Ollama Cloud (ollama-routes.mjs).
+  // Local; Ollama Cloud only as the explicit cloud fallback (ollama-routes.mjs).
   ...OLLAMA_LOCAL_PICKS,
 ];
-// Every model the local Ollama lists (GET /api/tags), refreshed by
-// refreshLocalModels; the remote ones are Ollama Cloud models it forwards.
+// Every model the local Ollama lists (GET /api/tags), mirrored by
+// refreshLocalModels from ollama-bridge.mjs's read (the last read that
+// answered); the remote ones are Ollama Cloud models it forwards.
 const OLLAMA_LOCAL_MODELS = [];
 const OLLAMA_LOCAL_REMOTE = new Set();
 let ollamaLocalRunning = false;
@@ -316,46 +322,32 @@ const VLLM_MODEL_PATTERN = /^(Qwen\/|kingdom-truth)/i;
 function isVllmModel(model) { return VLLM_MODEL_PATTERN.test(String(model)); }
 
 // ── Local Ollama models: at boot, then again when a read needs them ─
-const LOCAL_MODELS_TTL_MS = 60_000;
-let localModelsCheckedAt = 0;
 let localModelsRefresh = null;
 
-// Re-reads GET /api/tags at most once a minute (shared while in flight), so
-// Ollama started after YOUI, or a model pulled since, is seen without a
-// restart. Returns whether the local Ollama answered.
+// Re-reads GET /api/tags through ollama-bridge.mjs (at most once a minute
+// unless forced; shared while in flight), so Ollama started after YOUI, or a
+// model pulled since, is seen without a restart, and the route the server
+// labels comes from the same read the bridge routes by. Returns whether the
+// local Ollama answered.
 function refreshLocalModels({ force = false } = {}) {
   if (localModelsRefresh) return localModelsRefresh;
-  if (!force && localModelsCheckedAt && Date.now() - localModelsCheckedAt < LOCAL_MODELS_TTL_MS) {
-    return Promise.resolve(ollamaLocalRunning);
-  }
   localModelsRefresh = (async () => {
-    if (
-      !destinationIsLoopback(OLLAMA_LOCAL_BASE_URL)
-      && !SERVER_CAPABILITIES.has("models:ollama-cloud")
-    ) {
+    const read = await refreshOllamaLocal({
+      allowRemoteEndpoint: SERVER_CAPABILITIES.has("models:ollama-cloud"),
+      force,
+    });
+    if (read.blockedRemoteEndpoint) {
       ollamaLocalRunning = false;
       return false;
     }
-    try {
-      const resp = await fetch(`${OLLAMA_LOCAL_BASE_URL}/api/tags`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!resp.ok) throw new Error(`status ${resp.status}`);
-      const { models, remote } = readOllamaTags(await resp.json());
-      OLLAMA_LOCAL_MODELS.splice(0, OLLAMA_LOCAL_MODELS.length, ...models);
-      OLLAMA_LOCAL_REMOTE.clear();
-      for (const m of remote) OLLAMA_LOCAL_REMOTE.add(m);
-      // A model once seen stays valid in settings; its route is decided per call.
-      for (const m of models) if (!ALL_VALID_MODELS.includes(m)) ALL_VALID_MODELS.push(m);
-      ollamaLocalRunning = true;
-    } catch {
-      OLLAMA_LOCAL_MODELS.splice(0);
-      OLLAMA_LOCAL_REMOTE.clear();
-      ollamaLocalRunning = false;
-    }
+    OLLAMA_LOCAL_MODELS.splice(0, OLLAMA_LOCAL_MODELS.length, ...read.models);
+    OLLAMA_LOCAL_REMOTE.clear();
+    for (const m of read.remote) OLLAMA_LOCAL_REMOTE.add(m);
+    // A model once seen stays valid in settings; its route is decided per call.
+    for (const m of read.models) if (!ALL_VALID_MODELS.includes(m)) ALL_VALID_MODELS.push(m);
+    ollamaLocalRunning = read.running === true;
     return ollamaLocalRunning;
   })().finally(() => {
-    localModelsCheckedAt = Date.now();
     localModelsRefresh = null;
   });
   return localModelsRefresh;
@@ -390,8 +382,8 @@ async function detectLocalModels() {
 // an account was actually charged. DeepSeek rows are the peak rate (weekdays
 // 12:00-18:00 UTC), so off-peak calls cost at most this; cached: null means the
 // page lists no cached price, and cached tokens are then priced as input. A
-// model not in the table (beam, free for now, included) is unpriced: its cost
-// is null, not a guess.
+// model not in the table (beam, listed free for a limited time, included) is
+// unpriced: its cost is null, not a guess.
 const OLLAMA_PRICING = {
   "glm-5.3":                  { input: 1.40,  cached: 0.26,   output: 4.40 },
   "glm-5.3-flash":            { input: 0.15,  cached: 0.03,   output: 0.50 },
@@ -433,6 +425,20 @@ function ollamaCostSoFar(providerUsage) {
 }
 function ollamaUnpricedSoFar(providerUsage) {
   return (providerUsage.ollama?.unpricedCalls || 0) + (providerUsage.ollama_cloud?.unpricedCalls || 0);
+}
+// The per-model figures of several usage buckets, summed: one model can have
+// turns in more than one (served locally while pulled, through Ollama Cloud after).
+function mergeByModel(buckets) {
+  const merged = {};
+  for (const bucket of buckets) {
+    for (const [model, figures] of Object.entries(bucket.byModel || {})) {
+      const target = merged[model] ||= {};
+      for (const [field, value] of Object.entries(figures)) {
+        if (typeof value === "number") target[field] = (target[field] || 0) + value;
+      }
+    }
+  }
+  return merged;
 }
 
 function createProviderUsage() {
@@ -492,9 +498,12 @@ function ollamaTokenFigures(usage) {
 function trackProviderUsage(provider, model, usage, { mind = false, failed = false, byModel = null } = {}) {
   const providerUsage = state.providerUsage;
   const u = providerUsage[provider] || (providerUsage[provider] = { inputTokens: 0, outputTokens: 0, turns: 0, mindCalls: 0, cost: 0, byModel: {} });
-  // Cloud Ollama cost, by YOUI's price table; self-hosted models are free,
-  // and a call on an unpriced model is counted, not costed.
-  const estimate = provider === "claude" ? null : ollamaCostEstimate(provider, model, usage);
+  // Cloud Ollama cost, by YOUI's price table; self-hosted models are free.
+  // A cloud call on an unpriced model, or one whose response stated no token
+  // count, is counted as unpriced, not costed as 0.
+  const estimate = provider === "claude" ? null
+    : provider === "ollama_local" || provider === "vllm" ? 0
+    : ollamaCostOrNull(provider, model, usage);
   u.inputTokens += usage.input_tokens || 0;
   u.outputTokens += usage.output_tokens || 0;
   if (mind) {
@@ -696,13 +705,14 @@ function destinationIsLoopback(rawUrl) {
   }
 }
 
-// The route ollama-bridge.mjs takes for this Ollama model, from the latest
-// GET /api/tags (ollama-routes.mjs; exact names only).
+// The route ollama-bridge.mjs takes for this Ollama model, from the bridge's
+// own cached GET /api/tags read (ollama-routes.mjs; exact names only).
 function ollamaModelRoute(model) {
+  const local = ollamaLocalSnapshot();
   return ollamaRoute(model, {
-    running: ollamaLocalRunning,
-    models: OLLAMA_LOCAL_MODELS,
-    remote: OLLAMA_LOCAL_REMOTE,
+    running: local.running === true,
+    models: local.models || [],
+    remote: local.remote || [],
     keyConfigured: ollamaCloudKeyConfigured(),
   });
 }
@@ -761,7 +771,11 @@ function runtimePrivacyBoundary() {
   // A Claude turn also carries, as text, the turns of this session Claude has
   // not received: local-model turns included (claudeCodeTurn).
   if (provider === "anthropic") sends.push("earlier turns Claude has not received, including Ollama and vLLM turns, as text");
-  const direct = provider === "ollama_cloud" && !hasCapability("models:ollama-cloud")
+  // Ollama Cloud, or a local Ollama endpoint set off this device, needs the
+  // grant; without it the bridge sends nothing (ollama-bridge.mjs ollamaChat).
+  const needsCloudGrant = provider === "ollama_cloud"
+    || (provider === "ollama" && !destinationIsLoopback(OLLAMA_LOCAL_BASE_URL));
+  const direct = needsCloudGrant && !hasCapability("models:ollama-cloud")
     ? { route: "BLOCKED:ollama-cloud-capability-required", destination: null, sends: [] }
     : { ...modelComputeRoute(state.model), sends };
 
@@ -907,6 +921,7 @@ const mindsRegistry = createMindsRegistry({
   claudeModels: CLAUDE_MODELS,
   vllmModels: OLLAMA_MODELS.filter(isVllmModel),
   cloudModels: OLLAMA_CLOUD_MODELS.filter(model => !OLLAMA_OPT_IN_MODELS.has(model)),
+  excludeModels: OLLAMA_OPT_IN_MODELS,
   isVllmModel,
   localBaseUrl: OLLAMA_LOCAL_BASE_URL,
   vllmBaseUrl: OLLAMA_VLLM_BASE_URL,
@@ -2110,7 +2125,14 @@ async function callMind({ mind, system, prompt, signal }) {
     costEvidence: EVIDENCE.estimated,
   });
   if (!result.ok) return { ok: false, error: String(result.error || `status ${result.status}`).slice(0, 300), usage };
-  if (result._provider) trackProviderUsage(result._provider, mind.model, usage, { mind: true });
+  if (result._provider) {
+    // A count the response left out stays null, so an uncounted cloud call is unpriced, not $0.
+    trackProviderUsage(result._provider, mind.model, {
+      ...usage,
+      input_tokens: result.usage?.input_tokens ?? null,
+      output_tokens: result.usage?.output_tokens ?? null,
+    }, { mind: true });
+  }
   const served = BRIDGE_PROVIDERS[result._provider];
   // The bridge serves an installed model locally even when the mind is listed
   // for Ollama Cloud, and a cloud mind may go through the local Ollama.
@@ -3601,7 +3623,7 @@ async function handleSessionRequest(req, res, url, path) {
         turns: sum("turns"),
         cost: ollamaCostSoFar(providerUsage), // local is $0; cloud is a list-price estimate
         unpricedCalls: ollamaUnpricedSoFar(providerUsage), // cloud calls on a model with no listed price
-        byModel: Object.assign({}, ...buckets.map(bucket => bucket.byModel)),
+        byModel: mergeByModel(buckets),
       };
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({

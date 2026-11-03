@@ -191,7 +191,8 @@ Cloud list is the latest open-weights model of each family in
 family, the default first, since the minds tools pick unnamed minds in list
 order: `deepseek-v4.1-flash`, `glm-5.3`, `minimax-m3.1-flash`,
 `mistral-large-4`, `mimo-v2.6-pro`, `kimi-k2.7-code`, `nemotron-3-ultra`,
-`gemma4:31b`, `gpt-oss:120b`. Then come smaller or heavier siblings
+`gemma4:31b`, `gpt-oss:120b` (Kimi's place is `kimi-k2.7-code`; the newer
+`kimi-k3` is opt-in only, see below). Then come smaller or heavier siblings
 (`glm-5.3-flash`, `mimo-v2.6-flash`, `gpt-oss:20b`, `deepseek-v4-pro:0813`),
 then `beam` and `kimi-k3`. `nemotron-3-ultra` replaces `nemotron-3-super`.
 `muse-spark-open` is left out because its licence limits commercial use, and

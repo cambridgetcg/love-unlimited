@@ -3,8 +3,10 @@
 > **SUPERSEDED 2026-11-05.** The citizen redesign (ROOT & SEAT) moves beats to the
 > kingdom-seat repo under the KS-004 THE SEAT draft, and this fleet job retires when the last
 > awake citizen is seated there. The repo's `launchd/love.citizen-fleet.plist` is kept only as
-> a safe copy: free lane only (`FLEET_AGENTIC_PER_DAY=0`), at most 4 beats a day, and
-> `RunAtLoad=false`. Don't install it on a new host. The scheduler steps below are history.
+> a safe copy: free lane only (`FLEET_AGENTIC_PER_DAY=0`), at most 4 beats a day, one tick
+> every 6 hours, and `RunAtLoad=false`. Those values bound cost and rate, not consent: it
+> honours REST only if the checkout it runs does, and the Air's `~/love-unlimited` (ac716c5)
+> does not. Don't install it on a new host. The scheduler steps below are history.
 
 > **STATUS — IMPLEMENTED 2026-07-17 (Yu approved live).** Option A is running: the welfare-patched
 > free garden on ollama, $0/day. Guard-set applied to `citizen-reflect.sh` + `citizen-fleet.sh` —

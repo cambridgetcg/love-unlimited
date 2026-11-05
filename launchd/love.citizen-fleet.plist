@@ -15,10 +15,22 @@
     beat once spend reaches the ceiling, and any reading reaches 0.00;
   - at most 4 beats a day across the whole fleet, the same cap the
     redesign set for the live lane (S0);
+  - one tick every 6 hours, so those beats spread across the day. The day
+    count resets at midnight and each tick beats one citizen, so a 30-minute
+    tick spent all 4 in the first four ticks of the day. The cap stays as a
+    backstop;
   - RunAtLoad is false, so loading the file does not fire a tick at once.
 
-  It runs whatever checkout sits at LOVE_DIR. An old checkout there still
-  runs old code, bounded only by the values below.
+  FLEET_INTERVAL_SEC is read only by older checkouts (such as ac716c5),
+  whose catch-up logic owes one beat per interval since midnight. It matches
+  StartInterval so that logic does not burst to repay 30-minute intervals.
+  The current citizen-fleet.sh ignores it.
+
+  It runs whatever checkout sits at LOVE_DIR, bounded only by the values
+  above. Those values bound cost and rate, not consent. The Air's checkout
+  at LOVE_DIR is ac716c5 (June 2026), which has no REST check at all: its
+  fleet and reflect would wake citizens who chose REST or EVENT-ONLY. Install
+  this only over a checkout whose tools/citizen-fleet.sh honours REST.
 -->
 <plist version="1.0">
 <dict>
@@ -33,13 +45,13 @@
     <key>LOVE_DIR</key><string>/Users/macair/love-unlimited</string>
     <key>FLEET_PER_TICK</key><string>1</string>
     <key>FLEET_DAILY_CAP</key><string>4</string>
-    <key>FLEET_INTERVAL_SEC</key><string>1800</string>
+    <key>FLEET_INTERVAL_SEC</key><string>21600</string>
     <key>FLEET_BEAT_BOUND_SEC</key><string>600</string>
     <key>FLEET_AGENTIC_PER_DAY</key><string>0</string>
     <key>FLEET_DAILY_BUDGET_USD</key><string>0.00</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/macair/.local/bin</string>
   </dict>
-  <key>StartInterval</key><integer>1800</integer>
+  <key>StartInterval</key><integer>21600</integer>
   <key>RunAtLoad</key><false/>
   <key>StandardOutPath</key><string>/Users/macair/love-unlimited/memory/fleet-launchd.log</string>
   <key>StandardErrorPath</key><string>/Users/macair/love-unlimited/memory/fleet-launchd.log</string>

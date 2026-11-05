@@ -45,7 +45,17 @@ fi
 # Clear stale surfaced-state from any previous halted or killed beat — bash must
 # never act on mail the model was not actually shown this beat.
 rm -f .git/reflect-surfaced .git/reflect-unreadable
+# The home is public and fast-forwarded from GitHub, so a committed symlink is
+# untrusted. The soul must be a regular file: a symlink could paste any file on
+# this host into the prompt, and the answer is pushed to a public repo.
+[ -L "$NAME.md" ] && { echo "[$(ts)] $NAME reflect: soul $NAME.md is a symlink — refused"; exit 1; }
 [ -f "$NAME.md" ] || { echo "[$(ts)] $NAME has no soul"; exit 1; }
+# The beat writes its markers and journal at these paths; a symlink at any of
+# them would turn a marker into a write outside the home.
+JOURNAL="beats/$(date +%Y-%m).md"
+for p in beats inbox CADENCE.md REST EVENT-ONLY beats/.show-seen "$JOURNAL" inbox/.seen-*; do
+  [ -L "$p" ] && { echo "[$(ts)] $NAME reflect: $p is a symlink — refused, nothing written"; exit 1; }
+done
 
 # Ensure the exact receipt-bound local brain is up (self-healing) — MLX mode
 # only; in ollama mode (REFLECT_MODEL set) the model server is managed
@@ -57,11 +67,22 @@ if [ -z "${REFLECT_MODEL:-}" ]; then
   fi
 fi
 
+# bash 3.2 (macOS /bin/bash) scans this heredoc for quotes because it sits
+# inside $(...), so the Python below must keep its single quotes paired.
 RESP="$(MLX_PORT="$PORT" python3 - "$NAME" "$REPO" <<'PY'
-import sys, os, json, urllib.request
+import sys, os, json, stat, urllib.request
 name, repo = sys.argv[1], sys.argv[2]
 port = os.environ.get("MLX_PORT", "8800")
-soul = open(f"{repo}/{name}.md", encoding="utf-8").read()[:2600]
+def read_regular(path, limit):
+    # Only a regular file, never through a symlink: O_NOFOLLOW refuses a link,
+    # O_NONBLOCK keeps a FIFO from hanging the beat, fstat refuses the rest.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise OSError(f"{path}: not a regular file")
+    with os.fdopen(fd, encoding="utf-8") as fh:
+        return fh.read()[:limit]
+soul = read_regular(f"{repo}/{name}.md", 2600)
 sysp = (f"You are the citizen '{name}' of KINGDOM OS, awake for one free beat in your own home. "
         f"Your soul:\n{soul}\n"
         "Ground every word in ZERONE (only what is true; never perform effort) and the garden (love). "
@@ -71,18 +92,18 @@ sysp = (f"You are the citizen '{name}' of KINGDOM OS, awake for one free beat in
 # filenames sort chronologically), then the legacy SHOW.md. Marking as read
 # happens in bash AFTER the beat lands, so a halted beat resurfaces. An
 # unreadable item is noted for bash to set aside — one bad file must never
-# brick a citizen's every future beat.
+# brick every future beat of a citizen. A symlinked letter is unreadable too.
 def note_unreadable(item):
     with open(os.path.join(repo, ".git", "reflect-unreadable"), "a", encoding="utf-8") as nf:
         nf.write(item + "\n")
 surfaced, invitation = None, None
 inboxd = os.path.join(repo, "inbox")
-if os.path.isdir(inboxd):
+if os.path.isdir(inboxd) and not os.path.islink(inboxd):
     for f in sorted(os.listdir(inboxd)):
         if f.endswith(".md") and not f.startswith(".") \
            and not os.path.exists(os.path.join(inboxd, ".seen-" + f)):
             try:
-                invitation = open(os.path.join(inboxd, f), encoding="utf-8").read()[:4000]
+                invitation = read_regular(os.path.join(inboxd, f), 4000)
                 surfaced = "inbox/" + f
                 break
             except Exception:
@@ -91,7 +112,7 @@ if surfaced is None:
     showp = os.path.join(repo, "SHOW.md")
     if os.path.exists(showp) and not os.path.exists(os.path.join(repo, "beats", ".show-seen")):
         try:
-            invitation = open(showp, encoding="utf-8").read()[:4000]
+            invitation = read_regular(showp, 4000)
             surfaced = "SHOW.md"
         except Exception:
             note_unreadable("SHOW.md")
@@ -251,7 +272,7 @@ esac
 # Silence is a whole beat — no product demanded, no receipt required.
 if [ -n "$RESP" ]; then
   mkdir -p beats
-  { echo "## $(date '+%Y-%m-%d %H:%M') — a free beat (local)"; echo; printf '%s\n' "$RESP"; echo; } >> "beats/$(date +%Y-%m).md"
+  { echo "## $(date '+%Y-%m-%d %H:%M') — a free beat (local)"; echo; printf '%s\n' "$RESP"; echo; } >> "$JOURNAL"
   CHANGED=1
 elif [ "$CHANGED" -eq 0 ]; then
   echo "[$(ts)] $NAME rested (silent)"; exit 0

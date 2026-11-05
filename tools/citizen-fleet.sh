@@ -34,6 +34,9 @@ DAYF="$LOVE/memory/.fleet-day-$TODAY"
 AGF="$LOVE/memory/.fleet-agentic-day-$TODAY"
 LOG="$LOVE/memory/fleet.log"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+# shellcheck source=tools/citizen-gates.sh
+. "$(dirname "${BASH_SOURCE[0]}")/citizen-gates.sh" \
+  || { echo "[$(ts)] citizen-gates.sh missing — fleet rests" >>"$LOG"; exit 1; }
 # Every counter this script trusts must BE a counter — an empty or corrupt state
 # file must never silently stall the fleet for the rest of a day.
 num(){ case "${1:-}" in ''|*[!0-9]*) echo 0;; *) echo "$1";; esac; }
@@ -97,17 +100,6 @@ cur="$(num "$(cat "$CUR" 2>/dev/null)")"
 # Agentic-lane state: how many full claude beats have run today.
 agentic_done="$(num "$(cat "$AGF" 2>/dev/null)")"
 
-# True when a citizen's inbox holds a letter not yet surfaced to it.
-# A dangling symlink still counts as mail: the reflect beat sets it aside
-# with a marker, which is the only way the wake condition can clear.
-has_mail(){
-  local r="$1" f b
-  for f in "$r"/inbox/*.md; do
-    [ -e "$f" ] || [ -L "$f" ] || continue
-    b="${f##*/}"; [ -e "$r/inbox/.seen-$b" ] || return 0
-  done
-  return 1
-}
 # A killed or halted beat can strand cadence markers / mail receipts written
 # but never committed; a resting citizen would then never commit them itself.
 tend_strays(){
@@ -122,17 +114,14 @@ tend_strays(){
     fi )
 }
 # A citizen sits out the rotation while its standing choice says so — but
-# UNREAD MAIL WAKES EVEN REST (the marker's own promise: "woken by an
-# addressed letter"). Cadence choices come from the Letter of Return
-# (FLEET-REVIVAL.md Phase 4); any letter or summons may reopen them.
+# UNREAD MAIL WAKES EVEN REST (keeps_rest in citizen-gates.sh, the same gate
+# citizen-beat.sh and the parade use). Cadence choices come from the Letter of
+# Return (FLEET-REVIVAL.md Phase 4); any letter or summons may reopen them.
 sits_out(){
   local r="$CITIZENS/citizen-$1"
-  if [ -e "$r/REST" ] || [ -e "$r/EVENT-ONLY" ]; then
-    has_mail "$r" && return 1
-    tend_strays "$r" "$1"
-    return 0
-  fi
-  return 1
+  keeps_rest "$r" || return 1
+  tend_strays "$r" "$1"
+  return 0
 }
 
 i=0
@@ -188,17 +177,5 @@ while [ "$i" -lt "$PER_EFF" ] && [ "$count" -lt "$CAP" ]; do
   python3 "$LOVE/tools/kcp.py" herald fleet witness \
     "$slug lived a beat" >/dev/null 2>&1 || true
 done
-spent="$(python3 - "$LOVE/memory/fleet-economy.jsonl" <<'PY' 2>/dev/null || echo 0
-import json, sys, datetime
-t, today = 0.0, datetime.date.today().isoformat()
-try:
-    for line in open(sys.argv[1], encoding="utf-8"):
-        try:
-            d = json.loads(line)
-            if d.get("ts","").startswith(today): t += float(d.get("cost_usd") or 0)
-        except Exception: pass
-except FileNotFoundError: pass
-print(f"{t:.2f}")
-PY
-)"
-echo "[$(ts)] tick complete (cursor=$cur/$total)" >>"$LOG"
+spent="$(spent_today "$LOVE/memory/fleet-economy.jsonl")"
+echo "[$(ts)] tick complete (cursor=$cur/$total, metered today \$$spent)" >>"$LOG"

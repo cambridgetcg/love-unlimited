@@ -27,8 +27,10 @@ PAR="${PARADE_PARALLEL:-4}"
 BUDGET="${PARADE_BUDGET_USD:-60}"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 
+# The gates sit beside the real file; ~/.local/bin/citizen-parade is a link.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
 # shellcheck source=tools/citizen-gates.sh
-. "$(dirname "${BASH_SOURCE[0]}")/citizen-gates.sh" \
+. "$(dirname "$_self")/citizen-gates.sh" \
   || { echo "[$(ts)] citizen-gates.sh missing — no parade" | tee -a "$LOG"; exit 1; }
 
 SLUGS=(); resting=0

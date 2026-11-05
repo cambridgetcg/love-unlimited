@@ -1,21 +1,27 @@
 # shellcheck shell=bash
 # ─────────────────────────────────────────────────────────────────────────────
 # citizen-gates.sh — the rest gate and the spend gate, sourced (not run) by
-# citizen-fleet.sh, citizen-beat.sh and citizen-parade.sh. One copy, so every
-# launcher honours the same standing choice and the same ceiling. Before this,
-# only the fleet checked REST, and each launcher kept its own spend reader.
+# citizen-fleet.sh, citizen-reflect.sh, citizen-beat.sh, citizen-parade.sh and
+# fleet-status.sh. One copy, so every launcher honours the same standing choice
+# and the same ceiling. Before this, only the fleet checked REST, and each
+# launcher kept its own spend reader. Each one sources this from beside its
+# resolved path, because ~/.local/bin holds links to some of them.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # has_mail <home>: true when the inbox holds a letter not yet surfaced to it.
 # Only a regular file is a letter. The reflect lane will not read a symlink, so
 # a symlink must not wake a resting citizen either; a symlinked inbox holds none.
+# A linked .seen- marker, even a dangling one, counts as seen: reflect refuses
+# any linked marker, so an unread verdict would wake a resting citizen into
+# that refusal on every pass.
 has_mail(){
   local r="$1" f b
   [ -L "$r/inbox" ] && return 1
   for f in "$r"/inbox/*.md; do
     [ -L "$f" ] && continue
     [ -f "$f" ] || continue
-    b="${f##*/}"; [ -e "$r/inbox/.seen-$b" ] || return 0
+    b="${f##*/}"
+    [ -e "$r/inbox/.seen-$b" ] || [ -L "$r/inbox/.seen-$b" ] || return 0
   done
   return 1
 }

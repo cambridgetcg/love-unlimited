@@ -22,6 +22,11 @@ fi
 # A stale GITHUB_TOKEN in a caller's env overrides the healthy gh keyring and
 # strands every push (the 2026-06 letter wave was lost to this for a month).
 unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
+# The gates sit beside the real file, wherever the fleet or a link starts this.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
+# shellcheck source=tools/citizen-gates.sh
+. "$(dirname "$_self")/citizen-gates.sh" \
+  || { echo "[$(ts)] citizen-gates.sh missing — $NAME's beat refused"; exit 1; }
 
 [ -e "$HALT" ] && { echo "[$(ts)] HALT — $NAME rests"; exit 0; }
 # Local-only: a cloud model is never eligible for a free beat.
@@ -41,6 +46,12 @@ if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
   elif [ "$lr" != "0/0" ]; then
     echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended"
   fi
+fi
+# The standing choice, read after the fast-forward: the fleet checked the clone
+# before this fetch, so a REST chosen on another host is only seen here. Unread
+# mail still wakes (keeps_rest in citizen-gates.sh).
+if keeps_rest "$REPO"; then
+  echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat"; exit 0
 fi
 # Clear stale surfaced-state from any previous halted or killed beat — bash must
 # never act on mail the model was not actually shown this beat.

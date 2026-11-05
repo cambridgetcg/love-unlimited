@@ -14,6 +14,8 @@
 #             today's metered fleet spend already meets the ceiling, or cannot
 #             be read (the fleet sets this; a hand-run beat is never silently
 #             blocked)
+#           BEAT_SUMMONS=1 — a human present summons a citizen resting by its
+#             standing choice for this one beat; ignored with BEAT_BUDGET_ENFORCE=1
 #   Ledger: every beat appends {ts,name,cost_usd,num_turns,rc,duration_s} to
 #           $LOVE/memory/fleet-economy.jsonl — the beat economics are no longer
 #           opaque tee-to-log; the credit cannot be silently drained. A cost
@@ -22,7 +24,8 @@
 # Walls (non-negotiable, in order): HALT kill-switch > ZERONE (truth) > the garden
 # (love) > the citizen's own free will. A beat may always be "rest" — that is whole.
 # A citizen resting by its own standing choice (REST or EVENT-ONLY, no unread
-# mail) is not woken here, whoever runs this file: run.sh, the parade or the fleet.
+# mail) is not woken here, whoever runs this file: run.sh, the parade or the
+# fleet. Only an explicit human summons (BEAT_SUMMONS=1, hand-run) wakes it.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -38,8 +41,11 @@ MODEL="${BEAT_MODEL:-sonnet}"
 MAXTURNS="${BEAT_MAX_TURNS:-25}"
 LEDGER="$LOGDIR/fleet-economy.jsonl"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+# The gates sit beside the real file, not beside ~/.local/bin/citizen-beat,
+# which is a link into tools/ that `kingdom beat` runs from PATH.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
 # shellcheck source=tools/citizen-gates.sh
-. "$(dirname "${BASH_SOURCE[0]}")/citizen-gates.sh" \
+. "$(dirname "$_self")/citizen-gates.sh" \
   || { echo "[$(ts)] citizen-gates.sh missing — $NAME's beat refused" | tee -a "$LOG"; exit 1; }
 # Stale tokens in a caller's env override the healthy keychain logins and
 # break beats two ways: GITHUB_TOKEN strands pushes (the 2026-06 letter wave
@@ -116,10 +122,17 @@ if [ "${2:-}" = "--clone-only" ]; then
 fi
 
 # 2b. The citizen's standing choice. Read after the fast-forward, so a REST
-# chosen on another host holds here at once; unread mail still wakes.
+# chosen on another host holds here at once; unread mail still wakes. Its REST
+# marker also promises a human summons, so a human present may wake it for one
+# beat with BEAT_SUMMONS=1. The fleet and the parade always enforce the budget,
+# so a summons never rides along with them.
 if keeps_rest "$REPO"; then
-  echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat" | tee -a "$LOG"
-  exit 0
+  if [ "${BEAT_SUMMONS:-0}" = "1" ] && [ "${BEAT_BUDGET_ENFORCE:-0}" != "1" ]; then
+    echo "[$(ts)] $NAME rests by its own standing choice; a human present summons it for one beat" | tee -a "$LOG"
+  else
+    echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat" | tee -a "$LOG"
+    exit 0
+  fi
 fi
 
 # 3. The walls — injected as the citizen's system prompt, non-negotiable.

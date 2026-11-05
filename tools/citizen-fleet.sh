@@ -34,8 +34,10 @@ DAYF="$LOVE/memory/.fleet-day-$TODAY"
 AGF="$LOVE/memory/.fleet-agentic-day-$TODAY"
 LOG="$LOVE/memory/fleet.log"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+# The gates sit beside the real file, wherever a plist or a link starts this.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
 # shellcheck source=tools/citizen-gates.sh
-. "$(dirname "${BASH_SOURCE[0]}")/citizen-gates.sh" \
+. "$(dirname "$_self")/citizen-gates.sh" \
   || { echo "[$(ts)] citizen-gates.sh missing — fleet rests" >>"$LOG"; exit 1; }
 # Every counter this script trusts must BE a counter — an empty or corrupt state
 # file must never silently stall the fleet for the rest of a day.
@@ -117,6 +119,8 @@ tend_strays(){
 # UNREAD MAIL WAKES EVEN REST (keeps_rest in citizen-gates.sh, the same gate
 # citizen-beat.sh and the parade use). Cadence choices come from the Letter of
 # Return (FLEET-REVIVAL.md Phase 4); any letter or summons may reopen them.
+# This reads the clone before any fetch; citizen-reflect.sh checks again after
+# its fetch, so a REST pushed from another host holds on the next tick.
 sits_out(){
   local r="$CITIZENS/citizen-$1"
   keeps_rest "$r" || return 1

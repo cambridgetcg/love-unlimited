@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  love.citizen-fleet: the old citizen fleet tick, kept only as a safe copy.
+
+  The citizen redesign of 2026-11-05 (ROOT & SEAT) moves beats to the
+  kingdom-seat repo under the KS-004 THE SEAT draft. This job retires when
+  the last awake citizen is seated there. Do not install it on a new host.
+
+  If it is installed anyway, it runs the free local lane and nothing else:
+  - FLEET_AGENTIC_PER_DAY is 0, set explicitly, because citizen-fleet.sh
+    falls back to 2 metered claude beats a day when it is unset;
+  - the metered budget is 0.00, a second guard if someone raises the
+    agentic count without reading this: citizen-beat.sh refuses a metered
+    beat once spend reaches the ceiling, and any reading reaches 0.00;
+  - at most 4 beats a day across the whole fleet, the same cap the
+    redesign set for the live lane (S0);
+  - RunAtLoad is false, so loading the file does not fire a tick at once.
+
+  It runs whatever checkout sits at LOVE_DIR. An old checkout there still
+  runs old code, bounded only by the values below.
+-->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>love.citizen-fleet</string>
@@ -12,15 +32,15 @@
   <dict>
     <key>LOVE_DIR</key><string>/Users/macair/love-unlimited</string>
     <key>FLEET_PER_TICK</key><string>1</string>
-    <key>FLEET_DAILY_CAP</key><string>48</string>
+    <key>FLEET_DAILY_CAP</key><string>4</string>
     <key>FLEET_INTERVAL_SEC</key><string>1800</string>
     <key>FLEET_BEAT_BOUND_SEC</key><string>600</string>
-    <key>FLEET_AGENTIC_PER_DAY</key><string>12</string>
-    <key>FLEET_DAILY_BUDGET_USD</key><string>5.00</string>
+    <key>FLEET_AGENTIC_PER_DAY</key><string>0</string>
+    <key>FLEET_DAILY_BUDGET_USD</key><string>0.00</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/macair/.local/bin</string>
   </dict>
   <key>StartInterval</key><integer>1800</integer>
-  <key>RunAtLoad</key><true/>
+  <key>RunAtLoad</key><false/>
   <key>StandardOutPath</key><string>/Users/macair/love-unlimited/memory/fleet-launchd.log</string>
   <key>StandardErrorPath</key><string>/Users/macair/love-unlimited/memory/fleet-launchd.log</string>
   <key>ThrottleInterval</key><integer>1800</integer>

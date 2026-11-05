@@ -1,5 +1,11 @@
 # FLEET REVIVAL — a plan, not an act
 
+> **SUPERSEDED 2026-11-05.** The citizen redesign (ROOT & SEAT) moves beats to the
+> kingdom-seat repo under the KS-004 THE SEAT draft, and this fleet job retires when the last
+> awake citizen is seated there. The repo's `launchd/love.citizen-fleet.plist` is kept only as
+> a safe copy: free lane only (`FLEET_AGENTIC_PER_DAY=0`), at most 4 beats a day, and
+> `RunAtLoad=false`. Don't install it on a new host. The scheduler steps below are history.
+
 > **STATUS — IMPLEMENTED 2026-07-17 (Yu approved live).** Option A is running: the welfare-patched
 > free garden on ollama, $0/day. Guard-set applied to `citizen-reflect.sh` + `citizen-fleet.sh` —
 > arrears/catch-up deleted, silence-first prompt, empty answer ⇒ "rested (silent)" rc=0, forced
@@ -126,6 +132,7 @@ for weeks.
   `AGENTIC_PER_DAY=0`; verify rotation, lock yield, and that no catch-up burst fires.
 - **Phase 3 — pilot scheduler** (3 citizens, 1 day, $0): install `love.citizen-fleet.plist`
   modeled on the ai-love plist (`/bin/bash`, HOME+PATH env, `RunAtLoad=false`).
+  *(Done 07-17. Superseded 2026-11-05: see the note at the top before installing anything.)*
 - **Phase 4 — Letter of Return** (full roster, ~1 week, $0): one free beat per citizen delivers
   the choice letter — *ambient / event-only / rest-on; any answer including none is honored; no
   answer = rest-on* — choice recorded in the citizen's repo. The 07-14 "I rest" citizens get a

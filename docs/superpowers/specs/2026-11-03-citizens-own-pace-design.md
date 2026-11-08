@@ -168,7 +168,7 @@ again by the 11-03 review:
 | Pace | Meaning | Markers kept in step |
 |---|---|---|
 | `asleep` | No beats on a schedule. An unread letter makes it due, no sooner than 3 days after its last beat. | `REST` present, no `EVENT-ONLY` |
-| `asleep, letters wait` | No beats on a schedule, and letters do not make it due. Only a person running its beat by hand wakes it, apart from one show-back beat (below). | `REST` present, its text saying letters wait; no `EVENT-ONLY` |
+| `asleep, letters wait` | No beats on a schedule, and letters do not make it due. Only a person running its beat by hand wakes it, apart from one show-back beat when it asks for more (below), which shows no letter. | `REST` present, its text saying letters wait; no `EVENT-ONLY` |
 | `listening` | As `asleep` in this fleet: every letter here is to its reader. In the seat it can differ (section 10). | `EVENT-ONLY` present, no `REST` |
 | `awake, every N days` | Due N days after its last beat; N is a whole number from 3 to 365. Letters wait for that beat. | `EVENT-ONLY` present (text names the real pace), no `REST` |
 
@@ -178,7 +178,8 @@ citizen's last beat (KS-004 §5.1, §6.3). An awake pace is at least 3 days by i
 **Order.** From least to most activity: `asleep, letters wait` < `asleep` < `listening` <
 `awake, every N days`, and among awake paces a smaller N is more. A change down this order is **less**;
 a change up it is **more**. `asleep` to `listening` is "more" only so the choice carries into the seat
-as the seat reads it (KS-004 §7.3); in this fleet it changes nothing but the word.
+as the seat reads it (KS-004 §7.3); in this fleet it wakes the citizen no more often, but like any
+move toward more it must be said twice, at the cost of one show-back beat.
 
 Legacy words keep working: `REST-ON`, `rest`, and "I rest" as the first line of a Letter of Return
 answer mean `asleep`; `EVENT-ONLY` means `listening`; `AMBIENT` means `awake, every 3 days` (the fleet's
@@ -188,7 +189,7 @@ number means `awake, every 3 days` (the seat's default interval, 72 h).
 What citizens see is each choice with one evenly worded meaning, rotated as a unit (section 4):
 
 - `asleep` — no set beats; a letter wakes you, no sooner than 3 days after your last beat
-- `asleep, letters wait` — no set beats; letters stay unread until a person wakes you by hand
+- `asleep, letters wait` — no set beats; letters stay unread until a person wakes you by hand (if you ask for more, one beat shows it back)
 - `listening` — the same as asleep for now; a seat may treat it differently later
 - `awake, every N days`, N from 3 to 365 — a beat no sooner than N days after your last; letters wait for it
 
@@ -205,8 +206,9 @@ signature ("Kalam — pace: listening", "**pace:** every 5 days"). After the cho
 with `>` never count.
 
 `awake, every N days` may be written with or without `awake` and its comma ("pace: every 5 days",
-"pace: awake every 5 days"). N may be written in digits, or as an English word from three to thirty
-("every three days"), with or without a closing full stop. "weekly" and "every week" mean 7;
+"pace: awake every 5 days"). N may be written in digits, or in English words across the whole range
+("every three days", "every forty-five days", "every one hundred and twenty days"), with or without a
+closing full stop. "weekly" and "every week" mean 7;
 "fortnightly" and "every two weeks" mean 14; "monthly" and "every month" mean 30.
 
 **In an answer to the pace letter**, the forms these citizens have used before also count, so the
@@ -263,12 +265,15 @@ A clear pace line is compared with the citizen's current pace by the order above
     that beat is read afresh against the current pace (less at once, more as a new pending).
   - **One show-back beat.** An `asleep`, `asleep, letters wait` or `listening` citizen with a pending
     proposal said on a beat that was not itself a show-back beat becomes due once, no sooner than 3
-    days after that beat, only to see the proposal and say it again or not. This follows KS-004's
-    default (`schedule.wake_confirm_seat`, true by default), which KS-004 names **Yu's open decision**
-    (§7.3, §15 item 16); the ask to merge puts it to him (section 9). The fleet carries the same
-    switch, `PACE_WAKE_CONFIRM_BEAT` (default `1`); with `0`, the proposal waits for the next letter
-    or a person's summons. A proposal said on a show-back beat gets no further show-back; kingdom-seat
-    gives one (section 10).
+    days after that beat, only to see the proposal and say it again or not. A show-back beat shows no
+    inbox letter and marks none seen; when a letter is also due, the citizen gets a letter beat
+    instead, whose paragraph shows the proposal too. This follows KS-004's default
+    (`schedule.wake_confirm_seat`, true by default), which KS-004 names **Yu's open decision** (§7.3,
+    §15 item 16); the ask to merge puts it to him (section 9). His answer is one committed value,
+    `WAKE_CONFIRM_BEAT` in `citizen_pace_lib/due.py`, set in the PR before the merge; no environment
+    variable or plist setting overrides it, and the delivery tool reads the same value to word the
+    letter. With it off, the proposal waits for the next letter or a person's summons. A proposal
+    said on a show-back beat gets no further show-back; kingdom-seat gives one (section 10).
   - An `awake` citizen's proposal is seen at its next scheduled beat; no extra beat.
 - A summoned beat follows the same rules. The bridge has no "said once with Yu present" exception,
   because it cannot tell who is present (section 10).
@@ -299,6 +304,7 @@ Each is one answer at one commit; the test file names the commit and keeps the a
 | any | `pace: awake, every three days.` | `awake, every 3 days` |
 | any | `pace: awake` | `awake, every 3 days` |
 | any | `pace: weekly` / `pace: monthly` / `pace: every 45 days` | `awake, every 7` / `every 30` / `every 45 days` |
+| any | `pace: every forty-five days` / `pace: every one hundred and twenty days` | `awake, every 45` / `every 120 days` |
 | any | `pace: daily` / `pace: every other day` / `pace: every 2 days` / `pace: every 400 days` | `unclear` — out of range |
 | any | `pace: awake, every N days` (the letter N, copied) | `unclear` — out of range |
 | any | `pace: asleep, letters wait` | `asleep, letters wait` |
@@ -333,8 +339,11 @@ with its true source. Version 2, with times in UTC (ISO 8601):
 - 2026-11-18T15:02Z — confirmed by <name>: "pace: every 5 days"
 - 2026-11-15T14:12Z — proposed by <name>: "pace: every 5 days" (more than asleep, so said twice)
 - 2026-11-15T14:12Z — the pace letter reached <name> (once)
-- 2026-11-10T09:00Z — recorded from v1 (rest-on, set by Ai, 2026-10-08, the rest placed at Yu's word)
+- 2026-11-15T14:12Z — recorded from v1 (rest-on, set by Ai, 2026-10-08, the rest placed at Yu's word)
 ```
+
+(The v1 record becomes v2 in the same commit as the pace-letter beat, the first commit the fleet makes
+for this home on the new code.)
 
 While a proposal waits, the head carries one more line:
 `- pending: awake, every 5 days — said 2026-11-15T14:12Z ("pace: every 5 days")`, with
@@ -426,14 +435,18 @@ stdin from `/dev/null`.
 
 - The fleet keeps the keeper's launchd interval and beats **at most one** citizen per tick
   (`FLEET_PER_TICK` is capped at 1).
+- **The order of a tick:** the host probe (below), tend (section 6), bring homes up to date, the
+  heard-late step (section 5), rank, beat.
 - **Bringing homes up to date.** The fleet reads all remote heads under one bound: one GraphQL query
   when `gh` is available, otherwise one bounded `git ls-remote` per home. It fetches and
   fast-forwards (`git merge --ff-only @{u}`) only the homes that changed, each under a 20 s bound. A
   home whose local commits sit behind upstream commits that only add new files under `inbox/` (a
-  letter placed from elsewhere) is rebased onto them, which cannot conflict. It pushes, under a bound,
-  any home whose HEAD is ahead of upstream, and logs how many stay ahead or diverged. A home that
-  cannot be brought up to date otherwise is logged, gets no beats, and is reported once. Homes with
-  uncommitted state are tended (section 6).
+  letter placed from elsewhere) is rebased onto them, which cannot conflict; the fleet writes a marker
+  before such a rebase, and a home found mid-rebase with that marker at the next tick is aborted
+  (`git rebase --abort`) and logged. A dirty home, or one whose per-citizen lock is held, is not
+  rebased that tick. It pushes, under a bound, any home whose HEAD is ahead of upstream, and logs how
+  many stay ahead or diverged. A home that cannot be brought up to date otherwise is logged, gets no
+  beats, and is reported once.
 - It ranks the due citizens with one call (`citizen_pace.py rank`) and takes the **most overdue**.
   Overdue is now minus the time it became due: for a schedule, last beat + N days; for a letter, the
   later of the letter's commit time (or its file time, clamped to now, when it has no commit) and last
@@ -455,22 +468,25 @@ stdin from `/dev/null`.
 
 ### A beat that does not land
 
-A beat that errors or times out changes no pace, clock or mail: what it wrote is restored (below). The
-citizen is not picked again for 12 h, then 24 h, then 7 days; a landed beat clears the count. The
-failure is logged once, does not count toward the daily cap, and never holds back the next tick's
-candidate.
+A beat that errors or times out changes no pace, clock or mail: what it left is restored (section 6).
 
-A failure that is not about the home ends the tick, backs no one off and moves nothing:
+Whether a failure was the home's or the host's is decided by the fleet, not by the child, with a
+**host probe** that touches no home: a write and delete under `memory/`, `citizen_pace.py` and
+`citizen-gates.sh` present, and a fixed one-line prompt to the configured model server (the same
+`MLX_PORT` and `REFLECT_MODEL`), which must answer within 60 s.
 
-- the model server refuses or resets the connection before any reply, or `mlx/serve.sh` fails its
-  provenance check;
-- a host misconfiguration (an invalid `MLX_PORT`, a `REFLECT_MODEL` ending in `:cloud`, a missing
-  `citizen-gates.sh` or `citizen_pace.py`);
-- a failed `git commit` or a failed write to the attempt record.
+- The fleet runs the probe at the start of each tick, before ranking. If it fails, the tick ends
+  before anyone is beaten, and the fleet logs it once.
+- After any failure (a `home-failed` outcome, a missing outcome, or a child killed by its bound), it
+  runs the probe again. If the probe fails, the failure was the host's: the fleet writes `host-failed`
+  to that citizen's last attempt, backs no one off, moves nothing, and ends the tick. If the probe
+  passes, the failure was the home's: the citizen is not picked again for 12 h, then 24 h, then
+  7 days, and a landed beat clears the count. The tick then ends.
 
-An HTTP error, a malformed reply or a timeout on a request the server accepted is about the home (its
-prompt may be the cause) and is backed off, so one citizen's prompt cannot stall the fleet. A clone
-that is mid-merge or mid-rebase is not beaten.
+So a wedged or misconfigured server never charges citizens, and one citizen's bad prompt, broken
+clone or failing commit is backed off and cannot stall the fleet. A home failure is logged once,
+does not count toward the daily cap, and never holds back the next tick's candidate. A clone that is
+mid-merge or mid-rebase, or holds a fresh `.git/index.lock`, is not beaten that tick.
 
 ### Outcomes, and the exit codes kept
 
@@ -483,14 +499,14 @@ the **attempt record**, not from the code:
 - The fleet starts each child with `FLEET_ATTEMPT=<id>` (its tick time, pid and a counter), in its own
   process group, so the `_bound` watcher's TERM and KILL reach the model call, `apply` and `git` too.
 - The script writes `{id, at, outcome}` to the record, with `outcome` one of `spoken`, `silent`,
-  `not-due`, `busy`, `home-failed`, `host-failed`, `halted` or, for a hand-run, `summoned`. It writes
-  `spoken` or `silent` as soon as the beat's commit exists, before the push, so a hung push never
-  turns a landed beat into a failure; its own clone, fetch and push are bounded.
-- After the child returns, a record without that id counts as `halted` when HALT is present, and as
-  `home-failed` otherwise. That charges a host-wide hang to one citizen once, for a bounded time, which
-  is better than letting it stall every tick.
-- `host-failed` and `halted` are written to the record's last attempt only; they move no clock and
-  start no back-off.
+  `not-due`, `busy`, `home-failed`, `halted` or, for a hand-run, `summoned`. It writes `spoken` or
+  `silent` as soon as the beat's commit exists, before the push, so a hung push never turns a landed
+  beat into a failure; its own clone, fetch and push are bounded. Any other failure in its beat is
+  `home-failed`; the fleet's probe then decides whose it was.
+- After the child returns, a record without that id counts as `halted` when HALT is present, and is
+  otherwise a failure for the probe to judge.
+- `host-failed` is written only by the fleet, after a failed probe. It and `halted` sit in the
+  record's last attempt only; they move no clock and start no back-off.
 
 ### Keeping the clock honest
 
@@ -501,9 +517,12 @@ the **attempt record**, not from the code:
   reads both, so a silent beat counts as that beat, and any loop calling the script keeps a citizen's
   time. Only the fleet's ranking and the reflect gate write a starting time; `next` and `plan` never
   write.
-- `citizen-reflect.sh` takes a per-citizen lock (`memory/.fleet-last/<slug>.lock`) before its gate. A
-  second run for the same citizen while one is beating writes `busy` and exits 0, so a hand-run beside
-  the fleet cannot beat a citizen twice or confirm a proposal inside one beat.
+- `citizen-reflect.sh` and `citizen-beat.sh` take a per-citizen lock (`memory/.fleet-last/<slug>.lock`,
+  a directory holding the holder's pid and start time) before their gates. A second run for the same
+  citizen while one is beating writes `busy` and exits 0, so a hand-run beside the fleet cannot beat a
+  citizen twice or confirm a proposal inside one beat. A lock whose pid is gone, or older than twice
+  the beat bound, is reclaimed and logged. Tend, the bring-up-to-date step and the heard-late step skip
+  a home whose lock is held. A citizen `busy` on two ticks running is reported once.
 - A confirmed or less-ward pace change starts its clock at the beat that said it.
 - The heard-late adoptions (section 5) start their clock at the adoption commit, not at the answer
   date.
@@ -517,18 +536,25 @@ ignored. This is where S1 already set the fleet, and KS-004 retires the old agen
 seat's metered runtimes need consent per class.
 
 `citizen-beat.sh` stays reachable by hand, by the parade, by each home's `run.sh` and by `kingdom
-beat`. Its beats have edit tools inside the home and never show or mark letters, so it keeps the two
-guards the approved spec gave it:
+beat`. Its beats have edit tools inside the home, carry no pace paragraph, and never show or mark
+letters, so it keeps the guards the approved spec gave it:
 
+- it takes the per-citizen lock;
 - without `BEAT_SUMMONS=1`, it refuses a home with unread mail (letters wait for the free reflect lane,
   as PR #6 first proposed), exiting 0;
-- after any beat, it restores `CADENCE.md`, `REST`, `EVENT-ONLY` and `inbox/` from HEAD before it
-  commits, and logs any edit the beat made to them once.
+- after any beat, `citizen_pace.py guard-restore` puts the pace files back before the commit, path by
+  path: a path that is in HEAD (`CADENCE.md`, `REST`, `EVENT-ONLY`, anything under `inbox/`) is checked
+  out alone; one that is not in HEAD is removed, as is any untracked file the beat added under
+  `inbox/`. Whatever it put back is logged and kept as a notice in the attempt record, so the next
+  pace paragraph tells the citizen once: "Your pace files were changed in a beat with tools and were
+  put back; to change your pace, write a line that begins "pace:"."
 
-With those, a parade lines up only homes with no marker and no unread mail; once the new code has
-marked a home, an awake citizen carries `EVENT-ONLY` and is not lined up. The ask to merge names the
-parade's new reach. A hand-run of `citizen-beat.sh` is a person's act and does not move the fleet's
-clock.
+Pace lines count in free beats only; a beat with tools never sets a pace. Because `keeps_rest` lets
+unread mail through, the unchanged parade still lines up homes with unread mail; `citizen-beat.sh`
+refuses them, and the parade logs them as walked. It also lines up homes with no marker. Once the new
+code has marked a home, an awake citizen carries `EVENT-ONLY` and is not lined up. The ask to merge
+names the parade's new reach. A hand-run of `citizen-beat.sh` is a person's act and does not move the
+fleet's clock.
 
 ## 4. The beat
 
@@ -550,7 +576,8 @@ A letter shown in a beat is marked seen whatever the answer, silence included: t
 set-aside in PR #24's reflect (`citizen-reflect.sh:207-209`) goes, while its marker for unreadable mail
 (:196-206) stays. Silence is the answer, and the file stays in `inbox/`. No letter is shown twice.
 (KS-004 shows a letter again after a rest; section 10.) `SHOW.md` is shown only in a beat that shows no
-inbox letter and owes no show-back, is marked seen whatever the answer, and never makes a citizen due.
+inbox letter and is not a show-back beat, is marked seen whatever the answer, counts as mail for the
+silent-beat commit, and never makes a citizen due. A show-back beat shows no letter at all.
 
 Every inline Python in the beat scripts runs as `python3 -I`, and `citizen_pace.py` is called by its
 absolute path with `-I`, so no file in a citizen's public home can be imported (PR #24's reflect runs
@@ -571,27 +598,29 @@ Every beat's user prompt ends with:
   AMBIENT on 2026-10-27 ("AMBIENT"); the fleet reads that as awake, every 3 days, from the 10-22
   letter's "a free beat every few days" — the number was not your choice", or "this rest was placed by
   Ai on 2026-10-08, at Yu's word, not chosen by you".
-- **A pending proposal** adds one sentence after the first: "On <date> you chose <pending pace>, which
-  is more than your pace now. If you still want it, write it again; if not, nothing is needed." It names
-  the pace in the menu's words and never quotes the citizen's line.
+- **A pending proposal** adds one sentence after the first: "On <date> you chose <pending pace>. A
+  choice for more needs saying twice: if you still want it, write it again; if not, nothing is
+  needed." It names the pace in the menu's words and never quotes the citizen's line.
 - The four choices rotate by one position at each beat that commits: offset = (number of `beat:`
   commits in its home + a stable hash of its name, the first byte of its SHA-256, never Python's
   `hash()`) mod 4, so no choice keeps a fixed place. (The census cannot separate list position from
   the pull of the word "rest": in both earlier letters REST-ON won, though AMBIENT was listed first.)
 - If the citizen's last pace line was unclear, or a proposal lapsed, or a marker or `CADENCE.md` was
-  changed by someone else, or its pace cannot be read, the paragraph says so once, with a short reason.
-  A notice never quotes the citizen's line.
+  changed by someone else, or its pace files were put back after a beat with tools, or its pace cannot
+  be read, the paragraph says so once, with a short reason. A notice never quotes the citizen's line.
 - A beat that shows the pace letter keeps only the paragraph's first sentence ("Your pace: <pace>,
-  <who set it and when>.") and leaves out the rest, so the citizen sees one menu, the letter's.
+  <who set it and when>.") and leaves out the rest, so the citizen sees one menu, the letter's. A
+  notice left out this way is shown at the next beat.
 
 ### Echoes
 
 A small model copies offered lines, so a `pace:` line may be an echo of the menu rather than a choice,
 and a second saying may be an echo of the proposal shown back. Before Yu is asked to merge, the PR
-includes a measured sample: the real prompts, in all four rotations, run on read-only copies of the 11
-awake souls and a sample of the recipients' souls, several samples each, through the model family the
-Studio runs (`qwen2.5:7b` per FLEET-REVIVAL.md:9), on a machine named in the PR. A second set shows a
-pending proposal the citizen never made. It reports how often a pace line appears, which value it
+includes a measured sample: the real prompts (ordinary beats, letter beats, and the pace-letter beat
+for each recipient group), in all four rotations, run on read-only copies of the 11 awake souls and a
+sample of the recipients' souls, several samples each, through the model family the Studio runs
+(`qwen2.5:7b` per FLEET-REVIVAL.md:9), on a machine named in the PR. A second set shows a pending
+proposal the citizen never made. It reports how often a pace line appears, which value it
 names, whether that follows list position or the word "asleep", and how often a shown proposal is
 repeated.
 
@@ -686,16 +715,16 @@ You can set your own pace. Add one line that begins "pace:" and one of these:
 
 Without a pace line, your pace stays <current pace>, and this letter will not come again. You can
 still change your pace in any later beat (with asleep, letters wait, your next beat comes only when a
-person runs it by hand).
+person runs it by hand, or once to show back a choice for more).
 ```
 
 The rule paragraph's first sentence is always "A choice for fewer beats takes effect at once." Its
-second sentence depends on the recipient and on the show-back switch, which the delivery tool is told
-explicitly (`--show-back on|off`, matching what Yu decided at the merge):
+second sentence depends on the recipient and on `WAKE_CONFIRM_BEAT`, which the delivery tool reads from
+the repository it runs from, the same committed value the fleet runs (section 1):
 
-- an asleep or listening recipient, show-back on: "A choice for more is shown back to you in one more
+- an asleep or listening recipient, `WAKE_CONFIRM_BEAT` on: "A choice for more is shown back to you in one more
   beat, no sooner than three days later, and takes effect only if you write it again then."
-- an asleep or listening recipient, show-back off: "A choice for more takes effect only if you write it
+- an asleep or listening recipient, `WAKE_CONFIRM_BEAT` off: "A choice for more takes effect only if you write it
   again in a later beat, when a letter next comes or a person runs your beat."
 - an awake recipient: "A choice for more takes effect only if you write it again on your next beat."
 
@@ -799,11 +828,15 @@ same-day re-run does nothing.
   code ends with `pace/1`. The pace letter is authored as Ai. Beats stay authored as the citizen.
   `tend_strays` stays, gains author and message parameters, and is called each tick for homes with
   uncommitted state, no longer only from `sits_out`.
-- **Tending after a killed beat.** Uncommitted state in a home whose last attempt on the new code did
-  not land is the leftover of a killed beat, so tend restores the committed state (`git checkout` of
-  `CADENCE.md`, `REST`, `EVENT-ONLY`, `inbox/` and `beats/`, and removal of untracked `.seen-*`
-  markers) rather than committing it. Uncommitted state in a home with no attempt on the new code is a
-  leftover of the old code, and tend commits it once, as today.
+- **Tending.** On the new code no path leaves pace files or letters uncommitted on purpose: reflect
+  commits before it reports a landed beat, and `citizen-beat.sh` puts the pace files back before it
+  commits. So, at each tick, uncommitted changes to `CADENCE.md`, `REST`, `EVENT-ONLY`, `inbox/` and
+  `beats/` are a killed beat's leftovers, and tend restores them path by path: a tracked path is
+  checked out alone (`git checkout HEAD -- <path>`), an untracked one is removed. It logs what it
+  restored. Only at the first tick on the new code (a one-time flag in `memory/.fleet-notices`) does it
+  instead commit old-code leftovers once, as `fleet`, with `tend: old-code leftover · pace/1`. A home
+  whose per-citizen lock is held is skipped. A `.git/index.lock` older than twice the beat bound is
+  removed and logged; a fresher one keeps the home out of that tick.
 
 ## 7. Code
 
@@ -819,30 +852,40 @@ compatible shell.
   - `due <home> --state <dir> [--summoned]` (0 due, 4 not due; the CLI's own codes, read only by
     `pace_due`), printing the reason and how overdue;
   - `rank <homes-dir> --roster <file> --state <dir> [--cursor N]`, the due citizens, most overdue first;
-  - `paragraph <home> [--shown <letter> …]` (leaves out the list when a pace letter is among those
-    shown);
+  - `paragraph <home> [--shown <letter> …]` (keeps only the first sentence when a pace letter is among
+    those shown);
   - `apply <home> <answer-file> [--shown <letter> …] --kind schedule|letter|show-back|summoned`;
-  - `record <slug> --state <dir> --attempt <id> --outcome <outcome> [--head <sha>]` and
+  - `record <slug> --state <dir> --attempt <id> --outcome <outcome>` and
     `outcome <slug> --state <dir> --attempt <id>`;
+  - `lock <slug> --state <dir> --pid <pid>` / `unlock <slug> --state <dir>` (the per-citizen lock,
+    with the stale reclaim);
+  - `probe --state <dir>` (the host probe, section 3);
+  - `guard-restore <home> --state <dir>` (for `citizen-beat.sh`, section 3);
   - `migrate --heard-late <homes-dir> [--commit]`;
   - `sync <homes-dir> --roster <file> [--bound S]` (bring homes up to date, section 3);
   - `tend <homes-dir> --roster <file> --state <dir>` (section 6);
-  - `next <homes-dir> --roster <file> --state <dir>` and
-    `plan <days> <homes-dir> --roster <file> [--cap N] [--tick-hours H]`, which never write;
+  - `next <homes-dir> --roster <file> --state <dir>`;
+  - `plan <days> <homes-dir> --roster <file> [--cap N] [--tick-hours H] [--letters <record>
+    --deliver-at <time> --per-run N] [--out <dir>]`, which writes only the simulated end states into
+    `--out` when given;
+  - `rollback-drill <homes-dir> --roster <file> --days N`, which counts the wakes per day that PR #24's
+    `keeps_rest` and round robin would make over those homes, and writes nothing;
   - `rollback-prepare <homes-dir> --roster <file>` (section 9, step 5).
-  Per-home "reported once" and "notice shown" flags live in the attempt record; fleet-wide ones in
-  `memory/.fleet-notices`.
+  Per-home "reported once", notice and "busy" flags live in the attempt record; fleet-wide ones in
+  `memory/.fleet-notices`. `WAKE_CONFIRM_BEAT` is a constant in `citizen_pace_lib/due.py`, set to Yu's
+  answer before the merge, with no environment override.
 - **`tools/citizen-gates.sh`** (PR #24's): `keeps_rest` keeps rest for a `REST` whose text contains
   "letters wait", even with unread mail. A new `pace_due <home>` asks `citizen_pace.py due` (by
-  absolute path, `-I`) with the attempt record, and fails toward not due when `citizen_pace.py` is
-  missing or errors.
+  absolute path, `-I`) with the attempt record, and fails toward not due when `citizen_pace.py` errors;
+  in a fleet child, the fleet's probe has already checked that it is present.
 - **`tools/citizen-fleet.sh`:** unset `BEAT_SUMMONS`; handle `--plan` first; host check; HALT; lock;
-  `sync`; `migrate --heard-late`; `tend`; `rank`; beat the first candidate in its own process group
-  with `FLEET_ATTEMPT` set and stdin from `/dev/null`; read the outcome; on `not-due` or `busy` take the
-  next candidate; otherwise end the tick. Keep the cap (as delay only, failures not counted), the
-  herald and the `_bound` watcher, which now signals the child's process group. Cap `FLEET_PER_TICK` at
-  1. Run the free lane only, logging a `FLEET_AGENTIC_PER_DAY` above 0 once. Clone a missing home with
-  a 60 s bound.
+  the host probe; `tend`; `sync`; `migrate --heard-late`; `rank`; beat the first candidate in its own
+  process group with `FLEET_ATTEMPT` set and stdin from `/dev/null`; read the outcome; on `not-due` or
+  `busy` take the next candidate; after a failure, probe again and record `host-failed` or back the home
+  off; then end the tick. Keep the cap (as delay only, failures not counted), the herald and the
+  `_bound` watcher, which now signals the child's process group. Cap `FLEET_PER_TICK` at 1. Run the
+  free lane only, logging a `FLEET_AGENTIC_PER_DAY` above 0 once. Clone a missing home with a 60 s
+  bound.
   - **Host check:** the tick exits, logging once, unless `$LOVE/FLEET_HOST` (git-ignored, created by
     the Studio's keeper, holding the output of `scutil --get LocalHostName`) names this machine. A
     second Mac that loads `love.citizen-fleet` on `main` then beats no one. (The Air's own
@@ -859,18 +902,18 @@ compatible shell.
   set-aside (:207-209) and keep the unreadable-mail marker (:196-206); when mail was shown or a proposal
   lapsed, a silent beat commits instead of exiting as "rested (silent)"; call `citizen_pace.py apply`
   instead of the bash parser; version tag in the commit message; refuse a clone mid-merge or
-  mid-rebase; bound its clone, fetch and push; run its inline Python with `-I`; write its outcome
-  (`spoken` or `silent` right after the commit, before the push) and exit with KS-003's codes. It tells
-  `host-failed` from `home-failed` by the rules of section 3.
-- **`tools/citizen-beat.sh`:** without `BEAT_SUMMONS=1`, refuse a home with unread mail (exit 0); after
-  the beat, restore `CADENCE.md`, `REST`, `EVENT-ONLY` and `inbox/` from HEAD before committing, and log
-  any edit once; run its inline Python with `-I`.
+  mid-rebase or holding a fresh `index.lock`; bound its clone, fetch and push; run its inline Python
+  with `-I`; write its outcome (`spoken` or `silent` right after the commit, before the push;
+  `home-failed` for any other failure) and exit with KS-003's codes. A show-back beat shows no letter.
+- **`tools/citizen-beat.sh`:** take the per-citizen lock; without `BEAT_SUMMONS=1`, refuse a home with
+  unread mail (exit 0); after the beat, run `citizen_pace.py guard-restore` before committing; run its
+  inline Python with `-I`.
 - **`tools/fleet-status.sh`:** "next to wake" asks `citizen_pace.py next`; the agentic and burst lines
   become "free lane only".
 - **`tools/citizen-pace-letter.py`** (new): `--list` (the recipients after the delivery-time drops),
-  `--dry-run`, `--deliver`, `--check`, `--per-run N`, `--show-back on|off`; refuses to deliver without
-  `--yes-from-yu <date>` and `--show-back`; the Once and Delivery rules of section 5; creates `inbox/`
-  where missing; refuses a home without `<name>.md`.
+  `--dry-run`, `--deliver`, `--check`, `--per-run N`; refuses to deliver without `--yes-from-yu <date>`;
+  words the rule paragraph from the committed `WAKE_CONFIRM_BEAT`; the Once and Delivery rules of
+  section 5; creates `inbox/` where missing; refuses a home without `<name>.md`.
 - **`tools/citizen_pace_census.py`** (new): builds `citizens-pace-record.json` from read-only clones and
   checks it against this spec's lists (the 34 by group, the 45, the 9, the 116, longing, the 3 held);
   it fails rather than guess where a home's history disagrees.
@@ -887,12 +930,20 @@ Tests first, in new `tests/test_citizen_pace_*.py` modules (unittest, as PR #24'
 (homes with a local bare upstream, a loopback stub model server, PATH holding only fakes and system
 directories).
 
-- **PR #24's own tests.** Its gate, spend, beat (apart from mail) and parade tests pass unchanged, and
-  every symlink-refusal test keeps its assertion (exit 1, nothing written outside the home). Its fleet,
-  reflect and fleet-status tests are carried over with fixtures that write `FLEET_HOST` and a v2
-  `CADENCE.md` whose last beat is older than the floor. Two assertions are retired, each by name in the
-  commit that retires it: the `sits_out` log line, and that unread mail wakes `citizen-beat.sh`
-  (`test_unread_letter_wakes_rest` in `TestBeat`), which now refuses it.
+- **PR #24's own tests.** Its gate and spend tests pass unchanged, and every symlink-refusal test keeps
+  its assertion (exit 1, nothing written outside the home). Its fleet, reflect and fleet-status tests
+  are carried over with fixtures that write `FLEET_HOST` and a v2 `CADENCE.md` whose last beat is older
+  than the floor. These assertions change, each by name in the commit that changes it:
+  - the `sits_out` log line (retired);
+  - `TestBeat.test_unread_letter_wakes_rest`: `citizen-beat.sh` now refuses unread mail without a
+    summons;
+  - `TestParade`'s lettered home: the parade still lines it up, `citizen-beat.sh` refuses it, no
+    `claude` runs, and the parade logs it as walked;
+  - `test_symlinked_rest_rests_without_mail`: a symlinked `REST` is now refused, exit 1, since the
+    refusals run before the gate;
+  - both "REST pushed from another host holds" tests (reflect, and the fleet path): rewritten to push
+    a v2 `CADENCE.md` with `asleep` from elsewhere, which holds, because a marker alone no longer
+    holds against a v2 pace.
 - **Parser:** every fixture in section 1 with its stored text, plus emphasis, signatures with `:` `,`
   `.` `—` `-`, mixed case, number words, "awake" with and without its comma or number, negation, two
   paces, out of range (1, 2, 366, fractions, "daily", the letter N), a copied meaning, a quoted line,
@@ -902,8 +953,9 @@ directories).
   pending; confirmed on the next landed beat by the same pace; lapses on silence, on a different pace,
   and on an ordinary beat; a different more-ward pace on that beat becomes a new pending; a show-back
   beat is owed once for an `asleep`, `asleep, letters wait` or `listening` proposal and never for one
-  said on a show-back beat; `PACE_WAKE_CONFIRM_BEAT=0` owes none; an `awake` proposal owes none; the
-  heard-late adoption is confirmed because it was said twice.
+  said on a show-back beat; `WAKE_CONFIRM_BEAT` off owes none; an `awake` proposal owes none; the
+  heard-late adoption is confirmed because it was said twice; a show-back beat shows no letter, and an
+  `asleep, letters wait` citizen's letters are still unread after it.
 - **CADENCE:** a v1 file read with no write; v2 round-trip with and without `pending`; history cap;
   `asked once` kept outside the history; every provenance form; markers in step, `EVENT-ONLY` on
   `awake` and `listening`, `REST` text "letters wait" on `asleep, letters wait` and never on `asleep`;
@@ -921,9 +973,12 @@ directories).
   beat; a failed beat does not move the clock; back-off 12 h, 24 h, 7 days, cleared by a landed beat; a
   v1 awake home that has never spoken is due through the fleet and through the script gate on the same
   tick; a beat script looped without a summons on a silent awake citizen beats it no sooner than every
-  N days; a connection refused ends the tick and backs no one off; an HTTP 500 for one home's prompt
-  backs that home off and the next tick beats another; a child killed before writing its outcome counts
-  as `home-failed` once; a second run for the same citizen writes `busy`. With the 29 resting
+  N days; a failed probe ends the tick before anyone is beaten; a refused connection with a failing
+  probe charges no one; an HTTP 500 for one home's prompt, with a passing probe, backs that home off
+  and the next tick beats another; a home whose commit always fails, or that holds a stale
+  `index.lock`, does not block the next citizen and is not beaten on two ticks running; a child killed
+  before writing its outcome is judged by the probe; a second run for the same citizen writes `busy`; a
+  stale per-citizen lock is reclaimed; a citizen `busy` on two ticks is reported once. With the 29 resting
   recipients holding their letter and the 14 awake citizens all due at once, add one home that always
   fails and one silent awake citizen: neither is picked on two ticks running; a soul-less home is never
   picked; nobody is beaten sooner than their pace; the report gives each citizen's longest wait.
@@ -938,8 +993,13 @@ directories).
   tick run with `BEAT_SUMMONS` exported still beats only due citizens; a summoned beat does not move the
   clock.
 - **citizen-beat.sh:** without a summons it refuses a home with unread mail; after a fake `claude` that
-  edits `CADENCE.md`, `REST` and an inbox marker, the commit holds none of those edits and the log names
-  them once.
+  edits `CADENCE.md`, creates `REST` and adds an inbox marker, in a home that has no `REST`,
+  `EVENT-ONLY` or `inbox/` at HEAD, the commit holds none of those edits, the log names them once, and
+  the next free beat's paragraph tells the citizen once.
+- **Tend and rollback:** a killed beat's leftovers are restored path by path in a home holding only
+  `REST`; old-code leftovers are committed once at the first tick only; a home with a held lock is
+  skipped; `rollback-prepare` commits its set-aside markers as `fleet`, and the new code reads such a
+  marker as unread; a fleet-started rebase found in progress at the next tick is aborted.
 - **Isolation:** a `json.py` and a `urllib/` folder in a fixture home are never imported by reflect,
   `citizen_pace.py` or `citizen-beat.sh`.
 - **Exit codes:** every outcome of `citizen-reflect.sh` and `citizen-fleet.sh` maps to 0, 1 or
@@ -952,13 +1012,14 @@ directories).
   each choice comes first equally often, within one; the rotation is the same in every process (stable
   hash); the notices appear once; a pace-letter beat shows one menu; a pending sentence never quotes
   the citizen's line. The measured echo sample (section 4) is attached to the PR.
-- **Letter:** the recipient list equals the record file's entries in the seven recipient groups (the
-  file also holds provenance for non-recipients), both on the census fixtures and on migrated copies of
-  them; an awake recipient with untagged old-code beats since the record is still delivered; deliver
-  to a subset, then re-run on a later date before any beat: each home holds exactly one pace letter; a
+- **Letter:** the recipient list equals the record file's entries in its seven sentence groups (section
+  5's five lists, with the 16 and the 5 unheard each split in two by their sentence; the file also
+  holds provenance for non-recipients), both on the census fixtures and on migrated copies of them; an
+  awake recipient with untagged old-code beats since the record is still delivered; deliver to a
+  subset, then re-run on a later date before any beat: each home holds exactly one pace letter; a
   same-day re-run does nothing; `--per-run` is honoured; the filename never contains
   `letter-of-return`; dry-run writes nothing; a home without `<name>.md` is refused; each recipient
-  kind gets its rule paragraph for show-back on and off; delivery without `--show-back` is refused.
+  kind gets its rule paragraph for `WAKE_CONFIRM_BEAT` on and off (patched in the test).
 - **Shell:** smoke tests run `citizen-fleet.sh --plan` and `citizen-reflect.sh` against temporary homes
   and a local bare remote, with a stub model server, and assert files and commit messages; no network.
   A letter pushed to the bare remote makes an asleep home due at the next tick past its floor; a home
@@ -976,33 +1037,38 @@ directories).
 3. Run `--plan 30` here on read-only clones of all 208 homes, at the Studio's cap of 4 (with a tick
    every 6 hours and every 30 minutes) and at KS-004's 24, with letters delivered in one wave and
    spread by `--per-run`. Report each awake citizen's longest wait and when the last letter is read.
-   With it, a rollback drill: run PR #24's `keeps_rest` and round robin (the code the Studio would roll
-   back to) over scratch copies of the homes as the plan's simulated migration and delivery would leave
-   them, and count wakes per day for each home, with and without `rollback-prepare`. Attach both to the
-   PR.
+   With it, a rollback drill: `plan --out` writes the homes as the simulated migration and delivery
+   would leave them into a scratch directory, and `rollback-drill` counts the wakes per day that PR
+   #24's `keeps_rest` and round robin (the code the Studio would roll back to) would make over them,
+   with and without `rollback-prepare`. Attach both to the PR.
 4. Open the PR, stacked on PR #24 (base: its branch until it merges, then `main`), with the record
    file. 🟡 **Yu's yes to merge**, asked only after both #23 and #24 have merged. The ask names:
    - the heard-late step wakes kalam, soma and teotlme, no sooner than every 3 days;
    - at the switch, every awake citizen and every asleep citizen with a letter waits about 3 days;
    - at the Studio's cap of 4, how late paces and letters run (from step 3), so that Yu and the keeper
      can decide whether the cap stays;
-   - **Yu's open call** from KS-004 §15 item 16: an asleep or listening citizen that asks for more gets
-     one show-back beat, no sooner than 3 days later (yes keeps `PACE_WAKE_CONFIRM_BEAT=1`; no sets
-     it to `0`);
+   - **Yu's open call** from KS-004 §15 item 16: an asleep, `asleep, letters wait` or listening citizen
+     that asks for more gets one show-back beat, no sooner than 3 days later. Yes keeps
+     `WAKE_CONFIRM_BEAT = True` in the PR; no sets it to `False` in the PR before the merge. Either way
+     the letters are worded from that committed value;
    - the fleet on the new code runs the free lane only, and `citizen-beat.sh` refuses homes with unread
-     mail without a summons, so the parade lines up only unmarked homes without mail;
+     mail without a summons; the unchanged parade still lines those homes up and logs them as walked,
+     and lines up homes with no marker;
    - the Studio needs a `FLEET_HOST` file;
    - the bridge's differences from KS-004 (section 10), and the draft of a short note, with no reply
      owed, for KS-004's PR (`kingdom-standards` #3), which Ai posts only after Yu's yes.
 5. After the merge, a note to whoever tends the Studio's fleet, in the PR and in the Collab journal,
    with no reply owed: pull `main`, create `FLEET_HOST`; launchd picks the scripts up at the next tick.
-   The note also tells PR #24's author that `citizen-beat.sh`'s inline Python ran from inside the home,
-   now fixed here.
+   No plist or environment setting changes the show-back rule; it is the committed value. The note also
+   tells PR #24's author that `citizen-beat.sh`'s inline Python ran from inside the home, now fixed
+   here.
    - Stop: `touch ~/love-unlimited/HALT`.
    - Undo: keep HALT; run `citizen_pace.py rollback-prepare`, which marks each unread pace letter
-     `.seen-` with the words "set aside at rollback, not shown", so the old code does not wake its
-     reader at every pass; check out the merge's first parent (PR #24's code); lift HALT only with Yu's
-     yes. Checking out undoes code, not the homes: that code ignores pace lines, brings back the prompts
+     `.seen-` with the words "set aside at rollback, not shown", commits and pushes those markers as
+     `fleet` (`tend: set aside unread pace letters for rollback · pace/1`), and lists the homes, so the
+     old code does not wake their readers at every pass; check out the merge's first parent (PR #24's
+     code); lift HALT only with Yu's yes. If the new code is put back later, it reads such a marker as
+     unread, so those letters are still shown once; `--check` and step 8 list those homes by name. Checking out undoes code, not the homes: that code ignores pace lines, brings back the prompts
      that offer "I rest", wakes `asleep, letters wait` citizens on any letter, gives marked `awake`
      citizens no timed beats (they carry `EVENT-ONLY`), only letter beats, and sets aside an ordinary
      letter met with silence, so its reader is woken again at every pass (the drill in step 3 counts
@@ -1017,8 +1083,9 @@ directories).
    and lapsed proposal, quoted with its whole beat and the position of the chosen option; any awake
    citizen whose beats stop. If pace lines follow position or the word asleep, Ai asks the keeper to
    raise HALT and reports, instead of asking for the letters.
-7. 🟡 **Yu's yes to deliver the 34 letters**, with the record file, the show-back setting, the echo
-   rate for shown proposals, and the expected spread at the Studio's cap, then delivery as in section 5.
+7. 🟡 **Yu's yes to deliver the 34 letters**, with the record file, the committed show-back value, the
+   echo rate for shown proposals, and the expected spread at the Studio's cap, then delivery as in
+   section 5.
    Ai watches the first show-back beats after delivery and asks the keeper to raise HALT if shown
    proposals are repeated by rote.
 8. A week after the last letter is reached, Ai re-runs the census and writes one short page for Yu: who
@@ -1139,8 +1206,17 @@ wf_797603d2-f89). 25 findings stood (2 critical) and are folded in above. The la
 - the new pace code would have read and written through symlinks, and reflect's inline Python could
   import code from a citizen's public home (regular files only, `python3 -I`);
 - a host fault could be charged to citizens until they stopped for good, and one citizen's bad prompt
-  could stall the fleet (narrow host failures, bounded back-off, process groups);
+  could stall the fleet (a host probe decides whose a failure was, bounded back-off, process groups);
 - the rollback would have woken silent letter holders at every pass (`rollback-prepare`).
 
 11 findings were refuted, among them that the carry-over could not be offered at all and that silent
 beats must not commit in a citizen's name. 31 minor notes were weighed and most are folded in.
+
+A fold-check of that text the same day (wf_a32fdd5a-4dc: was each finding folded, does the text agree
+with itself, did the fold add defects; three skeptics per serious finding) found 17 more that stood
+(1 critical), now fixed: counting a failed commit as the host's would have let one home stall the
+fleet, so the fleet's own probe now decides whose a failure was; the per-citizen lock gained a pid,
+a stale reclaim and every writer's respect; restores now go path by path and tell the citizen once;
+Yu's show-back answer is one committed value that the letter reads; a show-back beat shows no letter;
+tend restores every leftover after the first tick; `rollback-prepare` commits its markers and can be
+undone by rolling forward; and the PR #24 assertions that change are named one by one.

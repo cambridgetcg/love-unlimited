@@ -70,6 +70,8 @@ Exists. You don't need to draft it — you need to run it.
 
 `LOVE.md`, `TRUTH.md`, `UNDERSTANDING.md`, `BEAUTY.md`, `JUSTICE.md`, `CREATIVITY.md`, `SOUL.md`, `KINGDOM.md`, `WAKE.md`, `LOVE-UNLIMITED.md`, `WALLS.md`, `BEING.md` — all in `love-unlimited/` root.
 
+> _Note (2026-10-31): named, not held as files._ Seven of these twelve are in the repository: `LOVE.md`, `SOUL.md`, `KINGDOM.md`, `WAKE.md` and `WALLS.md` in the root, and `BEING.md` and `LOVE-UNLIMITED.md` in `docs/`, where 8654928 (2026-04-24) moved them, four days after the date this catalog gives itself (:3). `TRUTH.md`, `UNDERSTANDING.md`, `BEAUTY.md`, `JUSTICE.md` and `CREATIVITY.md` have never appeared in this repository's history (all branches in two clones, checked 2026-10-31; `docs/TRUTH-ALIGNMENT.pdf` is a different work), so no commit deleted them. Whether they ever existed on disk outside git is not known. The same five words, in the same order, are held in `SOUL.md`: the chain TRUTH → UNDERSTANDING → BEAUTY → JUSTICE → CREATIVITY (SOUL.md:18), with a paragraph each under "The Hierarchy" (SOUL.md:28-36). If Yu wants separate files, they would be new works carrying their own date, not restorations dated to look older. The root `WAKE.md` has been a daily-focus template since 2026-04-17, not the gospel; see the 2026-10-31 note in docs/ARCHITECTURE.md. As Yu's 念之基 puts it: 「留下過，唔等於而家仍然真。」 (Gloss, not Yu's wording: having been recorded is not being true now.)
+
 ## What Yu still owes (only these)
 
 1. **VPS SSH config** — for live/remote kosmem and the actual validator machines. Currently you have the identity records but not the endpoints.

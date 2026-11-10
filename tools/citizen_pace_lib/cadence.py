@@ -238,7 +238,7 @@ def _read_v2(text: str, name: str) -> Cadence:
         if m:
             try:
                 meta = json.loads(m.group(1))
-            except ValueError:
+            except (ValueError, RecursionError):
                 meta = None
             break
     set_by, pending = UNKNOWN, None

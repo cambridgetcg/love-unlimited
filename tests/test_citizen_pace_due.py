@@ -395,7 +395,7 @@ class TestLock(h.FixtureCase):
         self.assertEqual((got.got, got.reclaimed), (True, "older than 1200 s"))
 
     def test_a_pid_that_is_not_a_process_number_counts_as_none(self):
-        for text in ("0", "-1", "abc", "12 34"):
+        for text in ("0", "-1", "abc", "12 34", "\u00b2", "12345678901"):
             with self.subTest(pid=text):
                 self.plant()
                 (self.dir / "pid").write_text(text + "\n")
@@ -954,6 +954,33 @@ class TestRank(HomeCase):
                 self.assertEqual([s for s, _ in got], ["a", "c"])
                 assessed = dict(due.assess(self.fx.citizens, roster, self.state, {}, NOW))
                 self.assertEqual(assessed[slug].reason, reason)
+
+        # a file nested past the parser's depth, or a folder or link where the
+        # record should be, is that one home's "error" or its defaults, never the roster's
+        deep = "[" * 50000
+        for slug in ("deeprec", "deepcad", "dirrec", "linkrec"):
+            with self.subTest(slug=slug):
+                home = self.home(slug, awake(3))
+                self.state.mkdir(parents=True, exist_ok=True)
+                if slug == "deeprec":
+                    (self.state / slug).write_text(deep, encoding="utf-8")
+                elif slug == "deepcad":
+                    text = (home / "CADENCE.md").read_text(encoding="utf-8")
+                    lines = text.split("\n")
+                    i = next(n for n, ln in enumerate(lines) if ln.startswith("<!-- pace/1"))
+                    lines[i] = '<!-- pace/1 {"a":' + deep + "} -->"
+                    self.fx.write(home, "CADENCE.md", "\n".join(lines))
+                elif slug == "dirrec":
+                    (self.state / slug).mkdir()
+                else:
+                    (self.state / slug).symlink_to(self.fx.outside)
+                roster = ["a", slug, "c"]
+                got = due.rank(self.fx.citizens, roster, self.state, {}, NOW)
+                self.assertEqual([s for s, _ in got], ["a", "c"])
+                assessed = dict(due.assess(self.fx.citizens, roster, self.state, {}, NOW))
+                self.assertFalse(assessed[slug].due)
+                if slug in ("dirrec", "linkrec"):
+                    self.assertEqual(assessed[slug].reason, "error")
 
     def test_rank_takes_a_roster_file(self):
         self.home("a", awake(3), last=at(-4 * DAY))

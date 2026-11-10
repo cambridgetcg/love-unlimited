@@ -140,7 +140,7 @@ def load(state, slug: str) -> dict:
         return fresh(slug)
     try:
         raw = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
         return fresh(slug)
     return _clean(slug, raw)
 

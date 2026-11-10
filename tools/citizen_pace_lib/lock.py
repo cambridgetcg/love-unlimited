@@ -78,7 +78,7 @@ def _ident(d: Path) -> Tuple[Optional[int], Optional[str]]:
     except OSError:
         return None, None
     text = _read_small(d / "pid") or ""
-    pid = int(text) if text.isdigit() and int(text) > 0 else None
+    pid = int(text) if re.fullmatch(r"[0-9]{1,9}", text) and int(text) > 0 else None
     started = _read_small(d / "started")
     try:
         started = clock.stamp(clock.parse_stamp(started)) if started else None
@@ -108,6 +108,8 @@ def _alive(pid: int) -> bool:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
+    except OverflowError:
+        return True          # not a process number this system knows: judged by age
     except OSError:
         return True          # it exists, but is not ours to signal
     return True

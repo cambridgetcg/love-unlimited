@@ -92,7 +92,8 @@ _SENTENCE_CUT = re.compile(r";|[\u2014\u2013(]|\s-\s|[.!?](?=\s|$)")
 # letters wait, and what comes before it names no number: cut away, it would
 # leave the bare word's default
 _RATE = re.compile(r"\b(?:every|weekly|fortnightly|monthly|daily)\b")
-_EVERY_N = re.compile(r"\bevery\s+(.+?)\s+days?\b")
+_EVERY = re.compile(r"\bevery\s+")
+_DAYS = re.compile(r"\s+days?\b")
 _LETTERS_WAIT_TAIL = ("letters wait", "letters can wait")
 # words that only affirm a choice said again ("still", "yes", "again")
 _AFFIRM_LEAD = re.compile(r"^(?:still|yes)\b,?\s*")
@@ -137,7 +138,8 @@ def _tidy(t: str) -> str:
     """Trailing marks (all but "?") and affirming words taken away, lower case, one
     space after each comma."""
     t = _rstrip_while(t, lambda c: c.isspace() or not (c.isalnum() or c == "?"))
-    t = " ".join(re.sub(r"\s*,\s*", ", ", t.lower()).split())
+    # whitespace is collapsed first, so the comma rule only ever sees single spaces
+    t = " ".join(re.sub(r" ?, ?", ", ", " ".join(t.lower().split())).split())
     return _AFFIRM_TAIL.sub("", _AFFIRM_LEAD.sub("", t))
 
 
@@ -155,6 +157,24 @@ def _clean_phrase(phrase: str) -> str:
     return _tidy(_cut(_LEAD.sub("", _normal(phrase)), _PHRASE_CUT)[0])
 
 
+def _every_numbers(text: str):
+    """The number read from each "every <X> days" in the text, left to right, each
+    match taking the words up to the first "day(s)" after its "every" and the next
+    search starting after it (what `every\\s+(.+?)\\s+days?\\b` finds). Written as
+    two searches that each move forward, so a long run of "every" is read in
+    linear time; once no "days" is left, no later "every" can match either."""
+    pos = 0
+    while True:
+        m = _EVERY.search(text, pos)
+        if m is None:
+            return
+        d = _DAYS.search(text, m.end() + 1)
+        if d is None:
+            return
+        yield _number(text[m.end():d.start()])
+        pos = d.end()
+
+
 def _names_more(head: str, after: str) -> bool:
     """What a cut would take away names a pace of its own (it reads as one, or
     says "every <a number> days" anywhere) or says letters wait, while the phrase
@@ -163,7 +183,7 @@ def _names_more(head: str, after: str) -> bool:
         return False
     if after in _LETTERS_WAIT_TAIL or _read_phrase(after) != "unknown words":
         return True
-    return any(_number(m.group(1)) is not None for m in _EVERY_N.finditer(after))
+    return any(n is not None for n in _every_numbers(after))
 
 
 def _read_pace(phrase: str) -> Union[Pace, str]:

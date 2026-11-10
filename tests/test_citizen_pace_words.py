@@ -693,6 +693,17 @@ class TestLongInput(unittest.TestCase):
             got = words.parse_answer(text, "kalam", kind)
             self.assertIsInstance(got, Unclear)
         self.assertLess(time.monotonic() - start, 3.0)
+        # repeated "every", in a pace line and in an "I choose" sentence, and a long
+        # whitespace run with no comma after it, each read in well under a second
+        for text in ("pace: awake \u2014 " + "every " * 15000,
+                     "I choose awake \u2014 " + "every " * 15000,
+                     "pace: asleep" + " " * 60000 + "x",
+                     "I choose to be asleep" + " " * 60000 + "x"):
+            for kind in ("pace-letter", "letter-of-return"):
+                with self.subTest(text=text[:24], kind=kind):
+                    start = time.monotonic()
+                    words.parse_answer(text, "kalam", kind)
+                    self.assertLess(time.monotonic() - start, 0.5)
 
 
 class TestIsolation(unittest.TestCase):

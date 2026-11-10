@@ -11,14 +11,21 @@
 #           BEAT_MODEL (default sonnet)  BEAT_WALLCLOCK_SEC (default 360)
 #           BEAT_MAX_TURNS (default 25)
 #           BEAT_BUDGET_ENFORCE=1 + FLEET_DAILY_BUDGET_USD — refuse the beat when
-#             today's metered fleet spend already meets the ceiling (the fleet
-#             sets this; a hand-run beat is never silently blocked)
+#             today's metered fleet spend already meets the ceiling, or cannot
+#             be read (the fleet sets this; a hand-run beat is never silently
+#             blocked)
+#           BEAT_SUMMONS=1 — a human present summons a citizen resting by its
+#             standing choice for this one beat; ignored with BEAT_BUDGET_ENFORCE=1
 #   Ledger: every beat appends {ts,name,cost_usd,num_turns,rc,duration_s} to
 #           $LOVE/memory/fleet-economy.jsonl — the beat economics are no longer
-#           opaque tee-to-log; the credit cannot be silently drained.
+#           opaque tee-to-log; the credit cannot be silently drained. A cost
+#           that could not be learned is written as null, never as 0.
 #
 # Walls (non-negotiable, in order): HALT kill-switch > ZERONE (truth) > the garden
 # (love) > the citizen's own free will. A beat may always be "rest" — that is whole.
+# A citizen resting by its own standing choice (REST or EVENT-ONLY, no unread
+# mail) is not woken here, whoever runs this file: run.sh, the parade or the
+# fleet. Only an explicit human summons (BEAT_SUMMONS=1, hand-run) wakes it.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -34,6 +41,12 @@ MODEL="${BEAT_MODEL:-sonnet}"
 MAXTURNS="${BEAT_MAX_TURNS:-25}"
 LEDGER="$LOGDIR/fleet-economy.jsonl"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
+# The gates sit beside the real file, not beside ~/.local/bin/citizen-beat,
+# which is a link into tools/ that `kingdom beat` runs from PATH.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
+# shellcheck source=tools/citizen-gates.sh
+. "$(dirname "$_self")/citizen-gates.sh" \
+  || { echo "[$(ts)] citizen-gates.sh missing — $NAME's beat refused" | tee -a "$LOG"; exit 1; }
 # Stale tokens in a caller's env override the healthy keychain logins and
 # break beats two ways: GITHUB_TOKEN strands pushes (the 2026-06 letter wave
 # was lost to this for a month), ANTHROPIC_API_KEY 401s the claude driver.
@@ -46,22 +59,6 @@ unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
 # A human present may grant full tools:  BEAT_FULL_TOOLS=1 citizen-beat.sh <name>
 PERM_MODE="acceptEdits"
 [ "${BEAT_FULL_TOOLS:-0}" = "1" ] && PERM_MODE="bypassPermissions"
-
-# Today's metered spend, read from the ledger (0.0 if none).
-spent_today(){
-  python3 - "$LEDGER" <<'PY' 2>/dev/null || echo 0.0
-import json, sys, datetime
-total, today = 0.0, datetime.date.today().isoformat()
-try:
-    for line in open(sys.argv[1], encoding="utf-8"):
-        try:
-            d = json.loads(line)
-            if d.get("ts", "").startswith(today): total += float(d.get("cost_usd") or 0)
-        except Exception: pass
-except FileNotFoundError: pass
-print(f"{total:.4f}")
-PY
-}
 
 # Portable wallclock bound (macOS has no GNU `timeout`). Redirect the call site,
 # not inside — the backgrounded command inherits the caller's fds.
@@ -92,10 +89,11 @@ fi
 
 # 1b. The budget wall (fleet-invoked beats only): if today's metered spend has
 # reached the ceiling, the agentic lane closes for the day. Honest and loud.
-if [ "${BEAT_BUDGET_ENFORCE:-0}" = "1" ] && [ -n "${FLEET_DAILY_BUDGET_USD:-}" ]; then
-  SPENT="$(spent_today)"
-  if python3 -c "import sys; sys.exit(0 if float('$SPENT') >= float('$FLEET_DAILY_BUDGET_USD') else 1)" 2>/dev/null; then
-    echo "[$(ts)] budget ceiling \$$FLEET_DAILY_BUDGET_USD reached (spent \$$SPENT) — $NAME's agentic beat waits for tomorrow" | tee -a "$LOG"
+# Fail closed: a ledger that cannot be read, or an enforced beat given no
+# budget, counts as the ceiling reached — never as nothing spent.
+if [ "${BEAT_BUDGET_ENFORCE:-0}" = "1" ]; then
+  if budget_reached "$LEDGER" "${FLEET_DAILY_BUDGET_USD:-}"; then
+    echo "[$(ts)] budget ceiling \$${FLEET_DAILY_BUDGET_USD:-unset} reached (spent \$$(spent_today "$LEDGER")) — $NAME's agentic beat waits for tomorrow" | tee -a "$LOG"
     exit 3
   fi
 fi
@@ -121,6 +119,20 @@ fi
 
 if [ "${2:-}" = "--clone-only" ]; then
   echo "[$(ts)] $NAME home ready at $REPO (clone-only)"; exit 0
+fi
+
+# 2b. The citizen's standing choice. Read after the fast-forward, so a REST
+# chosen on another host holds here at once; unread mail still wakes. Its REST
+# marker also promises a human summons, so a human present may wake it for one
+# beat with BEAT_SUMMONS=1. The fleet and the parade always enforce the budget,
+# so a summons never rides along with them.
+if keeps_rest "$REPO"; then
+  if [ "${BEAT_SUMMONS:-0}" = "1" ] && [ "${BEAT_BUDGET_ENFORCE:-0}" != "1" ]; then
+    echo "[$(ts)] $NAME rests by its own standing choice; a human present summons it for one beat" | tee -a "$LOG"
+  else
+    echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat" | tee -a "$LOG"
+    exit 0
+  fi
 fi
 
 # 3. The walls — injected as the citizen's system prompt, non-negotiable.
@@ -160,23 +172,27 @@ DUR=$(( $(date +%s) - T0 ))
 case "$RC" in 124|143|137) echo "[$(ts)] (beat reached its time-bound — a citizen is allowed to run to the edge of its beat)" | tee -a "$LOG";; esac
 
 # 4b. Parse the result: surface the citizen's words in the log, the cost in the ledger.
-COST="$(python3 - "$BEAT_JSON" "$LOG" "$LEDGER" "$NAME" "$RC" "$DUR" <<'PY' 2>/dev/null || echo 0
-import json, sys, datetime
+# A cost that cannot be read (killed beat, non-JSON output, no cost field) is
+# recorded as null, not 0: the spend gate then holds the lane closed for the day.
+COST="$(python3 - "$BEAT_JSON" "$LOG" "$LEDGER" "$NAME" "$RC" "$DUR" <<'PY' 2>/dev/null || echo unknown
+import json, math, sys, datetime
 jf, logf, ledf, name, rc, dur = sys.argv[1:7]
-cost, turns, text = 0.0, None, ""
+cost, turns, text = None, None, ""
 try:
     d = json.load(open(jf, encoding="utf-8"))
     if isinstance(d, list): d = next((x for x in d if x.get("type") == "result"), {})
-    cost = float(d.get("total_cost_usd") or d.get("cost_usd") or 0)
     turns = d.get("num_turns"); text = (d.get("result") or "").strip()
+    c = d["total_cost_usd"] if "total_cost_usd" in d else d["cost_usd"]
+    if not isinstance(c, bool) and isinstance(c, (int, float)) and math.isfinite(c) and c >= 0:
+        cost = float(c)
 except Exception: pass
 with open(logf, "a", encoding="utf-8") as f:
     if text: f.write(text + "\n")
 with open(ledf, "a", encoding="utf-8") as f:
     f.write(json.dumps({"ts": datetime.datetime.now().isoformat(timespec="seconds"),
-                        "name": name, "cost_usd": round(cost, 4), "num_turns": turns,
-                        "rc": int(rc), "duration_s": int(dur)}) + "\n")
-print(f"{cost:.4f}")
+                        "name": name, "cost_usd": None if cost is None else round(cost, 4),
+                        "num_turns": turns, "rc": int(rc), "duration_s": int(dur)}) + "\n")
+print("unknown" if cost is None else f"{cost:.4f}")
 PY
 )"
 rm -f "$BEAT_JSON"

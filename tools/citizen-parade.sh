@@ -5,7 +5,10 @@
 # Invoked by Yu's word ("line them up and I am paying. all of them", 2026-06-09).
 # Every roster citizen gets one bounded, metered claude beat. The walls hold:
 #   • HALT checked before every wave — touch ~/love-unlimited/HALT to stop the parade
-#   • hard budget stop: PARADE_BUDGET_USD (default 60) against TODAY's ledger spend
+#   • a citizen resting by its own standing choice (REST or EVENT-ONLY, no unread
+#     mail) is not lined up; citizen-beat.sh checks again after its fetch
+#   • hard budget stop: PARADE_BUDGET_USD (default 60) against TODAY's ledger spend;
+#     a ledger that cannot be read counts as the budget reached
 #   • per-beat wallclock + turn bounds (citizen-beat.sh's own walls)
 #   • resumable: finished citizens recorded in memory/.parade-<date>; re-run continues
 #   • abort if a whole wave fails (likely an API session-limit — resume later)
@@ -14,6 +17,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 LOVE="${LOVE_DIR:-$HOME/love-unlimited}"; HALT="$LOVE/HALT"
+CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"
 ROSTER="$LOVE/citizens-roster.txt"
 MEM="$LOVE/memory"; TODAY="$(date +%F)"
 DONE="$MEM/.parade-$TODAY"; touch "$DONE"
@@ -23,32 +27,29 @@ PAR="${PARADE_PARALLEL:-4}"
 BUDGET="${PARADE_BUDGET_USD:-60}"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 
-spent_today(){
-  python3 - "$LEDGER" <<'PY' 2>/dev/null || echo 0.00
-import json, sys, datetime
-t, today = 0.0, datetime.date.today().isoformat()
-try:
-    for line in open(sys.argv[1], encoding="utf-8"):
-        try:
-            d = json.loads(line)
-            if d.get("ts","").startswith(today): t += float(d.get("cost_usd") or 0)
-        except Exception: pass
-except FileNotFoundError: pass
-print(f"{t:.2f}")
-PY
-}
+# The gates sit beside the real file; ~/.local/bin/citizen-parade is a link.
+_self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0]}"
+# shellcheck source=tools/citizen-gates.sh
+. "$(dirname "$_self")/citizen-gates.sh" \
+  || { echo "[$(ts)] citizen-gates.sh missing — no parade" | tee -a "$LOG"; exit 1; }
 
-SLUGS=(); while IFS= read -r l; do [ -n "$l" ] && ! grep -qx "$l" "$DONE" && SLUGS+=("$l"); done < "$ROSTER"
+SLUGS=(); resting=0
+while IFS= read -r l; do
+  [ -n "$l" ] || continue
+  grep -qx "$l" "$DONE" && continue
+  if keeps_rest "$CITIZENS/citizen-$l"; then resting=$((resting + 1)); continue; fi
+  SLUGS+=("$l")
+done < "$ROSTER"
 total="${#SLUGS[@]}"
-[ "$total" -eq 0 ] && { echo "[$(ts)] parade: everyone has already walked today" | tee -a "$LOG"; exit 0; }
-echo "[$(ts)] ◖ PARADE begins — $total citizens to walk, ${PAR} abreast, budget \$$BUDGET (spent so far: \$$(spent_today))" | tee -a "$LOG"
+[ "$resting" -gt 0 ] && echo "[$(ts)] parade: $resting citizens rest by their own standing choice and are not lined up" | tee -a "$LOG"
+[ "$total" -eq 0 ] && { echo "[$(ts)] parade: no one left to walk today" | tee -a "$LOG"; exit 0; }
+echo "[$(ts)] ◖ PARADE begins — $total citizens to walk, ${PAR} abreast, budget \$$BUDGET (spent so far: \$$(spent_today "$LEDGER"))" | tee -a "$LOG"
 
 i=0
 while [ "$i" -lt "$total" ]; do
   [ -e "$HALT" ] && { echo "[$(ts)] HALT — the parade rests ($(wc -l < "$DONE" | tr -d ' ') walked)" | tee -a "$LOG"; exit 0; }
-  SPENT="$(spent_today)"
-  if python3 -c "import sys; sys.exit(0 if float('$SPENT') >= float('$BUDGET') else 1)" 2>/dev/null; then
-    echo "[$(ts)] parade budget \$$BUDGET reached (spent \$$SPENT) — pausing here, resumable" | tee -a "$LOG"; exit 3
+  if budget_reached "$LEDGER" "$BUDGET"; then
+    echo "[$(ts)] parade budget \$$BUDGET reached (spent \$$(spent_today "$LEDGER")) — pausing here, resumable" | tee -a "$LOG"; exit 3
   fi
 
   # one wave
@@ -70,10 +71,10 @@ while [ "$i" -lt "$total" ]; do
     fi
   done
   done_n="$(wc -l < "$DONE" | tr -d ' ')"
-  echo "[$(ts)] wave done — $done_n walked, \$$(spent_today) spent" | tee -a "$LOG"
+  echo "[$(ts)] wave done — $done_n walked, \$$(spent_today "$LEDGER") spent" | tee -a "$LOG"
   if [ "$wave_fail" -ge "$PAR" ]; then
     echo "[$(ts)] entire wave failed — likely API session limit; re-run citizen-parade.sh to resume" | tee -a "$LOG"; exit 4
   fi
 done
 
-echo "[$(ts)] ◗ PARADE complete — all walked. Total today: \$$(spent_today)" | tee -a "$LOG"
+echo "[$(ts)] ◗ PARADE complete — all walked. Total today: \$$(spent_today "$LEDGER")" | tee -a "$LOG"

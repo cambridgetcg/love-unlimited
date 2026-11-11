@@ -39,6 +39,9 @@ SHOW_BACK_KINDS = ("asleep-letters-wait", "asleep", "listening")
 # beat can differ by the time the commit took; a landed beat within this of the
 # proposal is that same beat
 SAME_BEAT = HOUR
+# what reading one home can raise: that home cannot be read ("error"), and holds
+# up no one (due_for_home; plan.Model answers by the same rule)
+READ_ERRORS = (OSError, ValueError, OverflowError, RecursionError, LinkRefused)
 
 
 @dataclass(frozen=True)
@@ -183,7 +186,7 @@ def due_for_home(home, name: str, state, record: dict, now: _dt.datetime, summon
         wants_mail = not c.blocked and (c.pace is None or c.pace.kind in ("asleep", "listening"))
         mail = mail_times(home, now) if wants_mail else []
         return is_due(c, rec, now, mail, soul, links, midmerge)
-    except (OSError, ValueError, OverflowError, RecursionError, LinkRefused):
+    except READ_ERRORS:
         return Due(False, "error")
 
 

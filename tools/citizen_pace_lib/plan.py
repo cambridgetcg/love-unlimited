@@ -221,13 +221,13 @@ class Model:
             except LinkRefused:
                 z.refused = True
                 return z
-            except (OSError, ValueError):
+            except due.READ_ERRORS:
                 if not z.midmerge:      # due_for_home never reads a mid-merge home's record
                     raise
             z.unread = [(rel, homes.letter_time(z.home, rel, _FAR)) for rel in homes.unread_letters(z.home)]
             z.show = _regular(z.home / SHOW) and not os.path.lexists(z.home / SHOW_SEEN)
             z.pace_letter = _holds_pace_letter(z.home)
-        except (OSError, ValueError):
+        except due.READ_ERRORS:       # as due_for_home: a home that cannot be read
             z.error = True
             return z
         later = [t for t in (due._when(z.c.last_beat if z.c else None), attempts.last_beat_at(z.rec))
@@ -272,15 +272,23 @@ class Model:
             return due.is_due(None, {}, now, [], z.soul, z.links, z.midmerge)
         if z.c is None or z.refused:
             return Due(False, "links")
-        if due.last_beat(z.c, z.rec, now) is None:
-            z.rec["last_beat"], z.rec["seeded"] = clock.stamp(now), attempts.SEEDED
-        c = z.c
-        wants_mail = not c.blocked and (c.pace is None or c.pace.kind in ("asleep", "listening"))
-        mail = [min(t, now) for _rel, t in z.unread] if wants_mail else []
         try:
+            if due.last_beat(z.c, z.rec, now) is None:
+                self._seed(z, now)
+            c = z.c
+            wants_mail = not c.blocked and (c.pace is None or c.pace.kind in ("asleep", "listening"))
+            mail = [min(t, now) for _rel, t in z.unread] if wants_mail else []
             return due.is_due(c, z.rec, now, mail, z.soul, z.links, z.midmerge, confirm_beat=self.confirm)
-        except OverflowError:       # a stamp no date reaches: as due_for_home, not due
+        except due.READ_ERRORS:     # as due_for_home: a home that cannot be read is not due
             return Due(False, "error")
+
+    def _seed(self, z: _Citizen, now: _dt.datetime) -> None:
+        """The clock start the fleet's ranking writes (attempts.seed), kept in the
+        model only. A record path that write refuses (a link, a folder) raises
+        LinkRefused here too, so the model reads that home as the ranking does."""
+        if self.state is not None:
+            homes._refuse_non_regular(attempts.record_path(self.state, z.slug))
+        z.rec["last_beat"], z.rec["seeded"] = clock.stamp(now), attempts.SEEDED
 
     # -- what happens to a citizen in the model ---------------------------------------
 

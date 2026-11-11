@@ -146,6 +146,15 @@ class TestModel(Case):
 
     def test_the_model_agrees_with_due_for_home(self):
         roster = self.build()
+        # an awake citizen with no last beat anywhere, whose attempt record is a
+        # folder or a link: the fleet's ranking cannot start its clock, and
+        # due_for_home reads that home as one that cannot be read (fix wave A)
+        unwritable = ("dirrec", "linkrec")
+        for slug in unwritable:
+            hp.v2_home(self.homes, slug, AWAKE3)
+        (self.state / "dirrec").mkdir()
+        (self.state / "linkrec").symlink_to(self.fx.outside)
+        roster += list(unwritable)
         rec = hp.record(blockme={"group": "rest-on", "set_by": hp.AI_1008})
         for on in (True, False):
             with self.subTest(show_back=on), mock.patch.object(due, "WAKE_CONFIRM_BEAT", on):
@@ -153,15 +162,19 @@ class TestModel(Case):
                 reasons = {s: model.due(s, START).reason for s in roster}
                 for t in (START, at(DAY), at(2 * DAY + 6 * HOUR), at(5 * DAY)):
                     for slug in roster:
+                        # as the fleet's ranking asks; its write is refused, so nothing is written
                         want = due.due_for_home(self.homes / f"citizen-{slug}", slug, self.state, rec, t,
-                                                write_seed=False)
+                                                write_seed=slug in unwritable)
                         self.assertEqual(model.due(slug, t), want, f"{slug} at {clock.stamp(t)}")
                 self.assertEqual(reasons, {
                     "awake5": "not-yet", "sleeper": "letter", "floorer": "floor",
                     "waiter": "show-back" if on else "letters-wait", "listener": "no-mail",
                     "blockme": "blocked", "soulless": "no-soul", "linked": "links", "unread": "unreadable",
                     "backoff": "backing-off", "mid": "mid-merge", "untagged": "schedule",
-                    "farpending": "error" if on else "no-mail", "nohome": "no-home"})
+                    "farpending": "error" if on else "no-mail", "nohome": "no-home",
+                    "dirrec": "error", "linkrec": "error"})
+        self.assertEqual(sorted(os.listdir(self.state / "dirrec")), [])
+        self.assertEqual(os.readlink(self.state / "linkrec"), str(self.fx.outside))
 
     def test_the_model_reads_its_pace_labels(self):
         roster = self.build()

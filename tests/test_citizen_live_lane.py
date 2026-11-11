@@ -22,6 +22,26 @@ TOOLS = ROOT / "tools"
 GATES = TOOLS / "citizen-gates.sh"
 CANARY = "HOST-FILE-CANARY-7f3a"
 TODAY = datetime.date.today().isoformat()
+if str(TOOLS) not in sys.path:
+    sys.path.append(str(TOOLS))
+from citizen_pace_lib import cadence as _cadence  # noqa: E402
+from citizen_pace_lib.words import Pace  # noqa: E402
+
+LONG_AGO = "2026-01-01T00:00Z"
+
+
+def v2_cadence(slug, pace):
+    """A v2 CADENCE.md for pace/1 (spec section 8: PR #24's reflect tests are
+    carried over with a v2 record whose last beat is older than the floor). Only
+    the file: the marker an awake home carries is left out, as the 11 awake homes
+    have none until the new code's first commit, so PR #24's fleet still lines it up."""
+    words = "pace: " + pace.words()
+    set_by = _cadence.SetBy("citizen", "beat", (LONG_AGO,), words)
+    return _cadence.render_cadence(_cadence.Cadence(slug, 2, pace, set_by, last_beat=LONG_AGO))
+
+
+def awake(slug):
+    return v2_cadence(slug, Pace("awake", 3))
 
 
 class Fixture:
@@ -75,11 +95,13 @@ class Fixture:
         target.chmod(0o755)
 
     def make_home(self, slug, *, rest=False, event_only=False, letters=(),
-                  symlinked_letters=()):
+                  symlinked_letters=(), cadence=None):
         home = self.citizens / f"citizen-{slug}"
         home.mkdir()
         (home / f"{slug}.md").write_text(f"The soul of {slug}.\n", encoding="utf-8")
         (home / "WILL.md").write_text("A fixture will.\n", encoding="utf-8")
+        if cadence is not None:
+            (home / "CADENCE.md").write_text(cadence, encoding="utf-8")
         if rest:
             (home / "REST").write_text("fixture rest\n", encoding="utf-8")
         if event_only:
@@ -565,7 +587,7 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         return "\n".join(self.bodies)
 
     def test_symlinked_letter_is_set_aside_unread(self):
-        home = self.fx.make_home("waker", symlinked_letters=["a.md"])
+        home = self.fx.make_home("waker", symlinked_letters=["a.md"], cadence=awake("waker"))
         r = self.fx.run(self.REFLECT, "waker", env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(len(self.bodies), 1)
@@ -576,41 +598,49 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         self.assertEqual(self.fx.secret.read_text(), f"{CANARY}\n")
 
     def test_regular_letter_still_surfaces(self):
-        home = self.fx.make_home("waker", letters=[("a.md", "LETTER-BODY-1\n")])
+        home = self.fx.make_home("waker", letters=[("a.md", "LETTER-BODY-1\n")],
+                                 cadence=awake("waker"))
         r = self.fx.run(self.REFLECT, "waker", env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("LETTER-BODY-1", self.prompts())
         self.assertIn("surfaced", (home / "inbox" / ".seen-a.md").read_text())
-        journal = home / "beats" / f"{datetime.date.today():%Y-%m}.md"
+        # pace/1 dates its journal in UTC, as every pace/1 time is
+        journal = home / "beats" / f"{datetime.datetime.now(datetime.timezone.utc):%Y-%m}.md"
         self.assertIn("A true thing, witnessed.", journal.read_text())
 
-    def test_rest_pushed_from_another_host_holds_after_the_fetch(self):
-        home = self.fx.make_home("waker")
+    def test_asleep_pace_pushed_from_another_host_holds_after_the_fetch(self):
+        # pace/1 rewrites test_rest_pushed_from_another_host_holds_after_the_fetch:
+        # a marker alone no longer holds against a v2 pace, so the change pushed
+        # from elsewhere is a v2 CADENCE.md saying asleep (spec section 8).
+        home = self.fx.make_home("waker", cadence=awake("waker"))
         bare = self.fx.give_upstream(home)
-        head = self.fx.push_from_elsewhere(bare, "REST", "chosen elsewhere\n")
+        head = self.fx.push_from_elsewhere(bare, "CADENCE.md",
+                                           v2_cadence("waker", Pace("asleep")))
         r = self.fx.run(self.REFLECT, "waker", env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("rests by its own standing choice", r.stdout)
+        self.assertIn("waker is not due (no-mail) — no beat", r.stdout)
         self.assertEqual(self.bodies, [])
         self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), head)
 
-    def test_fleet_path_honours_a_rest_pushed_from_another_host(self):
-        # The fleet's own check reads the clone before reflect fetches.
+    def test_fleet_path_honours_an_asleep_pace_pushed_from_another_host(self):
+        # pace/1 rewrites test_fleet_path_honours_a_rest_pushed_from_another_host,
+        # as above. The fleet's own check reads the clone before reflect fetches.
         for name in ("citizen-reflect.sh", "citizen-gates.sh"):
             (self.fx.love / "tools" / name).symlink_to(TOOLS / name)
         (self.fx.love / "citizens-roster.txt").write_text("waker\n", encoding="utf-8")
-        home = self.fx.make_home("waker")
+        home = self.fx.make_home("waker", cadence=awake("waker"))
         bare = self.fx.give_upstream(home)
-        head = self.fx.push_from_elsewhere(bare, "REST", "chosen elsewhere\n")
+        head = self.fx.push_from_elsewhere(bare, "CADENCE.md",
+                                           v2_cadence("waker", Pace("asleep")))
         r = self.fx.run(TOOLS / "citizen-fleet.sh", env={**self.env, "FLEET_AGENTIC_PER_DAY": "0"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         log = (self.fx.love / "memory" / "fleet.log").read_text()
-        self.assertIn("rests by its own standing choice", log)
+        self.assertIn("waker is not due (no-mail) — no beat", log)
         self.assertEqual(self.bodies, [])
         self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), head)
 
     def test_symlinked_show_is_set_aside_unread(self):
-        home = self.fx.make_home("waker")
+        home = self.fx.make_home("waker", cadence=awake("waker"))
         (home / "SHOW.md").symlink_to(self.fx.secret)
         r = self.fx.run(self.REFLECT, "waker", env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -628,12 +658,17 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         self.assertFalse(target.exists())
         self.assertEqual(self.bodies, [])
 
-    def test_symlinked_rest_rests_without_mail(self):
+    def test_symlinked_rest_is_refused_before_the_gate(self):
+        # pace/1 changes test_symlinked_rest_rests_without_mail: the symlink
+        # refusals now run before the gate, so a linked REST is refused (exit 1)
+        # with or without mail, and nothing is written through it.
         home = self.fx.make_home("rester")
-        (home / "REST").symlink_to(self.fx.outside / "rest-target.txt")
+        target = self.fx.outside / "rest-target.txt"
+        (home / "REST").symlink_to(target)
         r = self.fx.run(self.REFLECT, "rester", env=self.env)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("rests by its own standing choice", r.stdout)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("REST is a symlink", r.stdout)
+        self.assertFalse(target.exists())
         self.assertEqual(self.bodies, [])
 
     def test_symlinked_rest_with_mail_is_refused_and_nothing_written_outside(self):

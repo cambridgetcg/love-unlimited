@@ -52,6 +52,11 @@ class TendError(RuntimeError):
     """git refused or failed; what this step wrote was put back."""
 
 
+class FirstTickPending(TendError):
+    """A beat found uncommitted pace files before the fleet's first tick on the
+    new code, which commits the old code's once; nothing was changed."""
+
+
 def _git(home, *args, timeout: float = 30):
     return git(home, *_SAFE, *args, timeout=timeout)
 
@@ -213,18 +218,25 @@ def _pushed(ok: bool) -> str:
 
 # -- tend: each tick, before anyone is ranked ----------------------------------------
 
-def tend_home(home, state, *, first_tick: bool, bound: Optional[float] = None) -> List[str]:
+def tend_home(home, state, *, first_tick: bool, bound: Optional[float] = None,
+              own: Optional[int] = None) -> List[str]:
     """Tend one home (spec section 6). Not a clone, holding links, or mid-merge:
     left alone, silently (due reports those). Its lock held, or a fresh
     .git/index.lock: left for the next tick, with a line. A stale index.lock is
     removed. Then any changes to its pace paths are put back path by path, or, at
     the first tick on the new code, committed once as the fleet and pushed (a
-    leftover that is not a regular file is removed even then). Returns log lines."""
+    leftover that is not a regular file is removed even then). Returns log lines.
+    own: the pid of a beat that holds the citizen's lock and tends its home before
+    it begins (citizen-reflect.sh); that lock does not keep it out, and leftovers
+    that cannot be put back raise, since the beat must not build on them. Before
+    the fleet's first tick (first_tick) such a beat finds leftovers that may be
+    the old code's: it changes none of them and raises FirstTickPending."""
     home = Path(home)
     slug = slug_of(home)
     if not (home / ".git").is_dir() or forbidden_links(home):
         return []
-    if lock.held(state, slug, bound=bound):
+    mine = own is not None and getattr(lock.holder(state, slug), "pid", None) == own
+    if not mine and lock.held(state, slug, bound=bound):
         return [f"{slug}: its lock is held — not tended this tick"]
     lines = []
     age = index_lock_age(home)
@@ -245,6 +257,8 @@ def tend_home(home, state, *, first_tick: bool, bound: Optional[float] = None) -
         if not first_tick:
             restore_paths(home, paths)
             return lines + [f"{slug}: a killed beat's leftovers restored: {', '.join(paths)}"]
+        if own is not None:
+            raise FirstTickPending(f"{slug}: the fleet has not tended this home since the switch")
         odd = [p for p in paths if not _regular_or_gone(home, p)]
         keep = [p for p in paths if p not in odd]
         if odd:
@@ -254,6 +268,8 @@ def tend_home(home, state, *, first_tick: bool, bound: Optional[float] = None) -
             lines.append(f"{slug}: old-code leftover committed as the fleet ({_pushed(fleet_push(home))}): "
                          f"{', '.join(keep)}")
     except (TendError, LinkRefused, OSError) as e:
+        if own is not None:
+            raise
         lines.append(f"{slug}: not tended — {e}")
     return lines
 

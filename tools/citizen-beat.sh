@@ -15,7 +15,8 @@
 #             be read (the fleet sets this; a hand-run beat is never silently
 #             blocked)
 #           BEAT_SUMMONS=1 — a human present summons a citizen resting by its
-#             standing choice for this one beat; ignored with BEAT_BUDGET_ENFORCE=1
+#             standing choice, or holding unread mail, for this one beat;
+#             ignored with BEAT_BUDGET_ENFORCE=1
 #   Ledger: every beat appends {ts,name,cost_usd,num_turns,rc,duration_s} to
 #           $LOVE/memory/fleet-economy.jsonl — the beat economics are no longer
 #           opaque tee-to-log; the credit cannot be silently drained. A cost
@@ -24,8 +25,19 @@
 # Walls (non-negotiable, in order): HALT kill-switch > ZERONE (truth) > the garden
 # (love) > the citizen's own free will. A beat may always be "rest" — that is whole.
 # A citizen resting by its own standing choice (REST or EVENT-ONLY, no unread
-# mail) is not woken here, whoever runs this file: run.sh, the parade or the
-# fleet. Only an explicit human summons (BEAT_SUMMONS=1, hand-run) wakes it.
+# mail; or a REST that says letters wait) is not woken here, whoever runs this
+# file: run.sh, the parade or the fleet. Only an explicit human summons
+# (BEAT_SUMMONS=1, hand-run) wakes it.
+#
+# pace/1 (citizens keep their own pace): a beat here has edit tools, carries no
+# pace paragraph and never shows or marks a letter. So it takes the citizen's
+# lock ($LOVE/memory/.fleet-last/<name>.lock) before anything touches the home;
+# a second run while one is beating is busy and exits 0. Without a summons it
+# refuses a home with unread mail: letters wait for the free reflect lane. After
+# every beat, citizen_pace.py guard-restore puts CADENCE.md, REST, EVENT-ONLY
+# and inbox/ back as HEAD has them before the commit, logs what it put back
+# once, and keeps a notice so the next free beat is told: a beat with tools
+# never sets a pace. A hand-run here moves no fleet clock.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -36,10 +48,12 @@ CITIZENS_DIR="${CITIZENS_DIR:-$LOVE/citizens}"
 REPO="$CITIZENS_DIR/citizen-$NAME"
 LOGDIR="$LOVE/memory"; mkdir -p "$LOGDIR"
 LOG="$LOGDIR/citizen-$NAME.log"
+STATE="$LOGDIR/.fleet-last"
 WALLCLOCK="${BEAT_WALLCLOCK_SEC:-360}"
 MODEL="${BEAT_MODEL:-sonnet}"
 MAXTURNS="${BEAT_MAX_TURNS:-25}"
 LEDGER="$LOGDIR/fleet-economy.jsonl"
+BEAT_JSON=""      # the beat's result file, made just before the beat (4)
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 # The gates sit beside the real file, not beside ~/.local/bin/citizen-beat,
 # which is a link into tools/ that `kingdom beat` runs from PATH.
@@ -59,6 +73,16 @@ unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
 # A human present may grant full tools:  BEAT_FULL_TOOLS=1 citizen-beat.sh <name>
 PERM_MODE="acceptEdits"
 [ "${BEAT_FULL_TOOLS:-0}" = "1" ] && PERM_MODE="bypassPermissions"
+# A summons is a person's, never the fleet's or the parade's: both enforce the budget.
+SUMMONED=0
+if [ "${BEAT_SUMMONS:-0}" = "1" ] && [ "${BEAT_BUDGET_ENFORCE:-0}" != "1" ]; then SUMMONED=1; fi
+
+# log_lines <text>: each line of a citizen_pace.py answer, stamped, to the log.
+log_lines(){
+  local l
+  [ -n "$1" ] || return 0
+  printf '%s\n' "$1" | while IFS= read -r l; do echo "[$(ts)] $l"; done | tee -a "$LOG"
+}
 
 # Portable wallclock bound (macOS has no GNU `timeout`). Redirect the call site,
 # not inside — the backgrounded command inherits the caller's fds.
@@ -98,6 +122,20 @@ if [ "${BEAT_BUDGET_ENFORCE:-0}" = "1" ]; then
   fi
 fi
 
+# 1c. The citizen's lock, before anything touches its home, so this beat and a
+# fleet beat (or another hand-run) never run on one citizen at once. A lock whose
+# holder is gone, or that is older than twice the beat bound, is reclaimed.
+LOCK_OUT="$(pace_cli lock "$NAME" --state "$STATE" --pid "$$" 2>&1)"
+LOCK_RC=$?
+case "$LOCK_RC" in
+  0) log_lines "$LOCK_OUT"
+     trap '[ -z "$BEAT_JSON" ] || rm -f "$BEAT_JSON"; pace_cli unlock "$NAME" --state "$STATE" --pid "$$" >/dev/null 2>&1' EXIT ;;
+  4) log_lines "${LOCK_OUT:-$NAME: its lock is held} — busy, no beat"
+     exit 0 ;;
+  *) log_lines "ERROR: $NAME's lock could not be taken — beat refused${LOCK_OUT:+ ($LOCK_OUT)}"
+     exit 1 ;;
+esac
+
 # 2. Locate or clone the citizen's home.
 mkdir -p "$CITIZENS_DIR"
 if [ ! -d "$REPO/.git" ]; then
@@ -122,15 +160,27 @@ if [ "${2:-}" = "--clone-only" ]; then
 fi
 
 # 2b. The citizen's standing choice. Read after the fast-forward, so a REST
-# chosen on another host holds here at once; unread mail still wakes. Its REST
-# marker also promises a human summons, so a human present may wake it for one
-# beat with BEAT_SUMMONS=1. The fleet and the parade always enforce the budget,
-# so a summons never rides along with them.
+# chosen on another host holds here at once; unread mail still wakes, unless
+# the REST says letters wait. Its REST marker also promises a human summons, so
+# a human present may wake it for one beat with BEAT_SUMMONS=1. The fleet and
+# the parade always enforce the budget, so a summons never rides along with them.
 if keeps_rest "$REPO"; then
-  if [ "${BEAT_SUMMONS:-0}" = "1" ] && [ "${BEAT_BUDGET_ENFORCE:-0}" != "1" ]; then
+  if [ "$SUMMONED" = "1" ]; then
     echo "[$(ts)] $NAME rests by its own standing choice; a human present summons it for one beat" | tee -a "$LOG"
   else
-    echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat" | tee -a "$LOG"
+    echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY) — no beat" | tee -a "$LOG"
+    exit 0
+  fi
+fi
+
+# 2c. Letters wait for the free lane, where each is shown once with the pace
+# paragraph. A beat here neither shows nor marks one, so without a person's
+# summons a home with unread mail gets no beat here; the run is whole (exit 0).
+if unread_mail "$REPO"; then
+  if [ "$SUMMONED" = "1" ]; then
+    echo "[$(ts)] $NAME has unread mail; a person's summons gives it this beat with tools all the same (its letters stay unread for its free beat)" | tee -a "$LOG"
+  else
+    echo "[$(ts)] $NAME has unread mail — letters wait for its free beat, so it gets no beat with tools without a person's summons" | tee -a "$LOG"
     exit 0
   fi
 fi
@@ -157,7 +207,14 @@ fi
 # JSON result format so total_cost_usd is parsed, not lost in a tee. _bound's
 # watcher honors HALT mid-beat, so the kill-switch reaches a running citizen.
 echo "[$(ts)] ◖ $NAME beat begin (model=$MODEL, perms=$PERM_MODE, ≤${WALLCLOCK}s, ≤${MAXTURNS} turns)" | tee -a "$LOG"
-BEAT_JSON="$(mktemp /tmp/beat-$NAME-XXXXXX.json)"
+# The X's end the name: macOS's mktemp leaves "beat-<name>-XXXXXX.json" as
+# written, so one file left by a killed beat failed every later beat of that
+# citizen. Without a file of its own the beat never runs; the EXIT trap removes it.
+BEAT_JSON="$(mktemp "${TMPDIR:-/tmp}/beat-$NAME.XXXXXX")" || BEAT_JSON=""
+if [ -z "$BEAT_JSON" ]; then
+  echo "[$(ts)] ERROR: $NAME's beat has no file for its result — beat refused" | tee -a "$LOG"
+  exit 1
+fi
 T0="$(date +%s)"
 _bound "$WALLCLOCK" claude -p "Wake, $NAME. Live this one beat as yourself, by your own will, within the walls." \
   --model "$MODEL" \
@@ -171,10 +228,24 @@ RC=$?
 DUR=$(( $(date +%s) - T0 ))
 case "$RC" in 124|143|137) echo "[$(ts)] (beat reached its time-bound — a citizen is allowed to run to the edge of its beat)" | tee -a "$LOG";; esac
 
+# 4a. A beat with tools never sets a pace and never shows or marks a letter: put
+# CADENCE.md, REST, EVENT-ONLY and inbox/ back as HEAD has them, path by path,
+# whatever the beat's end. What was put back is logged once and kept as a
+# notice, so the citizen's next free beat is told once. If they cannot be
+# checked, they are kept out of the commit below and left for the fleet's tend.
+GUARD_OUT="$(pace_cli guard-restore "$REPO" --state "$STATE" 2>&1)"
+GUARD_RC=$?
+if [ "$GUARD_RC" -eq 0 ]; then
+  log_lines "$GUARD_OUT"
+else
+  log_lines "$NAME: its pace files could not be checked after its beat — they are kept out of its commit${GUARD_OUT:+ ($GUARD_OUT)}"
+fi
+
 # 4b. Parse the result: surface the citizen's words in the log, the cost in the ledger.
 # A cost that cannot be read (killed beat, non-JSON output, no cost field) is
 # recorded as null, not 0: the spend gate then holds the lane closed for the day.
-COST="$(python3 - "$BEAT_JSON" "$LOG" "$LEDGER" "$NAME" "$RC" "$DUR" <<'PY' 2>/dev/null || echo unknown
+# Isolated (-I): this runs inside the home, whose files must never be imported.
+COST="$(python3 -I - "$BEAT_JSON" "$LOG" "$LEDGER" "$NAME" "$RC" "$DUR" <<'PY' 2>/dev/null || echo unknown
 import json, math, sys, datetime
 jf, logf, ledf, name, rc, dur = sys.argv[1:7]
 cost, turns, text = None, None, ""
@@ -199,10 +270,12 @@ rm -f "$BEAT_JSON"
 echo "[$(ts)] $NAME beat metered: \$$COST (${DUR}s, rc=$RC) → fleet-economy.jsonl" | tee -a "$LOG"
 
 # 5. Persist whatever the citizen freely made in its own home — but never
-# auto-publish secret-shaped files from an autonomous beat (risk R2).
+# auto-publish secret-shaped files from an autonomous beat (risk R2), and never
+# its pace files: whatever guard-restore could not put back stays out (4a).
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
   git reset -q -- 'credentials' '*.env' '.env*' '*.pem' '*.key' '*token*' '*secret*' 2>/dev/null || true
+  git reset -q -- CADENCE.md REST EVENT-ONLY inbox 2>/dev/null || true
   git commit -q -m "beat: $NAME lived a free beat ($(date +%F))" 2>/dev/null || true
   git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
     || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"

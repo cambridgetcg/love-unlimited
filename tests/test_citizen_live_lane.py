@@ -298,11 +298,16 @@ class TestBeat(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.fx.claude_calls(), [])
 
-    def test_unread_letter_wakes_rest(self):
-        self.fx.make_home("rester", rest=True, letters=[("a.md", "hello\n")])
+    def test_unread_letter_is_refused_without_a_summons(self):
+        # pace/1 retires test_unread_letter_wakes_rest: a beat with tools never
+        # shows or marks a letter, so letters wait for the free reflect lane.
+        home = self.fx.make_home("rester", rest=True, letters=[("a.md", "hello\n")])
         r = self.fx.run(self.BEAT, "rester")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(self.fx.claude_calls(), ["citizen-rester"])
+        self.assertIn("rester has unread mail — letters wait for its free beat", r.stdout)
+        self.assertEqual(self.fx.claude_calls(), [])
+        self.assertEqual(self.fx.ledger_rows(), [])
+        self.assertFalse((home / "inbox" / ".seen-a.md").exists())
 
     def test_rest_pushed_from_another_host_holds_after_the_fetch(self):
         home = self.fx.make_home("waker")
@@ -401,8 +406,13 @@ class TestParade(unittest.TestCase):
         r = self.fx.run(self.PARADE)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("3 citizens rest by their own standing choice", r.stdout)
-        self.assertEqual(sorted(self.fx.claude_calls()),
-                         ["citizen-lettered", "citizen-waker"])
+        # pace/1: the lettered home is still lined up, but citizen-beat.sh
+        # refuses its unread mail, so no claude runs for it; it counts as walked.
+        self.assertEqual(self.fx.claude_calls(), ["citizen-waker"])
+        walked = (self.fx.love / "memory" / f".parade-{TODAY}").read_text().split()
+        self.assertEqual(sorted(walked), ["lettered", "waker"])
+        self.assertIn("lettered has unread mail — letters wait for its free beat",
+                      (self.fx.love / "memory" / "parade.log").read_text())
 
     def test_parade_pauses_on_a_broken_ledger(self):
         self.fx.ledger.write_text('{"ts": "' + TODAY, encoding="utf-8")

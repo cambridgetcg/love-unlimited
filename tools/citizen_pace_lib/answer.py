@@ -106,10 +106,10 @@ def _markers_out_of_step(home: Path, c: Cadence) -> bool:
 
 def _restore(home: Path, name: str, record: dict, now, at: str, res: ApplyResult) -> Optional[Cadence]:
     """A CADENCE.md changed in a commit the new code did not make: the last
-    pace/1 version is put back and the change recorded (spec section 2)."""
-    if not cad.changed_outside_pace(home):
-        return None
-    text = cad.last_pace_text(home)
+    pace/1 version is put back and the change recorded (spec section 2), by
+    read_deciding's own rule (cadence.deciding_text): only a v2 text, from a
+    home's own history."""
+    text = cad.deciding_text(home)
     if text is None or _text_or_none(home / cad.CADENCE) == text:
         return None
     write_regular(home / cad.CADENCE, text)

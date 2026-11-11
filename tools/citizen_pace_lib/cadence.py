@@ -527,24 +527,31 @@ def _newest_subject(home) -> Optional[str]:
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
+def deciding_text(home) -> Optional[str]:
+    """The last pace/1 CADENCE.md text, when it decides over the file (spec
+    section 2): the home is a clone of its own (a .git folder, so its history is
+    its own), the newest commit that touched CADENCE.md was made outside pace/1
+    after a pace/1 one, and that pace/1 text is v2. Otherwise None.
+    read_deciding reads by it, and apply puts it back."""
+    dot_git = Path(home) / ".git"
+    if os.path.islink(dot_git) or not os.path.isdir(dot_git):
+        return None
+    subject = _newest_subject(home)
+    if subject is None or _tagged(subject) or not changed_outside_pace(home):
+        return None
+    text = last_pace_text(home)
+    return text if text is not None and _is_v2(text) else None
+
+
 def read_deciding(home, name: str, record: dict, now: Optional[_dt.datetime] = None) -> Cadence:
     """The record that decides the pace (spec section 2). When CADENCE.md was
     changed in a commit the new code did not make, after a pace/1 version, that
     version decides, as a disagreeing marker does, until the next commit for
-    this home restores it; otherwise read_cadence's. Only a home that is a
-    clone of its own (a .git folder) has a history to read. Never writes;
-    raises LinkRefused as read_cadence does."""
+    this home restores it; otherwise read_cadence's (deciding_text). Never
+    writes; raises LinkRefused as read_cadence does."""
     c = read_cadence(home, name, record, now)
-    dot_git = Path(home) / ".git"
-    if os.path.islink(dot_git) or not os.path.isdir(dot_git):
-        return c
-    subject = _newest_subject(home)
-    if subject is None or _tagged(subject) or not changed_outside_pace(home):
-        return c
-    text = last_pace_text(home)
-    if text is None or not _is_v2(text):
-        return c
-    return _read_v2(text, name)
+    text = deciding_text(home)
+    return c if text is None else _read_v2(text, name)
 
 
 def last_pace_text(home) -> Optional[str]:

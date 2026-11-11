@@ -690,6 +690,34 @@ class TestWhenItWrites(ApplyCase):
         r = self.apply(home, "")
         self.assertEqual((r.wrote, r.events), (False, []))
 
+    def test_only_a_v2_text_from_the_home_s_own_history_is_put_back(self):
+        # fix wave A: apply restores by read_deciding's own rule (one helper). A v1
+        # text in a pace/1 commit (tend's old-code leftover commit can hold one) is
+        # never put back, and a folder that is not a clone of its own never takes
+        # another repository's history for its own
+        home = self.v1_home("ud", "rest-on", rest=lor_rest("2026-07-18"))
+        self.fx.write(home, "CADENCE.md", v1("ud", "undecided", "2026-11-19 00:00"))
+        self.fx.commit(home, f"tend: old-code leftover · {TAG}", author=h.FLEET_AUTHOR)
+        self.fx.write(home, "CADENCE.md", v1("ud", "ambient", "2026-11-22 00:00"))
+        self.fx.commit(home, "beat: ud reflected (2026-11-22)", author=h.beat_author("ud"))
+        self.assertTrue(cad.changed_outside_pace(home))
+        self.assertIn("- choice: undecided", cad.last_pace_text(home))
+        outer = self.v2_home("outer", awake(5), OWN)
+        inner = outer / "citizen-inner"
+        self.fx.write(inner, "CADENCE.md", cad.render_cadence(Cadence("inner", 2, awake(5), OWN, last_beat=T0)))
+        self.fx.commit(outer, f"beat: inner reflected (2026-11-12) · {TAG}")
+        asleep = Cadence("inner", 2, ASLEEP, AI_1008, last_beat=T0)
+        self.fx.write(inner, "CADENCE.md", cad.render_cadence(asleep))
+        self.fx.write(inner, "REST", cad.marker_texts(asleep)["REST"])
+        self.fx.commit(outer, "beat: inner reflected (2026-11-13)")
+        self.assertTrue(cad.changed_outside_pace(inner))
+        for case, name in ((home, "ud"), (inner, "inner")):
+            with self.subTest(home=name):
+                before = snapshot(case)
+                r = apply_answer(case, name, "", [], "schedule", at(T1), RECORD)
+                self.assertEqual(r.to_json(), {"wrote": False, "pace_changed": False, "events": []})
+                self.assertEqual(snapshot(case), before)
+
 
 # -- refusals ---------------------------------------------------------------------
 

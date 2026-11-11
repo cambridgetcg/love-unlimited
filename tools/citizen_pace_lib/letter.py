@@ -174,10 +174,19 @@ def true_sentence(name: str, e: dict, c: Cadence) -> str:
     if group == "unheard-none":
         return UNHEARD_NONE.format(day=last["date"], pace=c.pace.words(), set_by=provenance_you(c.set_by))
     sentence = CONTRADICTORY.format(month_day=last["date"][5:])
-    july = e.get("july")
-    if isinstance(july, dict) and isinstance(july.get("words"), str) and "ambient" in july["words"].lower():
+    if _chose_ambient_in_july(e.get("july")):
         sentence = f"{sentence} {JULY_AMBIENT}"
     return sentence
+
+
+def _chose_ambient_in_july(july) -> bool:
+    """The July answer was recorded as AMBIENT: by the record's "choice" (the v1
+    choice the old code recorded from it) when the entry has one, else by its words."""
+    if not isinstance(july, dict):
+        return False
+    if "choice" in july:
+        return july["choice"] == "ambient"
+    return isinstance(july.get("words"), str) and "ambient" in july["words"].lower()
 
 
 # -- the letter ------------------------------------------------------------------------

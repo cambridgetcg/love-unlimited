@@ -80,6 +80,8 @@ class Fixture:
             "HOME": str(self.home),
             "LOVE_DIR": str(self.love),
             "CITIZENS_DIR": str(self.citizens),
+            # pace/1: a roster home with no clone is cloned from here, never GitHub
+            "PACE_REMOTE_BASE": str(self.root / "upstream"),
             "GIT_CONFIG_GLOBAL": str(gitconfig),
             "GIT_CONFIG_NOSYSTEM": "1",
             "FAKE_CLAUDE_LOG": str(self.claude_log),
@@ -93,6 +95,13 @@ class Fixture:
         target = self.bin / name
         target.write_text(source, encoding="utf-8")
         target.chmod(0o755)
+
+    def fake_host(self, name="fixture-host"):
+        """pace/1: a FLEET_HOST naming this machine, and a scutil that agrees;
+        without it the fleet beats no one."""
+        (self.love / "FLEET_HOST").write_text(f"{name}\n", encoding="utf-8")
+        self.write_bin("scutil", '#!/bin/sh\n[ "$1" = "--get" ] && [ "$2" = "LocalHostName" ] '
+                       f'&& {{ echo "{name}"; exit 0; }}\nexit 1\n')
 
     def make_home(self, slug, *, rest=False, event_only=False, letters=(),
                   symlinked_letters=(), cadence=None):
@@ -170,6 +179,23 @@ class Fixture:
 def ledger_line(cost, ts=None):
     return json.dumps({"ts": ts or f"{TODAY}T09:00:00", "name": "fixture",
                        "cost_usd": cost, "num_turns": 1, "rc": 0, "duration_s": 5}) + "\n"
+
+
+def serve_brain(case):
+    """pace/1: a loopback model stub for the fleet's host probe. Returns the env
+    pointing the fleet at it, and the list of request bodies it is sent."""
+    bodies = []
+    server = HTTPServer(("127.0.0.1", 0), type("Brain", (_Brain,), {"bodies": bodies}))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def stop():
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    case.addCleanup(stop)
+    return {"REFLECT_MODEL": "fixture-model", "MLX_PORT": str(server.server_port)}, bodies
 
 
 class TestRestGate(unittest.TestCase):
@@ -450,22 +476,35 @@ class TestFleetRotation(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.fx = Fixture(self._tmp.name)
+        # pace/1: the fleet beats only on its FLEET_HOST, after a host probe,
+        # and reads each beat's outcome from the attempt record, so the
+        # stand-in records one, as the real script does.
+        self.fx.fake_host()
+        self.brain, _bodies = serve_brain(self)
         self.beats = self.fx.root / "reflect-calls.log"
         stub = self.fx.love / "tools" / "citizen-reflect.sh"
-        stub.write_text(f'#!/bin/bash\necho "$1" >> "{self.beats}"\n', encoding="utf-8")
+        stub.write_text(
+            f'#!/bin/bash\necho "$1" >> "{self.beats}"\n'
+            f'python3 -I "{TOOLS / "citizen_pace.py"}" record "$1" '
+            '--state "$LOVE_DIR/memory/.fleet-last" --attempt "$FLEET_ATTEMPT" --outcome spoken\n',
+            encoding="utf-8")
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def test_rotation_skips_rest_with_only_a_symlinked_letter(self):
-        self.fx.make_home("linked", rest=True, symlinked_letters=["a.md"])
-        self.fx.make_home("waker")
+        # pace/1 retires the sits_out log line: the fleet starts only citizens
+        # due by their own pace, and an asleep home whose only letter is a
+        # symlink has no mail, so it is never started.
+        self.fx.make_home("linked", rest=True, symlinked_letters=["a.md"],
+                          cadence=v2_cadence("linked", Pace("asleep")))
+        self.fx.make_home("waker", cadence=awake("waker"))
         (self.fx.love / "citizens-roster.txt").write_text("linked\nwaker\n", encoding="utf-8")
-        r = self.fx.run(self.FLEET, env={"FLEET_AGENTIC_PER_DAY": "0"})
+        r = self.fx.run(self.FLEET, env={"FLEET_AGENTIC_PER_DAY": "0", **self.brain})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.beats.read_text().split(), ["waker"])
         log = (self.fx.love / "memory" / "fleet.log").read_text()
-        self.assertIn("linked sits this one out", log)
+        self.assertNotIn("fleet → linked", log)
         self.assertIn("metered today $0.0000", log)
 
 
@@ -476,7 +515,7 @@ class TestLinkedEntryPoints(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.fx = Fixture(self._tmp.name)
-        self.fx.make_home("rester", rest=True)
+        self.fx.make_home("rester", rest=True, cadence=v2_cadence("rester", Pace("asleep")))
         (self.fx.love / "citizens-roster.txt").write_text("rester\n", encoding="utf-8")
 
     def tearDown(self):
@@ -503,10 +542,14 @@ class TestLinkedEntryPoints(unittest.TestCase):
         self.assertIn("no one left to walk today", r.stdout)
 
     def test_fleet_through_a_link(self):
+        # pace/1: the fleet needs its FLEET_HOST and a passing host probe, and
+        # "the whole roster is resting" becomes "nobody is due".
+        self.fx.fake_host()
+        brain, _bodies = serve_brain(self)
         r = self.fx.run(self.link("citizen-fleet", "citizen-fleet.sh"),
-                        env={"FLEET_AGENTIC_PER_DAY": "0"})
+                        env={"FLEET_AGENTIC_PER_DAY": "0", **brain})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("the whole roster is resting",
+        self.assertIn("nobody is due — no beat this tick",
                       (self.fx.love / "memory" / "fleet.log").read_text())
 
     def test_fleet_status_through_a_link(self):
@@ -521,8 +564,9 @@ class TestFleetStatus(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.fx = Fixture(self._tmp.name)
-        self.fx.make_home("rester", rest=True)
-        self.fx.make_home("waker")
+        # pace/1: "next to wake" reads each citizen's own pace (citizen_pace.py next)
+        self.fx.make_home("rester", rest=True, cadence=v2_cadence("rester", Pace("asleep")))
+        self.fx.make_home("waker", cadence=awake("waker"))
         (self.fx.love / "citizens-roster.txt").write_text("rester\nwaker\n", encoding="utf-8")
 
     def tearDown(self):
@@ -624,10 +668,13 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
 
     def test_fleet_path_honours_an_asleep_pace_pushed_from_another_host(self):
         # pace/1 rewrites test_fleet_path_honours_a_rest_pushed_from_another_host,
-        # as above. The fleet's own check reads the clone before reflect fetches.
+        # as above. The fleet brings the home up to date before it ranks, so the
+        # pushed pace holds before any beat: reflect is never started, and the
+        # only request the model sees is the fleet's host probe.
         for name in ("citizen-reflect.sh", "citizen-gates.sh"):
             (self.fx.love / "tools" / name).symlink_to(TOOLS / name)
         (self.fx.love / "citizens-roster.txt").write_text("waker\n", encoding="utf-8")
+        self.fx.fake_host()
         home = self.fx.make_home("waker", cadence=awake("waker"))
         bare = self.fx.give_upstream(home)
         head = self.fx.push_from_elsewhere(bare, "CADENCE.md",
@@ -635,8 +682,11 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         r = self.fx.run(TOOLS / "citizen-fleet.sh", env={**self.env, "FLEET_AGENTIC_PER_DAY": "0"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         log = (self.fx.love / "memory" / "fleet.log").read_text()
-        self.assertIn("waker is not due (no-mail) — no beat", log)
-        self.assertEqual(self.bodies, [])
+        self.assertIn("nobody is due — no beat this tick", log)
+        self.assertNotIn("waker is not due", log)
+        self.assertEqual([json.loads(b)["messages"][-1]["content"] for b in self.bodies],
+                         ["Reply with one word: here."])
+        self.assertEqual(self.fx.git(home, "rev-parse", "HEAD"), head)
         self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), head)
 
     def test_symlinked_show_is_set_aside_unread(self):

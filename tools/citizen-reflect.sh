@@ -275,13 +275,13 @@ elif step == "clone":
         print(why)
     code = 0 if ok else 1
 elif step == "tend":
-    # the home as the fleet's tend leaves it after its first tick: a beat's
-    # leftovers put back path by path; before that tick, a home holding any is
-    # left as it is (2). This beat holds the lock (pid args[0]).
+    # the home as the fleet's tend leaves it after the home's own first tend: a
+    # beat's leftovers put back path by path; before that tend (a fact of each
+    # home), a home holding any is left as it is (2), and one holding none has
+    # its first tend here. This beat holds the lock (pid args[0]).
     from citizen_pace_lib import homes, tend
     try:
-        first = not tend.has_flag(tend.notices_path(state), tend.OLD_CODE_FLAG)
-        for line in tend.tend_home(repo, state, first_tick=first, own=int(args[0])):
+        for line in tend.tend_home(repo, state, own=int(args[0])):
             print(line)
         code = 0
     except tend.FirstTickPending:
@@ -362,9 +362,9 @@ cd "$REPO" || fail "$NAME reflect: its home cannot be entered"
 # No tick tends a home between a beat that did not land and a hand-run, so this
 # beat tends its own, as the fleet's tend does: what is uncommitted under the
 # pace paths is put back path by path and logged, never built on; the commit
-# below then holds only what this beat wrote. Before the fleet's first tick on
-# pace/1 such files may be the old code's, which that tick commits once: a home
-# holding any is left untouched and gets no beat.
+# below then holds only what this beat wrote. Before the home's first full tend
+# on pace/1 such files may be the old code's, which that tend commits once: a
+# home holding any is left untouched and gets no beat.
 TENDED="$(reflect_py tend "$$" 2>&1)"
 case $? in
   0) log_lines "$TENDED" ;;

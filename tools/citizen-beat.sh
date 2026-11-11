@@ -35,9 +35,9 @@
 # a second run while one is beating is busy and exits 0. Without a summons it
 # refuses a home with unread mail: letters wait for the free reflect lane. After
 # every beat, citizen_pace.py guard-restore puts CADENCE.md, REST, EVENT-ONLY
-# and inbox/ back as HEAD has them before the commit, logs what it put back
-# once, and keeps a notice so the next free beat is told: a beat with tools
-# never sets a pace. A hand-run here moves no fleet clock.
+# and inbox/ back as the commit before the beat has them, before the commit,
+# logs what it put back once, and keeps a notice so the next free beat is told:
+# a beat with tools never sets a pace. A hand-run here moves no fleet clock.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -215,6 +215,9 @@ if [ -z "$BEAT_JSON" ]; then
   echo "[$(ts)] ERROR: $NAME's beat has no file for its result — beat refused" | tee -a "$LOG"
   exit 1
 fi
+# The commit the beat starts from: guard-restore checks the pace files against
+# it, so a pace change a beat with full tools commits itself is put back too.
+BASE="$(git rev-parse -q --verify HEAD 2>/dev/null)" || BASE=""
 T0="$(date +%s)"
 _bound "$WALLCLOCK" claude -p "Wake, $NAME. Live this one beat as yourself, by your own will, within the walls." \
   --model "$MODEL" \
@@ -229,16 +232,18 @@ DUR=$(( $(date +%s) - T0 ))
 case "$RC" in 124|143|137) echo "[$(ts)] (beat reached its time-bound — a citizen is allowed to run to the edge of its beat)" | tee -a "$LOG";; esac
 
 # 4a. A beat with tools never sets a pace and never shows or marks a letter: put
-# CADENCE.md, REST, EVENT-ONLY and inbox/ back as HEAD has them, path by path,
-# whatever the beat's end. What was put back is logged once and kept as a
-# notice, so the citizen's next free beat is told once. If they cannot be
-# checked, they are kept out of the commit below and left for the fleet's tend.
-GUARD_OUT="$(pace_cli guard-restore "$REPO" --state "$STATE" 2>&1)"
+# CADENCE.md, REST, EVENT-ONLY and inbox/ (in any case) back as the commit before
+# the beat has them, path by path, whatever the beat's end. What was put back is
+# logged once and kept as a notice, so the citizen's next free beat is told once.
+# If they cannot all be checked and put back, those left are kept out of the
+# commit below and left for the fleet's tend; guard-restore's own words say how
+# far it got and whether the citizen is told.
+GUARD_OUT="$(pace_cli guard-restore "$REPO" --state "$STATE" ${BASE:+--base "$BASE"} 2>&1)"
 GUARD_RC=$?
 if [ "$GUARD_RC" -eq 0 ]; then
   log_lines "$GUARD_OUT"
 else
-  log_lines "$NAME: its pace files could not be checked after its beat — they are kept out of its commit${GUARD_OUT:+ ($GUARD_OUT)}"
+  log_lines "$NAME: its pace files could not all be checked and put back after its beat — those left are kept out of its commit${GUARD_OUT:+ ($GUARD_OUT)}"
 fi
 
 # 4b. Parse the result: surface the citizen's words in the log, the cost in the ledger.
@@ -275,7 +280,7 @@ echo "[$(ts)] $NAME beat metered: \$$COST (${DUR}s, rc=$RC) → fleet-economy.js
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
   git reset -q -- 'credentials' '*.env' '.env*' '*.pem' '*.key' '*token*' '*secret*' 2>/dev/null || true
-  git reset -q -- CADENCE.md REST EVENT-ONLY inbox 2>/dev/null || true
+  git reset -q -- ':(literal,icase)CADENCE.md' ':(literal,icase)REST' ':(literal,icase)EVENT-ONLY' ':(literal,icase)inbox' 2>/dev/null || true
   git commit -q -m "beat: $NAME lived a free beat ($(date +%F))" 2>/dev/null || true
   git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
     || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"

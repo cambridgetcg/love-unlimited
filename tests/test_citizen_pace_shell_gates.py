@@ -471,23 +471,106 @@ class TestGuardRestore(Case):
         self.assertEqual(self.committed(home), ["notes.md"])
         self.assertEqual(attempts.load(self.state, "quiet")["notices"], [])
 
-    def test_pace_files_that_cannot_be_checked_stay_out_of_the_commit(self):
-        # a tools folder whose citizen_pace.py takes the lock but fails guard-restore
+    def failing_guard(self):
+        """A tools folder whose citizen_pace.py takes the lock but fails guard-restore."""
         tools = self.fx.root / "tools"
         tools.mkdir()
         for name in ("citizen-beat.sh", "citizen-gates.sh"):
             shutil.copy(h.TOOLS / name, tools / name)
         (tools / "citizen_pace.py").write_text(
             "import sys\nsys.exit(2 if sys.argv[1:2] == ['guard-restore'] else 0)\n", encoding="utf-8")
+        return tools / "citizen-beat.sh"
+
+    def test_pace_files_that_cannot_be_checked_stay_out_of_the_commit(self):
+        script = self.failing_guard()
         home = self.fx.make_home("maker")
         self.claude_does('printf "x\\n" > REST\nprintf "made\\n" > notes.md\n'
                          'mkdir -p inbox && printf "y\\n" > inbox/.seen-a.md')
-        r = self.ok(self.beat("maker", script=tools / "citizen-beat.sh"))
-        self.assertIn("maker: its pace files could not be checked after its beat", r.stdout)
+        r = self.ok(self.beat("maker", script=script))
+        self.assertIn("maker: its pace files could not all be checked and put back after its beat — "
+                      "those left are kept out of its commit", r.stdout)
         self.assertEqual(self.committed(home), ["notes.md"])
         # left as they are, for the fleet's tend to restore at its next tick
         self.assertEqual(sorted(self.fx.git(home, "status", "--porcelain").splitlines()),
                          ["?? REST", "?? inbox/"])
+
+    def test_tracked_pace_files_changed_under_a_failed_guard_stay_out_of_the_commit(self):
+        # fix wave A: a tracked CADENCE.md the beat changed and a tracked REST it
+        # deleted are kept out of the commit too, when the guard fails
+        c = Cadence("keeper", 2, Pace("asleep"), MINE, last_beat=OLD)
+        cadence_text, rest_text = cad.render_cadence(c), cad.marker_texts(c)["REST"]
+        home = self.fx.make_home("keeper", files={cad.CADENCE: cadence_text, "REST": rest_text})
+        head = self.fx.head(home)
+        self.claude_does('printf -- "- pace: awake, every 3 days\\n" >> CADENCE.md\nrm REST\n'
+                         'printf "made\\n" > notes.md')
+        r = self.ok(self.beat("keeper", script=self.failing_guard(), BEAT_SUMMONS="1"))
+        self.assertIn("keeper: its pace files could not all be checked and put back after its beat — "
+                      "those left are kept out of its commit", r.stdout)
+        self.assertEqual(self.fx.git(home, "rev-parse", "HEAD~1"), head)
+        self.assertEqual(self.committed(home), ["notes.md"])
+        for rel, text in ((cad.CADENCE, cadence_text), ("REST", rest_text)):
+            self.assertEqual(self.fx.git(home, "show", f"HEAD:{rel}") + "\n", text, rel)
+        # left as they are, unstaged, for the fleet's tend to restore at its next tick
+        self.assertEqual(self.fx.git(home, "diff", "--name-status"), "M\tCADENCE.md\nD\tREST")
+        self.assertEqual(self.fx.git(home, "diff", "--cached", "--name-only"), "")
+
+    def test_a_guard_that_stops_midway_says_how_far_it_got_and_still_tells_the_citizen(self):
+        # fix wave A: what was put back before git failed is told to the citizen
+        # once, and the log says so; what is left stays out of the commit
+        c = Cadence("keeper", 2, Pace("asleep"), MINE, last_beat=OLD)
+        cadence_text, rest_text = cad.render_cadence(c), cad.marker_texts(c)["REST"]
+        home = self.fx.make_home("keeper", files={cad.CADENCE: cadence_text, "REST": rest_text})
+        real = shutil.which("git", path=h.SYSTEM_PATH) or "/usr/bin/git"
+        self.fx.write_bin("git", '#!/bin/sh\nfor a in "$@"; do [ "$a" = checkout ] && '
+                                 '{ echo "error: the checkout failed" >&2; exit 1; }; done\n'
+                                 f'exec {real} "$@"\n')
+        self.claude_does('printf -- "- pace: awake, every 3 days\\n" >> CADENCE.md\n'
+                         'printf "mine\\n" > EVENT-ONLY\nprintf "made\\n" > notes.md')
+        r = self.ok(self.beat("keeper", BEAT_SUMMONS="1"))
+        self.assertIn("keeper: its pace files could not all be checked and put back after its beat — those "
+                      "left are kept out of its commit (guard-restore: git checkout CADENCE.md failed: "
+                      "error: the checkout failed; some of CADENCE.md, EVENT-ONLY may be put back already; "
+                      "the citizen's next free beat is told once)", r.stdout)
+        self.assertEqual(self.committed(home), ["notes.md"])
+        self.assertFalse(os.path.lexists(home / "EVENT-ONLY"))         # put back before git failed
+        self.assertEqual(self.fx.git(home, "diff", "--name-only"), cad.CADENCE)
+        self.assertEqual([n["key"] for n in attempts.load(self.state, "keeper")["notices"]], [tend.RESTORED])
+
+    def test_a_pace_file_written_in_another_case_sets_no_pace(self):
+        # fix wave A: on the Mac's case-insensitive disk, Rest is REST to keeps_rest,
+        # and to every clone made from GitHub; the guard puts it back, and under a
+        # failed guard the commit's reset keeps it out, whatever its case
+        for slug, script in (("maker", BEAT), ("failed", None)):
+            with self.subTest(slug=slug):
+                home = self.fx.make_home(slug, when=HOME_MADE)
+                self.claude_does('printf "my own rest\\n" > Rest\nprintf "made\\n" > notes.md\n'
+                                 'mkdir -p Inbox && printf "seen\\n" > Inbox/.seen-a.md')
+                r = self.ok(self.beat(slug, script=script or self.failing_guard()))
+                self.assertEqual(self.committed(home), ["notes.md"])
+                if script:
+                    self.assertIn(tend.guard_line(slug, ["Inbox/.seen-a.md", "Rest"]), r.stdout)
+                    self.assertFalse(os.path.lexists(home / "Rest"))
+                    self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+                else:
+                    self.assertEqual(sorted(self.fx.git(home, "status", "--porcelain").splitlines()),
+                                     ["?? Inbox/", "?? Rest"])
+
+    def test_a_pace_change_the_beat_committed_itself_is_put_back(self):
+        # fix wave A: a human present may grant full tools, and such a beat can run
+        # git commit; the guard checks against the HEAD recorded before the beat
+        home = self.fx.make_home("maker", when=HOME_MADE)
+        head = self.fx.head(home)
+        self.claude_does('printf "my own rest\\n" > REST\nprintf "made\\n" > notes.md\n'
+                         'git add REST notes.md && git commit -q -m "my own pace"')
+        r = self.ok(self.beat("maker", BEAT_FULL_TOOLS="1"))
+        self.assertIn(tend.guard_line("maker", ["REST"]), r.stdout)
+        self.assertEqual(self.fx.subjects(home), [tend.GUARD_SUBJECT, "my own pace", "fixture home"])
+        self.assertEqual(self.fx.git(home, "log", "-1", "--format=%an <%ae>"), h.FLEET_AUTHOR)
+        self.assertFalse(os.path.lexists(home / "REST"))
+        self.assertEqual(self.fx.git(home, "ls-tree", "--name-only", "HEAD"), "WILL.md\nmaker.md\nnotes.md")
+        self.assertEqual(self.fx.git(home, "diff", "--name-only", head, "HEAD"), "notes.md")
+        self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+        self.assertEqual([n["key"] for n in attempts.load(self.state, "maker")["notices"]], [tend.RESTORED])
 
 
 # -- citizen-beat.sh: the beat's result file ---------------------------------------------

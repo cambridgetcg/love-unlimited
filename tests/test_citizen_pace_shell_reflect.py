@@ -692,6 +692,8 @@ class TestLeftovers(Case):
     def setUp(self):
         super().setUp()
         tend.set_flag(tend.notices_path(self.state), tend.OLD_CODE_FLAG)
+        for slug in ("sleeper", "waker"):                # past their own first tend
+            tend.mark_first_tend(self.state, slug)
 
     def failed_beat(self):
         """An asleep citizen with one letter. A fleet beat at FAILED_AT says "pace:
@@ -849,6 +851,33 @@ class TestBeforeTheFirstTick(Case):
         self.assertIn("LEFT-BY-THE-OLD-CODE", self.prompts()[-1])
         self.assertEqual(self.fx.subjects(home)[0], SUBJECT.format(slug="keeper"))
         self.assertEqual(read(home, f"inbox/.seen-{self.LEFT}"), answer.seen_text(DAY))
+
+    def test_a_home_the_fleet_s_first_tick_skipped_still_keeps_them(self):
+        # fix wave A: the first tick is a fact of each home. The fleet's first run
+        # has been (its flag is set), but it skipped this home (its lock was held),
+        # so what is uncommitted here may still be the old code's: kept, no beat
+        home = self.old_code_leftovers()
+        tend.set_flag(tend.notices_path(self.state), tend.OLD_CODE_FLAG)
+        before, head = self.files(home), self.fx.head(home)
+        r = self.ok(self.reflect("keeper", fleet=False), 1)
+        self.assertIn(self.REFUSED, r.stdout)
+        self.assertEqual(self.files(home), before)
+        self.assertEqual(self.fx.head(home), head)
+        self.assertEqual(self.prompts(), [])
+        self.assertFalse(tend.first_tend_done(self.state, "keeper"))
+        self.assert_unlocked("keeper")
+
+    def test_a_hand_run_on_a_clean_home_is_that_home_s_first_tend(self):
+        # a home with nothing uncommitted holds no old-code leftovers, so the beat's
+        # own tend is its first; a later killed beat's leftovers are then restored
+        home = self.v2("keeper", Pace("awake", 3))
+        self.ok(self.reflect("keeper", fleet=False))
+        self.assertTrue(tend.first_tend_done(self.state, "keeper"))
+        self.fx.write(home, "REST", "left by a killed beat\n")
+        tended = self.ok(self.fx.pace("tend", self.fx.citizens, "--roster", self.fx.roster("keeper"),
+                                      "--state", self.state, env=self.fx.env_at(NOW)))
+        self.assertIn("keeper: a killed beat's leftovers restored: REST", tended.stdout)
+        self.assertFalse((home / "REST").exists())
 
 
 class TestClonePush(Case):

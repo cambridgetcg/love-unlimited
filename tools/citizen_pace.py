@@ -55,7 +55,7 @@ commands:
   lock <slug> --state <dir> --pid <pid> [--bound S]
   unlock <slug> --state <dir> [--pid <pid>]
   probe --state <dir> [--timeout S]
-  guard-restore <home> --state <dir>
+  guard-restore <home> --state <dir> [--base <commit>]
   tend <homes-dir> --roster <f> --state <dir>
   sync <homes-dir> --roster <f> --state <dir> [--bound S]
   migrate --heard-late <homes-dir> [--record <f>] [--state <dir>] [--commit]
@@ -319,14 +319,18 @@ def p_guard_restore():
     p = _parser("guard-restore", "After a beat with tools: put the pace files back as HEAD has them.")
     p.add_argument("home")
     p.add_argument("--state", required=True)
+    p.add_argument("--base", help="the commit HEAD was before the beat (default: HEAD)")
     return p
 
 
 def cmd_guard_restore(a) -> int:
     home, slug = _home(a)
-    paths = tend.guard_restore(home, a.state)
+    notes = []
+    paths = tend.guard_restore(home, a.state, base=a.base, notes=notes)
     if paths:
         print(tend.guard_line(slug, paths))
+    for line in notes:
+        print(line)
     return OK
 
 

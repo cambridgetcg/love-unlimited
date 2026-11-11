@@ -726,11 +726,15 @@ class TestGuardRestore(Case):
         self.fx.write(home, "REST", "I rest\n")
         self.fx.write(home, f"inbox/.seen-{LETTER}", "seen by a tool\n")
         r = self.ok(self.pace("guard-restore", home, "--state", self.state))
+        aside = tend.set_aside_dir(self.state, "kalam") / "20261120T0600Z" / f"inbox/.seen-{LETTER}"
         self.assertEqual(r.stdout, "kalam: pace files put back after a beat with tools: "
-                                   f"CADENCE.md, REST, inbox/.seen-{LETTER}\n")
+                                   f"CADENCE.md, REST, inbox/.seen-{LETTER}\n"
+                                   f"kalam: inbox/.seen-{LETTER} was never committed — set aside at {aside}, "
+                                   "not deleted\n")
         self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), before)
         self.assertFalse((home / "REST").exists())
         self.assertFalse((home / "inbox" / f".seen-{LETTER}").exists())
+        self.assertEqual(aside.read_text(encoding="utf-8"), "seen by a tool\n")
         self.assertEqual([n["key"] for n in attempts.load(self.state, "kalam")["notices"]], ["restored"])
         r = self.ok(self.pace("guard-restore", home, "--state", self.state))
         self.assertEqual(r.stdout, "")
@@ -761,6 +765,7 @@ class TestTend(Case):
         self.state.mkdir(parents=True, exist_ok=True)
         (self.state / "cyra").write_text('{"last_beat": "9999-12-31T23:59-01:00"}\n', encoding="utf-8")
         tend.set_flag(tend.notices_path(self.state), tend.OLD_CODE_FLAG)
+        tend.mark_first_tend(self.state, "amara")           # past its first tend: leftovers are restored
         self.fx.write(self.fx.home_path("amara"), "REST", "left by a killed beat\n")
         os.chmod(bodhi / "inbox", 0)
         self.addCleanup(os.chmod, bodhi / "inbox", 0o755)

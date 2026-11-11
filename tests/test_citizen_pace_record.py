@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -425,6 +426,12 @@ class TestTend(Case):
     def flag_set(self):
         return tend.has_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
 
+    def past_first_tick(self, *slugs):
+        """The fleet's first tick has run, and these homes have had their first full tend."""
+        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        for slug in slugs:
+            tend.mark_first_tend(self.fx.state, slug)
+
     def test_the_first_tick_commits_old_code_leftovers_once_as_the_fleet(self):
         home = self.lettered_home()
         bare = self.fx.upstream / "citizen-kalam.git"
@@ -435,8 +442,7 @@ class TestTend(Case):
         self.assertEqual(lines, [
             "kalam: old-code leftover committed as the fleet (pushed): CADENCE.md, REST, beats/2026-11.md, "
             "inbox/.seen-2026-11-18-a-note.md",
-            "tend: the first tick on pace/1 — old-code leftovers, if any, were committed once; from now on "
-            "a killed beat's leftovers are restored"])
+            tend.FIRST_TICK_LINE])
         self.assertEqual(self.fx.git(home, "rev-parse", "HEAD~1"), before)
         self.assertEqual(self.last(home), f"{FLEET}|{FLEET}|{LEFTOVER}")
         self.assertEqual(self.files_in(home), [("A", "REST"), ("A", "inbox/.seen-2026-11-18-a-note.md"),
@@ -455,7 +461,7 @@ class TestTend(Case):
 
     def test_after_the_first_tick_leftovers_are_put_back_path_by_path(self):
         home = self.lettered_home()
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("kalam")
         committed = {p: (home / p).read_bytes() for p in ("CADENCE.md", "beats/2026-11.md",
                                                            "inbox/2026-11-18-a-note.md")}
         self.leftovers(home)
@@ -464,22 +470,31 @@ class TestTend(Case):
         self.fx.git(home, "add", "REST")                                       # staged, never committed
         (home / "WILL.md").write_text("a will being edited\n", encoding="utf-8")
         head = self.fx.head(home)
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
         self.assertEqual(self.tend("kalam"), [
             "kalam: a killed beat's leftovers restored: CADENCE.md, REST, beats/2026-11.md, "
-            "inbox/.seen-2026-11-18-a-note.md, inbox/2026-11-18-a-note.md, inbox/2026-11-19-placed.md"])
+            "inbox/.seen-2026-11-18-a-note.md, inbox/2026-11-18-a-note.md, inbox/2026-11-19-placed.md"] + [
+            f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
+            for rel in ("inbox/.seen-2026-11-18-a-note.md", "inbox/2026-11-19-placed.md")])
         self.assertEqual(self.fx.head(home), head)
         self.assertEqual({p: (home / p).read_bytes() for p in committed}, committed)
         for p in ("REST", "inbox/.seen-2026-11-18-a-note.md", "inbox/2026-11-19-placed.md"):
             self.assertFalse(os.path.lexists(home / p), p)
+        # an untracked letter is moved out of the home, never deleted (fix wave A)
+        self.assertEqual((aside / "inbox/2026-11-19-placed.md").read_text(encoding="utf-8"),
+                         "An uncommitted letter.\n")
         self.assertEqual(self.status(home), "M WILL.md")
 
     def test_a_home_holding_only_rest(self):
         home = self.fx.make_home("eucatastrophe", rest=hr.AI_REST, when="2026-10-08T12:00Z")
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("eucatastrophe")
         self.leftovers(home)
+        aside = tend.set_aside_dir(self.fx.state, "eucatastrophe") / "20261120T0600Z"
         self.assertEqual(self.tend("eucatastrophe"), [
             "eucatastrophe: a killed beat's leftovers restored: CADENCE.md, REST, beats/2026-11.md, "
-            "inbox/.seen-2026-11-18-a-note.md"])
+            "inbox/.seen-2026-11-18-a-note.md"] + [
+            f"eucatastrophe: {rel} was never committed — set aside at {aside / rel}, not deleted"
+            for rel in ("beats/2026-11.md", "inbox/.seen-2026-11-18-a-note.md")])
         self.assertEqual((home / "REST").read_text(encoding="utf-8"), hr.AI_REST)
         for p in ("CADENCE.md", "inbox", "beats"):
             self.assertFalse(os.path.lexists(home / p), p)
@@ -501,7 +516,7 @@ class TestTend(Case):
 
     def test_a_stale_index_lock_is_removed_and_a_fresh_one_keeps_the_home_out(self):
         home = self.lettered_home()
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("kalam")
         self.leftovers(home)
         lock = home / ".git" / "index.lock"
         lock.write_text("")
@@ -512,9 +527,11 @@ class TestTend(Case):
         old = os.stat(lock).st_mtime - 1300
         os.utime(lock, (old, old))
         lines = self.tend("kalam")
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines), 3)
         self.assertRegex(lines[0], r"^kalam: stale \.git/index\.lock removed \(\d+ s old\)$")
         self.assertTrue(lines[1].startswith("kalam: a killed beat's leftovers restored: "))
+        self.assertTrue(lines[2].startswith("kalam: inbox/.seen-2026-11-18-a-note.md was never committed — "
+                                            "set aside at "))
         self.assertFalse(lock.exists())
         # the bound comes from FLEET_BEAT_BOUND_SEC, as the fleet reads it
         lock.write_text("")
@@ -525,7 +542,7 @@ class TestTend(Case):
 
     def test_a_home_whose_lock_is_held_is_skipped_and_a_stale_lock_is_not(self):
         home = self.lettered_home()
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("kalam")
         self.leftovers(home)
         files = snapshot(home)
         lock = self.hold_lock("kalam")
@@ -548,7 +565,7 @@ class TestTend(Case):
 
     def test_a_home_with_links_is_never_touched(self):
         home = self.lettered_home()
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("kalam")
         self.leftovers(home)
         (home / "CADENCE.md").unlink()
         self.fx.link(home, "CADENCE.md", self.fx.secret)
@@ -596,7 +613,7 @@ class TestTend(Case):
         # one home's error never ends the tend of every home: an inbox that cannot
         # be listed leaves that home as it is (due reports it once, as a home that
         # cannot be read), and the homes on either side are tended as usual
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        self.past_first_tick("amara", "kalam", "zuri")
         homes = {slug: self.lettered_home(slug) for slug in ("amara", "kalam", "zuri")}
         for home in homes.values():
             self.leftovers(home)
@@ -605,7 +622,7 @@ class TestTend(Case):
         self.addCleanup(os.chmod, inbox, 0o755)
         left = self.status(homes["kalam"])
         lines = self.tend("amara", "kalam", "zuri")
-        self.assertEqual([ln.split(":")[0] for ln in lines], ["amara", "zuri"])
+        self.assertEqual(sorted({ln.split(":")[0] for ln in lines}), ["amara", "zuri"])
         for slug in ("amara", "zuri"):
             self.assertEqual(self.status(homes[slug]), "", slug)
         self.assertEqual(self.status(homes["kalam"]), left)
@@ -628,6 +645,130 @@ class TestTend(Case):
                 else:
                     self.assertEqual(got, ["kalam: .git/index.lock is fresh — not tended this tick"])
                     index.unlink()
+
+    def test_a_home_skipped_at_the_first_tick_commits_its_leftovers_at_its_own_first_tend(self):
+        # the first tick is a fact of each home (fix wave A): a home the first run
+        # skipped (mid-merge, its lock held, a fresh index.lock, an inbox that cannot
+        # be listed) keeps its old-code leftovers, a letter placed by hand and a
+        # journal's words among them, until its own first full tend commits them
+        # once; only after that is a killed beat's leftover restored
+        slugs = ("merging", "locked", "indexed", "unlisted")
+        homes = {slug: self.lettered_home(slug) for slug in slugs}
+        for home in homes.values():
+            self.fx.write(home, "inbox/2026-11-19-placed-by-hand.md", "A letter placed, never committed.\n")
+            hr.append_journal(self.fx, home, "2026-11-19T00:00Z", hr.stored("Old-code words."))
+        merge = homes["merging"] / ".git" / "MERGE_HEAD"
+        merge.write_text(self.fx.head(homes["merging"]) + "\n", encoding="utf-8")
+        held = self.hold_lock("locked")
+        index = homes["indexed"] / ".git" / "index.lock"
+        index.write_text("")
+        inbox = homes["unlisted"] / "inbox"
+        os.chmod(inbox, 0)
+        self.addCleanup(os.chmod, inbox, 0o755)
+        self.assertEqual(self.tend(*slugs), [
+            "locked: its lock is held — not tended this tick",
+            "indexed: .git/index.lock is fresh — not tended this tick",
+            tend.FIRST_TICK_LINE])
+        self.assertTrue(self.flag_set())
+        for slug in slugs:
+            self.assertFalse(tend.first_tend_done(self.fx.state, slug), slug)
+        merge.unlink()
+        shutil.rmtree(held)
+        index.unlink()
+        os.chmod(inbox, 0o755)
+        self.assertEqual(self.tend(*slugs), [
+            f"{slug}: old-code leftover committed as the fleet (pushed): beats/2026-11.md, "
+            "inbox/2026-11-19-placed-by-hand.md" for slug in slugs])
+        for slug, home in homes.items():
+            self.assertEqual(self.last(home), f"{FLEET}|{FLEET}|{LEFTOVER}", slug)
+            self.assertEqual((home / "inbox" / "2026-11-19-placed-by-hand.md").read_text(encoding="utf-8"),
+                             "A letter placed, never committed.\n")
+            self.assertIn("Old-code words.", (home / "beats" / "2026-11.md").read_text(encoding="utf-8"))
+            self.assertEqual(self.status(home), "", slug)
+            self.assertTrue(tend.first_tend_done(self.fx.state, slug), slug)
+        # from now on, each of them has a killed beat's leftovers restored
+        self.fx.write(homes["merging"], "REST", "left by a killed beat\n")
+        self.assertEqual(self.tend(*slugs), ["merging: a killed beat's leftovers restored: REST"])
+        self.assertFalse(os.path.lexists(homes["merging"] / "REST"))
+
+    def test_a_path_git_no_longer_knows_is_left_out_of_the_first_tick_s_commit(self):
+        # fix wave A: a path staged as added and then deleted (AD) is in neither HEAD
+        # nor the index once it is added, and a tracked letter removed with git rm is
+        # in HEAD only: neither stops the commit of the other leftovers
+        home = self.lettered_home()
+        self.fx.write(home, "inbox/.seen-x.md", "surfaced\n")
+        self.fx.git(home, "add", "inbox/.seen-x.md")
+        (home / "inbox" / ".seen-x.md").unlink()
+        self.fx.git(home, "rm", "-q", "inbox/2026-11-18-a-note.md")
+        self.fx.write(home, "inbox/2026-11-19-placed.md", "An uncommitted letter.\n")
+        self.assertEqual(self.status(home), "AD inbox/.seen-x.md\nD  inbox/2026-11-18-a-note.md\n"
+                                            "?? inbox/2026-11-19-placed.md")
+        self.assertEqual(self.tend("kalam"), [
+            "kalam: old-code leftover committed as the fleet (pushed): inbox/2026-11-18-a-note.md, "
+            "inbox/2026-11-19-placed.md",
+            tend.FIRST_TICK_LINE])
+        self.assertEqual(self.files_in(home), [("A", "inbox/2026-11-19-placed.md"),
+                                               ("D", "inbox/2026-11-18-a-note.md")])
+        self.assertEqual(self.status(home), "")
+        self.assertTrue(tend.first_tend_done(self.fx.state, "kalam"))
+
+    def test_an_untracked_letter_or_journal_is_set_aside_never_deleted(self):
+        # fix wave A, a deliberate change from spec section 6's "removed": an
+        # untracked regular file under inbox/ or beats/ may be a letter a person
+        # placed, so it is moved out of the home, into the fleet's state folder, and
+        # logged by name; an entry that is not a regular file is still removed
+        home = self.lettered_home()
+        self.past_first_tick("kalam")
+        placed = {"inbox/2026-11-19-placed.md": "A letter a person placed.\n",
+                  "inbox/nested/x.md": "Inside a folder.\n",
+                  "beats/2026-12.md": "A journal never committed.\n"}
+        for rel, text in placed.items():
+            self.fx.write(home, rel, text)
+        self.fx.link(home, "inbox/2026-11-19-linked.md", self.fx.secret)
+        self.fx.write(home, "REST", "left by a killed beat\n")
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
+        self.assertEqual(self.tend("kalam"), [
+            "kalam: a killed beat's leftovers restored: REST, beats/2026-12.md, inbox/2026-11-19-linked.md, "
+            "inbox/2026-11-19-placed.md, inbox/nested/x.md"] + [
+            f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
+            for rel in ("beats/2026-12.md", "inbox/2026-11-19-placed.md", "inbox/nested/x.md")])
+        for rel, text in placed.items():
+            self.assertFalse(os.path.lexists(home / rel), rel)
+            self.assertEqual((aside / rel).read_text(encoding="utf-8"), text, rel)
+        for rel in ("REST", "inbox/2026-11-19-linked.md", "inbox/nested"):
+            self.assertFalse(os.path.lexists(home / rel), rel)
+        self.assertEqual(self.fx.secret.read_text(encoding="utf-8"), f"{h.CANARY}\n")
+        self.assertEqual(self.status(home), "")
+        # the same name set aside again in the same minute goes beside it, never over it
+        self.fx.write(home, "inbox/2026-11-19-placed.md", "Placed again.\n")
+        again = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z-2" / "inbox/2026-11-19-placed.md"
+        self.assertEqual(self.tend("kalam")[1:], [
+            f"kalam: inbox/2026-11-19-placed.md was never committed — set aside at {again}, not deleted"])
+        self.assertEqual(again.read_text(encoding="utf-8"), "Placed again.\n")
+        self.assertEqual((aside / "inbox/2026-11-19-placed.md").read_text(encoding="utf-8"),
+                         "A letter a person placed.\n")
+
+    def test_a_git_that_cannot_read_head_or_the_index_puts_nothing_back(self):
+        # fix wave A: a failed ls-tree is not "nothing in HEAD", and a failed
+        # update-index stops the step before anything is removed
+        home = self.lettered_home()
+        self.past_first_tick("kalam")
+        self.fx.write(home, "CADENCE.md", "changed by a killed beat\n")
+        self.fx.write(home, "REST", "left by a killed beat\n")
+        real = tend._git
+        for failing in ("ls-tree", "update-index"):
+            with self.subTest(failing=failing):
+                def git(home_, *args, **kw):
+                    if failing in args:
+                        return subprocess.CompletedProcess(args, 128, "", f"fatal: {failing} failed")
+                    return real(home_, *args, **kw)
+                files, index = snapshot(home), self.fx.git(home, "ls-files", "--stage")
+                with mock.patch.object(tend, "_git", git):
+                    with self.assertRaises(tend.TendError) as cm:
+                        tend.restore_paths(home, ["CADENCE.md", "REST"], self.fx.state)
+                    self.assertEqual(self.tend("kalam"), [f"kalam: not tended — {cm.exception}"])
+                self.assertIn(f"{failing} failed", str(cm.exception))
+                self.assertEqual((snapshot(home), self.fx.git(home, "ls-files", "--stage")), (files, index))
 
 
 # -- citizen-beat.sh's guard -------------------------------------------------------
@@ -730,6 +871,114 @@ class TestGuardRestore(Case):
             "slug": "soma", "last_beat": None, "seeded": None, "attempt": None, "failures": 0,
             "retry_after": None, "reported": [], "notices": [{"key": "restored", "at": NOW}],
             "busy_ticks": 0})
+
+    def test_an_ignored_pace_file_is_put_back_too(self):
+        # fix wave A: a beat with tools that writes REST, or marks a letter seen,
+        # and hides it in .gitignore still sets no pace
+        v1 = ("# CADENCE — chosen by kalam\n\n- choice: undecided\n- when: 2026-10-27 03:10\n"
+              "- how: the Letter of Return, answered in a free beat.\n")
+        home = self.fx.make_home("kalam", cadence=v1, when="2026-11-01T00:00Z")
+        self.assertIsNone(cad.read_cadence(home, "kalam", {}).pace)
+        self.fx.write(home, "REST", "chosen via the Letter of Return 2026-11-19 — woken only by unread mail\n")
+        self.fx.write(home, "inbox/.seen-2026-11-18-a-note.md", "seen by a beat with tools\n")
+        self.fx.write(home, ".gitignore", "REST\ninbox/\n")
+        notes = []
+        self.assertEqual(tend.guard_restore(home, self.fx.state, notes=notes),
+                         ["REST", "inbox/.seen-2026-11-18-a-note.md"])
+        self.assertFalse(os.path.lexists(home / "REST"))
+        self.assertFalse(os.path.lexists(home / "inbox"))
+        self.assertIsNone(cad.read_cadence(home, "kalam", {}).pace)
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "inbox/.seen-2026-11-18-a-note.md"
+        self.assertEqual(notes, [f"kalam: inbox/.seen-2026-11-18-a-note.md was never committed — set aside "
+                                 f"at {aside}, not deleted"])
+        self.assertEqual(self.status(home), "?? .gitignore")       # not a pace file: left alone
+
+    def test_pace_files_in_another_case_are_put_back(self):
+        # fix wave A: on the Mac's case-insensitive disk Rest is REST, and on any disk
+        # a clone made elsewhere reads it so; git is asked for the pace paths in any case
+        home = self.fx.make_home("kalam", when="2026-11-01T00:00Z")
+        for rel in ("Rest", "Event-Only", "cadence.md", "Inbox/.seen-a.md"):
+            self.fx.write(home, rel, "written by a beat with tools\n")
+        self.assertEqual(tend.guard_restore(home, self.fx.state),
+                         ["Event-Only", "Inbox/.seen-a.md", "Rest", "cadence.md"])
+        self.assertEqual(sorted(os.listdir(home)), [".git", "WILL.md", "kalam.md"])
+        self.assertEqual(self.status(home), "")
+        self.assertEqual(tend.changed_paths(home, tend.TEND_PATHS), [])
+
+    def test_a_pace_change_the_beat_committed_itself_is_put_back_against_the_base(self):
+        # fix wave A: a beat with full tools can commit its own pace change; the guard
+        # checks against the HEAD recorded before the beat, puts the pace files back
+        # as that commit has them, and commits that as the fleet
+        home = self.fx.make_home("kalam", cadence=V2, letters=(("2026-11-18-a-note.md", "A note.\n"),),
+                                 when="2026-11-01T00:00Z")
+        base = self.fx.head(home)
+        self.fx.write(home, "CADENCE.md", V2.replace("- pace: asleep", "- pace: awake, every 3 days"))
+        self.fx.write(home, "REST", "mine\n")
+        self.fx.write(home, "inbox/.seen-2026-11-18-a-note.md", "seen by a beat with tools\n")
+        self.fx.write(home, "notes.md", "made\n")
+        self.fx.commit(home, "my own commit", author=h.beat_author("kalam"))
+        self.fx.write(home, "EVENT-ONLY", "and one more, never committed\n")
+        self.assertEqual(tend.guard_restore(home, self.fx.state, base=base),
+                         ["CADENCE.md", "EVENT-ONLY", "REST", "inbox/.seen-2026-11-18-a-note.md"])
+        self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), V2)
+        for rel in ("REST", "EVENT-ONLY", "inbox/.seen-2026-11-18-a-note.md"):
+            self.assertFalse(os.path.lexists(home / rel), rel)
+        self.assertEqual(self.last(home), f"{FLEET}|{FLEET}|{tend.GUARD_SUBJECT}")
+        self.assertEqual(self.files_in(home), [("D", "REST"), ("D", "inbox/.seen-2026-11-18-a-note.md"),
+                                               ("M", "CADENCE.md")])
+        self.assertEqual(self.fx.git(home, "show", "HEAD:notes.md"), "made")   # its own work stays
+        self.assertEqual(self.status(home), "")
+        self.assertFalse(cad.changed_outside_pace(home))
+        self.assertEqual(attempts.notice_keys(attempts.load(self.fx.state, "kalam")), ["restored"])
+        # the same base again finds nothing; a base that cannot be read puts nothing back
+        head = self.fx.head(home)
+        self.assertEqual(tend.guard_restore(home, self.fx.state, base=base), [])
+        self.fx.write(home, "REST", "again\n")
+        with self.assertRaises(tend.TendError) as cm:
+            tend.guard_restore(home, self.fx.state, base="0" * 40)
+        self.assertIn("the commit before the beat", str(cm.exception))
+        self.assertTrue((home / "REST").exists())
+        self.assertEqual(self.fx.head(home), head)
+
+    def test_a_partial_guard_restore_still_tells_the_citizen_or_says_it_could_not(self):
+        # fix wave A: when putting back stops midway, what was put back is still told
+        # to the citizen once; when the notice cannot be kept, the guard says so
+        real = tend._git
+
+        def git(home_, *args, **kw):
+            if "checkout" in args:
+                return subprocess.CompletedProcess(args, 1, "", "error: the checkout failed")
+            return real(home_, *args, **kw)
+
+        for slug in ("kalam", "soma"):
+            with self.subTest(slug=slug):
+                home = self.fx.make_home(slug, cadence=V2, when="2026-11-01T00:00Z")
+                self.fx.write(home, "CADENCE.md", "changed by a beat with tools\n")
+                self.fx.write(home, "REST", "mine\n")
+                if slug == "soma":
+                    self.fx.state.mkdir(parents=True, exist_ok=True)
+                    (self.fx.state / "soma").symlink_to(self.fx.outside / "elsewhere")
+                with mock.patch.object(tend, "_git", git):
+                    with self.assertRaises(tend.TendError) as cm:
+                        tend.guard_restore(home, self.fx.state)
+                said = str(cm.exception)
+                self.assertTrue(said.startswith("git checkout CADENCE.md failed: error: the checkout failed"),
+                                said)
+                self.assertFalse(os.path.lexists(home / "REST"))        # put back before it stopped
+                if slug == "kalam":
+                    self.assertTrue(said.endswith("; the citizen's next free beat is told once"), said)
+                    self.assertEqual(attempts.notice_keys(attempts.load(self.fx.state, slug)), ["restored"])
+                else:
+                    self.assertRegex(said, r"; the citizen could not be told \(.+\)$")
+        # a full put-back whose notice cannot be kept says so in its notes
+        home = self.fx.make_home("ud", cadence=V2, when="2026-11-01T00:00Z")
+        self.fx.write(home, "REST", "mine\n")
+        (self.fx.state / "ud").symlink_to(self.fx.outside / "elsewhere")
+        notes = []
+        self.assertEqual(tend.guard_restore(home, self.fx.state, notes=notes), ["REST"])
+        self.assertEqual(len(notes), 1, notes)
+        self.assertRegex(notes[0], r"^ud: its notice could not be kept \(.+\) — its next free beat is not "
+                                   r"told that its pace files were put back$")
 
 
 # -- rollback-prepare --------------------------------------------------------------

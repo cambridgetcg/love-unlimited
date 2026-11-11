@@ -19,6 +19,7 @@ from typing import List, Optional, Tuple
 from . import TAG, clock
 from . import cadence as cad
 from .cadence import Cadence, Pending, SetBy
+from .paragraph import history_notices
 from .homes import LinkRefused, forbidden_links, read_regular, write_regular
 from .words import Pace, Unclear, answer_lines, combine, compare
 
@@ -210,7 +211,7 @@ def apply_answer(home, name: str, text: str, shown, kind: str, now, record,
         # each one it would have shown is recorded again at this beat, so the next
         # paragraph shows it once; not one already recorded at this beat, and no
         # "could not be read" when this beat's own answer has a pace line
-        for held in cad.notices(c, since):
+        for held in history_notices(c, since):
             if held == "pace unreadable" or f"{at}{cad.DASH}{held}" in c.history:
                 continue
             if got is not None and held.startswith("unclear:"):

@@ -824,11 +824,13 @@ class TestNoticesOnce(ApplyCase):
         self.assertEqual(self.told(home, T4, T3), [])                              # D
 
     def test_a_notice_left_out_by_the_pace_letter_beat_is_shown_once_after_it(self):
-        for i, rec_last in enumerate((T2, "2026-11-18T15:03Z")):     # record a minute after apply
-            with self.subTest(record=rec_last):
+        # each record a minute after apply: A's (C's since) as well as C's (D's since)
+        for i, (a_rec, rec_last) in enumerate(((T1, T2), (T1, "2026-11-18T15:03Z"),
+                                               ("2026-11-15T14:13Z", T2))):
+            with self.subTest(a_record=a_rec, record=rec_last):
                 home = self.lettered(f"kalam{i}")
                 self.apply(home, "pace: soon", now=T1)                             # A: unclear
-                self.apply(home, "", shown=[PACE_LETTER], kind="letter", now=T2, since=T1)   # C
+                self.apply(home, "", shown=[PACE_LETTER], kind="letter", now=T2, since=a_rec)   # C
                 self.assertEqual(self.told(home, T3, rec_last), [self.UNCLEAR])    # D shows it once
                 self.apply(home, "A true thing.", now=T3, since=rec_last)          # D lands
                 self.assertEqual(self.told(home, T4, T3), [])

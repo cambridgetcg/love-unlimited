@@ -775,6 +775,14 @@ class TestTend(Case):
             "amara\tschedule\t604800\ncyra\tschedule\t604800\n",
             "bodhi: gets no beats — its home could not be read (reported once)\n"))
         self.assertEqual(self.ok(self.pace("rank", *args)).stderr, "")
+        # a record that cannot be written (a link at its path) holds up no one's rank
+        self.v2("dov", awake(3), upstream=True)
+        self.v2("eli", awake(3), soul=False)       # a home that gets no beats, to be remembered
+        (self.state / "eli").symlink_to(self.fx.outside)
+        roster = self.roster("eli", "dov")
+        r = self.ok(self.pace("rank", self.fx.citizens, "--roster", roster, "--state", self.state))
+        self.assertEqual(r.stdout, "dov\tschedule\t604800\n")
+        self.assertEqual(r.stderr, "eli: gets no beats — it has no eli.md\n")
 
 
 class TestMigrate(Case):

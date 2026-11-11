@@ -144,14 +144,23 @@ def _report_no_beats(state, assessed) -> None:
     so it is made again if it comes back; an unreadable pace's is kept through
     the reasons that say nothing about the pace (a letter waking it, its floor)."""
     for slug, d in assessed:
-        keys = [k for k in attempts.load(state, slug)["reported"] if k.startswith(NO_BEATS_KEY)]
-        want = NO_BEATS_KEY + d.reason if d.reason in NO_BEATS else None
-        for k in keys:
-            if k == want or (want is None and k == NO_BEATS_KEY + "unreadable"
-                             and d.reason in PACE_SILENT):
+        try:
+            keys = [k for k in attempts.load(state, slug)["reported"] if k.startswith(NO_BEATS_KEY)]
+            want = NO_BEATS_KEY + d.reason if d.reason in NO_BEATS else None
+            for k in keys:
+                if k == want or (want is None and k == NO_BEATS_KEY + "unreadable"
+                                 and d.reason in PACE_SILENT):
+                    continue
+                attempts.clear_reported(state, slug, k)
+            once = bool(want and want not in keys and attempts.mark_reported(state, slug, want))
+        except (OSError, ValueError, homes.LinkRefused):
+            # its record cannot be written, so the report cannot be remembered: say it
+            # every tick, without "reported once", and rank the others
+            if d.reason not in NO_BEATS:
                 continue
-            attempts.clear_reported(state, slug, k)
-        if want and want not in keys and attempts.mark_reported(state, slug, want):
+            print(f"{slug}: gets no beats — {NO_BEATS[d.reason].format(slug=slug)}", file=sys.stderr)
+            continue
+        if once:
             why = NO_BEATS[d.reason].format(slug=slug)
             print(f"{slug}: gets no beats — {why} (reported once)", file=sys.stderr)
 

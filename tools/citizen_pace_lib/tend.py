@@ -317,13 +317,15 @@ def _why_not(home: Path, slug: str, state, bound: Optional[float]) -> str:
 
 
 def rollback_prepare(homes_dir, slugs: Iterable[str], state=None, now=None,
-                     bound: Optional[float] = None) -> List[str]:
+                     bound: Optional[float] = None, push: bool = True) -> List[str]:
     """Spec section 9, step 5, with HALT kept: mark each unread pace letter seen
     with "set aside at rollback, not shown — <date>", so the old code does not
     wake its reader at every pass, and commit and push those markers as the
     fleet. The new code reads such a marker as unread (homes.unread_letters), so
     the letter is still shown once if the new code returns. One line per letter
-    set aside, and one per home that could not be prepared, naming its letters."""
+    set aside, and one per home that could not be prepared, naming its letters.
+    push=False commits the markers and pushes nothing (a scratch copy, as in
+    the rollback drill)."""
     day = clock.day(now or clock.now())
     lines = []
     for slug in slugs:
@@ -347,7 +349,12 @@ def rollback_prepare(homes_dir, slugs: Iterable[str], state=None, now=None,
                 markers[marker] = rel
             changed = changed_paths(home, list(markers))
             if changed and fleet_commit(home, changed, ROLLBACK_SUBJECT):
-                pushed = "pushed" if fleet_push(home) else "committed; the push failed — push it by hand"
+                if not push:
+                    pushed = "not pushed"
+                elif fleet_push(home):
+                    pushed = "pushed"
+                else:
+                    pushed = "committed; the push failed — push it by hand"
                 lines += [f"{slug}: {markers[m]} set aside at rollback ({pushed})" for m in changed]
         except (TendError, LinkRefused, OSError, ValueError) as e:
             lines.append(f"{slug}: not set aside for rollback ({e}) — {', '.join(letters)}; "

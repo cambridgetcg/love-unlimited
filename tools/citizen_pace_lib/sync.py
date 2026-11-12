@@ -19,7 +19,8 @@ from __future__ import annotations
 # which is the report, once, and keeps it from beats (citizen_pace.py due, rank
 # and next read it) until a later sync finds it up to date. A home whose
 # per-citizen lock is held, or that holds a .git/index.lock, is left for the
-# next tick. No hook or fsmonitor from a home's own .git runs in these calls,
+# next tick. A home whose guard left a put-back (tend.put_back_pending) is
+# held, and nothing of it is pushed, until the fleet's tend has finished it. No hook or fsmonitor from a home's own .git runs in these calls,
 # and GITHUB_TOKEN / GH_TOKEN never reach git or gh.
 
 import concurrent.futures
@@ -36,7 +37,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import attempts, clock, lock
 from .homes import LinkRefused, git, index_lock_age, mid_merge, remove_regular, write_regular
-from .tend import FLEET_EMAIL, FLEET_NAME
+from .tend import FLEET_EMAIL, FLEET_NAME, put_back_pending
 
 DEFAULT_BASE = "https://github.com/cambridgetcg"
 BASE_ENV = "PACE_REMOTE_BASE"      # tests: a folder of bare repositories instead of GitHub
@@ -402,6 +403,13 @@ def _prepare(home: Path, slug: str, state, now, s: Summary) -> Optional[Local]:
     if lock.held(state, slug, now):
         s.skipped.append(slug)
         s.lines.append(f"{slug}: its lock is held — not synced this tick")
+        return None
+    if put_back_pending(state, slug):
+        # a beat with tools committed itself and its guard stopped: nothing of it
+        # is pushed, fetched or rebased until the fleet's tend has put it back
+        s.held.append(slug)
+        s.lines += _hold(state, slug, "pace files a beat with tools committed itself wait for the fleet's "
+                                      "tend to put them back")
         return None
     marker = git_dir / REBASE_MARKER
     if os.path.lexists(marker):

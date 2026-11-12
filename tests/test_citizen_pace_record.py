@@ -122,6 +122,15 @@ class Case(h.FixtureCase):
         p.wait()
         return p.pid
 
+    def tend(self, *slugs, bound=None):
+        return tend.tend_homes(self.fx.citizens, slugs, self.fx.state, bound=bound)
+
+    def past_first_tick(self, *slugs):
+        """The fleet's first tick has run, and these homes have had their first full tend."""
+        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
+        for slug in slugs:
+            tend.mark_first_tend(self.fx.state, slug)
+
 
 # -- the stored Letter of Return answers ------------------------------------------
 
@@ -420,17 +429,8 @@ class TestTend(Case):
         self.fx.give_upstream(home)
         return home
 
-    def tend(self, *slugs, bound=None):
-        return tend.tend_homes(self.fx.citizens, slugs, self.fx.state, bound=bound)
-
     def flag_set(self):
         return tend.has_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
-
-    def past_first_tick(self, *slugs):
-        """The fleet's first tick has run, and these homes have had their first full tend."""
-        tend.set_flag(tend.notices_path(self.fx.state), tend.OLD_CODE_FLAG)
-        for slug in slugs:
-            tend.mark_first_tend(self.fx.state, slug)
 
     def test_the_first_tick_commits_old_code_leftovers_once_as_the_fleet(self):
         home = self.lettered_home()
@@ -770,6 +770,60 @@ class TestTend(Case):
                 self.assertIn(f"{failing} failed", str(cm.exception))
                 self.assertEqual((snapshot(home), self.fx.git(home, "ls-files", "--stage")), (files, index))
 
+    def test_files_set_aside_before_a_failure_are_named(self):
+        # fix round 1: untracked files are set aside first; when a later checkout
+        # fails, where they went is still said, and the home is "partly tended"
+        home = self.lettered_home()
+        self.past_first_tick("kalam")
+        self.fx.write(home, "CADENCE.md", "changed by a killed beat\n")
+        self.fx.write(home, "inbox/2026-11-19-placed.md", "A letter a person placed.\n")
+        real = tend._git
+
+        def git(home_, *args, **kw):
+            if "checkout" in args:
+                return subprocess.CompletedProcess(args, 1, "", "error: the checkout failed")
+            return real(home_, *args, **kw)
+
+        dest = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "inbox/2026-11-19-placed.md"
+        with mock.patch.object(tend, "_git", git):
+            lines = self.tend("kalam")
+        self.assertEqual(lines, [
+            "kalam: partly tended — git checkout CADENCE.md failed: error: the checkout failed; set aside "
+            f"before it stopped, not deleted: inbox/2026-11-19-placed.md at {dest}"])
+        self.assertEqual(dest.read_text(encoding="utf-8"), "A letter a person placed.\n")
+        # the guard says the same in its words
+        self.fx.write(home, "inbox/2026-11-19-again.md", "Placed again.\n")
+        again = dest.parent / "2026-11-19-again.md"
+        with mock.patch.object(tend, "_git", git):
+            with self.assertRaises(tend.TendError) as cm:
+                tend.guard_restore(home, self.fx.state)
+        self.assertIn(f"set aside before it stopped, not deleted: inbox/2026-11-19-again.md at {again}",
+                      str(cm.exception))
+        self.assertEqual(cm.exception.aside, (("inbox/2026-11-19-again.md", str(again)),))
+
+    def test_a_nested_repository_is_set_aside_whole_never_deleted(self):
+        # fix round 1: git lists a repository inside inbox/ or beats/ as one entry
+        # ending in "/"; it is moved out whole, at the first tick and after it
+        for slug, first in (("kalam", False), ("soma", True)):
+            with self.subTest(first_tick=first):
+                home = self.lettered_home(slug)
+                if not first:
+                    self.past_first_tick(slug)
+                inner = home / "inbox" / "nested"
+                inner.mkdir()
+                self.fx.write(inner, "a.md", "kept in a repository of its own\n")
+                self.fx.git(inner, "init", "-q")
+                self.fx.commit(inner, "inner")
+                self.assertIn("?? inbox/nested/", self.status(home))
+                dest = tend.set_aside_dir(self.fx.state, slug) / "20261120T0600Z" / "inbox/nested"
+                lines = self.tend(slug)
+                self.assertIn(f"{slug}: inbox/nested/ was never committed — set aside at {dest}, not deleted",
+                              lines)
+                self.assertFalse(os.path.lexists(inner))
+                self.assertEqual((dest / "a.md").read_text(encoding="utf-8"), "kept in a repository of its own\n")
+                self.assertTrue((dest / ".git").is_dir())
+                self.assertEqual(self.status(home), "")
+
 
 # -- citizen-beat.sh's guard -------------------------------------------------------
 
@@ -979,6 +1033,82 @@ class TestGuardRestore(Case):
         self.assertEqual(len(notes), 1, notes)
         self.assertRegex(notes[0], r"^ud: its notice could not be kept \(.+\) — its next free beat is not "
                                    r"told that its pace files were put back$")
+
+    def test_a_put_back_the_guard_could_not_commit_is_finished_by_the_next_tend(self):
+        # fix round 1: a beat with full tools committed its own pace change and the
+        # guard could not commit the put-back; the fleet keeps the commit before the
+        # beat, and the next tend puts back what the beat changed, as that commit
+        # has it, and commits it, leaving alone what a later commit changed again
+        home = self.fx.make_home("kalam", cadence=V2, when="2026-11-01T00:00Z")
+        self.past_first_tick("kalam")
+        base = self.fx.head(home)
+        self.fx.write(home, "CADENCE.md", V2.replace("- pace: asleep", "- pace: awake, every 3 days"))
+        self.fx.write(home, "REST", "mine\n")
+        self.fx.commit(home, "my own pace", author=h.beat_author("kalam"))
+        real = tend._git
+
+        def git(home_, *args, **kw):
+            if "commit" in args:
+                return subprocess.CompletedProcess(args, 1, "", "error: gpg failed to sign the data")
+            return real(home_, *args, **kw)
+
+        with mock.patch.object(tend, "_git", git):
+            with self.assertRaises(tend.TendError) as cm:
+                tend.guard_restore(home, self.fx.state, base=base)
+        said = str(cm.exception)
+        self.assertIn("the citizen's next free beat is told once", said)
+        self.assertIn(f"the fleet's tend puts them back as {base[:12]} has them, and nothing is pushed until "
+                      "then", said)
+        self.assertTrue(tend.put_back_pending(self.fx.state, "kalam"))
+        self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), V2)   # on disk, at once
+        self.assertFalse(os.path.lexists(home / "REST"))
+        # a later fleet commit writes REST again: that is not the beat's, and stays
+        self.fx.write(home, "REST", "written by a later fleet commit\n")
+        self.fx.commit(home, f"tend: a later fleet commit · {TAG}", author=FLEET, paths=["REST"])
+        self.assertEqual(self.tend("kalam"), [
+            f"kalam: pace files a beat with tools committed itself put back as {base[:12]} has them, "
+            "as the fleet: CADENCE.md"])
+        self.assertEqual(self.last(home), f"{FLEET}|{FLEET}|{tend.GUARD_SUBJECT}")
+        self.assertEqual(self.files_in(home), [("M", "CADENCE.md")])
+        self.assertEqual(self.fx.git(home, "show", "HEAD:CADENCE.md") + "\n", V2)
+        self.assertEqual((home / "REST").read_text(encoding="utf-8"), "written by a later fleet commit\n")
+        self.assertEqual(self.status(home), "")
+        self.assertFalse(tend.put_back_pending(self.fx.state, "kalam"))
+        self.assertEqual(attempts.notice_keys(attempts.load(self.fx.state, "kalam")), ["restored"])
+        self.assertEqual(self.tend("kalam"), [])
+
+    def test_an_inherited_pathspec_setting_does_not_blind_the_guard(self):
+        # fix round 1: GIT_LITERAL_PATHSPECS=1 would read ':(literal,icase)REST' as a
+        # file of that name and match nothing; git is run without it
+        home = self.fx.make_home("kalam", when="2026-11-01T00:00Z")
+        self.fx.write(home, "Rest", "written by a beat with tools\n")
+        for var in ("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"):
+            with self.subTest(var=var), mock.patch.dict(os.environ, {var: "1"}):
+                self.assertEqual(tend.changed_paths(home, tend.GUARD_PATHS), ["Rest"])
+        with mock.patch.dict(os.environ, {"GIT_LITERAL_PATHSPECS": "1"}):
+            self.assertEqual(tend.guard_restore(home, self.fx.state), ["Rest"])
+        self.assertFalse(os.path.lexists(home / "Rest"))
+
+    def test_an_ignored_file_the_pace_reader_never_reads_is_left_alone(self):
+        # fix round 1: an ignored entry counts for the guard only when the pace
+        # reader reads that name (CADENCE.md, REST, EVENT-ONLY in any case; a
+        # letter or a .seen- marker directly in inbox/); a Finder .DS_Store is not
+        home = self.fx.make_home("kalam", cadence=V2, letters=(("2026-11-18-a-note.md", "A note.\n"),),
+                                 when="2026-11-01T00:00Z")
+        for rel in ("inbox/.DS_Store", "inbox/nested/x.md", "inbox/notes.txt", ".DS_Store"):
+            self.fx.write(home, rel, "not read by the pace code\n")
+        self.fx.write(home, ".gitignore", ".DS_Store\ninbox/nested/\ninbox/*.txt\n")
+        self.assertEqual(tend.guard_restore(home, self.fx.state), [])
+        self.assertFalse((self.fx.state / "kalam").exists())          # no notice
+        self.assertFalse(tend.set_aside_dir(self.fx.state, "kalam").exists())
+        self.fx.write(home, "inbox/.SEEN-2026-11-18-a-note.md", "seen\n")
+        self.fx.write(home, "inbox/2026-11-19-x.md", "a letter\n")
+        self.fx.write(home, "Event-Only", "listening\n")
+        self.fx.write(home, ".gitignore", ".DS_Store\ninbox/\nEvent-Only\n")
+        self.assertEqual(tend.guard_restore(home, self.fx.state),
+                         ["Event-Only", "inbox/.SEEN-2026-11-18-a-note.md", "inbox/2026-11-19-x.md"])
+        for rel in ("inbox/.DS_Store", "inbox/nested/x.md", "inbox/notes.txt", ".DS_Store"):
+            self.assertTrue((home / rel).exists(), rel)
 
 
 # -- rollback-prepare --------------------------------------------------------------

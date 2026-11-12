@@ -15,8 +15,10 @@ from __future__ import annotations
 # letter a person placed, so it is moved out of the home, into
 # <state>/.set-aside/<slug>/, and named in the log.
 # guard_restore does the same for citizen-beat.sh's beats with tools, which never
-# set a pace, and rollback_prepare sets unread pace letters aside before the old
-# code is checked out again. The pace paths are asked of git in any case
+# set a pace, against the commit before the beat; when that beat committed
+# itself and the guard stops, the attempt record keeps that commit, tend
+# finishes the put-back, and sync pushes nothing until then. rollback_prepare
+# sets unread pace letters aside before the old code is checked out again. The pace paths are asked of git in any case
 # (':(literal,icase)'), so a Rest written on the Mac's case-insensitive disk is
 # REST.
 #
@@ -46,6 +48,9 @@ GUARD_PATHS = ("CADENCE.md", "REST", "EVENT-ONLY", "inbox")
 LEFTOVER_SUBJECT = f"tend: old-code leftover · {TAG}"
 ROLLBACK_SUBJECT = f"tend: set aside unread pace letters for rollback · {TAG}"
 GUARD_SUBJECT = f"tend: pace files put back after a beat with tools · {TAG}"
+# the attempt record's "reported" key of a put-back a failed guard left:
+# put-back:<the commit before the beat>:<the beat's head>
+PUT_BACK = "put-back"
 ROLLBACK_TEXT = ROLLBACK_PREFIX + ", not shown — {day}\n"
 NOTICES_NAME = ".fleet-notices"
 # memory/.fleet-notices holds it once the fleet's first tick on pace/1 has run;
@@ -63,7 +68,20 @@ _SAFE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 
 
 class TendError(RuntimeError):
-    """git refused or failed; what this step wrote was put back."""
+    """git refused or failed; what this step wrote was put back. aside: (path,
+    where it went) of each file it had set aside before it stopped, also named
+    in its words."""
+    aside: Tuple[Tuple[str, str], ...] = ()
+
+
+def _partly(e: Exception, aside) -> TendError:
+    """e, as a TendError that names the files set aside before it."""
+    if not aside:
+        return e if isinstance(e, TendError) else TendError(str(e))
+    where = ", ".join(f"{rel} at {dest}" for rel, dest in aside)
+    err = TendError(f"{e}; set aside before it stopped, not deleted: {where}")
+    err.aside = tuple(aside)
+    return err
 
 
 class FirstTickPending(TendError):
@@ -159,17 +177,31 @@ def _any_case(paths: Iterable[str]) -> List[str]:
     return [f":(literal,icase){p}" for p in paths]
 
 
+def _read_by_pace(rel: str) -> bool:
+    """A name the pace code reads: CADENCE.md, REST, EVENT-ONLY or the inbox
+    itself (in any case), or a letter (*.md) or a .seen- marker directly in
+    inbox/. An ignored file anywhere else (a Finder .DS_Store) sets no pace."""
+    parts = rel.split("/")
+    if len(parts) == 1:
+        return parts[0].lower() in ("cadence.md", "rest", "event-only", "inbox")
+    if len(parts) != 2 or parts[0].lower() != "inbox":
+        return False
+    name = parts[1]
+    return name.lower().startswith(".seen-") or (not name.startswith(".") and name.endswith(".md"))
+
+
 def changed_paths(home, paths: Iterable[str], ignored: bool = False) -> List[str]:
     """The files under `paths`, in any case, that differ from HEAD, staged or
     not, or are untracked (one entry per file; a link or a nested repository is
     one entry), sorted, each named as git names it. ignored: git-ignored files
-    under them count too (the guard, after a beat with tools). Raises TendError
-    when git cannot say."""
+    under them count too, when the pace code reads that name (the guard, after
+    a beat with tools). Raises TendError when git cannot say."""
     r = _git(home, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all",
              "--no-renames", *(("--ignored",) if ignored else ()), "--", *_any_case(paths))
     if r.returncode != 0:
         raise TendError(f"git status failed: {r.stderr.strip()}")
-    return sorted({e[3:] for e in r.stdout.split("\0") if len(e) > 3})
+    return sorted({e[3:] for e in r.stdout.split("\0")
+                   if len(e) > 3 and (not e.startswith("!! ") or _read_by_pace(e[3:]))})
 
 
 def _names(home, *args) -> set:
@@ -200,22 +232,22 @@ def _drop_empty_parents(home: Path, p: Path) -> None:
 
 
 def _unlink(home: Path, rel: str) -> None:
-    """Remove one untracked entry, never following a link, and the folders it leaves empty."""
+    """Remove one untracked entry that is not a folder, never following a link,
+    and the folders it leaves empty. A folder is set aside, never removed."""
     p = home / rel.rstrip("/")
     try:
         st = os.lstat(p)
     except OSError:
         return
     if stat.S_ISDIR(st.st_mode):
-        shutil.rmtree(p)
-    else:
-        os.unlink(p)
+        raise TendError(f"{rel} is a folder; left as it is")
+    os.unlink(p)
     _drop_empty_parents(home, p)
 
 
 def set_aside_dir(state, slug: str) -> Path:
-    """<state>/.set-aside/<slug>: where tend moves this home's untracked letters
-    and journal files, outside the home's git, instead of deleting them."""
+    """<state>/.set-aside/<slug>: where tend moves this home's untracked letters,
+    journal files and folders, outside the home's git, instead of deleting them."""
     return Path(state) / SET_ASIDE / slug
 
 
@@ -224,31 +256,35 @@ def set_aside_line(slug: str, rel: str, dest: str) -> str:
 
 
 def _kept_aside(home: Path, rel: str) -> bool:
-    """An untracked regular file under inbox/ or beats/ (in any case): never deleted."""
-    top, sep, _rest = rel.partition("/")
-    if not sep or top.lower() not in _KEPT:
-        return False
+    """Never deleted: an untracked regular file under inbox/ or beats/ (in any
+    case), and an untracked folder anywhere (git lists a repository inside the
+    home as one entry ending in "/")."""
     try:
-        return stat.S_ISREG(os.lstat(home / rel).st_mode)
+        mode = os.lstat(home / rel.rstrip("/")).st_mode
     except OSError:
         return False
+    if stat.S_ISDIR(mode):
+        return True
+    top, sep, _rest = rel.partition("/")
+    return bool(sep) and top.lower() in _KEPT and stat.S_ISREG(mode)
 
 
 def _set_aside(home: Path, rel: str, state) -> str:
-    """Move one untracked regular file out of the home, to
-    <state>/.set-aside/<slug>/<UTC minute>/<rel>, beside (never over) one set
-    aside before; returns where it went."""
+    """Move one untracked regular file or folder out of the home, with one
+    rename, to <state>/.set-aside/<slug>/<UTC minute>/<rel>, beside (never over)
+    one set aside before; returns where it went. A folder on another disk than
+    the state folder is left as it is."""
     base, stamp = set_aside_dir(state, slug_of(home)), clock.now().strftime("%Y%m%dT%H%MZ")
     dest, n = base / stamp / rel, 1
     while os.path.lexists(dest):
         n += 1
         dest = base / f"{stamp}-{n}" / rel
     os.makedirs(dest.parent, exist_ok=True)
-    src = home / rel
+    src = home / rel.rstrip("/")
     try:
         os.rename(src, dest)
     except OSError as e:
-        if e.errno != errno.EXDEV:
+        if e.errno != errno.EXDEV or os.path.isdir(src):
             raise
         shutil.copy2(src, dest, follow_symlinks=False)
         os.unlink(src)
@@ -260,11 +296,12 @@ def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD") -> 
     """Put each path back as `rev` (HEAD) has it, path by path: one that is in
     rev is checked out alone (index and file); one that is not is dropped from
     the index and removed, except an untracked regular file under inbox/ or
-    beats/, which is moved to <state>/.set-aside/ (never deleted). Untracked
-    entries go first, so a link standing where a folder was is gone before that
-    folder's files come back. The paths are exact, as changed_paths names them.
-    Returns (path, where it went) for each file set aside. Raises TendError when
-    git fails, at the step that failed."""
+    beats/, or an untracked folder (a repository inside the home), which is
+    moved to <state>/.set-aside/ whole (never deleted). Untracked entries go
+    first, so a link standing where a folder was is gone before that folder's
+    files come back. The paths are exact, as changed_paths names them. Returns
+    (path, where it went) for each entry set aside. Raises TendError when git
+    fails, at the step that failed, naming what it had set aside before."""
     home = Path(home)
     paths = sorted(set(paths))
     tracked = _in_head(home, paths, rev)
@@ -273,20 +310,25 @@ def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD") -> 
         raise TendError(f"{', '.join(keep)}: not in {rev}, and with no state folder they cannot be set "
                         "aside; nothing was put back")
     aside = []
-    for rel in paths:
-        if rel not in tracked:
-            r = _git(home, "update-index", "-q", "--force-remove", "--", rel.rstrip("/"))
-            if r.returncode != 0:
-                raise TendError(f"git update-index {rel} failed: {r.stderr.strip()}")
-            if rel in keep:
-                aside.append((rel, _set_aside(home, rel, state)))
-            else:
-                _unlink(home, rel)
-    for rel in paths:
-        if rel in tracked:
-            r = _git(home, "--literal-pathspecs", "checkout", "-q", rev, "--", rel)
-            if r.returncode != 0:
-                raise TendError(f"git checkout {rel} failed: {r.stderr.strip()}")
+    try:
+        for rel in paths:
+            if rel not in tracked:
+                r = _git(home, "update-index", "-q", "--force-remove", "--", rel.rstrip("/"))
+                if r.returncode != 0:
+                    raise TendError(f"git update-index {rel} failed: {r.stderr.strip()}")
+                if rel in keep:
+                    aside.append((rel, _set_aside(home, rel, state)))
+                else:
+                    _unlink(home, rel)
+        for rel in paths:
+            if rel in tracked:
+                r = _git(home, "--literal-pathspecs", "checkout", "-q", rev, "--", rel)
+                if r.returncode != 0:
+                    raise TendError(f"git checkout {rel} failed: {r.stderr.strip()}")
+    except (TendError, LinkRefused, OSError) as e:
+        if not aside:
+            raise
+        raise _partly(e, aside) from e
     return aside
 
 
@@ -328,6 +370,7 @@ def fleet_commit(home, paths: Iterable[str], subject: str) -> List[str]:
     if _git(home, "--literal-pathspecs", "diff", "--cached", "--quiet", "--", *paths).returncode == 0:
         return []
     r = _git(home, "-c", f"user.name={FLEET_NAME}", "-c", f"user.email={FLEET_EMAIL}",
+             "-c", "commit.gpgsign=false",
              "--literal-pathspecs", "commit", "-q", "--no-verify", f"--author={FLEET_AUTHOR}",
              "-m", subject, "--only", "--", *paths)
     if r.returncode != 0:
@@ -357,12 +400,14 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     pushed (a leftover that is not a regular file is removed even then); that
     first tend is then kept in its attempt record (first_tend_done), and a home
     skipped at a tick keeps its leftovers until its own. Returns log lines.
+    A put-back a failed guard left (put_back_pending) is finished first: what
+    the beat committed itself is put back as the commit before it has it.
     own: the pid of a beat that holds the citizen's lock and tends its home before
-    it begins (citizen-reflect.sh); that lock does not keep it out, and leftovers
-    that cannot be put back raise, since the beat must not build on them. Before
-    the home's first full tend such a beat finds leftovers that may be the old
-    code's: it changes none of them and raises FirstTickPending; a home holding
-    none has its first tend in that beat."""
+    it begins (citizen-reflect.sh, citizen-beat.sh); that lock does not keep it
+    out, and leftovers that cannot be put back raise, since the beat must not
+    build on them. Before the home's first full tend such a beat finds leftovers
+    that may be the old code's: it changes none of them and raises
+    FirstTickPending; a home holding none has its first tend in that beat."""
     home = Path(home)
     slug = slug_of(home)
     if not (home / ".git").is_dir() or forbidden_links(home):
@@ -383,6 +428,9 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     if mid_merge(home):
         return lines
     try:
+        pending = _put_back_key(state, slug)
+        if pending:
+            lines += _finish_put_back(home, state, slug, *pending)
         paths = changed_paths(home, TEND_PATHS)
         first = not first_tend_done(state, slug)
         if paths and not first:
@@ -395,8 +443,11 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
             odd = [p for p in paths if not _regular_or_gone(home, p)]
             keep = [p for p in paths if p not in odd]
             if odd:
-                restore_paths(home, odd, state)
-                lines.append(f"{slug}: leftovers that are not regular files removed: {', '.join(odd)}")
+                aside = restore_paths(home, odd, state)
+                gone = [p for p in odd if p not in dict(aside)]
+                if gone:
+                    lines.append(f"{slug}: leftovers that are not regular files removed: {', '.join(gone)}")
+                lines += [set_aside_line(slug, rel, dest) for rel, dest in aside]
             committed = fleet_commit(home, keep, LEFTOVER_SUBJECT) if keep else []
             if committed:
                 lines.append(f"{slug}: old-code leftover committed as the fleet ({_pushed(fleet_push(home))}): "
@@ -406,7 +457,7 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     except (TendError, LinkRefused, OSError) as e:
         if own is not None:
             raise
-        lines.append(f"{slug}: not tended — {e}")
+        lines.append(f"{slug}: {'partly tended' if getattr(e, 'aside', ()) else 'not tended'} — {e}")
     return lines
 
 
@@ -441,12 +492,63 @@ def _base_commit(home, base: str) -> str:
     return r.stdout.strip()
 
 
-def _committed_since(home, rev: str, paths: Iterable[str]) -> List[str]:
-    """The files under `paths`, in any case, that differ between rev and HEAD."""
-    r = _git(home, "diff", "--name-only", "-z", "--no-renames", rev, "HEAD", "--", *_any_case(paths))
+def _committed_between(home, a: str, b: str, paths: Iterable[str]) -> List[str]:
+    """The files under `paths`, in any case, that differ between commits a and b."""
+    r = _git(home, "diff", "--name-only", "-z", "--no-renames", a, b, "--", *_any_case(paths))
     if r.returncode != 0:
-        raise TendError(f"git diff {rev} HEAD failed: {r.stderr.strip()}")
+        raise TendError(f"git diff {a} {b} failed: {r.stderr.strip()}")
     return sorted({p for p in r.stdout.split("\0") if p})
+
+
+def _short(sha: str) -> str:
+    return sha[:12]
+
+
+def _put_back_key(state, slug: str) -> Optional[Tuple[str, str, str]]:
+    """(key, base, beat head) of a put-back a failed guard left, or None."""
+    for k in attempts.load(state, slug)["reported"]:
+        parts = k.split(":")
+        if len(parts) == 3 and parts[0] == PUT_BACK:
+            return k, parts[1], parts[2]
+    return None
+
+
+def put_back_pending(state, slug: str) -> bool:
+    """A beat with tools committed itself, and its guard could not put the pace
+    files back as the commit before it has them: the fleet's tend finishes it,
+    and sync holds the home (nothing is pushed) until then."""
+    return attempts.valid_slug(slug) and _put_back_key(state, slug) is not None
+
+
+def _put_back_since(home: Path, state, base: str, beat_head: str) -> Tuple[List[str], list]:
+    """The pace files the beat changed in its own commits (base..beat_head),
+    put back as base has them where HEAD still holds the beat's version (a
+    later commit's change is not the beat's), and committed as the fleet.
+    Returns (the paths, what was set aside)."""
+    changed = _committed_between(home, base, beat_head, GUARD_PATHS)
+    if changed and head(home) != beat_head:
+        later = set(_committed_between(home, beat_head, "HEAD", changed))
+        changed = [p for p in changed if p not in later]
+    if not changed:
+        return [], []
+    aside = restore_paths(home, changed, state, rev=base)
+    try:
+        fleet_commit(home, changed, GUARD_SUBJECT)
+    except TendError as e:
+        raise _partly(e, aside) from e
+    return changed, aside
+
+
+def _put_back_line(slug: str, base: str, paths: List[str]) -> str:
+    return (f"{slug}: pace files a beat with tools committed itself put back as {_short(base)} has them, "
+            f"as the fleet: {', '.join(paths)}")
+
+
+def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_head: str) -> List[str]:
+    paths, aside = _put_back_since(home, state, _base_commit(home, base), beat_head)
+    attempts.clear_reported(state, slug, key)
+    return (([_put_back_line(slug, base, paths)] if paths else [])
+            + [set_aside_line(slug, rel, dest) for rel, dest in aside])
 
 
 def _told(state, slug: str) -> Optional[str]:
@@ -461,32 +563,67 @@ def _told(state, slug: str) -> Optional[str]:
 def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list] = None) -> List[str]:
     """After a citizen-beat.sh beat, which has edit tools and never sets a pace
     (spec section 3; CONTRACT section 14): put CADENCE.md, REST, EVENT-ONLY and
-    everything under inbox/ (in any case, git-ignored or not) back as `base`
-    has them, path by path; base is the commit HEAD was before the beat (HEAD
-    when not given). When the beat committed a change to them itself (a beat
-    with full tools can), what is put back is committed as the fleet. Returns
-    the paths put back, sorted; when there are any, the notice "restored" is
-    added to the citizen's attempt record, so its next free beat is told once.
-    notes, when given, gets the other lines to log: each file set aside, and a
-    notice that could not be kept. Raises TendError when base cannot be read
-    (nothing is put back), or when putting back stops midway, saying whether
-    the citizen is still told."""
+    everything under inbox/ (in any case; git-ignored ones the pace code reads
+    too) back as `base` has them, path by path; base is the commit HEAD was
+    before the beat (HEAD when not given). When the beat made commits of its
+    own (a beat with full tools can), what it changed in them is put back and
+    committed as the fleet, and the attempt record keeps base and the beat's
+    head until that is done, so a guard that stops midway is finished by the
+    fleet's tend, and sync pushes nothing meanwhile. Returns the paths put back,
+    sorted; when there are any, the notice "restored" is added to the citizen's
+    attempt record, so its next free beat is told once. notes, when given, gets
+    the other lines to log: each entry set aside, and a notice that could not be
+    kept. Raises TendError when putting back stops (base unreadable included),
+    saying how far it got, whether the fleet finishes it, and whether the
+    citizen is still told."""
     home = Path(home)
     slug = slug_of(home)
-    rev = "HEAD" if not base else _base_commit(home, base)
-    committed = _committed_since(home, rev, GUARD_PATHS) if rev not in ("HEAD", head(home)) else []
-    paths = sorted(set(changed_paths(home, GUARD_PATHS, ignored=True)) | set(committed))
+    tried, aside, kept, unkept, rev = [], [], None, "", None
+    try:
+        if base:
+            beat_head = head(home)
+            if not beat_head:
+                raise TendError("HEAD cannot be read after the beat")
+            if beat_head != base:
+                # the beat made commits of its own: kept first, so the fleet finishes what this cannot
+                kept = f"{PUT_BACK}:{base}:{beat_head}"
+                try:
+                    attempts.mark_reported(state, slug, kept)
+                except (OSError, ValueError, LinkRefused) as e:
+                    kept, unkept = None, str(e) or type(e).__name__
+                rev = _base_commit(home, base)
+                tried = _committed_between(home, rev, beat_head, GUARD_PATHS)
+                tried, aside = _put_back_since(home, state, rev, beat_head)
+                if kept:
+                    attempts.clear_reported(state, slug, kept)
+                    kept = None
+        paths = changed_paths(home, GUARD_PATHS, ignored=True)
+        tried = sorted(set(tried) | set(paths))
+        aside += restore_paths(home, paths, state)
+    except (TendError, LinkRefused, OSError) as e:
+        told = ""
+        if tried:             # something to put back is known: the citizen is told, once
+            why = _told(state, slug)
+            told = ("; the citizen's next free beat is told once" if why is None
+                    else f"; the citizen could not be told ({why})")
+        held = ""
+        if kept and rev:
+            held = (f"; the fleet's tend puts them back as {_short(base)} has them, and nothing is pushed "
+                    "until then")
+        elif kept:
+            held = "; nothing is pushed until a person has put its pace files back"
+        elif unkept:
+            held = (f"; the commit before the beat could not be kept for the fleet ({unkept}), so a person "
+                    f"must put them back as {_short(base)} has them")
+        some = f"; some of {', '.join(tried)} may be put back already" if tried else ""
+        earlier = ("; set aside earlier, not deleted: " + ", ".join(f"{rel} at {dest}" for rel, dest in aside)
+                   if aside else "")
+        err = TendError(f"{e}{earlier}{some}{held}{told}")
+        err.aside = tuple(aside) + tuple(getattr(e, "aside", ()))
+        raise err from e
+    paths = tried
     if not paths:
         return []
-    try:
-        aside = restore_paths(home, paths, state, rev=rev)
-        if committed:
-            fleet_commit(home, committed, GUARD_SUBJECT)
-    except (TendError, LinkRefused, OSError) as e:
-        why = _told(state, slug)
-        told = ("the citizen's next free beat is told once" if why is None
-                else f"the citizen could not be told ({why})")
-        raise TendError(f"{e}; some of {', '.join(paths)} may be put back already; {told}") from e
     why = _told(state, slug)
     if notes is None:
         if why is not None:

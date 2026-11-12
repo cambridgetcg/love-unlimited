@@ -30,6 +30,10 @@ _GIT_LOCATORS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIREC
                  "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE",
                  "GIT_PREFIX")
 _TOKENS = ("GITHUB_TOKEN", "GH_TOKEN")
+# a caller's environment that would change how every pathspec is read (an
+# inherited GIT_LITERAL_PATHSPECS=1 turns ':(literal,icase)REST' into a file name)
+_PATHSPEC_ENV = ("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS",
+                 "GIT_ICASE_PATHSPECS")
 
 
 class LinkRefused(Exception):
@@ -285,7 +289,7 @@ def index_lock_age(home) -> Optional[float]:
 
 
 def _git_env() -> dict:
-    env = {k: v for k, v in os.environ.items() if k not in _TOKENS + _GIT_LOCATORS}
+    env = {k: v for k, v in os.environ.items() if k not in _TOKENS + _GIT_LOCATORS + _PATHSPEC_ENV}
     env["GIT_TERMINAL_PROMPT"] = "0"
     return env
 
@@ -311,7 +315,8 @@ def _stop_group(proc: subprocess.Popen) -> None:
 
 def git(home, *args, check: bool = False, timeout: float = 30) -> subprocess.CompletedProcess:
     """git -C <home> <args>, with stdin closed, no prompt, no GITHUB_TOKEN or
-    GH_TOKEN, and no caller variable pointing at another repository. The
+    GH_TOKEN, no caller variable pointing at another repository, and none that
+    changes how pathspecs are read. The
     command runs in its own process group; at the time bound the whole group is
     stopped and the result has returncode 124. A git that cannot start gives 127.
     Output is text (UTF-8, undecodable bytes replaced). check=True raises

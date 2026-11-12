@@ -57,6 +57,7 @@ commands:
   probe --state <dir> [--timeout S]
   guard-restore <home> --state <dir> [--base <commit>]
   tend <homes-dir> --roster <f> --state <dir>
+  tend-home <home> --state <dir> --pid <pid>
   sync <homes-dir> --roster <f> --state <dir> [--bound S]
   migrate --heard-late <homes-dir> [--record <f>] [--state <dir>] [--commit]
   plan <days> <homes-dir> --roster <f> [--cap N] [--tick-hours H]
@@ -346,6 +347,28 @@ def cmd_tend(a) -> int:
     return OK
 
 
+def p_tend_home():
+    p = _parser("tend-home", "Tend one home as a beat holding its lock does before it begins.")
+    p.add_argument("home")
+    p.add_argument("--state", required=True)
+    p.add_argument("--pid", type=int, required=True, help="the beat's pid, which holds the citizen's lock")
+    return p
+
+
+def cmd_tend_home(a) -> int:
+    """0 tended (its lines printed); 4 its first full tend has not run and it
+    holds uncommitted pace files, which may be the old code's (nothing changed);
+    2 they could not be put back, the beat must not build on them."""
+    try:
+        lines = tend.tend_home(Path(a.home), a.state, own=a.pid)
+    except tend.FirstTickPending as e:
+        print(e, file=sys.stderr)
+        return NOT
+    for line in lines:
+        print(line)
+    return OK
+
+
 def p_sync():
     p = _parser("sync", "Bring the roster's homes up to date; log lines, then a JSON summary.")
     _roster_opts(p)
@@ -408,6 +431,7 @@ COMMANDS = {
     "record": (p_record, cmd_record), "outcome": (p_outcome, cmd_outcome),
     "lock": (p_lock, cmd_lock), "unlock": (p_unlock, cmd_unlock), "probe": (p_probe, cmd_probe),
     "guard-restore": (p_guard_restore, cmd_guard_restore), "tend": (p_tend, cmd_tend),
+    "tend-home": (p_tend_home, cmd_tend_home),
     "sync": (p_sync, cmd_sync), "migrate": (p_migrate, cmd_migrate),
     "rollback-prepare": (p_rollback_prepare, cmd_rollback_prepare),
 }

@@ -184,7 +184,7 @@ class TestEntry(Case):
             if line.startswith("  ") and not line.startswith("   "):
                 cmd = line.split()[0]
             listed[cmd] = listed.get(cmd, "") + line
-        self.assertEqual(len(listed), 17)
+        self.assertEqual(len(listed), 18)                 # tend-home joined in fix wave A
         for cmd, text in listed.items():
             with self.subTest(cmd=cmd):
                 taken = set(re.findall(r"--[a-z][a-z-]*", self.ok(self.pace(cmd, "--help")).stdout))

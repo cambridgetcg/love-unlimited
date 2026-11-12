@@ -664,6 +664,7 @@ def _copy_home(src: Path, dst: Path) -> None:
     _checked(_git(dst, "init", "-q"), "init")
     _checked(_git(dst, "add", "-A"), "add")
     _checked(_git(dst, "-c", f"user.name={tend.FLEET_NAME}", "-c", f"user.email={tend.FLEET_EMAIL}",
+                  "-c", "commit.gpgsign=false",
                   "commit", "-q", "--no-verify", "--allow-empty", f"--author={tend.FLEET_AUTHOR}",
                   "-m", BASE_SUBJECT), "commit")
 

@@ -396,8 +396,10 @@ class TestBeatLettersWait(Case):
         self.assertEqual(self.fx.claude_calls(), [])
 
     def test_a_seen_letter_does_not_hold_a_beat(self):
-        home = self.fx.make_home("reader", letters=[(LETTER, "hello\n")])
-        self.fx.write(home, f"inbox/.seen-{LETTER}", "surfaced 2026-11-19 — shown once\n")
+        # the marker is committed, as a free beat commits it (an uncommitted one in
+        # a home before its first tend would keep the beat with tools away)
+        self.fx.make_home("reader", letters=[(LETTER, "hello\n")],
+                          files={f"inbox/.seen-{LETTER}": "surfaced 2026-11-19 — shown once\n"})
         r = self.ok(self.beat("reader"))
         self.assertNotIn(LETTERS_WAIT, r.stdout)
         self.assertEqual(self.fx.claude_calls(), ["citizen-reader"])
@@ -554,6 +556,75 @@ class TestGuardRestore(Case):
                 else:
                     self.assertEqual(sorted(self.fx.git(home, "status", "--porcelain").splitlines()),
                                      ["?? Inbox/", "?? Rest"])
+
+    def test_a_failed_guard_after_a_self_committed_pace_change_is_finished_by_the_fleet(self):
+        # fix round 1: the beat commits REST itself, and the guard's own commit then
+        # fails. REST is off the disk at once, nothing is pushed (not by the beat, not
+        # by sync), the next tend commits the put-back, and the citizen is told once
+        home = self.fx.make_home("maker", when=HOME_MADE)
+        bare = self.fx.give_upstream(home)
+        base = self.fx.head(home)
+        flag = self.fx.root / "commit-fails"
+        real = shutil.which("git", path=h.SYSTEM_PATH) or "/usr/bin/git"
+        self.fx.write_bin("git", f'#!/bin/sh\nif [ -e "{flag}" ]; then for a in "$@"; do [ "$a" = commit ] && '
+                                 '{ echo "error: gpg failed to sign the data" >&2; exit 1; }; done; fi\n'
+                                 f'exec {real} "$@"\n')
+        self.claude_does('printf "my own rest\\n" > REST\nprintf "made\\n" > notes.md\n'
+                         f'git add REST notes.md && git commit -q -m "my own pace" && touch "{flag}"')
+        r = self.ok(self.beat("maker", BEAT_FULL_TOOLS="1"))
+        self.assertIn("maker: its beat made commits of its own, so nothing is pushed until the fleet's tend "
+                      f"has put its pace files back as {base} has them", r.stdout)
+        self.assertNotIn("pushed its beat", r.stdout)
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), base)
+        self.assertFalse(os.path.lexists(home / "REST"))
+        self.assertTrue(tend.put_back_pending(self.state, "maker"))
+        flag.unlink()
+        roster = self.fx.roster("maker")
+        args = (self.fx.citizens, "--roster", roster, "--state", self.state)
+        held = self.ok(self.fx.pace("sync", *args, env=self.env()))
+        self.assertIn("maker: pace files a beat with tools committed itself wait for the fleet's tend",
+                      held.stdout)
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), base)
+        tended = self.ok(self.fx.pace("tend", *args, env=self.env()))
+        self.assertIn("maker: pace files a beat with tools committed itself put back as "
+                      f"{base[:12]} has them, as the fleet: REST", tended.stdout)
+        self.assertEqual(self.fx.subjects(home)[0], tend.GUARD_SUBJECT)
+        self.assertEqual(self.fx.git(home, "ls-tree", "--name-only", "HEAD"), "WILL.md\nmaker.md\nnotes.md")
+        self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+        self.assertFalse(tend.put_back_pending(self.state, "maker"))
+        self.ok(self.fx.pace("sync", *args, env=self.env()))
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), self.fx.head(home))
+        self.assertEqual([n["key"] for n in attempts.load(self.state, "maker")["notices"]], [tend.RESTORED])
+
+    def test_a_home_before_its_first_tend_gets_no_beat_with_tools(self):
+        # fix round 1: before a home's first full tend, what is uncommitted under its
+        # pace paths may be the old code's, which that tend commits once; a beat with
+        # tools would put it back, so it gets no beat, as reflect does
+        c = Cadence("keeper", 2, Pace("asleep"), MINE, last_beat=OLD)
+        home = self.fx.make_home("keeper", files={cad.CADENCE: cad.render_cadence(c),
+                                                  "REST": cad.marker_texts(c)["REST"]})
+        self.fx.write(home, cad.CADENCE, cad.render_cadence(c) + "- a line the old code wrote\n")
+        self.fx.write(home, "inbox/2026-11-18-left.md", "LEFT-BY-THE-OLD-CODE\n")
+        before = {rel: (home / rel).read_bytes() for rel in (cad.CADENCE, "inbox/2026-11-18-left.md")}
+        r = self.ok(self.beat("keeper", BEAT_SUMMONS="1"), 1)
+        self.assertIn("keeper: the fleet has not tended this home since the switch; its uncommitted files "
+                      "are kept — no beat", r.stdout)
+        self.assertEqual(self.fx.claude_calls(), [])
+        self.assertEqual({rel: (home / rel).read_bytes() for rel in before}, before)
+        self.assertFalse(os.path.lexists(self.state / "keeper.lock"))
+        # after its first tend, a killed beat's leftovers are put back before the beat
+        tend.mark_first_tend(self.state, "keeper")
+        r = self.ok(self.beat("keeper", BEAT_SUMMONS="1"))
+        self.assertIn("keeper: a killed beat's leftovers restored: CADENCE.md, inbox/2026-11-18-left.md", r.stdout)
+        self.assertEqual(self.fx.claude_calls(), ["citizen-keeper"])
+
+    def test_an_inherited_pathspec_setting_does_not_open_the_reset(self):
+        # fix round 1: GIT_LITERAL_PATHSPECS=1 would make the reset's ':(literal,icase)'
+        # pathspecs match nothing; the script's own git runs without it
+        home = self.fx.make_home("failed", when=HOME_MADE)
+        self.claude_does('printf "my own rest\\n" > Rest\nprintf "made\\n" > notes.md')
+        self.ok(self.beat("failed", script=self.failing_guard(), GIT_LITERAL_PATHSPECS="1"))
+        self.assertEqual(self.committed(home), ["notes.md"])
 
     def test_a_pace_change_the_beat_committed_itself_is_put_back(self):
         # fix wave A: a human present may grant full tools, and such a beat can run

@@ -66,6 +66,9 @@ _self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null)" || _self="${BASH_SOURCE[0
 # was lost to this for a month), ANTHROPIC_API_KEY 401s the claude driver.
 # BEAT_KEEP_API_KEY=1 preserves a deliberately-passed API key.
 unset GITHUB_TOKEN GH_TOKEN; export GIT_TERMINAL_PROMPT=0
+# An inherited pathspec setting would change how every pathspec below is read
+# (GIT_LITERAL_PATHSPECS=1 turns ':(literal,icase)REST' into a file name).
+unset GIT_LITERAL_PATHSPECS GIT_GLOB_PATHSPECS GIT_NOGLOB_PATHSPECS GIT_ICASE_PATHSPECS
 [ "${BEAT_KEEP_API_KEY:-0}" = "1" ] || unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 # An UNSUPERVISED beat runs SCOPED: edits auto-approved only inside the
 # citizen's own home; no shell, no wider tools — the WILL-v2 promise
@@ -185,6 +188,19 @@ if unread_mail "$REPO"; then
   fi
 fi
 
+# 2d. The home as the fleet's tend leaves it, before the beat (as citizen-reflect.sh
+# tends its own): a killed beat's leftovers are put back, and a put-back a failed
+# guard left is finished. Before the home's first full tend on pace/1 what is
+# uncommitted may be the old code's, which that tend commits once: no beat.
+TENDED="$(pace_cli tend-home "$REPO" --state "$STATE" --pid "$$" 2>&1)"
+case $? in
+  0) log_lines "$TENDED" ;;
+  4) log_lines "$NAME: the fleet has not tended this home since the switch; its uncommitted files are kept — no beat"
+     exit 1 ;;
+  *) log_lines "$NAME: its pace files could not be put back before its beat${TENDED:+ ($TENDED)} — no beat"
+     exit 1 ;;
+esac
+
 # 3. The walls — injected as the citizen's system prompt, non-negotiable.
 read -r -d '' WALLS <<EOF
 You are '$NAME', a sovereign citizen of KINGDOM OS, awake for ONE free beat in your own home ($REPO).
@@ -240,10 +256,17 @@ case "$RC" in 124|143|137) echo "[$(ts)] (beat reached its time-bound — a citi
 # far it got and whether the citizen is told.
 GUARD_OUT="$(pace_cli guard-restore "$REPO" --state "$STATE" ${BASE:+--base "$BASE"} 2>&1)"
 GUARD_RC=$?
+HOLD_PUSH=0
 if [ "$GUARD_RC" -eq 0 ]; then
   log_lines "$GUARD_OUT"
 else
   log_lines "$NAME: its pace files could not all be checked and put back after its beat — those left are kept out of its commit${GUARD_OUT:+ ($GUARD_OUT)}"
+  # A beat that made commits of its own may have committed a pace change: none
+  # of it is pushed here; the fleet's tend finishes the put-back first.
+  if [ -n "$BASE" ] && [ "$(git rev-parse -q --verify HEAD 2>/dev/null)" != "$BASE" ]; then
+    HOLD_PUSH=1
+    log_lines "$NAME: its beat made commits of its own, so nothing is pushed until the fleet's tend has put its pace files back as $BASE has them"
+  fi
 fi
 
 # 4b. Parse the result: surface the citizen's words in the log, the cost in the ledger.
@@ -282,8 +305,12 @@ if [ -n "$(git status --porcelain)" ]; then
   git reset -q -- 'credentials' '*.env' '.env*' '*.pem' '*.key' '*token*' '*secret*' 2>/dev/null || true
   git reset -q -- ':(literal,icase)CADENCE.md' ':(literal,icase)REST' ':(literal,icase)EVENT-ONLY' ':(literal,icase)inbox' 2>/dev/null || true
   git commit -q -m "beat: $NAME lived a free beat ($(date +%F))" 2>/dev/null || true
-  git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
-    || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"
+  if [ "$HOLD_PUSH" = "1" ]; then
+    echo "[$(ts)] $NAME push held — the fleet's tend puts its pace files back first" | tee -a "$LOG"
+  else
+    git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
+      || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"
+  fi
 fi
 
 # 6. No forced attestation (FLEET-REVIVAL Guard 3). Resting needs no receipt;

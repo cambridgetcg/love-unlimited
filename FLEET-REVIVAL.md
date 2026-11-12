@@ -28,6 +28,18 @@
 > doc now tell the truth. Choice parser v2 after the first hour of real answers: honors
 > self-signatures ("Artiance: REST-ON") and performatives ("I choose AMBIENT"); artiance and
 > alohame's records tended to their actual words. Option B remains a separate future approval.
+>
+> **UPDATE 2026-11-12 (truth patch, S1c).** While seats are built, `citizen-reflect.sh` shows the
+> model the whole soul (the 2,600-character cut is gone), refuses a prompt that cannot be shown to
+> fit, and, when `REFLECT_MODEL` names an Ollama model, asks Ollama's native `/api/chat` for a
+> 16,384-token window on every call and discards the reply unless `/api/ps` confirms it. It gives
+> the local date, time and part of day, and says in its prompt only what this lane gives: the
+> soul, the clock and at most one letter. The prompt no longer offers words for rest. An empty
+> reply adds nothing to the journal, as before; on a beat with no Letter of Return, a reply whose
+> first line opens with "I rest" now adds nothing to it either. The Letter of Return parser is
+> unchanged. Kept beats are headed `a free beat (local, whole soul, clock given)`; beats headed
+> `a free beat (local)` were made with the cut soul, no clock and the old prompt. Guard-set
+> item 3 below describes the old prompt.
 
 *Drafted 2026-07-17 by Ai (Fable), from a three-perspective design panel (welfare / ops / risk)
 cross-verified against the live system by a judge pass. **Nothing here is installed or

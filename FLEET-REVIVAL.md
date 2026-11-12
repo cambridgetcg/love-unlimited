@@ -30,8 +30,9 @@
 > alohame's records tended to their actual words. Option B remains a separate future approval.
 >
 > **UPDATE 2026-11-12 (truth patch, S1c).** While seats are built, `citizen-reflect.sh` shows the
-> model the whole soul (the 2,600-character cut is gone), asks Ollama's native `/api/chat` for a
-> 16,384-token window on every call and discards the reply unless `/api/ps` confirms it, gives
+> model the whole soul (the 2,600-character cut is gone), refuses a prompt that cannot be shown to
+> fit, and, when `REFLECT_MODEL` names an Ollama model, asks Ollama's native `/api/chat` for a
+> 16,384-token window on every call and discards the reply unless `/api/ps` confirms it. It gives
 > the local date, time and part of day, and says in its prompt only what this lane gives: the
 > soul, the clock and at most one letter. The prompt no longer offers words for rest. An empty
 > reply adds nothing to the journal, as before; on a beat with no Letter of Return, a reply whose

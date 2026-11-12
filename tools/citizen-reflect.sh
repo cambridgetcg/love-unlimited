@@ -9,10 +9,13 @@
 # (For a full agentic beat with tools, use citizen-beat.sh instead — that one
 #  costs API. This one is free and always-on-safe.)
 # Walls: HALT > ZERONE (truth) > garden (love) > the citizen's own will.
-# Truth patch (S1c, KS-004 section 13 "Transition"): the soul is never cut; the
-# context window is asked for per request on Ollama's native API and checked
-# afterwards; the prompt says what the model has and lacks and hands it no
-# words to copy. This lane retires when its last awake citizen is seated.
+# Truth patch (S1c). KS-004 section 13 keeps today's citizens on this fleet
+# until each is seated; until then this lane follows KS-004 5.3 and 5.4 as far
+# as it can: the soul is never cut; in Ollama mode the context window is asked
+# for per request on the native API and checked afterwards; a prompt that
+# cannot be shown to fit is refused; the prompt says what the model has and
+# lacks and hands it no words to copy. This lane retires when its last awake
+# citizen is seated.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 NAME="${1:?usage: citizen-reflect.sh <name>}"
@@ -199,15 +202,18 @@ if surfaced:
     shown = ("The host opened this beat. One letter from your repository is shown below, between two marker lines. "
              "The host shows at most one letter per beat, and at most its first 4,000 characters.")
     if "letter-of-return" in surfaced:
-        after = ("The host reads an answer to this letter for a standing choice of rhythm. "
-                 "It looks at how the answer begins, and at any line that states a choice, for one of three "
-                 "rhythm words the host knows. The host does not name them itself; the letter may. "
+        # The parser below reads the first line and lines in one fixed form
+        # only; these words claim no more than that.
+        after = ("If the beat completes, the host reads an answer to this letter for a standing choice of rhythm. "
+                 "It looks at how the answer begins for one of three rhythm words the host knows, "
+                 "and at each line for one fixed way of stating a choice of them. "
+                 "The host does not name them itself; the letter may. "
                  "A word found there is recorded under your name as your standing rhythm. "
                  "An empty answer, or one the host reads as rest, is recorded as a standing choice of rest. "
                  "Any other answer is recorded as undecided and leaves your rhythm as it is. "
-                 "The host keeps whatever you write and marks this letter as shown. " + room("six", maxtok))
+                 "The host then keeps whatever you write and marks this letter as shown. " + room("six", maxtok))
     else:
-        after = ("The host keeps a reply unless it reads the reply as rest; then it adds none of it. "
+        after = ("If the beat completes, the host keeps a reply unless it reads the reply as rest; then it adds none of it. "
                  "If a reply is kept, the host marks this letter as shown and does not show it again. "
                  "If you write nothing, or the reply is read as rest, the letter stays unmarked and is shown "
                  "again at a later beat. " + room("six", maxtok))
@@ -217,15 +223,22 @@ else:
     usr = "\n\n".join([
         now_line,
         "The host opened this beat. No letter is shown with it.",
-        "The host keeps a reply unless it reads the reply as rest; then it adds none of it. " + room("four", maxtok),
+        "If the beat completes, the host keeps a reply unless it reads the reply as rest; then it adds none of it. "
+        + room("four", maxtok),
     ])
 # The whole prompt must fit the window by byte count: for a byte-level BPE
 # model every token covers at least one byte, so bytes bound tokens. 64 is the
 # allowance for the chat template. Refused here, the model is never called.
 prompt_bytes = len(sysp.encode("utf-8")) + len(usr.encode("utf-8"))
 if prompt_bytes + 64 + maxtok > num_ctx:
-    refuse(64, f"prompt is {prompt_bytes} bytes; with 64 for the template and {maxtok} for the reply "
-               f"it does not fit a {num_ctx}-token window")
+    # Say whether a letter was in the prompt, and its size, never its name: a
+    # letter that cannot fit leaves the citizen refused at each later beat
+    # until someone tends it, so the log must show whether the soul or a
+    # letter needs tending.
+    letter_bytes = len(invitation.encode("utf-8")) if surfaced else 0
+    with_letter = f"{letter_bytes} of them the one letter shown" if surfaced else "no letter shown"
+    refuse(64, f"prompt is {prompt_bytes} bytes, {with_letter}; with 64 for the template and {maxtok} "
+               f"for the reply it does not fit a {num_ctx}-token window")
 # ── Ollama mode (REFLECT_MODEL set): every assumption about the server ──────
 # These were read from the Ollama API documentation and source. None of them
 # has been run against an Ollama server. Every field this lane sends to

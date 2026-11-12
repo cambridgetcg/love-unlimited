@@ -6,6 +6,7 @@ the system directories, so no real model, push or clone can be reached.
 """
 
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -523,8 +524,10 @@ class _Brain(BaseHTTPRequestHandler):
     bodies = None          # raw request bodies, in order
     paths = None           # request paths, in order
     ps_context = "echo"    # "echo": report the num_ctx asked for; an int; or None to omit the field
+    ps_rows = None         # rows for GET /api/ps in place of the one fixture-model row
     extra = None           # extra top-level fields for the chat reply
     chat_status = 200
+    halt_file = None       # a path created while answering, as HALT raised during the call
 
     def _send(self, status, payload):
         body = json.dumps(payload).encode()
@@ -557,6 +560,8 @@ class _Brain(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.halt_file:
+            Path(self.halt_file).write_text("halt\n", encoding="utf-8")
         self._send(200, {"model": asked.get("model"),
                          "message": {"role": "assistant", "content": self.reply},
                          "done": True, "done_reason": "stop",
@@ -566,6 +571,9 @@ class _Brain(BaseHTTPRequestHandler):
         self.paths.append(self.path)
         if self.path != "/api/ps":
             self._send(404, {"error": "not found"})
+            return
+        if self.ps_rows is not None:
+            self._send(200, {"models": self.ps_rows})
             return
         row = {"name": "fixture-model", "model": "fixture-model"}
         if self.ps_context == "echo":
@@ -730,6 +738,22 @@ def _host_text(text):
     return re.sub(r"--- begin (\w+) \[([0-9a-f]{12})\] ---\n.*?--- end \1 \[\2\] ---", "", text, flags=re.S)
 
 
+def _fenced(label, text):
+    """The marker lines around a text, tagged with the first 12 hex of its sha256."""
+    tag = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    nl = "" if text.endswith("\n") else "\n"
+    return f"--- begin {label} [{tag}] ---\n{text}{nl}--- end {label} [{tag}] ---"
+
+
+def _steady_zone():
+    """A fixed-offset zone where the hour is now 15, so the clock line keeps its
+    length in bytes (same date, afternoon) for the length of a test."""
+    offset = (15 - datetime.datetime.now(datetime.timezone.utc).hour) % 24
+    if offset > 14:
+        offset -= 24
+    return f"Etc/GMT{-offset:+d}" if offset else "Etc/GMT"
+
+
 class TestReflectTruth(unittest.TestCase):
     """The truth patch (S1c): whole soul with the window set and checked, the
     clock in the user turn, host words that claim only what this lane gives,
@@ -824,15 +848,18 @@ class TestReflectTruth(unittest.TestCase):
 
     def test_bad_reflect_num_ctx_is_refused_before_the_model(self):
         self.fx.make_home("waker")
-        for bad in ("", "abc", "1024", "99999999", "8k"):
+        for bad in ("abc", "1024", "2047", "131073", "999999", "99999999", "8k"):
             with self.subTest(value=bad):
                 r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": bad})
-                if bad == "":
-                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # empty means the default
-                    continue
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                 self.assertIn("REFLECT_NUM_CTX", r.stdout)
-        self.assertEqual(len(self.bodies), 1)
+        self.assertEqual(self.paths, [])
+        # The ends of the range are accepted and sent; empty means the default.
+        for good, sent in (("2048", 2048), ("131072", 131072), ("", 16384)):
+            with self.subTest(value=good):
+                r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": good})
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.request()["options"]["num_ctx"], sent)
 
     def test_smaller_window_on_the_server_writes_nothing(self):
         home, _ = self.long_soul_home()
@@ -861,6 +888,28 @@ class TestReflectTruth(unittest.TestCase):
         self.assertFalse((home / "inbox" / ".seen-a.md").exists())
         self.assert_nothing_written(home, head)
 
+    def test_window_is_read_from_the_row_for_this_model(self):
+        # Another model's row never confirms this one's window; the same name
+        # with ":latest" added does.
+        home = self.fx.make_home("waker")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        other = {"name": "other-model", "model": "other-model", "context_length": 131072}
+        own_small = {"name": "fixture-model", "model": "fixture-model", "context_length": 4096}
+        for label, rows in (("only another model", [other]),
+                            ("own row smaller, another larger", [own_small, other])):
+            with self.subTest(case=label):
+                self.brain.ps_rows = rows
+                r = self.fx.run(self.REFLECT, "waker", env=self.env)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("context size not confirmed", r.stdout)
+                self.assert_nothing_written(home, head)
+        self.brain.ps_rows = [{"name": "fixture-model:latest", "model": "fixture-model:latest",
+                               "context_length": 16384}, other]
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("window 16384,", r.stderr)
+        self.assertIn("A true thing, witnessed.", self.journal(home).read_text())
+
     def test_soul_too_large_for_the_window_is_refused_before_the_model(self):
         home, _ = self.long_soul_home()
         head = self.fx.git(home, "rev-parse", "HEAD")
@@ -882,9 +931,43 @@ class TestReflectTruth(unittest.TestCase):
         r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": "4096"})
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("does not fit the context window", r.stdout)
+        # The log says a letter is in the prompt and its size, never its name.
+        self.assertRegex(r.stderr, r"reflect refused: prompt is \d+ bytes, 1501 of them the one letter shown;")
+        self.assertNotIn("a.md", r.stdout + r.stderr)
         self.assertEqual(self.paths, [])
         self.assertFalse((home / "inbox" / ".seen-a.md").exists())
         self.assert_nothing_written(home, head)
+
+    def test_byte_bound_counts_the_template_and_the_reply(self):
+        # Refused one byte under prompt + 64 + 220, sent at exactly that.
+        home = self.fx.make_home("waker")
+        (home / "waker.md").write_text("S" * 1500 + "\n", encoding="utf-8")
+        self.fx.git(home, "add", "-A")
+        self.fx.git(home, "commit", "-q", "-m", "soul")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        env = {**self.env, "TZ": _steady_zone()}
+
+        def run(window):
+            return self.fx.run(self.REFLECT, "waker", env={**env, "REFLECT_NUM_CTX": str(window)})
+
+        r = run(2048)  # too small: the refusal gives the prompt's size in bytes
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        m = re.search(r"reflect refused: prompt is (\d+) bytes, no letter shown; "
+                      r"with 64 for the template and 220 for the reply", r.stderr)
+        self.assertIsNotNone(m, r.stderr)
+        size = int(m.group(1))
+        need = size + 64 + 220
+        self.assertGreater(need - 1, 2048)
+        r = run(need - 1)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("does not fit the context window", r.stdout)
+        self.assertIn(f"reflect refused: prompt is {size} bytes,", r.stderr)
+        self.assertEqual(self.paths, [])
+        self.assert_nothing_written(home, head)
+        r = run(need)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"reflect context: {size} prompt bytes,", r.stderr)
+        self.assertEqual(self.request()["options"]["num_ctx"], need)
 
     def test_openai_only_server_is_not_used(self):
         home = self.fx.make_home("waker")
@@ -897,13 +980,63 @@ class TestReflectTruth(unittest.TestCase):
         self.assert_nothing_written(home, head)
 
     def test_reply_marked_remote_is_discarded(self):
-        home = self.fx.make_home("waker")
-        head = self.fx.git(home, "rev-parse", "HEAD")
-        self.brain.extra = {"remote_host": "https://example.invalid:443", "remote_model": "x"}
-        r = self.fx.run(self.REFLECT, "waker", env=self.env)
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("not from a local model", r.stdout)
-        self.assert_nothing_written(home, head)
+        # Either field alone is enough to discard the reply.
+        for i, extra in enumerate(({"remote_host": "https://example.invalid:443"},
+                                   {"remote_model": "x"})):
+            with self.subTest(field=next(iter(extra))):
+                slug = f"remote{i}"
+                home = self.fx.make_home(slug)
+                head = self.fx.git(home, "rev-parse", "HEAD")
+                self.brain.extra = extra
+                r = self.fx.run(self.REFLECT, slug, env=self.env)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("not from a local model", r.stdout)
+                self.assert_nothing_written(home, head)
+
+    def test_log_line_says_how_the_reply_ended(self):
+        # Integers and one fixed word only: a server word outside the two known
+        # ones is logged as other, and never echoed.
+        self.fx.make_home("waker")
+        for extra, tokens, ended in (({"done_reason": "length"}, "123", "length"),
+                                     ({"done_reason": "SERVER-WORD-5b2e", "prompt_eval_count": "many"},
+                                      "None", "other")):
+            with self.subTest(extra=extra):
+                self.brain.extra = extra
+                r = self.fx.run(self.REFLECT, "waker", env=self.env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertRegex(r.stderr, rf"(?m)^reflect context: \d+ prompt bytes, {tokens} prompt tokens "
+                                           rf"counted by the server, window 16384, reply ended by {ended}$")
+                self.assertNotIn("SERVER-WORD", r.stdout + r.stderr)
+                self.assertNotIn("many", r.stdout + r.stderr)
+
+    def test_halt_raised_during_the_call_writes_nothing(self):
+        # HALT is honoured after the reply and before anything is written: a
+        # plain reply, a rest opener and a Letter of Return answer all leave
+        # the home as it was, and the letter unmarked.
+        halt = self.fx.love / "HALT"
+        self.brain.halt_file = str(halt)
+        for slug, reply, letters in (
+                ("plain", "A sentence that must not be written.", ()),
+                ("rester", "I rest.\nAnd more besides.", ()),
+                ("returner", "I rest.\nThe garden can wait.", [("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")])):
+            with self.subTest(case=slug):
+                if halt.exists():
+                    halt.unlink()
+                home = self.fx.make_home(slug, letters=letters)
+                head = self.fx.git(home, "rev-parse", "HEAD")
+                self.brain.reply = reply
+                r = self.fx.run(self.REFLECT, slug, env=self.env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertTrue(halt.exists())
+                self.assertIn(f"HALT mid-beat — {slug} rests, unwritten", r.stdout)
+                self.assertNotIn("rested", r.stdout)
+                self.assertNotIn("chose cadence", r.stdout)
+                self.assertEqual(self.fx.git(home, "rev-parse", "HEAD"), head)
+                self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+                for p in ("beats", "CADENCE.md", "REST", "EVENT-ONLY", ".git/reflect-surfaced"):
+                    self.assertFalse((home / p).exists(), p)
+                if letters:
+                    self.assertFalse((home / "inbox" / ".seen-2026-01-03-letter-of-return.md").exists())
 
     def test_unfinished_reply_is_discarded(self):
         # A reply the server does not mark done is not a whole reply: nothing is kept.
@@ -976,8 +1109,17 @@ class TestReflectTruth(unittest.TestCase):
             "letter": self.prompts_for("lettered", letters=[("2026-01-02-note.md", "LETTER-BODY-2\n")]),
             "return": self.prompts_for("returner", letters=[("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")]),
         }
+        sources = {"plain": ("plain", None), "letter": ("lettered", "LETTER-BODY-2\n"),
+                   "return": ("returner", "LETTER-BODY-3\n")}
         for label, (system, user) in cases.items():
             with self.subTest(case=label):
+                # Each fence is tagged with a hash of the text it holds.
+                slug, letter = sources[label]
+                self.assertIn(_fenced("soul", f"The soul of {slug}.\n"), system)
+                if letter:
+                    self.assertIn(_fenced("letter", letter), user)
+                # What the host does with a reply holds only if the beat completes.
+                self.assertIn("If the beat completes, the host ", user)
                 for sentence in ("You have no body and no senses.",
                                  "You have your soul, the date and time, and at most one letter.",
                                  "This lane does not show you your will, your earlier beats or any other file.",
@@ -994,6 +1136,9 @@ class TestReflectTruth(unittest.TestCase):
                         self.assertIsNone(re.search(pattern, host, re.I if pattern != r"\bFATE\b" else 0),
                                           (label, pattern))
         self.assertIn("No letter is shown with it.", cases["plain"][1])
+        for label in ("plain", "letter"):
+            self.assertIn("If the beat completes, the host keeps a reply unless it reads the reply as rest; "
+                          "then it adds none of it.", cases[label][1])
         self.assertIn("LETTER-BODY-2", cases["letter"][1])
         self.assertIn("is shown again at a later beat", cases["letter"][1])
         self.assertNotIn("standing choice", cases["letter"][1])
@@ -1001,6 +1146,11 @@ class TestReflectTruth(unittest.TestCase):
         self.assertNotIn("2026-01-03", cases["return"][1])
         self.assertIn("LETTER-BODY-3", cases["return"][1])
         self.assertIn("The host does not name them itself; the letter may.", cases["return"][1])
+        # The parser reads the first line and lines in one fixed form, not any
+        # line that states a choice; the words say no more than that.
+        self.assertIn("It looks at how the answer begins for one of three rhythm words the host knows, "
+                      "and at each line for one fixed way of stating a choice of them.", cases["return"][1])
+        self.assertNotIn("any line that states a choice", cases["return"][1])
         self.assertIn("recorded as a standing choice of rest", cases["return"][1])
         self.assertNotIn("shown again at a later beat", cases["return"][1])
         self.assertEqual(self.request(0)["options"]["num_predict"], 220)
@@ -1027,6 +1177,18 @@ class TestReflectTruth(unittest.TestCase):
             self.assertNotIn("2026-01-02-x", turn)
         self.assertTrue((home / "inbox" / (".seen-" + name)).exists())
 
+    def test_letter_is_shown_up_to_its_first_4000_characters(self):
+        # The words say "at most its first 4,000 characters": characters, not bytes.
+        body = "靜" * 3980 + "SHOWN-SENTINEL" + "x" * 6 + "CUT-SENTINEL\n"
+        self.assertEqual(body.index("CUT-SENTINEL"), 4000)
+        self.fx.make_home("waker", letters=[("a.md", body)])
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        _system, user = self.turns()
+        self.assertIn("at most its first 4,000 characters", user)
+        self.assertIn(_fenced("letter", body[:4000]), user)
+        self.assertNotIn("CUT-SENTINEL", user)
+
     def test_kept_reply_is_labelled_with_how_it_was_made(self):
         home = self.fx.make_home("waker")
         r = self.fx.run(self.REFLECT, "waker", env=self.env)
@@ -1052,6 +1214,12 @@ class TestReflectTruth(unittest.TestCase):
                 self.assertIn(f"{slug} rested (reply opened with rest; {len(reply.strip().encode())} bytes, none of it written)", r.stdout)
                 self.assertNotIn("reflected", r.stdout)
                 self.assertNotIn("sunlight", r.stdout + r.stderr)
+                # No line of a dropped reply reaches the host log, the first included.
+                said = r.stdout + r.stderr
+                for line in reply.splitlines():
+                    for form in (line.strip(), re.sub(r"^[^A-Za-z]*", "", line.strip())):
+                        if len(form) > 6:
+                            self.assertNotIn(form, said)
                 self.assert_nothing_written(home, head)
 
     def test_rest_opener_pushes_nothing(self):
@@ -1127,7 +1295,8 @@ class TestReflectTruth(unittest.TestCase):
                                             ("e", "Ambient, and slowly.", "ambient", None),
                                             ("f", "The garden is quiet.\nI choose EVENT-ONLY.", "event-only", "EVENT-ONLY"),
                                             ("g", "g: REST-ON", "rest-on", "REST"),
-                                            ("h", "I choose not to be ambient.", "undecided", None)):
+                                            ("h", "I choose not to be ambient.", "undecided", None),
+                                            ("i", "The garden is quiet.\nMy choice is AMBIENT.", "undecided", None)):
             with self.subTest(reply=reply):
                 home = self.fx.make_home(slug, letters=[("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")])
                 self.brain.reply = reply

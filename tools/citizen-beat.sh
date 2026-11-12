@@ -94,9 +94,13 @@ log_lines(){
 # The watcher also honors HALT: if the gardener raises the kill-switch mid-beat,
 # the running command is ended — HALT is enforced against a running citizen,
 # not just a waking one.
+# BOUND_PID / BOUND_WD: the command running under _bound now and its watcher,
+# so the EXIT trap can stop them before the lock is released (stop_bound).
+BOUND_PID=""; BOUND_WD=""
 _bound(){
   local secs="$1"; shift
   "$@" & local _pid=$!
+  BOUND_PID="$_pid"
   ( t=0
     while kill -0 "$_pid" 2>/dev/null; do
       if [ -e "$HALT" ] || [ "$t" -ge "$secs" ]; then
@@ -105,9 +109,24 @@ _bound(){
       fi
       sleep 5; t=$((t+5))
     done ) & local _wd=$!
+  BOUND_WD="$_wd"
   wait "$_pid" 2>/dev/null; local _rc=$?
+  BOUND_PID=""
   kill "$_wd" 2>/dev/null; wait "$_wd" 2>/dev/null
+  BOUND_WD=""
   return "$_rc"
+}
+# stop_bound: end what runs under _bound (a TERM, five seconds, then KILL) and
+# its watcher. The EXIT trap runs it first, so a TERM to this script alone never
+# frees the lock while claude still edits the home.
+stop_bound(){
+  local i=0
+  if [ -n "$BOUND_PID" ] && kill -TERM "$BOUND_PID" 2>/dev/null; then
+    while kill -0 "$BOUND_PID" 2>/dev/null && [ "$i" -lt 5 ]; do sleep 1; i=$((i + 1)); done
+    kill -KILL "$BOUND_PID" 2>/dev/null
+  fi
+  [ -z "$BOUND_WD" ] || kill "$BOUND_WD" 2>/dev/null
+  BOUND_PID=""; BOUND_WD=""
 }
 
 # 1. The gardener's pause — HALT gates everything, no exceptions.
@@ -160,7 +179,7 @@ LOCK_OUT="$(pace_cli lock "$NAME" --state "$STATE" --pid "$$" --bound "$LOCK_BOU
 LOCK_RC=$?
 case "$LOCK_RC" in
   0) log_lines "$LOCK_OUT"
-     trap '[ -z "$BEAT_JSON" ] || rm -f "$BEAT_JSON"; pace_cli unlock "$NAME" --state "$STATE" --pid "$$" >/dev/null 2>&1' EXIT ;;
+     trap 'stop_bound; [ -z "$BEAT_JSON" ] || rm -f "$BEAT_JSON"; pace_cli unlock "$NAME" --state "$STATE" --pid "$$" >/dev/null 2>&1' EXIT ;;
   4) log_lines "${LOCK_OUT:-$NAME: its lock is held} — busy, no beat"
      exit 0 ;;
   *) log_lines "ERROR: $NAME's lock could not be taken — beat refused${LOCK_OUT:+ ($LOCK_OUT)}"

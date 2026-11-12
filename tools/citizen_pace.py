@@ -59,7 +59,7 @@ commands:
   guard-restore <home> --state <dir> [--base <commit>]
   tend <homes-dir> --roster <f> --state <dir>
   tend-home <home> --state <dir> --pid <pid>
-  sync <homes-dir> --roster <f> --state <dir> [--bound S]
+  sync <homes-dir> --roster <f> --state <dir> [--bound S] [--within S]
   migrate --heard-late <homes-dir> [--record <f>] [--state <dir>] [--commit]
   plan <days> <homes-dir> --roster <f> [--cap N] [--tick-hours H]
        [--letters <f> --deliver-at <t> [--per-run N]] [--out <dir>] [--record <f>]
@@ -360,11 +360,15 @@ def p_tend_home():
 
 def cmd_tend_home(a) -> int:
     """0 tended (its lines printed); 4 its first full tend has not run and it
-    holds uncommitted pace files, which may be the old code's (nothing changed);
-    3 the citizen's lock is not --pid's (another run took it: busy, nothing
-    changed); 2 they could not be put back, the beat must not build on them."""
+    holds uncommitted pace files, which may be the old code's, or tend could
+    not look at it (mid-merge, a fresh .git/index.lock, links), so it is still
+    unmarked (nothing changed); 3 the citizen's lock is not --pid's (another
+    run took it: busy, nothing changed); 2 they could not be put back, or a
+    put-back a failed guard left is still pending: the beat must not build on
+    them."""
+    home, slug = _home(a)
     try:
-        lines = tend.tend_home(Path(a.home), a.state, own=a.pid)
+        lines = tend.tend_home(home, a.state, own=a.pid)
     except tend.FirstTickPending as e:
         print(e, file=sys.stderr)
         return NOT
@@ -373,6 +377,14 @@ def cmd_tend_home(a) -> int:
         return TAKEN
     for line in lines:
         print(line)
+    if not tend.first_tend_done(a.state, slug):
+        print(f"{slug}: the fleet has not tended this home since the switch, and tend could not look at it",
+              file=sys.stderr)
+        return NOT
+    if tend.put_back_pending(a.state, slug):
+        print(f"{slug}: pace files a beat with tools committed itself still wait to be put back; no beat "
+              "builds on them", file=sys.stderr)
+        return ERROR
     return OK
 
 
@@ -381,14 +393,18 @@ def p_sync():
     _roster_opts(p)
     p.add_argument("--bound", type=float, default=sync.HEADS_BOUND,
                    help="seconds to read every remote head in (default 60)")
+    p.add_argument("--within", type=float, default=sync.SYNC_BOUND,
+                   help="seconds the whole sync may take; what is left over waits for the next tick "
+                        "(default 1800)")
     return p
 
 
 def cmd_sync(a) -> int:
-    if not (a.bound > 0 and math.isfinite(a.bound)):
-        raise Usage("--bound must be a number of seconds above 0")
+    for name in ("bound", "within"):
+        if not (getattr(a, name) > 0 and math.isfinite(getattr(a, name))):
+            raise Usage(f"--{name} must be a number of seconds above 0")
     s = sync.sync_homes(a.homes_dir, due.read_roster(a.roster), a.state, bound=a.bound,
-                        gh=shutil.which("gh"))
+                        gh=shutil.which("gh"), within=a.within)
     for line in s.lines:
         print(line)
     print(json.dumps(s.to_json(), sort_keys=True))

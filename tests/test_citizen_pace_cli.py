@@ -789,6 +789,26 @@ class TestTend(Case):
         self.assertEqual(r.stdout, "dov\tschedule\t604800\n")
         self.assertEqual(r.stderr, "eli: gets no beats — it has no eli.md\n")
 
+    def test_tend_home_gives_no_beat_what_tend_could_not_look_at(self):
+        # fix wave A (bc), (bd), (w): a beat's own tend that stops before it looks
+        # (mid-merge here) leaves a home unmarked, or a put-back pending: no beat
+        # builds on it; a lock that is not the beat's is busy
+        home = self.v2("kalam", ASLEEP)
+        (home / ".git" / "MERGE_HEAD").write_text(self.fx.head(home) + "\n", encoding="utf-8")
+        self.assertTrue(lock.take(self.state, "kalam", os.getpid()).got)
+        args = (home, "--state", self.state, "--pid", str(os.getpid()))
+        r = self.ok(self.pace("tend-home", *args), 4)
+        self.assertIn("kalam: the fleet has not tended this home since the switch, and tend could not look "
+                      "at it", r.stderr)
+        tend.mark_first_tend(self.state, "kalam")
+        self.ok(self.pace("tend-home", *args))
+        attempts.mark_reported(self.state, "kalam", f"{tend.PUT_BACK}:{'0' * 40}:{self.fx.head(home)}")
+        r = self.ok(self.pace("tend-home", *args), 2)
+        self.assertIn("kalam: pace files a beat with tools committed itself still wait to be put back; no beat "
+                      "builds on them", r.stderr)
+        r = self.ok(self.pace("tend-home", home, "--state", self.state, "--pid", str(os.getppid())), 3)
+        self.assertEqual(r.stdout, f"kalam: its lock is held by pid {os.getpid()}, not by this beat\n")
+
 
 class TestMigrate(Case):
     def setUp(self):
@@ -1258,6 +1278,48 @@ print(json.dumps({{"data": data}}))
         r = self.ok(self.pace("sync", self.fx.citizens, "--roster", roster, "--state", self.state,
                               "--bound", "0"), 2)
         self.assertIn("--bound", r.stderr)
+        for bad in ("0", "inf", "nan"):
+            with self.subTest(within=bad):
+                r = self.ok(self.pace("sync", self.fx.citizens, "--roster", roster, "--state", self.state,
+                                      "--within", bad), 2)
+                self.assertIn("--within", r.stderr)
+
+    def test_a_sync_whose_bound_is_spent_starts_no_more_network_work(self):
+        # fix wave A (ab): one bound for the whole sync, so a tick never outlives its
+        # tick lock; once what is left cannot hold a fetch, a push or a clone, the
+        # homes left wait for the next tick, say so, and are neither held nor
+        # backed off
+        for slug in ("amara", "bodhi", "chen"):
+            _home, bare = self.synced(slug)
+            self.push_letter(bare)
+        ahead, _bare = self.synced("dara")
+        self.beat(ahead, "dara")
+        self.fx.drop_clone(self.synced("emre")[0])
+        slugs = ("amara", "bodhi", "chen", "dara", "emre")
+        os.environ[sync.BASE_ENV] = str(self.fx.upstream)        # never GitHub (restored after the test)
+        s = sync.sync_homes(self.fx.citizens, slugs, self.state, within=1e-6, now=self.now)
+        self.assertEqual(s.lines, [f"{slug}: not synced this tick — the sync's bound of 1e-06 s is spent"
+                                   for slug in ("emre", "amara", "bodhi", "chen", "dara")])
+        self.assertEqual((sorted(s.skipped), s.fetched, s.pushed, s.cloned, s.held, s.clone_failed),
+                         (sorted(slugs), [], [], [], [], []))
+        self.assertFalse(self.fx.home_path("emre").exists())
+        self.assertEqual(attempts.load(self.state, "emre")["failures"], 0)
+        # a fetch that uses up what is left: the first home is fetched, the others wait
+        real = sync._git
+
+        def slow(home, *args, **kw):
+            if "fetch" in args:
+                time.sleep(4)
+            return real(home, *args, **kw)
+
+        with mock.patch.object(sync, "FETCH_BOUND", 5.0), mock.patch.object(sync, "PUSH_BOUND", 1.0), \
+                mock.patch.object(sync, "_git", slow):
+            s = sync.sync_homes(self.fx.citizens, ("amara", "bodhi", "chen"), self.state, within=8,
+                                now=self.now)
+        self.assertEqual(s.fast_forwarded, ["amara"])
+        self.assertEqual(s.lines[1:], ["bodhi: not synced this tick — the sync's bound of 8 s is spent",
+                                       "chen: not synced this tick — the sync's bound of 8 s is spent"])
+        self.assertEqual(s.held, [])
 
 
 def homes_mid_rebase(home) -> bool:

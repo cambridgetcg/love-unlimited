@@ -19,7 +19,10 @@ from __future__ import annotations
 # which is the report, once, and keeps it from beats (citizen_pace.py due, rank
 # and next read it) until a later sync finds it up to date. A home whose
 # per-citizen lock is held, or that holds a .git/index.lock, is left for the
-# next tick. A home whose guard left a put-back (tend.put_back_pending) is
+# next tick. The whole sync has one bound (SYNC_BOUND, 30 minutes): network work
+# that what is left of it cannot hold (a clone, the heads, a fetch, a push) is
+# not started, and those homes are left for the next tick, said once each, so a
+# tick never outlives its tick lock. A home whose guard left a put-back (tend.put_back_pending) is
 # held, and nothing of it is pushed, until the fleet's tend has finished it. No hook or fsmonitor from a home's own .git runs in these calls,
 # and GITHUB_TOKEN / GH_TOKEN never reach git or gh.
 
@@ -45,6 +48,7 @@ HEADS_BOUND = 60.0                 # every remote head, read under one bound
 FETCH_BOUND = 20.0                 # each fetch, fast-forward, rebase or ls-remote
 CLONE_BOUND = 60.0
 PUSH_BOUND = 30.0
+SYNC_BOUND = 1800.0                # the whole sync, network work included
 WORKERS = 8                        # ls-remote calls at a time
 GRAPHQL_CHUNK = 250                # repositories per GraphQL query: today's 205 homes in one
 REBASE_MARKER = "pace-rebase"      # .git/pace-rebase, written before a fleet-started rebase
@@ -373,12 +377,23 @@ class Summary:
 
 # -- one home ---------------------------------------------------------------------------
 
-def _prepare(home: Path, slug: str, state, now, s: Summary) -> Optional[Local]:
+def _spent(slug: str, s: Summary, why: str) -> None:
+    s.skipped.append(slug)
+    s.lines.append(f"{slug}: not synced this tick — {why}")
+
+
+def _prepare(home: Path, slug: str, state, now, s: Summary, left=lambda: CLONE_BOUND,
+             spent: str = "") -> Optional[Local]:
     """What can be decided without the network. Returns the home's git facts
-    when it may be brought up to date this tick, else None."""
+    when it may be brought up to date this tick, else None. left(): the
+    seconds left of the sync's bound; spent: the line when they cannot hold a
+    clone."""
     if not os.path.lexists(home):
         if attempts.backing_off(attempts.load(state, slug), now):
             s.skipped.append(slug)
+            return None
+        if left() < CLONE_BOUND:
+            _spent(slug, s, spent)
             return None
         ok, why = clone_home(home.parent, slug)
         if ok:
@@ -475,6 +490,16 @@ def _rebase(home: Path, loc: Local) -> str:
     return why
 
 
+def _needs(home: Path, loc: Local, oid: Optional[str]) -> float:
+    """The bound of the network work this home needs: a fetch when its remote
+    head moved, a push when it is ahead of a head that was read, else 0."""
+    if oid and oid != loc.tracking:
+        return FETCH_BOUND + PUSH_BOUND
+    if oid and loc.tracking and loc.head != loc.tracking:
+        return PUSH_BOUND
+    return 0.0
+
+
 def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summary) -> None:
     """Fetch when the remote head moved, then fast-forward, rebase onto letters,
     or push, or hold the home."""
@@ -536,11 +561,17 @@ def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summ
 
 
 def sync_homes(homes_dir, slugs: Iterable[str], state, bound: float = HEADS_BOUND,
-               now=None, gh: Optional[str] = None) -> Summary:
+               now=None, gh: Optional[str] = None, within: float = SYNC_BOUND) -> Summary:
     """Bring every roster home up to date (`citizen_pace.py sync`). Remote heads
     are read once for all homes under `bound` seconds; each home is then
     fetched, fast-forwarded, rebased onto letters placed elsewhere, pushed,
-    cloned, held or left for the next tick. Returns the summary and its log lines."""
+    cloned, held or left for the next tick. The whole sync has `within`
+    seconds: network work that what is left cannot hold is not started, and
+    those homes are left for the next tick ("not synced this tick"), neither
+    held nor backed off. Returns the summary and its log lines."""
+    end = time.monotonic() + within
+    left = lambda: end - time.monotonic()  # noqa: E731
+    spent = f"the sync's bound of {within:g} s is spent"
     now = now or clock.now()
     homes_dir = Path(homes_dir)
     slugs = list(slugs)
@@ -549,16 +580,23 @@ def sync_homes(homes_dir, slugs: Iterable[str], state, bound: float = HEADS_BOUN
     for slug in slugs:
         home = homes_dir / f"citizen-{slug}"
         try:
-            loc = _prepare(home, slug, state, now, s)
+            loc = _prepare(home, slug, state, now, s, left, spent)
         except (OSError, ValueError, LinkRefused) as e:
             s.skipped.append(slug)
             s.lines.append(f"{slug}: not synced this tick — {e}")
             continue
         if loc is not None:
             ready.append((slug, home, loc))
-    heads, s.heads = read_heads(ready, bound, gh) if ready else ({}, "none")
+    if ready and left() <= 0:
+        for slug, _home, _loc in ready:
+            _spent(slug, s, spent)
+        return s
+    heads, s.heads = read_heads(ready, min(bound, left()), gh) if ready else ({}, "none")
     s.heads_read = len(heads)
     for slug, home, loc in ready:
+        if left() < _needs(home, loc, heads.get(slug)):
+            _spent(slug, s, spent)
+            continue
         try:
             _bring(home, slug, state, loc, heads.get(slug), s)
         except (OSError, ValueError, LinkRefused) as e:

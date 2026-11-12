@@ -770,6 +770,43 @@ class TestTend(Case):
                 self.assertIn(f"{failing} failed", str(cm.exception))
                 self.assertEqual((snapshot(home), self.fx.git(home, "ls-files", "--stage")), (files, index))
 
+    def test_a_home_held_for_a_put_back_says_why_every_tick(self):
+        # fix wave A (bd): sync holds a home with a put-back pending and says so
+        # once; tend says on every tick why it is not finished, also where it stops
+        # before trying (mid-merge, links, a fresh index.lock), and, when the
+        # commit before the beat cannot be read, how a person clears it
+        for case in ("mid-merge", "links", "index-lock", "no-base"):
+            with self.subTest(case=case):
+                slug = case.replace("-", "")
+                home = self.fx.make_home(slug, cadence=V2, when="2026-11-01T00:00Z")
+                self.past_first_tick(slug)
+                base = "0" * 40 if case == "no-base" else self.fx.head(home)
+                self.fx.write(home, "EVENT-ONLY", "the beat's own\n")
+                beat_head = self.fx.commit(home, "my own pace", author=h.beat_author(slug))
+                key = f"{tend.PUT_BACK}:{base}:{beat_head}"
+                attempts.mark_reported(self.fx.state, slug, key)
+                waits = (f"{slug}: pace files a beat with tools committed itself wait to be put back "
+                         "({why}) — nothing of this home is pushed until the fleet's tend has done it")
+                if case == "mid-merge":
+                    (home / ".git" / "MERGE_HEAD").write_text(beat_head + "\n", encoding="utf-8")
+                    want = [waits.format(why="a merge or rebase is in progress")]
+                elif case == "links":
+                    self.fx.link(home, "beats/2026-11.md", self.fx.secret)
+                    want = [waits.format(why="its pace paths include links: beats/2026-11.md")]
+                elif case == "index-lock":
+                    (home / ".git" / "index.lock").write_text("", encoding="utf-8")
+                    want = [f"{slug}: .git/index.lock is fresh — not tended this tick",
+                            waits.format(why=".git/index.lock is fresh")]
+                else:
+                    want = [f"{slug}: not tended — the commit before the beat ({base}) cannot be read; "
+                            f"nothing was put back; a person puts its pace files back by hand, then removes "
+                            f"\"{key}\" from \"reported\" in {self.fx.state / slug}, and sync holds the home "
+                            "until then"]
+                for _tick in range(2):
+                    self.assertEqual(self.tend(slug), want)
+                self.assertTrue(tend.put_back_pending(self.fx.state, slug))
+                self.assertEqual(self.fx.head(home), beat_head)
+
     def test_files_set_aside_before_a_failure_are_named(self):
         # fix round 1: untracked files are set aside first; when a later checkout
         # fails, where they went is still said, and the home is "partly tended"
@@ -1189,6 +1226,20 @@ class TestGuardRestore(Case):
         for rel in ("inbox/.DS_Store", "inbox/nested/x.md", "inbox/notes.txt", ".DS_Store"):
             self.assertTrue((home / rel).exists(), rel)
 
+    def test_an_ignored_folder_at_a_pace_name_is_put_back_too(self):
+        # fix wave A (ba): a REST/ folder (or Event-Only/, cadence.md/) that
+        # .gitignore hides reads as REST to keeps_rest and holds the home from
+        # every beat; any ignored entry whose first part is a pace file's name
+        # counts, at any depth and in any case
+        home = self.fx.make_home("kalam", when="2026-11-01T00:00Z")
+        for rel in ("REST/x", "Event-Only/a/b", "notes/REST"):
+            self.fx.write(home, rel, "written by a beat with tools\n")
+        self.fx.write(home, ".gitignore", "REST/\nEvent-Only/\nnotes/\n")
+        self.assertEqual(tend.guard_restore(home, self.fx.state), ["Event-Only/a/b", "REST/x"])
+        for rel in ("REST", "Event-Only"):
+            self.assertFalse(os.path.lexists(home / rel), rel)
+        self.assertTrue((home / "notes" / "REST").exists())        # not a pace name at its top
+
 
 # -- rollback-prepare --------------------------------------------------------------
 
@@ -1258,6 +1309,24 @@ class TestRollbackPrepare(Case):
             "set it aside by hand"])
         self.assertFalse(os.path.lexists(linked / "inbox" / ".seen-2026-11-20-pace-letter.md"))
         self.assertFalse(os.path.lexists(busy / "inbox" / ".seen-2026-11-20-pace-letter.md"))
+
+    def test_a_home_with_a_put_back_pending_is_named_and_neither_committed_nor_pushed(self):
+        # fix wave A (bb): a beat with tools committed a pace change and its guard
+        # could not put it back; nothing of that home is pushed until the fleet's
+        # tend has, so rollback-prepare commits and pushes nothing there either
+        home = self.home("kalam")
+        bare = self.fx.upstream / "citizen-kalam.git"
+        upstream = self.fx.git(bare, "rev-parse", "HEAD")
+        base = self.fx.head(home)
+        self.fx.write(home, "EVENT-ONLY", "the beat's own\n")
+        beat_head = self.fx.commit(home, "my own pace", author=h.beat_author("kalam"))
+        attempts.mark_reported(self.fx.state, "kalam", f"{tend.PUT_BACK}:{base}:{beat_head}")
+        self.assertEqual(tend.rollback_prepare(self.fx.citizens, ["kalam"], self.fx.state), [
+            "kalam: not set aside for rollback (pace files a beat with tools committed itself wait for the "
+            "fleet's tend to put them back) — inbox/2026-11-20-pace-letter.md; set it aside by hand"])
+        self.assertEqual(self.fx.head(home), beat_head)
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), upstream)
+        self.assertFalse(os.path.lexists(home / "inbox" / ".seen-2026-11-20-pace-letter.md"))
 
 
 # -- the fleet-wide notices file -----------------------------------------------------

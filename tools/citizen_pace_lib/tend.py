@@ -186,11 +186,15 @@ def _any_case(paths: Iterable[str]) -> List[str]:
 
 def _read_by_pace(rel: str) -> bool:
     """A name the pace code reads: CADENCE.md, REST, EVENT-ONLY or the inbox
-    itself (in any case), or a letter (*.md) or a .seen- marker directly in
-    inbox/. An ignored file anywhere else (a Finder .DS_Store) sets no pace."""
+    itself (in any case), anything under a folder named CADENCE.md, REST or
+    EVENT-ONLY (in any case: such a folder is read as that marker, and holds
+    the home from every beat), or a letter (*.md) or a .seen- marker directly
+    in inbox/. An ignored file anywhere else (a Finder .DS_Store) sets no pace."""
     parts = rel.split("/")
+    if parts[0].lower() in ("cadence.md", "rest", "event-only"):
+        return True
     if len(parts) == 1:
-        return parts[0].lower() in ("cadence.md", "rest", "event-only", "inbox")
+        return parts[0].lower() == "inbox"
     if len(parts) != 2 or parts[0].lower() != "inbox":
         return False
     name = parts[1]
@@ -430,7 +434,7 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     FirstTickPending; a home holding none has its first tend in that beat."""
     home = Path(home)
     slug = slug_of(home)
-    if not (home / ".git").is_dir() or forbidden_links(home):
+    if not (home / ".git").is_dir():
         return []
     h = lock.holder(state, slug) if own is not None else None
     mine = own is not None and getattr(h, "pid", None) == own
@@ -438,20 +442,31 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
         who = f"pid {h.pid}" if h is not None and h.pid else ("no recorded pid" if h is not None else "")
         raise LockTaken(f"{slug}: its lock is held by {who}, not by this beat" if who
                         else f"{slug}: its lock is gone — this beat no longer holds it")
+
+    def stopped(why: str, said: List[str]) -> List[str]:
+        """Tend stops here, before looking; the fleet's tend says on every tick
+        why a pending put-back waits (citizen_pace.py tend-home refuses a beat
+        on a home left unmarked or with a put-back pending)."""
+        return said + ([_put_back_waits(slug, why)] if own is None and put_back_pending(state, slug) else [])
+
+    links = forbidden_links(home)
+    if links:
+        return stopped(f"its pace paths include links: {', '.join(links)}", [])
     if not mine and lock.held(state, slug, bound=bound):
-        return [f"{slug}: its lock is held — not tended this tick"]
+        return stopped("its lock is held", [f"{slug}: its lock is held — not tended this tick"])
     lines = []
     age = index_lock_age(home)
     if age is not None:
         if age <= 2 * _bound(bound):
-            return [f"{slug}: .git/index.lock is fresh — not tended this tick"]
+            return stopped(".git/index.lock is fresh", [f"{slug}: .git/index.lock is fresh — not tended this tick"])
         try:
             os.unlink(home / ".git" / "index.lock")
         except OSError as e:
-            return [f"{slug}: a stale .git/index.lock could not be removed ({e}) — not tended this tick"]
+            return stopped("a stale .git/index.lock could not be removed",
+                           [f"{slug}: a stale .git/index.lock could not be removed ({e}) — not tended this tick"])
         lines.append(f"{slug}: stale .git/index.lock removed ({int(age)} s old)")
     if mid_merge(home):
-        return lines
+        return stopped("a merge or rebase is in progress", lines)
     try:
         pending = _put_back_key(state, slug)
         if pending:
@@ -617,13 +632,24 @@ def _put_back_since(home: Path, state, base: str, beat_head: str) -> Tuple[List[
     return _put_back(home, state, wrote)
 
 
+def _put_back_waits(slug: str, why: str) -> str:
+    return (f"{slug}: pace files a beat with tools committed itself wait to be put back ({why}) — nothing "
+            "of this home is pushed until the fleet's tend has done it")
+
+
 def _put_back_line(slug: str, base: str, paths: List[str]) -> str:
     return (f"{slug}: pace files a beat with tools committed itself put back as {_short(base)} has them, "
             f"as the fleet: {', '.join(paths)}")
 
 
 def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_head: str) -> List[str]:
-    paths, aside = _put_back_since(home, state, _base_commit(home, base), beat_head)
+    try:
+        rev = _base_commit(home, base)
+    except TendError as e:
+        raise TendError(f"{e}; a person puts its pace files back by hand, then removes \"{key}\" from "
+                        f"\"reported\" in {attempts.record_path(state, slug)}, and sync holds the home until "
+                        "then") from e
+    paths, aside = _put_back_since(home, state, rev, beat_head)
     attempts.clear_reported(state, slug, key)
     return (([_put_back_line(slug, base, paths)] if paths else [])
             + [set_aside_line(slug, rel, dest, committed=True) for rel, dest in aside])
@@ -731,6 +757,8 @@ def _why_not(home: Path, slug: str, state, bound: Optional[float]) -> str:
         return f"its pace paths include links: {', '.join(links)}"
     if state is not None and lock.held(state, slug, bound=bound):
         return "its lock is held"
+    if state is not None and put_back_pending(state, slug):
+        return "pace files a beat with tools committed itself wait for the fleet's tend to put them back"
     if index_lock_age(home) is not None:
         return ".git/index.lock is there"
     if mid_merge(home):
@@ -745,7 +773,9 @@ def rollback_prepare(homes_dir, slugs: Iterable[str], state=None, now=None,
     wake its reader at every pass, and commit and push those markers as the
     fleet. The new code reads such a marker as unread (homes.unread_letters), so
     the letter is still shown once if the new code returns. One line per letter
-    set aside, and one per home that could not be prepared, naming its letters.
+    set aside, and one per home that could not be prepared, naming its letters
+    (a home with a put-back pending is one: nothing of it is pushed until the
+    fleet's tend has finished that).
     push=False commits the markers and pushes nothing (a scratch copy, as in
     the rollback drill)."""
     day = clock.day(now or clock.now())

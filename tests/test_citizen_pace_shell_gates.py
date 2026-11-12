@@ -17,8 +17,10 @@ import datetime
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -103,6 +105,16 @@ class Case(h.FixtureCase):
 
     def beat_log(self, slug):
         return (self.fx.memory / f"citizen-{slug}.log").read_text(encoding="utf-8")
+
+
+def alive(pid: int) -> bool:
+    """The process is there and not a zombie (ps reads it so)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout
+    return bool(state.strip()) and not state.strip().startswith("Z")
 
 
 # -- keeps_rest and unread_mail ---------------------------------------------------------
@@ -360,6 +372,33 @@ class TestBeatLock(Case):
         pid, bound, parent = seen.read_text(encoding="utf-8").split()
         self.assertEqual(pid, parent)
         self.assertGreaterEqual(int(bound), 900 + 60 + 20 + 30)
+
+    def test_term_to_the_script_stops_its_beat_before_the_lock_is_released(self):
+        # fix wave A (r): a TERM to citizen-beat.sh alone must not free the lock while
+        # claude still edits the home: the EXIT trap stops the beat child first
+        self.fx.make_home("waker")
+        started = self.fx.root / "claude-pid"
+        self.fx.write_bin("claude", f'#!/bin/sh\necho "$$" > "{started}.tmp"; mv "{started}.tmp" "{started}"\n'
+                                    'exec sleep 60\n')
+        p = subprocess.Popen(["bash", str(BEAT), "waker"], env=self.env(), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        child = None
+        try:
+            until = time.monotonic() + 30
+            while not started.exists() and time.monotonic() < until:
+                time.sleep(0.1)
+            self.assertTrue(started.exists(), "the beat never started")
+            child = int(started.read_text(encoding="utf-8"))
+            p.send_signal(signal.SIGTERM)
+            p.communicate(timeout=30)
+            self.assertFalse(alive(child), "claude outlived the beat that held the lock")
+            self.assertFalse(os.path.lexists(self.state / "waker.lock"))
+        finally:
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+            if child and alive(child):
+                os.kill(child, signal.SIGKILL)
 
     def test_a_wallclock_that_is_not_a_number_refuses_the_beat(self):
         # fix wave A (o): a typo would leave the beat with no bound at all
@@ -658,6 +697,28 @@ class TestGuardRestore(Case):
         r = self.ok(self.beat("keeper", BEAT_SUMMONS="1"))
         self.assertIn("keeper: a killed beat's leftovers restored: CADENCE.md, inbox/2026-11-18-left.md", r.stdout)
         self.assertEqual(self.fx.claude_calls(), ["citizen-keeper"])
+
+    def test_a_home_before_its_first_tend_gets_no_beat_even_where_tend_cannot_look(self):
+        # fix wave A (bc): mid-merge, a fresh index.lock or a link keep tend from
+        # looking at what is uncommitted; before the home's first full tend that
+        # is no beat with tools either
+        for case in ("merging", "locked", "linked"):
+            with self.subTest(case=case):
+                home = self.fx.make_home(case, when=HOME_MADE)
+                self.fx.write(home, "beats/2026-10.md", "LEFT-BY-THE-OLD-CODE\n")
+                if case == "merging":
+                    (home / ".git" / "MERGE_HEAD").write_text(self.fx.head(home) + "\n", encoding="utf-8")
+                elif case == "locked":
+                    (home / ".git" / "index.lock").write_text("", encoding="utf-8")
+                else:
+                    self.fx.link(home, "beats/2026-11.md", self.fx.secret)
+                r = self.ok(self.beat(case), 1)
+                self.assertIn(f"{case}: the fleet has not tended this home since the switch; its uncommitted "
+                              "files are kept — no beat", r.stdout)
+                self.assertNotIn(case, " ".join(self.fx.claude_calls()))
+                self.assertEqual((home / "beats" / "2026-10.md").read_text(encoding="utf-8"),
+                                 "LEFT-BY-THE-OLD-CODE\n")
+                self.assertFalse(os.path.lexists(self.state / f"{case}.lock"))
 
     def test_an_inherited_pathspec_setting_does_not_open_the_reset(self):
         # fix round 1: GIT_LITERAL_PATHSPECS=1 would make the reset's ':(literal,icase)'

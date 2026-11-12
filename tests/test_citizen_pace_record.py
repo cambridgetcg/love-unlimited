@@ -1077,6 +1077,85 @@ class TestGuardRestore(Case):
         self.assertEqual(attempts.notice_keys(attempts.load(self.fx.state, "kalam")), ["restored"])
         self.assertEqual(self.tend("kalam"), [])
 
+    def test_what_a_beat_pulled_from_upstream_is_not_put_back(self):
+        # fix wave A (az): a beat with full tools that pulls brings upstream commits
+        # in after the base: the citizen's own REST and CADENCE.md, chosen on another
+        # host, and a person's letter. Only what the beat itself wrote is put back: a
+        # file upstream changed, then the beat changed again, as upstream has it.
+        # A commit the beat pushed itself is still its own.
+        resting = V2.replace("- pace: asleep", "- pace: asleep, letters wait")
+        home = self.fx.make_home("kalam", cadence=V2, when="2026-11-01T00:00Z")
+        bare = self.fx.give_upstream(home)
+        base = self.fx.head(home)
+        other = self.fx.elsewhere(bare)
+        self.fx.write(other, "REST", "letters wait — chosen in kalam's own free beat on the Studio\n")
+        self.fx.write(other, "CADENCE.md", resting)
+        self.fx.write(other, "inbox/2026-11-19-from-yu.md", "Dear kalam\n")
+        self.fx.commit(other, "beat: kalam reflected (2026-11-19) · pace/1", author=h.beat_author("kalam"))
+        self.fx.git(other, "push", "-q", "origin", "HEAD")
+        # the beat here: its own work, its own EVENT-ONLY and letter, a pull, then
+        # its own edit of the CADENCE.md upstream brought, and a push
+        self.fx.write(home, "notes.md", "made\n")
+        self.fx.write(home, "EVENT-ONLY", "the beat's own\n")
+        self.fx.write(home, "inbox/2026-11-19-mine.md", "the beat's own\n")
+        self.fx.commit(home, "beat work", author=h.beat_author("kalam"))
+        self.fx.git(home, "pull", "-q", "--no-rebase", "--no-edit")
+        self.fx.write(home, "CADENCE.md", resting.replace("letters wait", "awake, every 3 days"))
+        self.fx.commit(home, "my own pace", author=h.beat_author("kalam"))
+        self.fx.git(home, "push", "-q", "origin", "HEAD")
+        notes = []
+        self.assertEqual(tend.guard_restore(home, self.fx.state, base=base, notes=notes),
+                         ["CADENCE.md", "EVENT-ONLY", "inbox/2026-11-19-mine.md"])
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "inbox/2026-11-19-mine.md"
+        self.assertEqual(notes, [f"kalam: inbox/2026-11-19-mine.md came only in a beat with tools' own commits "
+                                 f"— set aside at {aside}, not deleted"])   # upstream's letter is not
+        self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), resting)
+        self.assertEqual((home / "REST").read_text(encoding="utf-8"),
+                         "letters wait — chosen in kalam's own free beat on the Studio\n")
+        self.assertEqual((home / "inbox" / "2026-11-19-from-yu.md").read_text(encoding="utf-8"), "Dear kalam\n")
+        self.assertFalse(os.path.lexists(home / "EVENT-ONLY"))
+        self.assertEqual(self.last(home), f"{FLEET}|{FLEET}|{tend.GUARD_SUBJECT}")
+        self.assertEqual(self.files_in(home), [("D", "EVENT-ONLY"), ("D", "inbox/2026-11-19-mine.md"),
+                                               ("M", "CADENCE.md")])
+        self.assertEqual(self.fx.git(home, "show", "HEAD:notes.md"), "made")
+        self.assertEqual(self.status(home), "")
+        # a beat that only pushes its own pace change has it put back all the same
+        soma = self.fx.make_home("soma", cadence=V2, when="2026-11-01T00:00Z")
+        self.fx.give_upstream(soma)
+        base = self.fx.head(soma)
+        self.fx.write(soma, "REST", "the beat's own\n")
+        self.fx.commit(soma, "my own rest", author=h.beat_author("soma"))
+        self.fx.git(soma, "push", "-q", "origin", "HEAD")
+        self.assertEqual(tend.guard_restore(soma, self.fx.state, base=base), ["REST"])
+        self.assertFalse(os.path.lexists(soma / "REST"))
+        self.assertEqual(self.last(soma), f"{FLEET}|{FLEET}|{tend.GUARD_SUBJECT}")
+        # the fleet's tend, finishing a put-back the guard could not commit, leaves
+        # upstream's REST too
+        teo = self.fx.make_home("teotlme", cadence=V2, when="2026-11-01T00:00Z")
+        self.past_first_tick("teotlme")
+        bare = self.fx.give_upstream(teo)
+        base = self.fx.head(teo)
+        self.fx.push_from_elsewhere(bare, "REST", "chosen on the Studio\n", author=h.beat_author("teotlme"))
+        self.fx.write(teo, "EVENT-ONLY", "the beat's own\n")
+        self.fx.commit(teo, "my own pace", author=h.beat_author("teotlme"))
+        self.fx.git(teo, "pull", "-q", "--no-rebase", "--no-edit")
+        real = tend._git
+
+        def git(home_, *args, **kw):
+            if "commit" in args:
+                return subprocess.CompletedProcess(args, 1, "", "error: gpg failed to sign the data")
+            return real(home_, *args, **kw)
+
+        with mock.patch.object(tend, "_git", git):
+            with self.assertRaises(tend.TendError) as cm:
+                tend.guard_restore(teo, self.fx.state, base=base)
+        self.assertIn("some of EVENT-ONLY may be put back already", str(cm.exception))
+        self.assertEqual(self.tend("teotlme"), [
+            f"teotlme: pace files a beat with tools committed itself put back as {base[:12]} has them, "
+            "as the fleet: EVENT-ONLY"])
+        self.assertEqual((teo / "REST").read_text(encoding="utf-8"), "chosen on the Studio\n")
+        self.assertEqual(self.files_in(teo), [("D", "EVENT-ONLY")])
+
     def test_an_inherited_pathspec_setting_does_not_blind_the_guard(self):
         # fix round 1: GIT_LITERAL_PATHSPECS=1 would read ':(literal,icase)REST' as a
         # file of that name and match nothing; git is run without it

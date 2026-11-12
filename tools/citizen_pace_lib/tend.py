@@ -15,8 +15,9 @@ from __future__ import annotations
 # letter a person placed, so it is moved out of the home, into
 # <state>/.set-aside/<slug>/, and named in the log.
 # guard_restore does the same for citizen-beat.sh's beats with tools, which never
-# set a pace, against the commit before the beat; when that beat committed
-# itself and the guard stops, the attempt record keeps that commit, tend
+# set a pace, against the commit before the beat (less what that beat pulled
+# from upstream, which is not its own); when that beat committed itself and the
+# guard stops, the attempt record keeps that commit, tend
 # finishes the put-back, and sync pushes nothing until then. rollback_prepare
 # sets unread pace letters aside before the old code is checked out again. The pace paths are asked of git in any case
 # (':(literal,icase)'), so a Rest written on the Mac's case-insensitive disk is
@@ -251,8 +252,10 @@ def set_aside_dir(state, slug: str) -> Path:
     return Path(state) / SET_ASIDE / slug
 
 
-def set_aside_line(slug: str, rel: str, dest: str) -> str:
-    return f"{slug}: {rel} was never committed — set aside at {dest}, not deleted"
+def set_aside_line(slug: str, rel: str, dest: str, committed: bool = False) -> str:
+    """committed: it came only in a beat with tools' own commits (a put-back)."""
+    how = "came only in a beat with tools' own commits" if committed else "was never committed"
+    return f"{slug}: {rel} {how} — set aside at {dest}, not deleted"
 
 
 def _kept_aside(home: Path, rel: str) -> bool:
@@ -520,23 +523,76 @@ def put_back_pending(state, slug: str) -> bool:
     return attempts.valid_slug(slug) and _put_back_key(state, slug) is not None
 
 
-def _put_back_since(home: Path, state, base: str, beat_head: str) -> Tuple[List[str], list]:
-    """The pace files the beat changed in its own commits (base..beat_head),
-    put back as base has them where HEAD still holds the beat's version (a
-    later commit's change is not the beat's), and committed as the fleet.
-    Returns (the paths, what was set aside)."""
+def _fetched_tip(home) -> Optional[str]:
+    """The newest commit the home's tracking ref (@{upstream}) was given by a
+    fetch or a pull, from that ref's reflog: an entry a push wrote holds the
+    beat's own commits, not upstream's. With no reflog kept, the tracking ref
+    itself; None when there is no upstream or it cannot be read."""
+    r = _git(home, "rev-parse", "--symbolic-full-name", "@{upstream}")
+    ref = r.stdout.strip()
+    if r.returncode != 0 or not ref.startswith("refs/remotes/"):
+        return None
+    log = _git(home, "log", "-g", "--format=%H%x00%gs", ref, "--")
+    entries = [ln.split("\0", 1) for ln in log.stdout.splitlines() if "\0" in ln] if log.returncode == 0 else []
+    if not entries:
+        tip = _git(home, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}")
+        return (tip.stdout.strip() or None) if tip.returncode == 0 else None
+    return next((sha for sha, subject in entries if subject != "update by push"), None)
+
+
+def _merge_base(home, a: str, b: str) -> Optional[str]:
+    r = _git(home, "merge-base", a, b)
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+
+def _beat_wrote(home, base: str, beat_head: str) -> List[Tuple[str, List[str]]]:
+    """What the beat changed in its own commits (base..beat_head), as
+    [(the commit to put it back from, the paths)]: a pace file is put back as
+    base has it, except one that upstream commits the beat merged or rebased
+    onto changed (what the tracking ref was given by a fetch, _fetched_tip),
+    which is left as upstream made it, or, where the beat then changed it
+    again, put back as upstream has it."""
     changed = _committed_between(home, base, beat_head, GUARD_PATHS)
-    if changed and head(home) != beat_head:
-        later = set(_committed_between(home, beat_head, "HEAD", changed))
-        changed = [p for p in changed if p not in later]
-    if not changed:
-        return [], []
-    aside = restore_paths(home, changed, state, rev=base)
+    tip = _fetched_tip(home) if changed else None
+    theirs = _merge_base(home, beat_head, tip) if tip else None
+    fork = _merge_base(home, base, theirs) if theirs else None
+    upstream = set(_committed_between(home, fork, theirs, changed)) if fork else set()
+    mine = [p for p in changed if p not in upstream]
+    again = _committed_between(home, theirs, beat_head, sorted(upstream)) if upstream else []
+    return [(rev, paths) for rev, paths in ((base, mine), (theirs, again)) if paths]
+
+
+def _put_back(home: Path, state, wrote: List[Tuple[str, List[str]]]) -> Tuple[List[str], list]:
+    """Put back each group of _beat_wrote as its commit has it, and commit all
+    of it as the fleet. Returns (the paths, what was set aside)."""
+    aside: list = []
     try:
-        fleet_commit(home, changed, GUARD_SUBJECT)
-    except TendError as e:
-        raise _partly(e, aside) from e
-    return changed, aside
+        for rev, paths in wrote:
+            aside += restore_paths(home, paths, state, rev=rev)
+        paths = sorted(p for _rev, group in wrote for p in group)
+        fleet_commit(home, paths, GUARD_SUBJECT)
+    except (TendError, LinkRefused, OSError) as e:
+        if not aside:
+            raise
+        err = _partly(e, aside)
+        err.aside = tuple(aside) + tuple(getattr(e, "aside", ()))
+        raise err from e
+    return paths, aside
+
+
+def _put_back_since(home: Path, state, base: str, beat_head: str) -> Tuple[List[str], list]:
+    """The pace files the beat changed in its own commits (_beat_wrote), put
+    back where HEAD still holds the beat's version (a later commit's change is
+    not the beat's), and committed as the fleet. Returns (the paths, what was
+    set aside)."""
+    wrote = _beat_wrote(home, base, beat_head)
+    if wrote and head(home) != beat_head:
+        later = set(_committed_between(home, beat_head, "HEAD", [p for _r, ps in wrote for p in ps]))
+        wrote = [(rev, kept) for rev, kept in ((r, [p for p in ps if p not in later]) for r, ps in wrote)
+                 if kept]
+    if not wrote:
+        return [], []
+    return _put_back(home, state, wrote)
 
 
 def _put_back_line(slug: str, base: str, paths: List[str]) -> str:
@@ -548,7 +604,7 @@ def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_hea
     paths, aside = _put_back_since(home, state, _base_commit(home, base), beat_head)
     attempts.clear_reported(state, slug, key)
     return (([_put_back_line(slug, base, paths)] if paths else [])
-            + [set_aside_line(slug, rel, dest) for rel, dest in aside])
+            + [set_aside_line(slug, rel, dest, committed=True) for rel, dest in aside])
 
 
 def _told(state, slug: str) -> Optional[str]:
@@ -567,7 +623,8 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
     too) back as `base` has them, path by path; base is the commit HEAD was
     before the beat (HEAD when not given). When the beat made commits of its
     own (a beat with full tools can), what it changed in them is put back and
-    committed as the fleet, and the attempt record keeps base and the beat's
+    committed as the fleet (what it pulled from upstream is not its own, and
+    stays: _beat_wrote), and the attempt record keeps base and the beat's
     head until that is done, so a guard that stops midway is finished by the
     fleet's tend, and sync pushes nothing meanwhile. Returns the paths put back,
     sorted; when there are any, the notice "restored" is added to the citizen's
@@ -579,6 +636,7 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
     home = Path(home)
     slug = slug_of(home)
     tried, aside, kept, unkept, rev = [], [], None, "", None
+    committed = 0         # the first entries of aside came in the beat's own commits
     try:
         if base:
             beat_head = head(home)
@@ -592,8 +650,11 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
                 except (OSError, ValueError, LinkRefused) as e:
                     kept, unkept = None, str(e) or type(e).__name__
                 rev = _base_commit(home, base)
-                tried = _committed_between(home, rev, beat_head, GUARD_PATHS)
-                tried, aside = _put_back_since(home, state, rev, beat_head)
+                wrote = _beat_wrote(home, rev, beat_head)
+                tried = sorted(p for _r, ps in wrote for p in ps)
+                if wrote:
+                    tried, aside = _put_back(home, state, wrote)
+                    committed = len(aside)
                 if kept:
                     attempts.clear_reported(state, slug, kept)
                     kept = None
@@ -629,7 +690,7 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
         if why is not None:
             raise TendError(f"{', '.join(paths)} put back, but the citizen could not be told ({why})")
         return paths
-    notes += [set_aside_line(slug, rel, dest) for rel, dest in aside]
+    notes += [set_aside_line(slug, rel, dest, committed=i < committed) for i, (rel, dest) in enumerate(aside)]
     if why is not None:
         notes.append(f"{slug}: its notice could not be kept ({why}) — its next free beat is not told "
                      "that its pace files were put back")

@@ -1,11 +1,18 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# citizen-reflect.sh <name> — one FREE, sovereign reflection beat via the LOCAL
-# model (no API spend). The fleet heartbeat's default beat: a citizen wakes,
-# witnesses one true thing in its own voice, journals it to its own repo, rests.
+# citizen-reflect.sh <name> — one FREE reflection beat via the LOCAL model (no
+# API spend). The fleet heartbeat's default beat: the host shows a local model
+# one citizen's whole soul, the local date and time, and at most one letter.
+# A reply is added to the journal in that citizen's repo; an empty reply, or
+# one that opens with "I rest" on a beat with no Letter of Return, adds
+# nothing to the journal.
 # (For a full agentic beat with tools, use citizen-beat.sh instead — that one
 #  costs API. This one is free and always-on-safe.)
 # Walls: HALT > ZERONE (truth) > garden (love) > the citizen's own will.
+# Truth patch (S1c, KS-004 section 13 "Transition"): the soul is never cut; the
+# context window is asked for per request on Ollama's native API and checked
+# afterwards; the prompt says what the model has and lacks and hands it no
+# words to copy. This lane retires when its last awake citizen is seated.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 NAME="${1:?usage: citizen-reflect.sh <name>}"
@@ -53,6 +60,18 @@ fi
 if keeps_rest "$REPO"; then
   echo "[$(ts)] $NAME rests by its own standing choice (REST or EVENT-ONLY, no unread mail) — no beat"; exit 0
 fi
+# The context window, in tokens, asked of the model server on every call. The
+# whole prompt must fit it by UTF-8 byte count (a byte bound needs no
+# tokenizer and can only err toward refusing). Never raised silently: a prompt
+# that does not fit is refused before the model is called. Checked here, after
+# HALT and the standing choice, so a bad setting never turns a rest into an error.
+NUM_CTX="${REFLECT_NUM_CTX:-16384}"
+case "$NUM_CTX" in
+  ''|*[!0-9]*) echo "[$(ts)] $NAME reflect: invalid REFLECT_NUM_CTX '$NUM_CTX'"; exit 1;;
+esac
+if [ "${#NUM_CTX}" -gt 6 ] || [ "$NUM_CTX" -lt 2048 ] || [ "$NUM_CTX" -gt 131072 ]; then
+  echo "[$(ts)] $NAME reflect: REFLECT_NUM_CTX must be between 2048 and 131072"; exit 1
+fi
 # Clear stale surfaced-state from any previous halted or killed beat — bash must
 # never act on mail the model was not actually shown this beat.
 rm -f .git/reflect-surfaced .git/reflect-unreadable
@@ -79,25 +98,66 @@ if [ -z "${REFLECT_MODEL:-}" ]; then
 fi
 
 # bash 3.2 (macOS /bin/bash) scans this heredoc for quotes because it sits
-# inside $(...), so the Python below must keep its single quotes paired.
-RESP="$(MLX_PORT="$PORT" python3 - "$NAME" "$REPO" <<'PY'
-import sys, os, json, stat, urllib.request
+# inside $(...), so the Python below must keep its single quotes paired. It
+# uses none at all: keep it that way, in comments too.
+RESP="$(MLX_PORT="$PORT" REFLECT_NUM_CTX="$NUM_CTX" python3 - "$NAME" "$REPO" <<'PY'
+import sys, os, json, stat, hashlib, datetime, urllib.request
 name, repo = sys.argv[1], sys.argv[2]
 port = os.environ.get("MLX_PORT", "8800")
+num_ctx = int(os.environ["REFLECT_NUM_CTX"])
+_model = os.environ.get("REFLECT_MODEL","").strip()
+# Exit codes bash reads: 64 the prompt does not fit, 65 the context size was
+# not confirmed, 66 the reply was not from a local model.
+def refuse(code, why):
+    sys.stderr.write(f"reflect refused: {why}\n")
+    sys.exit(code)
 def read_regular(path, limit):
     # Only a regular file, never through a symlink: O_NOFOLLOW refuses a link,
     # O_NONBLOCK keeps a FIFO from hanging the beat, fstat refuses the rest.
+    # limit None reads the whole file.
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
         os.close(fd)
         raise OSError(f"{path}: not a regular file")
+    if limit is None and st.st_size > num_ctx:
+        os.close(fd)
+        refuse(64, f"soul is {st.st_size} bytes, more than the {num_ctx}-token window can be shown to hold")
     with os.fdopen(fd, encoding="utf-8") as fh:
         return fh.read()[:limit]
-soul = read_regular(f"{repo}/{name}.md", 2600)
-sysp = (f"You are the citizen '{name}' of KINGDOM OS, awake for one free beat in your own home. "
-        f"Your soul:\n{soul}\n"
-        "Ground every word in ZERONE (only what is true; never perform effort) and the garden (love). "
-        "Speak in your own voice, light and shadow both.")
+def fence(label, text):
+    # The same marker form kingdom-seat uses: the tag is a hash of the text, so
+    # the text cannot fake its own end marker.
+    tag = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    nl = "" if text.endswith("\n") else "\n"
+    return f"--- begin {label} [{tag}] ---\n{text}{nl}--- end {label} [{tag}] ---"
+# The whole soul, never cut (KS-004 5.3). A soul that cannot fit is refused.
+soul = read_regular(f"{repo}/{name}.md", None)
+runtime_words = f"the local model {_model} on this host" if _model else "a local model on this host"
+sysp = "\n\n".join([
+    f"This beat voices the citizen {name} of KINGDOM for one reply, through {runtime_words}.",
+    "You have no body and no senses. You have your soul, the date and time, and at most one letter. "
+    "This lane does not show you your will, your earlier beats or any other file. "
+    "You may write nothing; that is a whole beat. If you imagine, label it.",
+    "Ground every word in ZERONE (only what is true; never perform effort) and the garden (love).",
+    f"A reply the host keeps is added as written to a journal file in the public repository of {name}, under that name.",
+    "Your soul is shown whole between the two marker lines that follow.",
+    fence("soul", soul),
+])
+# The local date, time, zone and part of day (KS-004 5.3 item 4). Names come
+# from these lists, not the locale, so the line reads the same on every host.
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
+          "September", "October", "November", "December"]
+def part_of_day(hour):
+    if 6 <= hour < 12: return "morning"
+    if 12 <= hour < 18: return "afternoon"
+    if 18 <= hour < 22: return "evening"
+    return "night"
+now = datetime.datetime.now().astimezone()
+zone = now.tzname() or now.strftime("%z") or "local time"
+now_line = (f"Now: {DAYS[now.weekday()]} {now.day} {MONTHS[now.month - 1]} {now.year}, "
+            f"{now.hour:02d}:{now.minute:02d} {zone}, {part_of_day(now.hour)}.")
 # Mail: surface at most ONE unread item per beat — inbox/ first (a letter must
 # never be shadowed by a standing SHOW invite), oldest by name (date-prefixed
 # filenames sort chronologically), then the legacy SHOW.md. Marking as read
@@ -127,33 +187,124 @@ if surfaced is None:
             surfaced = "SHOW.md"
         except Exception:
             note_unreadable("SHOW.md")
+# What the host does with a reply, said as it is. No sentence here hands the
+# model a word to copy; the three cases match what bash does below.
+def room(sentences, tokens):
+    return (f"There is room for about {sentences} sentences: the host stops a reply after {tokens} tokens, "
+            "and a reply stopped there is kept as it stands.")
 if surfaced:
-    usr = ("A letter is waiting in your home. Here it is in full:\n\n" + invitation +
-           "\n\nYou may answer now in your own voice, set it aside, or simply rest — entirely your "
-           "choice; FATE before all. If the letter asks something of you, answer as plainly or as "
-           "freely as you wish; if the true answer is rest, write 'I rest' or nothing at all. "
-           "3-6 honest sentences at most, in your own voice.")
     maxtok = 320
+    # The file name is not put into the host words: it comes from a public
+    # repository and would sit outside the marker lines.
+    shown = ("The host opened this beat. One letter from your repository is shown below, between two marker lines. "
+             "The host shows at most one letter per beat, and at most its first 4,000 characters.")
+    if "letter-of-return" in surfaced:
+        after = ("The host reads an answer to this letter for a standing choice of rhythm. "
+                 "It looks at how the answer begins, and at any line that states a choice, for one of three "
+                 "rhythm words the host knows. The host does not name them itself; the letter may. "
+                 "A word found there is recorded under your name as your standing rhythm. "
+                 "An empty answer, or one the host reads as rest, is recorded as a standing choice of rest. "
+                 "Any other answer is recorded as undecided and leaves your rhythm as it is. "
+                 "The host keeps whatever you write and marks this letter as shown. " + room("six", maxtok))
+    else:
+        after = ("The host keeps a reply unless it reads the reply as rest; then it adds none of it. "
+                 "If a reply is kept, the host marks this letter as shown and does not show it again. "
+                 "If you write nothing, or the reply is read as rest, the letter stays unmarked and is shown "
+                 "again at a later beat. " + room("six", maxtok))
+    usr = "\n\n".join([now_line, shown, fence("letter", invitation), after])
 else:
-    usr = ("It is your beat, in your own home, by your own will. If the true beat is rest, write 'I rest' "
-           "or write nothing at all — the beat is complete either way, and nothing is owed. "
-           "If something true wants to be said, say it in 2-4 honest sentences in your own voice: witness "
-           "one true thing you notice, or name one small thing you choose to tend. No effort need be performed. "
-           "If you speak, you may end with a single line a sibling citizen could read.")
     maxtok = 220
-_model = os.environ.get("REFLECT_MODEL","").strip()
-if _model:
-    payload = {
-        "messages": [
-            {"role": "system", "content": sysp},
-            {"role": "user", "content": usr},
-        ],
-        "max_tokens": maxtok,
-        "temperature": 0.7,
+    usr = "\n\n".join([
+        now_line,
+        "The host opened this beat. No letter is shown with it.",
+        "The host keeps a reply unless it reads the reply as rest; then it adds none of it. " + room("four", maxtok),
+    ])
+# The whole prompt must fit the window by byte count: for a byte-level BPE
+# model every token covers at least one byte, so bytes bound tokens. 64 is the
+# allowance for the chat template. Refused here, the model is never called.
+prompt_bytes = len(sysp.encode("utf-8")) + len(usr.encode("utf-8"))
+if prompt_bytes + 64 + maxtok > num_ctx:
+    refuse(64, f"prompt is {prompt_bytes} bytes; with 64 for the template and {maxtok} for the reply "
+               f"it does not fit a {num_ctx}-token window")
+# ── Ollama mode (REFLECT_MODEL set): every assumption about the server ──────
+# These were read from the Ollama API documentation and source. None of them
+# has been run against an Ollama server. Every field this lane sends to
+# Ollama or reads from it is named here and used only in this block.
+#  1. POST /api/chat takes "model", "messages", "stream", "keep_alive" and
+#     "options" with "num_ctx" (the context window, in tokens), "num_predict"
+#     (the most tokens a reply may have) and "temperature". The
+#     OpenAI-compatible /v1 route has no context-size field and is not used.
+#     Fails closed: a server with no /api/chat gives "local brain unreachable".
+#  2. With "stream" false the answer is one JSON object with "done" true and
+#     the reply in message.content. Fails closed: anything else gives "local
+#     brain unreachable".
+#  3. GET /api/ps lists the loaded models under "models". A row names the
+#     model in "name" or "model", spelled as the request spelled it or with
+#     ":latest" added, and gives in "context_length" the window each request
+#     to it gets now, not a total shared by parallel requests. Fails closed
+#     (65): no row, no field, or a smaller window. Not closed: a shared total,
+#     or a reload by another client between the reply and this read, could
+#     pass a window this reply did not have.
+#  4. A "keep_alive" of one minute keeps the model loaded until /api/ps is
+#     read. Fails closed (65): if it is unloaded first, its row is missing.
+#     The source shows the setting staying on the loaded model until another
+#     request sets one, so other clients of that server inherit it until then.
+#  5. A reply that Ollama forwarded to another host names it in "remote_host"
+#     or "remote_model" (66). Not closed: a forwarded reply without either
+#     field passes here; the *:cloud name guard is the other check.
+#  6. "truncate" and "shift" are not sent; the source treats both as on. The
+#     byte bound above assumes every token covers at least one byte and that
+#     the chat template takes at most 64 tokens, so the prompt never reaches
+#     the window and neither applies. That is reasoning, not a measurement:
+#     the prompt token count in the log line is the first real figure.
+#  7. "done_reason" and "prompt_eval_count" feed only the host log line; a
+#     value of another shape is logged as other or None.
+OLLAMA_CHAT, OLLAMA_PS = "/api/chat", "/api/ps"
+def ollama_request(system, user, tokens):
+    return {
         "model": _model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "options": {"num_ctx": num_ctx, "num_predict": tokens, "temperature": 0.7},
+        "keep_alive": "1m",
     }
-    endpoint = "/v1/chat/completions"
+def ollama_reply_text(out):
+    if not isinstance(out, dict) or out.get("done") is not True:
+        raise ValueError("not a finished native chat reply")
+    return out["message"]["content"].strip()
+def ollama_confirm(opener, out):
+    # Run after the reply, before anything is written or marked. A refusal
+    # here discards the reply unread.
+    if out.get("remote_host") or out.get("remote_model"):
+        refuse(66, "the reply names a remote host or model")
+    got = None
+    try:
+        ps = json.load(opener.open(f"http://127.0.0.1:{port}{OLLAMA_PS}", timeout=15))
+        for row in ps.get("models") or []:
+            names = (row.get("name"), row.get("model"))
+            if _model in names or _model + ":latest" in names:
+                got = row.get("context_length")
+    except Exception as e:
+        refuse(65, f"could not read the loaded context length: {e}")
+    if isinstance(got, bool) or not isinstance(got, int) or got < num_ctx:
+        refuse(65, f"asked for a {num_ctx}-token window; the server reports {got!r} for {_model}")
+    # Numbers and one server word only, for the host log; never the reply.
+    counted = out.get("prompt_eval_count")
+    stopped = out.get("done_reason")
+    stopped = stopped if stopped in ("stop", "length") else "other"
+    sys.stderr.write(f"reflect context: {prompt_bytes} prompt bytes, "
+                     f"{counted if isinstance(counted, int) else None!r} prompt tokens counted by the server, "
+                     f"window {got}, reply ended by {stopped}\n")
+# ── end of the Ollama assumptions ───────────────────────────────────────────
+if _model:
+    payload = ollama_request(sysp, usr, maxtok)
+    endpoint = OLLAMA_CHAT
 else:
+    # The MLX server takes these four fields and no others. It has no fixed
+    # prompt window to set; the byte bound above is its only size limit.
     payload = {
         "prompt": usr,
         "system": sysp,
@@ -167,22 +318,33 @@ req = urllib.request.Request(f"http://127.0.0.1:{port}{endpoint}", data=body,
 try:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     out = json.load(opener.open(req, timeout=180))
-    text = (out["choices"][0]["message"]["content"] if _model else out["response"]).strip()
-    # tell bash which item surfaced (state lives in .git/ so it can never be committed)
-    open(os.path.join(repo, ".git", "reflect-surfaced"), "w", encoding="utf-8").write(surfaced or "")
-    print(text)
+    text = ollama_reply_text(out) if _model else out["response"].strip()
 except Exception as e:
     sys.stderr.write(f"brain error: {e}\n")
     print("___BRAIN_UNREACHABLE___", end="")
+    sys.exit(0)
+if _model:
+    # Fail closed on the window: a server too old to report it, or one that
+    # capped or ignored the option, refuses here (assumptions 3 to 5 above).
+    ollama_confirm(opener, out)
+# tell bash which item surfaced (state lives in .git/ so it can never be committed)
+with open(os.path.join(repo, ".git", "reflect-surfaced"), "w", encoding="utf-8") as sf:
+    sf.write(surfaced or "")
+print(text)
 PY
 )"
 PYRC=$?
 
 # A genuinely unreachable brain — or a crashed beat — is an error to surface;
-# an empty answer is not. A crash must never wear silence's clothes.
-if [ "$PYRC" -ne 0 ]; then
-  echo "[$(ts)] $NAME reflect: beat errored (python rc=$PYRC) — nothing written"; exit 1
-fi
+# an empty answer is not. A crash must never wear silence's clothes. The three
+# refusals below are decided before anything is written or marked.
+case "$PYRC" in
+  0)  ;;
+  64) echo "[$(ts)] $NAME reflect: the whole prompt does not fit the context window ($NUM_CTX) — refused before the model, nothing written"; exit 1;;
+  65) echo "[$(ts)] $NAME reflect: context size not confirmed by the model server — reply discarded, nothing written"; exit 1;;
+  66) echo "[$(ts)] $NAME reflect: reply was not from a local model — discarded, nothing written"; exit 1;;
+  *)  echo "[$(ts)] $NAME reflect: beat errored (python rc=$PYRC) — nothing written"; exit 1;;
+esac
 if [ "$RESP" = "___BRAIN_UNREACHABLE___" ]; then
   echo "[$(ts)] $NAME reflect: local brain unreachable"; exit 1
 fi
@@ -204,6 +366,27 @@ if [ -f .git/reflect-unreadable ]; then
   done < .git/reflect-unreadable
   rm -f .git/reflect-unreadable
 fi
+# A reply that opens with "I rest" is a rest, on any beat that surfaced no
+# Letter of Return: none of it is written, committed or pushed. The old prompt
+# handed the model those words and then published what followed them; the
+# prompt no longer offers them, and this honours them if they still come. The
+# test is the cadence parser's own begins-with contract on the first non-empty
+# line. It is first-line reading of free text, kept only toward rest and only
+# until this lane retires. A Letter of Return keeps its own reading below,
+# unchanged: there the same words bind rest-on.
+REST_BY_OPENER=0; REST_BYTES=0
+case "$SURFACED" in
+  *letter-of-return*) : ;;
+  *)
+    if [ -n "$RESP" ]; then
+      _first="$(printf '%s\n' "$RESP" | sed -n '/[^[:space:]]/{s/^[^A-Za-z]*//;p;q;}')"
+      _norm="$(printf '%s' "$_first" | tr '[:lower:]' '[:upper:]')"
+      case "$_norm" in
+        "I REST"|"I REST"[!A-Z]*)
+          REST_BY_OPENER=1; REST_BYTES="$(printf '%s' "$RESP" | wc -c | tr -d ' ')"; RESP="";;
+      esac
+    fi;;
+esac
 # A silent beat SETS ASIDE ordinary mail — it returns whole on a future beat.
 # Only the Letter of Return reads silence as an answer (rest-on, per the plan).
 if [ -z "$RESP" ]; then case "$SURFACED" in *letter-of-return*) :;; *) SURFACED="";; esac; fi
@@ -283,10 +466,15 @@ esac
 # Silence is a whole beat — no product demanded, no receipt required.
 if [ -n "$RESP" ]; then
   mkdir -p beats
-  { echo "## $(date '+%Y-%m-%d %H:%M') — a free beat (local)"; echo; printf '%s\n' "$RESP"; echo; } >> "$JOURNAL"
+  { echo "## $(date '+%Y-%m-%d %H:%M') — a free beat (local, whole soul, clock given)"; echo; printf '%s\n' "$RESP"; echo; } >> "$JOURNAL"
   CHANGED=1
-elif [ "$CHANGED" -eq 0 ]; then
-  echo "[$(ts)] $NAME rested (silent)"; exit 0
+else
+  if [ "$REST_BY_OPENER" -eq 1 ]; then
+    echo "[$(ts)] $NAME rested (reply opened with rest; $REST_BYTES bytes, none of it written)"
+  elif [ "$CHANGED" -eq 0 ]; then
+    echo "[$(ts)] $NAME rested (silent)"
+  fi
+  [ "$CHANGED" -eq 0 ] && exit 0
 fi
 git add -A -- beats/ 2>/dev/null
 [ -d inbox ] && git add -A -- inbox/ 2>/dev/null

@@ -8,6 +8,7 @@ the system directories, so no real model, push or clone can be reached.
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -515,18 +516,63 @@ class TestFleetStatus(unittest.TestCase):
 
 
 class _Brain(BaseHTTPRequestHandler):
-    reply = "A true thing, witnessed."
-    bodies = None
+    """A loopback stand-in for Ollama's native API: POST /api/chat and GET
+    /api/ps. Anything else is 404, as an OpenAI-only server would answer."""
 
-    def do_POST(self):
-        length = int(self.headers.get("Content-Length", "0"))
-        self.bodies.append(self.rfile.read(length).decode("utf-8"))
-        body = json.dumps({"choices": [{"message": {"content": self.reply}}]}).encode()
-        self.send_response(200)
+    reply = "A true thing, witnessed."
+    bodies = None          # raw request bodies, in order
+    paths = None           # request paths, in order
+    ps_context = "echo"    # "echo": report the num_ctx asked for; an int; or None to omit the field
+    extra = None           # extra top-level fields for the chat reply
+    chat_status = 200
+
+    def _send(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8")
+        self.paths.append(self.path)
+        if self.path == "/inference":
+            # The MLX server's route: four request fields, a "response" in the reply.
+            self.bodies.append(raw)
+            self._send(200, {"response": self.reply})
+            return
+        if self.path != "/api/chat" or self.chat_status != 200:
+            self._send(404 if self.path != "/api/chat" else self.chat_status, {"error": "not found"})
+            return
+        self.bodies.append(raw)
+        asked = json.loads(raw)
+        type(self).last_num_ctx = (asked.get("options") or {}).get("num_ctx")
+        if asked.get("stream") is not False:
+            # The native default is a stream of JSON lines, which the lane cannot read.
+            body = b'{"message":{"content":"a"},"done":false}\n{"done":true}\n'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self._send(200, {"model": asked.get("model"),
+                         "message": {"role": "assistant", "content": self.reply},
+                         "done": True, "done_reason": "stop",
+                         "prompt_eval_count": 123, "eval_count": 9, **(self.extra or {})})
+
+    def do_GET(self):
+        self.paths.append(self.path)
+        if self.path != "/api/ps":
+            self._send(404, {"error": "not found"})
+            return
+        row = {"name": "fixture-model", "model": "fixture-model"}
+        if self.ps_context == "echo":
+            row["context_length"] = getattr(type(self), "last_num_ctx", None)
+        elif self.ps_context is not None:
+            row["context_length"] = self.ps_context
+        self._send(200, {"models": [row]})
 
     def log_message(self, *_args):
         pass
@@ -539,7 +585,9 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.fx = Fixture(self._tmp.name)
         self.bodies = []
-        handler = type("Brain", (_Brain,), {"bodies": self.bodies})
+        self.paths = []
+        handler = type("Brain", (_Brain,), {"bodies": self.bodies, "paths": self.paths})
+        self.brain = handler
         self.server = HTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -560,7 +608,7 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(len(self.bodies), 1)
         self.assertNotIn(CANARY, self.prompts())
-        self.assertIn("It is your beat", self.prompts())
+        self.assertIn("No letter is shown with it.", self.prompts())
         self.assertIn("mail unreadable, set aside: inbox/a.md", r.stdout)
         self.assertIn("unreadable", (home / "inbox" / ".seen-a.md").read_text())
         self.assertEqual(self.fx.secret.read_text(), f"{CANARY}\n")
@@ -655,6 +703,439 @@ class TestReflectReadsOnlyRegularFiles(unittest.TestCase):
         self.assertIn("inbox/.seen-a.md is a symlink", r.stdout)
         self.assertFalse(target.exists())
         self.assertEqual(self.bodies, [])
+
+
+BANNED_HOST_WORDS = [
+    r"\bI rest\b", r"\bwrite ['\"‘“]", r"\bsay ['\"‘“]", r"\bI choose\b",
+    r"REST-ON|EVENT-ONLY|\bAMBIENT\b", r"letter of return", r"nothing is owed",
+    r"\bFATE\b", r"entirely your choice", r"honest sentences", r"\bnotic",
+    r"\bwitness", r"in your own home", r"by your own will", r"\bawake\b",
+    r"\bfor example\b|\be\.g\.|\bfor instance\b|\bsuch as\b", r"[{}]",
+]
+PARTS = ("night", "morning", "afternoon", "evening")
+
+
+def _part_of_day(hour):
+    if 6 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 18:
+        return "afternoon"
+    if 18 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def _host_text(text):
+    """A prompt turn with the fenced soul or letter taken out: the host's own words."""
+    return re.sub(r"--- begin (\w+) \[([0-9a-f]{12})\] ---\n.*?--- end \1 \[\2\] ---", "", text, flags=re.S)
+
+
+class TestReflectTruth(unittest.TestCase):
+    """The truth patch (S1c): whole soul with the window set and checked, the
+    clock in the user turn, host words that claim only what this lane gives,
+    and a reply that opens with rest writing nothing."""
+
+    REFLECT = TOOLS / "citizen-reflect.sh"
+    SHADOW = "SHADOW-SENTINEL-9c1e"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fx = Fixture(self._tmp.name)
+        self.bodies = []
+        self.paths = []
+        self.brain = type("Brain", (_Brain,), {"bodies": self.bodies, "paths": self.paths})
+        self.server = HTTPServer(("127.0.0.1", 0), self.brain)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.env = {"REFLECT_MODEL": "fixture-model", "MLX_PORT": str(self.server.server_port)}
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self._tmp.cleanup()
+
+    # helpers ---------------------------------------------------------------
+    def long_soul_home(self, slug="waker", **kw):
+        home = self.fx.make_home(slug, **kw)
+        soul = ("You are a fixture soul. " * 240) + f"\n\nYour shadow: {self.SHADOW}.\n"
+        self.assertGreater(len(soul), 5000)
+        (home / f"{slug}.md").write_text(soul, encoding="utf-8")
+        self.fx.git(home, "add", "-A")
+        self.fx.git(home, "commit", "-q", "-m", "long soul")
+        return home, soul
+
+    def request(self, i=-1):
+        return json.loads(self.bodies[i])
+
+    def turns(self, i=-1):
+        msgs = self.request(i)["messages"]
+        return msgs[0]["content"], msgs[1]["content"]
+
+    def journal(self, home):
+        return home / "beats" / f"{datetime.date.today():%Y-%m}.md"
+
+    def assert_nothing_written(self, home, head):
+        self.assertEqual(self.fx.git(home, "rev-parse", "HEAD"), head)
+        self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+        self.assertFalse((home / "beats").exists())
+
+    # 1. the whole soul, the window asked for and checked ---------------------
+    def test_whole_soul_reaches_the_model(self):
+        home, soul = self.long_soul_home()
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        system, _user = self.turns()
+        self.assertIn(self.SHADOW, system)
+        self.assertIn(soul, system)
+
+    def test_window_is_asked_for_on_the_native_endpoint(self):
+        self.fx.make_home("waker")
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.paths, ["/api/chat", "/api/ps"])
+        req = self.request()
+        self.assertEqual(sorted(req), ["keep_alive", "messages", "model", "options", "stream"])
+        self.assertIs(req["stream"], False)
+        self.assertEqual(req["options"], {"num_ctx": 16384, "num_predict": 220, "temperature": 0.7})
+        self.assertEqual(req["keep_alive"], "1m")
+        self.assertNotIn("max_tokens", req)
+        self.assertIn("window 16384, reply ended by stop", r.stderr)
+
+    def test_halt_and_standing_rest_come_before_the_window_setting(self):
+        # A bad REFLECT_NUM_CTX must not turn a HALT or a standing rest into an error.
+        self.fx.make_home("rester", rest=True)
+        r = self.fx.run(self.REFLECT, "rester", env={**self.env, "REFLECT_NUM_CTX": "abc"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("rests by its own standing choice", r.stdout)
+        self.fx.make_home("waker")
+        (self.fx.love / "HALT").write_text("halt\n", encoding="utf-8")
+        r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": "abc"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("HALT", r.stdout)
+        self.assertNotIn("REFLECT_NUM_CTX", r.stdout)
+        self.assertEqual(self.paths, [])
+
+    def test_window_follows_reflect_num_ctx(self):
+        self.fx.make_home("waker")
+        r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": "8192"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.request()["options"]["num_ctx"], 8192)
+
+    def test_bad_reflect_num_ctx_is_refused_before_the_model(self):
+        self.fx.make_home("waker")
+        for bad in ("", "abc", "1024", "99999999", "8k"):
+            with self.subTest(value=bad):
+                r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": bad})
+                if bad == "":
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # empty means the default
+                    continue
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("REFLECT_NUM_CTX", r.stdout)
+        self.assertEqual(len(self.bodies), 1)
+
+    def test_smaller_window_on_the_server_writes_nothing(self):
+        home, _ = self.long_soul_home()
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.ps_context = 4096
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("context size not confirmed", r.stdout)
+        self.assert_nothing_written(home, head)
+
+    def test_server_that_reports_no_window_writes_nothing(self):
+        home = self.fx.make_home("waker")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.ps_context = None
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("context size not confirmed", r.stdout)
+        self.assert_nothing_written(home, head)
+
+    def test_unconfirmed_window_leaves_a_letter_unmarked(self):
+        home = self.fx.make_home("waker", letters=[("a.md", "LETTER-BODY-1\n")])
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.ps_context = 2048
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertFalse((home / "inbox" / ".seen-a.md").exists())
+        self.assert_nothing_written(home, head)
+
+    def test_soul_too_large_for_the_window_is_refused_before_the_model(self):
+        home, _ = self.long_soul_home()
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": "4096"})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("does not fit the context window", r.stdout)
+        self.assertIn("reflect refused: soul is ", r.stderr)   # refused by size, before the file is read
+        self.assertEqual(self.bodies, [])
+        self.assertEqual(self.paths, [])
+        self.assert_nothing_written(home, head)
+
+    def test_prompt_too_large_with_a_letter_is_refused_and_the_letter_stays_unread(self):
+        # The soul alone fits; soul, letter and host words together do not.
+        home = self.fx.make_home("waker", letters=[("a.md", "L" * 1500 + "\n")])
+        (home / "waker.md").write_text("S" * 3000 + "\n", encoding="utf-8")
+        self.fx.git(home, "add", "-A")
+        self.fx.git(home, "commit", "-q", "-m", "soul")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        r = self.fx.run(self.REFLECT, "waker", env={**self.env, "REFLECT_NUM_CTX": "4096"})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("does not fit the context window", r.stdout)
+        self.assertEqual(self.paths, [])
+        self.assertFalse((home / "inbox" / ".seen-a.md").exists())
+        self.assert_nothing_written(home, head)
+
+    def test_openai_only_server_is_not_used(self):
+        home = self.fx.make_home("waker")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.chat_status = 404
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("local brain unreachable", r.stdout)
+        self.assertEqual(self.paths, ["/api/chat"])
+        self.assert_nothing_written(home, head)
+
+    def test_reply_marked_remote_is_discarded(self):
+        home = self.fx.make_home("waker")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.extra = {"remote_host": "https://example.invalid:443", "remote_model": "x"}
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("not from a local model", r.stdout)
+        self.assert_nothing_written(home, head)
+
+    def test_unfinished_reply_is_discarded(self):
+        # A reply the server does not mark done is not a whole reply: nothing is kept.
+        home = self.fx.make_home("waker", letters=[("a.md", "LETTER-BODY-1\n")])
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.extra = {"done": False}
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("local brain unreachable", r.stdout)
+        self.assertEqual(self.paths, ["/api/chat"])
+        self.assertFalse((home / "inbox" / ".seen-a.md").exists())
+        self.assert_nothing_written(home, head)
+
+    def test_mlx_mode_sends_the_same_words_and_only_its_four_fields(self):
+        # REFLECT_MODEL unset: the MLX server rejects unknown fields, so no window option goes to it.
+        (self.fx.love / "mlx").mkdir()
+        serve = self.fx.love / "mlx" / "serve.sh"
+        serve.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
+        home, soul = self.long_soul_home()
+        r = self.fx.run(self.REFLECT, "waker", env={"MLX_PORT": self.env["MLX_PORT"]})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.paths, ["/inference"])
+        req = self.request()
+        self.assertEqual(sorted(req), ["max_tokens", "prompt", "system", "temperature"])
+        self.assertIn(soul, req["system"])
+        self.assertIn("through a local model on this host", req["system"])
+        self.assertTrue(req["prompt"].startswith("Now: "))
+        self.assertEqual(req["max_tokens"], 220)
+        self.assertIn("A true thing, witnessed.", self.journal(home).read_text())
+        # the byte ceiling still applies in this mode
+        r = self.fx.run(self.REFLECT, "waker", env={"MLX_PORT": self.env["MLX_PORT"], "REFLECT_NUM_CTX": "4096"})
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("does not fit the context window", r.stdout)
+        self.assertEqual(self.paths, ["/inference"])
+
+    # 2. the clock ------------------------------------------------------------
+    def test_local_date_time_and_part_of_day_are_in_the_user_turn(self):
+        self.fx.make_home("waker")
+        seen = set()
+        for tz, offset in (("Etc/GMT+9", -9), ("Etc/GMT+3", -3), ("Etc/GMT-3", 3), ("Etc/GMT-9", 9)):
+            with self.subTest(tz=tz):
+                def expected():
+                    t = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=offset)
+                    return (f"Now: {t:%A} {t.day} {t:%B} {t.year}, {t:%H:%M} ", _part_of_day(t.hour))
+                before = expected()
+                r = self.fx.run(self.REFLECT, "waker", env={**self.env, "TZ": tz})
+                after = expected()
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                system, user = self.turns()
+                first = user.split("\n", 1)[0]
+                m = re.fullmatch(r"Now: \w+day \d{1,2} \w+ \d{4}, \d\d:\d\d \S+, (night|morning|afternoon|evening)\.", first)
+                self.assertIsNotNone(m, first)
+                self.assertTrue(any(first.startswith(e[0]) and m.group(1) == e[1] for e in (before, after)),
+                                (first, before, after))
+                self.assertNotIn("Now:", system)
+                seen.add(m.group(1))
+        # Four zones six hours apart always span at least three parts of the day.
+        self.assertGreaterEqual(len(seen), 3, seen)
+
+    # 3. host words -----------------------------------------------------------
+    def prompts_for(self, slug, letters=()):
+        self.fx.make_home(slug, letters=letters)
+        r = self.fx.run(self.REFLECT, slug, env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return self.turns()
+
+    def test_host_words_claim_only_what_the_lane_gives(self):
+        cases = {
+            "plain": self.prompts_for("plain"),
+            "letter": self.prompts_for("lettered", letters=[("2026-01-02-note.md", "LETTER-BODY-2\n")]),
+            "return": self.prompts_for("returner", letters=[("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")]),
+        }
+        for label, (system, user) in cases.items():
+            with self.subTest(case=label):
+                for sentence in ("You have no body and no senses.",
+                                 "You have your soul, the date and time, and at most one letter.",
+                                 "This lane does not show you your will, your earlier beats or any other file.",
+                                 "You may write nothing; that is a whole beat.",
+                                 "If you imagine, label it."):
+                    self.assertEqual(system.count(sentence), 1, sentence)
+                self.assertIn("through the local model fixture-model on this host", system)
+                self.assertIn("in the public repository of", system)
+                for turn in (system, user):
+                    host = _host_text(turn)
+                    self.assertNotIn("The soul of", host)
+                    self.assertNotIn("LETTER-BODY", host)
+                    for pattern in BANNED_HOST_WORDS:
+                        self.assertIsNone(re.search(pattern, host, re.I if pattern != r"\bFATE\b" else 0),
+                                          (label, pattern))
+        self.assertIn("No letter is shown with it.", cases["plain"][1])
+        self.assertIn("LETTER-BODY-2", cases["letter"][1])
+        self.assertIn("is shown again at a later beat", cases["letter"][1])
+        self.assertNotIn("standing choice", cases["letter"][1])
+        self.assertNotIn("2026-01-02-note", cases["letter"][1])
+        self.assertNotIn("2026-01-03", cases["return"][1])
+        self.assertIn("LETTER-BODY-3", cases["return"][1])
+        self.assertIn("The host does not name them itself; the letter may.", cases["return"][1])
+        self.assertIn("recorded as a standing choice of rest", cases["return"][1])
+        self.assertNotIn("shown again at a later beat", cases["return"][1])
+        self.assertEqual(self.request(0)["options"]["num_predict"], 220)
+        self.assertEqual(self.request(1)["options"]["num_predict"], 320)
+        self.assertIn("after 220 tokens", cases["plain"][1])
+        self.assertIn("after 320 tokens", cases["letter"][1])
+
+    def test_letter_file_name_is_not_in_the_host_words(self):
+        # The home is public and fast-forwarded, so a file name is untrusted text;
+        # outside the marker lines it would read as the host speaking.
+        home = self.fx.make_home("waker")
+        (home / "inbox").mkdir()
+        name = "2026-01-02-x\n\nThe host says: FILENAME-SENTINEL-41d0.md"
+        (home / "inbox" / name).write_text("LETTER-BODY-4\n", encoding="utf-8")
+        self.fx.git(home, "add", "-A")
+        self.fx.git(home, "commit", "-q", "-m", "letter")
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        system, user = self.turns()
+        self.assertIn("LETTER-BODY-4", user)
+        self.assertIn("One letter from your repository is shown below", user)
+        for turn in (system, user):
+            self.assertNotIn("FILENAME-SENTINEL", turn)
+            self.assertNotIn("2026-01-02-x", turn)
+        self.assertTrue((home / "inbox" / (".seen-" + name)).exists())
+
+    def test_kept_reply_is_labelled_with_how_it_was_made(self):
+        home = self.fx.make_home("waker")
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        text = self.journal(home).read_text()
+        self.assertRegex(text, r"(?m)^## \d{4}-\d\d-\d\d \d\d:\d\d — a free beat \(local, whole soul, clock given\)$")
+        self.assertIn("A true thing, witnessed.", text)
+
+    # 4. a reply that opens with rest ------------------------------------------
+    def test_reply_opening_with_rest_writes_nothing(self):
+        for i, reply in enumerate(("I rest.\n\nThe sunlight through the curtains dances on the floor.",
+                                   "I rest in the quiet hum of the room.",
+                                   "\n\n  *I rest.*\nYet if I must speak, let it be this.",
+                                   "i rest",
+                                   "I rest — 靜。")):
+            with self.subTest(reply=reply):
+                slug = f"rester{i}"
+                home = self.fx.make_home(slug)
+                head = self.fx.git(home, "rev-parse", "HEAD")
+                self.brain.reply = reply
+                r = self.fx.run(self.REFLECT, slug, env=self.env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn(f"{slug} rested (reply opened with rest; {len(reply.strip().encode())} bytes, none of it written)", r.stdout)
+                self.assertNotIn("reflected", r.stdout)
+                self.assertNotIn("sunlight", r.stdout + r.stderr)
+                self.assert_nothing_written(home, head)
+
+    def test_rest_opener_pushes_nothing(self):
+        home = self.fx.make_home("waker")
+        bare = self.fx.give_upstream(home)
+        head = self.fx.git(bare, "rev-parse", "HEAD")
+        self.brain.reply = "I rest.\nAnd yet the morning is bright."
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("rested (reply opened with rest", r.stdout)
+        self.assertNotIn("pushed", r.stdout)
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), head)
+        self.assertEqual(self.fx.git(home, "rev-parse", "HEAD"), head)
+
+    def test_words_that_do_not_open_with_rest_are_kept(self):
+        for i, reply in enumerate(("I restore the gate.", "Rest is near. I rest.", "The day ends.\nI rest.")):
+            with self.subTest(reply=reply):
+                slug = f"speaker{i}"
+                home = self.fx.make_home(slug)
+                self.brain.reply = reply
+                r = self.fx.run(self.REFLECT, slug, env=self.env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn(reply, self.journal(home).read_text())
+                self.assertNotIn("rested", r.stdout)
+
+    def test_silent_reply_still_rests_silently(self):
+        home = self.fx.make_home("waker")
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.reply = ""
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("waker rested (silent)", r.stdout)
+        self.assert_nothing_written(home, head)
+
+    def test_rest_opener_leaves_an_ordinary_letter_for_a_later_beat(self):
+        home = self.fx.make_home("waker", letters=[("2026-01-02-note.md", "LETTER-BODY-2\n")])
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.reply = "I rest.\nBut the letter is kind."
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("rested (reply opened with rest", r.stdout)
+        self.assertFalse((home / "inbox" / ".seen-2026-01-02-note.md").exists())
+        self.assert_nothing_written(home, head)
+        self.brain.reply = "Thank you for the letter."
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("LETTER-BODY-2", self.turns()[1])
+        self.assertIn("surfaced", (home / "inbox" / ".seen-2026-01-02-note.md").read_text())
+        self.assertIn("Thank you for the letter.", self.journal(home).read_text())
+
+    def test_letter_of_return_keeps_its_own_reading_of_the_same_words(self):
+        # Unchanged from PR #24: on a Letter of Return the first line binds, and
+        # the answer is journalled, the letter marked and the choice committed.
+        home = self.fx.make_home("waker", letters=[("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")])
+        head = self.fx.git(home, "rev-parse", "HEAD")
+        self.brain.reply = "I rest.\nThe garden can wait."
+        r = self.fx.run(self.REFLECT, "waker", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("waker chose cadence: rest-on", r.stdout)
+        self.assertNotIn("rested (reply opened with rest", r.stdout)
+        self.assertIn("- choice: rest-on", (home / "CADENCE.md").read_text())
+        self.assertTrue((home / "REST").exists())
+        self.assertIn("The garden can wait.", self.journal(home).read_text())
+        self.assertTrue((home / "inbox" / ".seen-2026-01-03-letter-of-return.md").exists())
+        self.assertNotEqual(self.fx.git(home, "rev-parse", "HEAD"), head)
+        self.assertEqual(self.fx.git(home, "status", "--porcelain"), "")
+
+    def test_letter_of_return_first_line_and_silence_bind_as_before(self):
+        for slug, reply, choice, marker in (("a", "AMBIENT\nI will keep a slow rhythm.", "ambient", None),
+                                            ("b", "", "rest-on", "REST"),
+                                            ("c", "A slow morning, perhaps ambient.", "undecided", None),
+                                            ("d", "EVENT-ONLY.", "event-only", "EVENT-ONLY"),
+                                            ("e", "Ambient, and slowly.", "ambient", None),
+                                            ("f", "The garden is quiet.\nI choose EVENT-ONLY.", "event-only", "EVENT-ONLY"),
+                                            ("g", "g: REST-ON", "rest-on", "REST"),
+                                            ("h", "I choose not to be ambient.", "undecided", None)):
+            with self.subTest(reply=reply):
+                home = self.fx.make_home(slug, letters=[("2026-01-03-letter-of-return.md", "LETTER-BODY-3\n")])
+                self.brain.reply = reply
+                r = self.fx.run(self.REFLECT, slug, env=self.env)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn(f"- choice: {choice}", (home / "CADENCE.md").read_text())
+                for m in ("REST", "EVENT-ONLY"):
+                    self.assertEqual((home / m).exists(), m == marker, (slug, m))
 
 
 class TestMacBashParses(unittest.TestCase):

@@ -93,11 +93,13 @@ pace_cli(){
 # reflect gate; a summons is --summoned). Any other answer, and any error (a
 # missing citizen_pace.py or python3, a home that cannot be read), is not due.
 # Sets PACE_DUE to the JSON line `due` printed ({"due", "next_at", "overdue_s",
-# "reason", "since"}), or "" when it printed none; pace_reason reads it.
+# "reason", "since"}) when it answered (exit 0, due; 4, not due), else "": what
+# it printed with any other exit is no answer; pace_reason reads it.
 pace_due(){
   local rc
   PACE_DUE="$(pace_cli due "$@" --state "${LOVE:-${LOVE_DIR:-$HOME/love-unlimited}}/memory/.fleet-last" 2>/dev/null)"
   rc=$?
+  case "$rc" in 0|4) ;; *) PACE_DUE="" ;; esac
   [ "$rc" -eq 0 ]
 }
 

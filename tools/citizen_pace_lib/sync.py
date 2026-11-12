@@ -10,8 +10,10 @@ from __future__ import annotations
 # sit behind upstream commits that only add new files under inbox/ (a letter
 # placed from elsewhere) is rebased onto them, which cannot conflict; a marker
 # is written first, so a rebase a killed run left behind is aborted at the next
-# sync. A home ahead of its upstream is pushed. A roster home with no clone is
-# cloned under 60 s, and a clone that fails backs off like a failed beat.
+# sync. A home ahead of its upstream is pushed (a push git refuses says git's
+# first line, once). A roster home with no clone is cloned under 60 s, unless
+# its lock is held, and a clone that fails backs off like a failed beat (one
+# another run made meanwhile is no failure).
 #
 # A home that cannot be brought up to date (diverged, a fetch or fast-forward
 # that failed, a merge or rebase someone else left, a dirty home that needs a
@@ -57,6 +59,8 @@ HELD_REASON = "out-of-date"        # the not-due reason citizen_pace.py gives a 
 NO_UPSTREAM = "no-upstream"
 CLONE_ATTEMPT = "clone-"           # the attempt id of a failed clone: clone-<stamp>
 CLONE_FAILED = "clone-failed"      # the attempt record's "reported" key of a home that cannot be cloned
+PUSH_FAILED = "push-failed"        # the attempt record's "reported" key of a home whose push git refused
+APPEARED = "appeared meanwhile"    # clone_home's words when another run's clone landed first
 CLONE_TMP = ".pace-clone"
 HOLD_TAIL = " — no beats until it is brought up to date"
 _SAFE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
@@ -342,7 +346,7 @@ def clone_home(homes_dir, slug: str, base: Optional[str] = None,
         return False, why
     try:
         if os.path.lexists(dest):
-            raise FileExistsError(f"{dest} appeared meanwhile")
+            raise FileExistsError(f"{dest} {APPEARED}")
         os.rename(tmp, dest)
     except OSError as e:
         _discard(tmp)
@@ -395,7 +399,17 @@ def _prepare(home: Path, slug: str, state, now, s: Summary, left=lambda: CLONE_B
         if left() < CLONE_BOUND:
             _spent(slug, s, spent)
             return None
+        if lock.held(state, slug, now):
+            # a beat holding the lock (a hand-run) may be cloning its home itself
+            s.skipped.append(slug)
+            s.lines.append(f"{slug}: its lock is held — not synced this tick")
+            return None
         ok, why = clone_home(home.parent, slug)
+        if not ok and why.endswith(APPEARED):
+            # another run's clone landed first: that is no failure of the citizen's
+            s.skipped.append(slug)
+            s.lines.append(f"{slug}: its home {APPEARED} (another run cloned it) — not synced this tick")
+            return None
         if ok:
             s.cloned.append(slug)
             s.lines.append(f"{slug}: cloned")
@@ -463,15 +477,20 @@ def _prepare(home: Path, slug: str, state, now, s: Summary, left=lambda: CLONE_B
     return loc
 
 
-def _push(home: Path, slug: str, loc: Local, s: Summary) -> None:
+def _push(home: Path, slug: str, state, loc: Local, s: Summary) -> None:
+    """Push HEAD; a push git refuses says git's first line, once, until a push lands."""
     counts = _counts(home, loc.upstream)
     ahead = counts[1] if counts else 0
     r = _git(home, "push", "-q", "--no-verify", loc.remote, f"HEAD:{loc.remoteref}", timeout=PUSH_BOUND)
     if r.returncode == 0:
         s.pushed.append(slug)
         s.lines.append(f"{slug}: pushed {_n(ahead, 'commit')}")
+        attempts.clear_reported(state, slug, PUSH_FAILED)
     else:
         s.ahead.append(slug)
+        if attempts.mark_reported(state, slug, PUSH_FAILED):
+            why = f"timed out after {PUSH_BOUND:g} s" if r.returncode == 124 else _first_line(r.stderr, r.returncode)
+            s.lines.append(f"{slug}: push failed ({why}) — it stays ahead (reported once)")
 
 
 def _rebase(home: Path, loc: Local) -> str:
@@ -502,7 +521,11 @@ def _needs(home: Path, loc: Local, oid: Optional[str]) -> float:
 
 def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summary) -> None:
     """Fetch when the remote head moved, then fast-forward, rebase onto letters,
-    or push, or hold the home."""
+    or push, or hold the home. A hold is released only when the remote head was
+    read this tick (oid): without it nothing says the home is up to date."""
+    def release() -> List[str]:
+        return _release(state, slug) if oid else []
+
     if oid and oid != loc.tracking:
         r = _git(home, "fetch", "-q", "--no-recurse-submodules", loc.remote)
         if r.returncode != 0:
@@ -514,7 +537,7 @@ def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summ
     if not loc.tracking:
         return
     if loc.head == loc.tracking:
-        s.lines += _release(state, slug)
+        s.lines += release()
         return
     counts = _counts(home, loc.upstream)
     if counts is None:
@@ -530,7 +553,7 @@ def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summ
             return
         s.fast_forwarded.append(slug)
         s.lines.append(f"{slug}: fast-forwarded {_n(behind, 'commit')}")
-        s.lines += _release(state, slug)
+        s.lines += release()
         return
     if behind and ahead:
         adds = upstream_adds(home, loc.upstream)
@@ -553,9 +576,9 @@ def _bring(home: Path, slug: str, state, loc: Local, oid: Optional[str], s: Summ
         s.rebased.append(slug)
         s.lines.append(f"{slug}: rebased {_n(ahead, 'local commit')} onto {_n(behind, 'upstream commit')} "
                        f"that only {'adds' if behind == 1 else 'add'} letters")
-    s.lines += _release(state, slug)
+    s.lines += release()
     if oid:
-        _push(home, slug, loc, s)
+        _push(home, slug, state, loc, s)
     else:
         s.ahead.append(slug)
 

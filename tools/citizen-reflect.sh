@@ -31,8 +31,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 NAME="${1:?usage: citizen-reflect.sh <name>}"
-LOVE="${LOVE_DIR:-$HOME/love-unlimited}"; HALT="$LOVE/HALT"
-CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"; REPO="$CITIZENS/citizen-$NAME"
+# Absolute, so the lock, the attempt record and the unlock still find them
+# once this has entered the home (cd "$REPO" below).
+LOVE="${LOVE_DIR:-$HOME/love-unlimited}"
+case "$LOVE" in /*) ;; *) LOVE="$PWD/$LOVE" ;; esac
+HALT="$LOVE/HALT"
+CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"
+case "$CITIZENS" in /*) ;; *) CITIZENS="$PWD/$CITIZENS" ;; esac
+REPO="$CITIZENS/citizen-$NAME"
 PORT="${MLX_PORT:-8800}"; STATE="$LOVE/memory/.fleet-last"
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 say(){ echo "[$(ts)] $*"; }
@@ -40,7 +46,7 @@ case "$NAME" in
   ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*) say "reflect: '$NAME' is not a citizen name"; exit 1;;
 esac
 case "$PORT" in
-  ''|*[!0-9]*) say "$NAME reflect: invalid MLX_PORT '$PORT'"; exit 1;;
+  ''|*[!0-9]*|??????*) say "$NAME reflect: invalid MLX_PORT '$PORT'"; exit 1;;
 esac
 if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
   say "$NAME reflect: MLX_PORT must be between 1 and 65535"; exit 1
@@ -457,8 +463,8 @@ DUE_RC=$?
 REASON="$(pace_reason)" || REASON=""
 if [ "$DUE_RC" -ne 0 ]; then
   case "$REASON" in
-    '')    fail "$NAME reflect: the pace gate could not be asked — no beat" ;;
-    error) fail "$NAME reflect: its home could not be read — no beat" ;;
+    '')    if [ "$DUE_RC" -eq 2 ]; then fail "$NAME reflect: its home could not be read, or the pace gate could not be asked — no beat"
+           else fail "$NAME reflect: the pace gate could not be asked — no beat"; fi ;;
     links) fail "$NAME reflect: a pace path is a link or not of its kind — refused, nothing written" ;;
     *)     say "$NAME is not due ($REASON) — no beat"; record not-due; exit 0 ;;
   esac

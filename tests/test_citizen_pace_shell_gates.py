@@ -279,6 +279,20 @@ class TestPaceDue(Case):
         not_a_home.mkdir()
         self.assertEqual(self.due_gate(not_a_home)[0], 1)
 
+    def test_an_answer_with_any_other_exit_leaves_no_reason(self):
+        # fix wave A (s): only due's own answers (exit 0, due; 4, not due) set
+        # PACE_DUE; output a citizen_pace.py gives with any other exit is no reason
+        home = self.v2("waker", Pace("awake", 3))
+        for code in (1, 2, 3, 5):
+            with self.subTest(exit=code):
+                tools = self.fx.root / f"tools-exit{code}"
+                tools.mkdir()
+                shutil.copy(h.GATES, tools / "citizen-gates.sh")
+                (tools / "citizen_pace.py").write_text(
+                    "import sys\nprint('{\"due\": false, \"reason\": \"schedule\"}')\n"
+                    f"sys.exit({code})\n", encoding="utf-8")
+                self.assertEqual(self.due_gate(home, gates=tools / "citizen-gates.sh"), (1, None, "-"))
+
     def test_it_runs_isolated_from_any_folder(self):
         home = self.v2("waker", Pace("awake", 3))
         canary = self.fx.outside / "imported"
@@ -399,6 +413,30 @@ class TestBeatLock(Case):
                 p.wait()
             if child and alive(child):
                 os.kill(child, signal.SIGKILL)
+
+    def test_relative_love_and_citizens_folders_are_made_absolute(self):
+        # fix wave A (t), (y): after cd "$REPO", a relative LOVE_DIR or CITIZENS_DIR
+        # broke the unlock and wrote the log inside the home
+        home = self.fx.make_home("waker")
+        env = self.env(LOVE_DIR=os.path.relpath(self.fx.love, self.fx.root),
+                       CITIZENS_DIR=os.path.relpath(self.fx.citizens, self.fx.root))
+        r = subprocess.run(["bash", str(BEAT), "waker"], env=env, cwd=str(self.fx.root), stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=60)
+        self.ok(r)
+        self.assertEqual(self.fx.claude_calls(), ["citizen-waker"])
+        self.assertFalse(os.path.lexists(self.state / "waker.lock"))
+        self.assertFalse(os.path.lexists(home / "love"))
+        self.assertIn("waker beat end (rc=0)", self.beat_log("waker"))
+
+    def test_a_lock_taken_over_mid_beat_survives_the_beat_s_exit(self):
+        # fix wave A (z): the beat releases only its own lock; one another run took
+        # over meanwhile (it judged this one stale) is that run's to release
+        self.fx.make_home("waker")
+        lockdir = self.state / "waker.lock"
+        self.claude_does(f'printf "%s\\n" "{os.getpid()}" > "{lockdir}/pid"')
+        self.ok(self.beat("waker"))
+        self.assertEqual(self.fx.claude_calls(), ["citizen-waker"])
+        self.assertEqual(lock.holder(self.state, "waker").pid, os.getpid())
 
     def test_a_wallclock_that_is_not_a_number_refuses_the_beat(self):
         # fix wave A (o): a typo would leave the beat with no bound at all

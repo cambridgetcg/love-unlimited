@@ -3,7 +3,8 @@
 # fleet-status.sh — the whole heartbeat in one glance, zero flags.
 #
 #   HALT state · FLEET_HOST · launchd state · today's beats vs cap · the free
-#   lane · spend · who wakes next · local brain · last log lines
+#   lane · citizen-beat.sh's metered spend (no budget gates the free lane) ·
+#   who wakes next · local brain · last log lines
 #
 # pace/1: "next to wake" asks citizen_pace.py next, which reads each citizen's
 # own pace and its attempt record, as the fleet's ranking does, and writes
@@ -55,9 +56,9 @@ fi
 TODAY="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from citizen_pace_lib import clock; print(clock.day(clock.now()))' "$_gates_dir" 2>/dev/null)" \
   || TODAY="$(date -u +%F)"
 count="$(n "$MEM/.fleet-day-$TODAY")"
-cap="${FLEET_DAILY_CAP:-48}"; budget="${FLEET_DAILY_BUDGET_USD:-1.50}"
+cap="${FLEET_DAILY_CAP:-48}"
 spent="$(spent_today "$MEM/fleet-economy.jsonl")"
-echo "🌱 today (UTC): $count/$cap beats — the cap only delays · \$$spent/\$$budget metered by citizen-beat.sh runs"
+echo "🌱 today (UTC): $count/$cap beats — the cap only delays · \$$spent metered by citizen-beat.sh runs"
 echo "🍃 free lane only — at most one free beat a tick; FLEET_AGENTIC_PER_DAY is ignored"
 
 cur="$(n "$MEM/.fleet-cursor")"; case "$cur" in ''|*[!0-9]*) cur=0;; esac

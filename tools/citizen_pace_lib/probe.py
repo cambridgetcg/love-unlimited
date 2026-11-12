@@ -6,11 +6,13 @@ from __future__ import annotations
 # records' folder, citizen_pace.py and citizen-gates.sh present beside each
 # other, and one fixed prompt to the configured model server (the same MLX_PORT
 # and REFLECT_MODEL the beats use) that must answer within 60 s. Any HTTP 200
-# whose body parses as JSON passes. The fleet runs it at the start of each tick
+# whose body parses as JSON passes; a redirect is not followed (one request, to
+# the endpoint the beats use, only). The fleet runs it at the start of each tick
 # and again after any failed beat; a failed probe charges no citizen.
 
 import json
 import os
+import re
 import socket
 import threading
 import time
@@ -63,9 +65,11 @@ def check_tools(tools_dir) -> str:
 
 def request_for(env: Mapping[str, str]):
     """(url, payload) of the probe's one request, or (None, why) for a setting
-    no beat could use."""
-    port = (env.get("MLX_PORT") or DEFAULT_PORT).strip()
-    if not port.isdigit() or not 1 <= int(port) <= 65535:
+    no beat could use. MLX_PORT is read exactly as citizen-reflect.sh reads it:
+    unset or empty is 8800; else 1-5 ASCII digits (no space, no sign, no other
+    script's digits) between 1 and 65535."""
+    port = env.get("MLX_PORT") or DEFAULT_PORT
+    if not re.fullmatch(r"[0-9]{1,5}", port) or not 1 <= int(port) <= 65535:
         return None, f"MLX_PORT {port!r} is not a port"
     model = (env.get("REFLECT_MODEL") or "").strip()
     if model.endswith(":cloud"):
@@ -75,6 +79,13 @@ def request_for(env: Mapping[str, str]):
                 {"messages": [{"role": "user", "content": PROBE_TEXT}], "max_tokens": PROBE_TOKENS,
                  "model": model})
     return f"http://127.0.0.1:{int(port)}/inference", {"prompt": PROBE_TEXT, "max_tokens": PROBE_TOKENS}
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect is answered as it came (an HTTP error), never followed."""
+
+    def redirect_request(self, *_args, **_kw):
+        return None
 
 
 def _timed_out(e: BaseException) -> bool:
@@ -111,7 +122,7 @@ def ask_model(env: Mapping[str, str], timeout: float = PROBE_TIMEOUT) -> str:
     def run():
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         try:
             with opener.open(req, timeout=timeout) as resp:
                 return resp.status, resp.read(READ_LIMIT)

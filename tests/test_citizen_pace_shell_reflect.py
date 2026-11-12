@@ -323,6 +323,35 @@ class TestLock(Case):
         self.ok(self.reflect("waker", MLX_PORT=str(h.free_port())), 1)
         self.assert_unlocked("waker")
 
+    def test_relative_love_and_citizens_folders_are_made_absolute(self):
+        # fix wave A (t), (y): after cd "$REPO", a relative LOVE_DIR or CITIZENS_DIR
+        # broke the unlock and wrote the attempt record inside the home
+        home = self.v2("waker", Pace("awake", 3))
+        env = self.env(FLEET_ATTEMPT=ATTEMPT, LOVE_DIR=os.path.relpath(self.fx.love, self.fx.root),
+                       CITIZENS_DIR=os.path.relpath(self.fx.citizens, self.fx.root))
+        r = subprocess.run(["bash", str(REFLECT), "waker"], env=env, cwd=str(self.fx.root),
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        self.ok(r)
+        self.assertEqual(self.fx.subjects(home)[0], SUBJECT.format(slug="waker"))
+        self.assertEqual(self.outcome("waker"), "spoken")
+        self.assert_unlocked("waker")
+        self.assertFalse(os.path.lexists(home / "love"))
+
+    def test_a_hand_run_s_not_due_and_halted_are_not_recorded(self):
+        # fix wave A (z): a hand-run records only a beat that landed or was summoned
+        self.v2("sleeper", Pace("asleep"))
+        r = self.ok(self.reflect("sleeper", fleet=False))
+        self.assertIn("sleeper is not due (no-mail) — no beat", r.stdout)
+        self.assertIsNone(attempts.load(self.state, "sleeper")["attempt"])
+        home = self.v2("waker", Pace("awake", 3))
+        before = self.fx.head(home)
+        halt = self.fx.love / "HALT"
+        self.model.reply = lambda _body: (halt.write_text("", encoding="utf-8"), "words")[1]
+        r = self.ok(self.reflect("waker", fleet=False))
+        self.assertIn("HALT mid-beat — waker rests, unwritten", r.stdout)
+        self.assertIsNone(attempts.load(self.state, "waker")["attempt"])
+        self.assertEqual(self.fx.head(home), before)
+
     def test_a_lock_taken_over_before_its_tend_is_busy_and_kept_for_its_new_holder(self):
         # fix wave A (w), (z): another run judged this one stale and took its lock
         # before this beat's own tend: busy, no beat, and the new holder's lock

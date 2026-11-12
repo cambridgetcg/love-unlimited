@@ -30,8 +30,9 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import citizen_pace_helpers as h  # noqa: E402
 import citizen_pace_helpers_record as hr  # noqa: E402
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
 
-from citizen_pace_lib import answer, attempts, clock, due, lock, paragraph, plan, sync, tend  # noqa: E402
+from citizen_pace_lib import answer, attempts, clock, due, lock, paragraph, plan, probe, sync, tend  # noqa: E402
 from citizen_pace_lib import cadence as cad  # noqa: E402
 from citizen_pace_lib.cadence import Cadence, SetBy  # noqa: E402
 from citizen_pace_lib.words import Pace  # noqa: E402
@@ -698,6 +699,64 @@ class TestProbe(Case):
         self.assertIn("MLX_PORT", r.stdout)
         self.assertEqual(model.requests, [])
 
+    def test_a_redirect_is_never_followed(self):
+        # fix wave A (l): the probe asks one endpoint, once; a redirect (urllib
+        # would follow a 302 as a GET) to a server that answers JSON is a fault
+        asked = []
+
+        def serve(handler):
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+            return server.server_address[1]
+
+        class Elsewhere(BaseHTTPRequestHandler):
+            def do_GET(self):
+                asked.append(self.path)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *_args):
+                pass
+
+        elsewhere = serve(Elsewhere)
+
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{elsewhere}/elsewhere")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *_args):
+                pass
+
+        r = self.ok(self.probe(env={"MLX_PORT": str(serve(Redirect)), "REFLECT_MODEL": "m"}), 4)
+        self.assertEqual(r.stdout, "probe: failed — the model server answered HTTP 302\n")
+        self.assertEqual(asked, [])
+
+    def test_mlx_port_is_read_exactly_as_citizen_reflect_sh_reads_it(self):
+        # fix wave A (m): digits only (no space, no other script's digits), 1-65535;
+        # unset or empty is 8800
+        (self.fx.love / "HALT").write_text("", encoding="utf-8")
+        for raw, want in ((None, "8800"), ("", "8800"), ("8800", "8800"), ("08800", "8800"), ("1", "1"),
+                          ("65535", "65535"), (" 8800", None), ("8800 ", None), ("\uff18\uff18\uff10\uff10", None),
+                          ("\u0668\u0668\u0660\u0660", None), ("0", None), ("65536", None), ("+80", None),
+                          ("123456789012345678901234", None)):
+            with self.subTest(raw=raw):
+                env = {} if raw is None else {"MLX_PORT": raw}
+                url, _why = probe.request_for(env)
+                self.assertEqual(url and url.split(":")[2].split("/")[0], want)
+                # citizen-reflect.sh checks its port before HALT, so HALT ends a run it accepts
+                r = self.fx.run(h.TOOLS / "citizen-reflect.sh", "waker", env=env, timeout=30)
+                self.assertEqual(("HALT — waker rests" in r.stdout, r.returncode),
+                                 (True, 0) if want is not None else (False, 1), r.stdout)
+
     def test_the_tools_must_sit_beside_each_other(self):
         model = self.start_model("here")
         tools = self.fx.root / "copied-tools"
@@ -1283,6 +1342,91 @@ print(json.dumps({{"data": data}}))
                 r = self.ok(self.pace("sync", self.fx.citizens, "--roster", roster, "--state", self.state,
                                       "--within", bad), 2)
                 self.assertIn("--within", r.stderr)
+
+    def test_a_missing_home_whose_lock_is_held_is_not_cloned(self):
+        # fix wave A (i): a hand-run beat holding the lock may be cloning it itself
+        home, _bare = self.synced("amara")
+        self.fx.drop_clone(home)
+        self.assertTrue(lock.take(self.state, "amara", os.getpid()).got)
+        lines, s = self.sync("amara")
+        self.assertEqual(lines, ["amara: its lock is held — not synced this tick"])
+        self.assertEqual((s["skipped"], s["cloned"], s["clone_failed"]), (["amara"], [], []))
+        self.assertFalse(os.path.lexists(home))
+
+    def test_a_clone_someone_else_made_meanwhile_is_skipped_never_a_failure(self):
+        # fix wave A (i): the clone that lands first is that run's, and nothing is
+        # charged to the citizen
+        home, _bare = self.synced("amara")
+        self.fx.drop_clone(home)
+        real = sync.git
+
+        def git(where, *args, **kw):
+            r = real(where, *args, **kw)
+            if "clone" in args:
+                shutil.copytree(self.fx.upstream / "citizen-amara.git", home)   # another run's lands first
+            return r
+
+        os.environ[sync.BASE_ENV] = str(self.fx.upstream)        # restored after the test
+        with mock.patch.object(sync, "git", git):
+            s = sync.sync_homes(self.fx.citizens, ["amara"], self.state, now=self.now)
+        self.assertEqual(s.lines, ["amara: its home appeared meanwhile (another run cloned it) — not synced "
+                                   "this tick"])
+        self.assertEqual((s.skipped, s.clone_failed, s.cloned), (["amara"], [], []))
+        rec = attempts.load(self.state, "amara")
+        self.assertEqual((rec["failures"], rec["attempt"], rec["retry_after"]), (0, None, None))
+        self.assertNotIn(sync.CLONE_FAILED, rec["reported"])
+        self.assertEqual(sorted(p.name for p in self.fx.citizens.iterdir()), ["citizen-amara"])
+
+    def test_a_hold_is_released_only_when_the_remote_head_was_read(self):
+        # fix wave A (j): a home held for a fetch that failed is not "up to date
+        # again" when nothing was read from its remote this tick
+        home, bare = self.synced("amara")
+        self.push_letter(bare)
+        attempts.mark_reported(self.state, "amara", sync.HELD)      # a fetch failed last tick
+        r = self.ok(self.pace("sync", self.fx.citizens, "--roster", self.roster("amara"),
+                              "--state", self.state, "--bound", "1e-9"))
+        lines, s = lines_and_summary(r)
+        self.assertEqual((lines, s["heads_read"]), ([], 0))
+        self.assertTrue(sync.held(self.state, "amara"))
+        lines, s = self.sync("amara")
+        self.assertEqual(lines, ["amara: fast-forwarded 1 commit", "amara: up to date again — its beats resume"])
+        self.assertFalse(sync.held(self.state, "amara"))
+
+    def test_a_failed_push_says_git_s_first_line_once(self):
+        # fix wave A (k): an upstream that rejects the push (its pre-receive hook)
+        home, bare = self.synced("amara")
+        self.beat(home, "amara")
+        hook = bare / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\necho 'the upstream refuses this push' >&2\nexit 1\n", encoding="utf-8")
+        hook.chmod(0o755)
+        lines, s = self.sync("amara")
+        self.assertEqual(lines, ["amara: push failed (remote: the upstream refuses this push) — it stays ahead "
+                                 "(reported once)"])
+        self.assertEqual((s["ahead"], s["pushed"], s["held"]), (["amara"], [], []))
+        self.assertEqual(self.sync("amara")[0], [])
+        hook.unlink()
+        self.assertEqual(self.sync("amara")[0], ["amara: pushed 1 commit"])
+        self.assertNotIn(sync.PUSH_FAILED, attempts.load(self.state, "amara")["reported"])
+
+    def test_one_unreadable_attempt_record_holds_up_no_one_s_rank_or_next(self):
+        # fix wave A (n): a link, a folder or an unreadable file at one citizen's
+        # state path is that citizen's alone
+        for slug in ("amara", "bodhi", "cyra", "dov"):
+            self.v2(slug, awake(3))
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "amara").symlink_to(self.fx.outside)
+        (self.state / "bodhi").mkdir()
+        (self.state / "cyra").write_text("{}\n", encoding="utf-8")
+        os.chmod(self.state / "cyra", 0)
+        self.addCleanup(os.chmod, self.state / "cyra", 0o644)
+        slugs = ("amara", "bodhi", "cyra", "dov")
+        self.assertEqual([sync.held(self.state, slug) for slug in slugs], [False] * 4)
+        self.assertEqual(sync.without_held(self.state, slugs, 2), (list(slugs), 2))
+        args = (self.fx.citizens, "--roster", self.roster(*slugs), "--state", self.state)
+        r = self.ok(self.pace("rank", *args))
+        self.assertIn("dov\tschedule\t", r.stdout)
+        r = self.ok(self.pace("next", *args))
+        self.assertTrue(r.stdout.startswith("next to wake: "), r.stdout)
 
     def test_a_sync_whose_bound_is_spent_starts_no_more_network_work(self):
         # fix wave A (ab): one bound for the whole sync, so a tick never outlives its

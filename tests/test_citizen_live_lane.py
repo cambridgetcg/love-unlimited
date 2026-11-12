@@ -503,8 +503,14 @@ class TestFleetRotation(unittest.TestCase):
         r = self.fx.run(self.FLEET, env={"FLEET_AGENTIC_PER_DAY": "0", **self.brain})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.beats.read_text().split(), ["waker"])
+        # fix wave A (aa): a second tick, when waker has just beaten, is the one
+        # that would start linked if its symlinked letter counted as mail
+        r = self.fx.run(self.FLEET, env={"FLEET_AGENTIC_PER_DAY": "0", **self.brain})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.beats.read_text().split(), ["waker"])
         log = (self.fx.love / "memory" / "fleet.log").read_text()
         self.assertNotIn("fleet → linked", log)
+        self.assertIn("nobody is due — no beat this tick", log)
         self.assertIn("metered today $0.0000", log)
 
 

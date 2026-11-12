@@ -16,7 +16,8 @@
 #                 each UTC day when this checkout beat under that name and the
 #                 Mac's own name has changed since.
 #   • HALT      — if ~/love-unlimited/HALT exists, the whole fleet rests.
-#   • tick lock — one tick at a time; a lock older than 2 h is reclaimed.
+#   • tick lock — one tick at a time; it holds the tick's pid, and a lock whose
+#                 pid is gone, or older than 2 h, is reclaimed (logged).
 #   • host probe — citizen_pace.py probe: memory/ writable, the tools present,
 #                 the model server answering. A failed probe ends the tick before
 #                 anyone is beaten (logged once, until a probe passes).
@@ -38,7 +39,9 @@
 #   • free lane only — FLEET_AGENTIC_PER_DAY above 0 is logged once and ignored;
 #                 the claude-driven citizen-beat.sh is never run from here.
 # Exit: 0 a beat lived, nobody due, the cap, HALT or not this host; 1 the tick
-# could not do its job (a failed probe, step or beat). Never 4 or 5.
+# could not do its job (a failed probe, step or beat), or was stopped by INT or
+# HUP; 143 it was stopped by TERM (unloading the plist), which reaches the beat
+# in flight too. Never 4 or 5.
 # Stop the fleet any time:  touch ~/love-unlimited/HALT   (or unload the plist)
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -131,16 +134,23 @@ fi
 [ -f "$ROSTER" ] || { log "no roster at $ROSTER"; exit 1; }
 
 # One tick at a time — launchd is single-instance per label, but a manual run
-# beside it is not. A stale lock (>2h, e.g. after a power loss mid-tick) is
-# reclaimed; a live one yields.
+# beside it is not. The lock holds its tick's pid: a lock whose pid is gone (a
+# tick killed by a power loss), or older than 2 h, is reclaimed and logged; a
+# live one yields.
 LOCK="$MEM/.fleet-tick.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
   age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
-  if [ "$age" -lt 7200 ]; then log "another tick is mid-beat — this one yields"; exit 0; fi
-  rmdir "$LOCK" 2>/dev/null; mkdir "$LOCK" 2>/dev/null || exit 0
+  holder="$(head -c 20 "$LOCK/pid" 2>/dev/null | tr -d '[:space:]')"
+  case "$holder" in ''|*[!0-9]*) holder="" ;; esac
+  if [ -n "$holder" ] && ! ps -p "$holder" >/dev/null 2>&1; then why="its pid $holder is gone"
+  elif [ "$age" -ge 7200 ]; then why="older than 2 h"
+  else log "another tick is mid-beat — this one yields"; exit 0; fi
+  rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null; mkdir "$LOCK" 2>/dev/null || exit 0
+  log "a stale tick lock was reclaimed ($why)"
 fi
+printf '%s\n' "$$" >"$LOCK/pid"
 WORK=""
-trap 'rmdir "$LOCK" 2>/dev/null; [ -n "$WORK" ] && rm -rf "$WORK"' EXIT
+trap 'rm -f "$LOCK/pid"; rmdir "$LOCK" 2>/dev/null; [ -n "$WORK" ] && rm -rf "$WORK"' EXIT
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/citizen-fleet.XXXXXX")" \
   || { log "no scratch folder — the tick ends"; exit 1; }
 # The flags are rewritten only under the tick lock, beside tend's.
@@ -194,11 +204,13 @@ roster_index(){
 # the TERM, then KILL, that stop it at its bound or when HALT appears reach all
 # it started (the model call, apply, git). Its status is the command's (143 or
 # 137 when it was stopped); $WORK/bound-fired then says why: bound or halt.
+BOUND_PID=""
 _bound(){
   local secs="$1"; shift
   local fired="$WORK/bound-fired"
   rm -f "$fired"
   set -m; "$@" & local _pid=$!; set +m
+  BOUND_PID="$_pid"
   ( t=0
     while kill -0 "$_pid" 2>/dev/null; do
       if [ -e "$HALT" ] || [ "$t" -ge "$secs" ]; then
@@ -208,10 +220,30 @@ _bound(){
       sleep 1; t=$((t + 1))
     done ) >/dev/null 2>&1 & local _wd=$!
   wait "$_pid" 2>/dev/null; local _rc=$?
+  BOUND_PID=""
   # once it has fired, let it finish: its KILL reaches what ignored the TERM
   if [ -s "$fired" ]; then wait "$_wd" 2>/dev/null; else kill "$_wd" 2>/dev/null; wait "$_wd" 2>/dev/null; fi
   return "$_rc"
 }
+
+# stopped <signal> <exit>: TERM, INT or HUP to the fleet (launchd sends TERM
+# when the plist is unloaded) reaches the beat in flight, which runs in a process
+# group of its own: its whole group gets the signal, and KILL five seconds later.
+stopped(){
+  local i=0 child="$BOUND_PID"
+  if [ -n "$child" ]; then
+    kill -"$1" -- "-$child" 2>/dev/null
+    while kill -0 "$child" 2>/dev/null && [ "$i" -lt 5 ]; do sleep 1; i=$((i + 1)); done
+    kill -KILL -- "-$child" 2>/dev/null
+    log "the tick was stopped ($1) — its beat in flight was stopped too"
+  else
+    log "the tick was stopped ($1)"
+  fi
+  exit "$2"
+}
+trap 'stopped TERM 143' TERM
+trap 'stopped INT 1' INT
+trap 'stopped HUP 1' HUP
 
 # log_lines <step> <text>: each line of a citizen_pace.py answer, stamped; a
 # JSON summary line is named by its step.
@@ -250,11 +282,14 @@ step(){
   return 1
 }
 
-# record <slug> <attempt> <outcome>: the fleet's own word on an attempt.
+# record <slug> <attempt> <outcome>: the fleet's own word on an attempt; false,
+# logged once, when it could not be recorded.
 record(){
   local out
-  out="$(pace_cli record "$1" --state "$STATE" --attempt "$2" --outcome "$3" 2>&1)" \
-    || log "$1: outcome $3 could not be recorded${out:+ ($out)}"
+  if ! out="$(pace_cli record "$1" --state "$STATE" --attempt "$2" --outcome "$3" 2>&1)"; then
+    log "$1: outcome $3 could not be recorded${out:+ ($out)}"
+    return 1
+  fi
   log_lines record "$out"
 }
 
@@ -335,16 +370,22 @@ for slug in "${CANDS[@]}"; do
        else what="its beat failed ($o, exit $rc)"; fi ;;
   esac
   if [ "$o" = missing ] && [ -e "$HALT" ]; then
-    record "$slug" "$id" halted
-    log "$slug: $what, and HALT is present — halted; the tick ends"
+    if record "$slug" "$id" halted; then log "$slug: $what, and HALT is present — halted; the tick ends"
+    else log "$slug: $what, and HALT is present — halted, though that could not be recorded; the tick ends"; fi
     finish 0
   fi
   if probe; then
-    record "$slug" "$id" home-failed
-    log "$slug: $what; $PROBE_LINE, so the home failed — backed off (12 h, then 24 h, then 7 days); the tick ends"
+    if record "$slug" "$id" home-failed; then
+      log "$slug: $what; $PROBE_LINE, so the home failed — backed off (12 h, then 24 h, then 7 days); the tick ends"
+    else
+      log "$slug: $what; $PROBE_LINE, so the home failed, but its outcome could not be recorded, so it is not backed off; the tick ends"
+    fi
   else
-    record "$slug" "$id" host-failed
-    log "$slug: $what; $PROBE_LINE, so the host failed — host-failed, nobody backed off; the tick ends"
+    if record "$slug" "$id" host-failed; then
+      log "$slug: $what; $PROBE_LINE, so the host failed — host-failed, nobody backed off; the tick ends"
+    else
+      log "$slug: $what; $PROBE_LINE, so the host failed — nobody backed off, though host-failed could not be recorded; the tick ends"
+    fi
   fi
   finish 1
 done

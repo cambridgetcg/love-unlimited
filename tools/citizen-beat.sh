@@ -44,9 +44,13 @@
 set -uo pipefail
 
 NAME="${1:?usage: citizen-beat.sh <citizen-name> [--clone-only]}"
+# Absolute, so the log, the lock and the unlock still find them once this has
+# entered the home (cd "$REPO" below).
 LOVE="${LOVE_DIR:-$HOME/love-unlimited}"
+case "$LOVE" in /*) ;; *) LOVE="$PWD/$LOVE" ;; esac
 HALT="$LOVE/HALT"
 CITIZENS_DIR="${CITIZENS_DIR:-$LOVE/citizens}"
+case "$CITIZENS_DIR" in /*) ;; *) CITIZENS_DIR="$PWD/$CITIZENS_DIR" ;; esac
 REPO="$CITIZENS_DIR/citizen-$NAME"
 LOGDIR="$LOVE/memory"; mkdir -p "$LOGDIR"
 LOG="$LOGDIR/citizen-$NAME.log"

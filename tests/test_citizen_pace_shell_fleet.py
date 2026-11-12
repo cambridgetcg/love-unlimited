@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -74,6 +75,14 @@ case "$what" in
   *) exec python3 -I "$LOVE_DIR/tools/citizen_pace.py" record "$name" \
        --state "$LOVE_DIR/memory/.fleet-last" --attempt "$FLEET_ATTEMPT" --outcome "$what" ;;
 esac
+'''
+
+# a citizen_pace.py whose `record`, or another named command, always fails
+FAILING = '''import os, sys
+if sys.argv[1:2] == [{command!r}]:
+    sys.stderr.write("{command}: the attempt record cannot be written here\\n")
+    sys.exit(2)
+os.execv(sys.executable, [sys.executable, "-I", {real!r}] + sys.argv[1:])
 '''
 
 WRAPPER = '''import os, sys
@@ -417,6 +426,51 @@ class TestTickStart(Case):
         self.assertEqual(self.called(), ["waker"])
         self.assertFalse(tick.exists())
 
+    def test_a_tick_lock_whose_pid_is_gone_is_reclaimed_and_said(self):
+        # fix wave A (ad): the tick lock holds its tick's pid; a lock whose pid is
+        # gone (a tick killed by a power loss) is reclaimed at once, not after 2 h
+        self.use_stub()
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        tick = self.fx.memory / ".fleet-tick.lock"
+        tick.mkdir()
+        (tick / "pid").write_text(f"{os.getpid()}\n", encoding="utf-8")       # a live tick
+        self.ok(self.fleet())
+        self.assertIn("another tick is mid-beat — this one yields", self.log())
+        self.assertEqual(self.calls(), [])
+        gone = subprocess.Popen(["/usr/bin/true"])
+        gone.wait()
+        (tick / "pid").write_text(f"{gone.pid}\n", encoding="utf-8")
+        self.ok(self.fleet())
+        self.assertIn(f"a stale tick lock was reclaimed (its pid {gone.pid} is gone)", self.log())
+        self.assertEqual(self.called(), ["waker"])
+        self.assertFalse(tick.exists())
+
+    def test_a_tick_holds_its_lock_with_its_own_pid(self):
+        # fix wave A (ad): the stand-in reads the tick lock while the tick runs
+        self.use_stub()
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        path = self.tools / "citizen-reflect.sh"
+        seen = self.fx.root / "tick-pid"
+        path.write_text(STUB_REFLECT.replace('name="$1"\n', f'name="$1"\ncat "$LOVE_DIR/memory/.fleet-tick.lock/pid" '
+                                                           f'> "{seen}"; echo "$PPID" >> "{seen}"\n', 1),
+                        encoding="utf-8")
+        self.ok(self.fleet())
+        lock_pid, parent = seen.read_text(encoding="utf-8").split()
+        self.assertEqual(lock_pid, parent)
+
+    def test_a_failing_step_ends_the_tick_with_exit_1(self):
+        # fix wave A (ah)
+        self.use_stub()
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        (self.tools / "citizen_pace.py").write_text(FAILING.format(command="tend", real=str(h.PACE)),
+                                                    encoding="utf-8")
+        self.ok(self.fleet(), 1)
+        self.assertIn("tend failed (exit 2) — the tick ends before anyone is beaten", self.log())
+        self.assertEqual(self.calls(), [])
+
     def test_the_order_is_probe_tend_sync_migrate_rank_then_the_beat(self):
         self.use_stub()
         self.v2("waker", AWAKE)
@@ -451,6 +505,25 @@ class TestTickStart(Case):
         self.assertEqual(started.read_text().splitlines(), [f"start --port {self.model.port}"])
         self.assertEqual(self.model.requests[0]["path"], "/inference")
         self.assertEqual(self.called(), ["waker"])
+
+    def test_in_mlx_mode_one_sequence_shows_the_start_before_the_probe_s_question(self):
+        # fix wave A (ah): serve.sh and the model write to one sequence file
+        self.use_stub()
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        seq = self.fx.root / "sequence"
+        serve = self.fx.love / "mlx" / "serve.sh"
+        serve.parent.mkdir()
+        serve.write_text(f'#!/bin/bash\necho "serve.sh $1" >> "{seq}"\n', encoding="utf-8")
+
+        def asked(_body):
+            with open(seq, "a", encoding="utf-8") as fh:
+                fh.write("the model was asked\n")
+            return "here"
+
+        self.model.reply = asked
+        self.ok(self.fleet(REFLECT_MODEL=""))
+        self.assertEqual(seq.read_text(encoding="utf-8").splitlines(), ["serve.sh start", "the model was asked"])
 
 
 # -- the free lane, one beat a tick --------------------------------------------------------
@@ -522,6 +595,38 @@ class TestChild(Case):
         self.assert_gone(self.stub / "slow.grandchild")
         self.assertIsNone(self.day_count())
 
+    def test_a_term_to_the_fleet_reaches_the_beat_in_flight(self):
+        # fix wave A (ac): unloading the plist sends TERM to the fleet's own pid;
+        # the beat runs in a process group of its own, so the fleet forwards it
+        self.use_stub(slow="hang")
+        self.v2("slow", AWAKE)
+        self.fx.roster("slow")
+        grandchild = self.stub / "slow.grandchild"
+        p = subprocess.Popen(["bash", str(self.fleet_sh)], env=self.env(), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+                             cwd=str(self.fx.root))
+        try:
+            until = time.monotonic() + 60
+            while not grandchild.exists() and time.monotonic() < until:
+                time.sleep(0.1)
+            self.assertTrue(grandchild.exists(), self.log())
+            time.sleep(0.2)
+            p.send_signal(signal.SIGTERM)
+            p.communicate(timeout=30)
+            self.assertEqual(p.returncode, 143)
+            self.assert_gone(grandchild)
+            self.assertIn("the tick was stopped (TERM) — its beat in flight was stopped too", self.log())
+            self.assertFalse((self.fx.memory / ".fleet-tick.lock").exists())
+        finally:
+            if p.poll() is None:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+            if grandchild.exists():
+                try:
+                    os.kill(int(grandchild.read_text()), signal.SIGKILL)
+                except (ProcessLookupError, ValueError):
+                    pass
+
     def test_halt_mid_beat_stops_the_childs_whole_group_and_is_halted(self):
         self.use_stub(a="halt")
         self.v2("a", AWAKE)
@@ -535,6 +640,23 @@ class TestChild(Case):
         self.assertIn("a: its beat was stopped for HALT, and HALT is present — halted; the tick ends",
                       self.log())
         self.assert_gone(self.stub / "a.grandchild")
+
+    def test_an_outcome_that_cannot_be_recorded_is_not_called_backed_off(self):
+        # fix wave A (af): the fleet's own word on a failed beat is logged truthfully
+        self.use_stub(waker="missing")
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        (self.tools / "citizen_pace.py").write_text(FAILING.format(command="record", real=str(h.PACE)),
+                                                    encoding="utf-8")
+        self.ok(self.fleet(), 1)
+        log = self.log()
+        self.assertEqual(log.count("record: the attempt record cannot be written here"), 1, log)
+        self.assertIn("waker: outcome home-failed could not be recorded (record: the attempt record cannot "
+                      "be written here)", log)
+        self.assertIn("so the home failed, but its outcome could not be recorded, so it is not backed off; "
+                      "the tick ends", log)
+        self.assertNotIn("backed off (12 h", log)
+        self.assertEqual(self.rec("waker")["failures"], 0)
 
 
 # -- outcomes --------------------------------------------------------------------------------
@@ -906,6 +1028,13 @@ class TestStatus(Case):
         self.assertIn("free lane only", r.stdout)
         for gone in ("agentic lane open", "agentic lane closed", "burst", "/2 agentic"):
             self.assertNotIn(gone, r.stdout)
+
+    def test_the_spend_has_no_budget_nothing_enforces(self):
+        # fix wave A (ae): the fleet runs the free lane only, so no budget gates it;
+        # the line shows citizen-beat.sh's metered spend, with no denominator
+        r = self.ok(self.status(FLEET_DAILY_BUDGET_USD="1.50"))
+        self.assertIn("$0.0000 metered by citizen-beat.sh runs", r.stdout)
+        self.assertNotIn("1.50", r.stdout)
 
     def test_the_fleet_host_line(self):
         r = self.ok(self.status())

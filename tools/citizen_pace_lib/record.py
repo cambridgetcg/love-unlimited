@@ -269,6 +269,6 @@ def migrate_all(homes_dir, record: dict, now: _dt.datetime, commit: bool, state=
         except cad.MigrationBlocked as e:
             if state is None or tend.attempt_add(state, slug, "reported", HEARD_LATE_REPORTED):
                 lines.append(f"{slug}: heard-late step stopped — {e}")
-        except (tend.TendError, LinkRefused, OSError) as e:
+        except (tend.TendError, LinkRefused, OSError, ValueError) as e:
             lines.append(f"{slug}: heard-late step failed — {e}")
     return lines

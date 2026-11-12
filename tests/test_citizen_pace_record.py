@@ -410,6 +410,18 @@ class TestHeardLate(Case):
                 d.chmod(0o755)
         self.assertEqual((self.fx.head(home), snapshot(home)), (before, files))
 
+    def test_one_home_that_raises_value_error_stops_no_one_else(self):
+        # fix wave A (ag): a ValueError in one home (here a record name that is not
+        # a slug, whose folder is there) is that home's alone, as in tend, sync and
+        # rank; before, it ended the step, and so the tick, for everyone
+        data = json.loads(json.dumps(self.record))
+        data["citizens"]["kalam two"] = dict(data["citizens"]["kalam"])
+        self.fx.make_home("kalam two")
+        hr.unheard_home(self.fx, "soma")
+        lines = record.migrate_all(self.fx.citizens, data, self.now, True, state=self.fx.state)
+        self.assertTrue(lines[0].startswith("kalam two: heard-late step failed — "), lines)
+        self.assertIn("soma: heard late — awake, every 3 days, from its own Letter of Return answers", lines)
+
 
 # -- tending between beats ---------------------------------------------------------
 

@@ -83,40 +83,53 @@ def _timed_out(e: BaseException) -> bool:
         or "timed out" in str(e)
 
 
+def within(fn, timeout: float) -> dict:
+    """fn() in a daemon thread, waited for at most timeout seconds in all (a
+    total, not a bound on each read): {"result": what it returned}, {"error":
+    what it raised}, or {} when it has not finished."""
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["result"] = fn()
+        except Exception as e:      # noqa: BLE001 — the caller says what it means
+            box["error"] = e
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    return dict(box) if not worker.is_alive() else {}
+
+
 def ask_model(env: Mapping[str, str], timeout: float = PROBE_TIMEOUT) -> str:
     """"" when the model server answers the probe's prompt with HTTP 200 and a
     JSON body within timeout seconds, else why not. No proxy is used."""
     url, payload = request_for(env)
     if url is None:
         return payload
-    box: dict = {}
 
-    def run() -> None:
+    def run():
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json"})
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
             with opener.open(req, timeout=timeout) as resp:
-                box["status"] = resp.status
-                box["body"] = resp.read(READ_LIMIT)
+                return resp.status, resp.read(READ_LIMIT)
         except urllib.error.HTTPError as e:
-            box["status"] = e.code
             e.close()
-        except Exception as e:      # noqa: BLE001 — any failure to answer is the host's
-            box["error"] = e
+            return e.code, b""
 
-    worker = threading.Thread(target=run, daemon=True)
-    worker.start()
-    worker.join(timeout + 1)
-    if worker.is_alive() or ("error" in box and _timed_out(box["error"])):
+    box = within(run, timeout + 1)
+    if not box or ("error" in box and _timed_out(box["error"])):
         return f"the model server gave no answer within {timeout:g} s"
     if "error" in box:
         e = box["error"]
         return f"the model server could not be reached at {url} ({getattr(e, 'reason', e)})"
-    if box.get("status") != 200:
-        return f"the model server answered HTTP {box.get('status')}"
+    status, body = box["result"]
+    if status != 200:
+        return f"the model server answered HTTP {status}"
     try:
-        json.loads(box.get("body", b"").decode("utf-8"))
+        json.loads(body.decode("utf-8"))
     except ValueError:
         return "the model server's answer is not JSON"
     return ""

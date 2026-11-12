@@ -85,6 +85,12 @@ def _partly(e: Exception, aside) -> TendError:
     return err
 
 
+class LockTaken(TendError):
+    """A beat tending its own home (own=) no longer holds the citizen's lock:
+    another run judged it stale and took it. Nothing was changed; the beat
+    must stop (busy)."""
+
+
 class FirstTickPending(TendError):
     """A beat found uncommitted pace files before the fleet's first tick on the
     new code, which commits the old code's once; nothing was changed."""
@@ -417,7 +423,8 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     the beat committed itself is put back as the commit before it has it.
     own: the pid of a beat that holds the citizen's lock and tends its home before
     it begins (citizen-reflect.sh, citizen-beat.sh); that lock does not keep it
-    out, and leftovers that cannot be put back raise, since the beat must not
+    out (a lock that is not that pid's raises LockTaken, and nothing is
+    changed), and leftovers that cannot be put back raise, since the beat must not
     build on them. Before the home's first full tend such a beat finds leftovers
     that may be the old code's: it changes none of them and raises
     FirstTickPending; a home holding none has its first tend in that beat."""
@@ -425,7 +432,12 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     slug = slug_of(home)
     if not (home / ".git").is_dir() or forbidden_links(home):
         return []
-    mine = own is not None and getattr(lock.holder(state, slug), "pid", None) == own
+    h = lock.holder(state, slug) if own is not None else None
+    mine = own is not None and getattr(h, "pid", None) == own
+    if own is not None and not mine:
+        who = f"pid {h.pid}" if h is not None and h.pid else ("no recorded pid" if h is not None else "")
+        raise LockTaken(f"{slug}: its lock is held by {who}, not by this beat" if who
+                        else f"{slug}: its lock is gone — this beat no longer holds it")
     if not mine and lock.held(state, slug, bound=bound):
         return [f"{slug}: its lock is held — not tended this tick"]
     lines = []

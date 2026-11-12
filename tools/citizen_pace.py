@@ -27,6 +27,7 @@ from citizen_pace_lib import (answer, attempts, clock, due, homes, lock, paragra
 from citizen_pace_lib import record as records  # noqa: E402
 
 OK, NOT, ERROR = 0, 4, 2
+TAKEN = 3                  # tend-home only: the citizen's lock is another run's
 TOOLS = Path(os.path.realpath(__file__)).parent
 ANSWER_LIMIT = 1_000_000
 # the outcomes of a beat whose model was shown the whole pace paragraph
@@ -67,7 +68,7 @@ commands:
   rollback-prepare <homes-dir> --roster <f> [--state <dir>] [--no-push]
 
 exit: 0 ok or due; 4 not due, busy or a host fault; 2 a usage error, or a home
-that cannot be read
+that cannot be read; tend-home: 3 the citizen's lock is another run's
 """
 
 
@@ -360,12 +361,16 @@ def p_tend_home():
 def cmd_tend_home(a) -> int:
     """0 tended (its lines printed); 4 its first full tend has not run and it
     holds uncommitted pace files, which may be the old code's (nothing changed);
-    2 they could not be put back, the beat must not build on them."""
+    3 the citizen's lock is not --pid's (another run took it: busy, nothing
+    changed); 2 they could not be put back, the beat must not build on them."""
     try:
         lines = tend.tend_home(Path(a.home), a.state, own=a.pid)
     except tend.FirstTickPending as e:
         print(e, file=sys.stderr)
         return NOT
+    except tend.LockTaken as e:
+        print(e)
+        return TAKEN
     for line in lines:
         print(line)
     return OK
@@ -480,4 +485,5 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
+    homes.die_with_caller()      # a git this runs dies with it (the fleet stops a beat with TERM)
     sys.exit(main())

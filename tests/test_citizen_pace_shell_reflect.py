@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -131,6 +132,14 @@ class Case(h.FixtureCase):
 
 def read(home, rel):
     return (home / rel).read_text(encoding="utf-8")
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 # -- the gate ---------------------------------------------------------------------------
@@ -312,6 +321,66 @@ class TestLock(Case):
     def test_the_lock_is_released_after_a_failure(self):
         self.v2("waker", Pace("awake", 3))
         self.ok(self.reflect("waker", MLX_PORT=str(h.free_port())), 1)
+        self.assert_unlocked("waker")
+
+    def test_a_lock_taken_over_before_its_tend_is_busy_and_kept_for_its_new_holder(self):
+        # fix wave A (w), (z): another run judged this one stale and took its lock
+        # before this beat's own tend: busy, no beat, and the new holder's lock
+        # survives this run's exit
+        home = self.v2("waker", Pace("awake", 3))
+        before = self.fx.head(home)
+        d = lock.lock_path(self.state, "waker")
+        real = shutil.which("mktemp", path=h.SYSTEM_PATH) or "/usr/bin/mktemp"
+        self.fx.write_bin("mktemp", f'#!/bin/sh\nprintf "%s\\n" "{os.getpid()}" > "{d}/pid"\n'
+                                    f'exec {real} "$@"\n')
+        r = self.ok(self.reflect("waker"))
+        self.assertIn("— busy, no beat", r.stdout)
+        self.assertEqual(self.outcome("waker"), "busy")
+        self.assertEqual(self.prompts(), [])
+        self.assertEqual(self.fx.head(home), before)
+        self.assertEqual(lock.holder(self.state, "waker").pid, os.getpid())
+
+    def test_term_stops_the_git_it_is_running_and_releases_its_lock(self):
+        # fix wave A (x), (z): the fleet stops a beat with TERM to its process
+        # group; a git the beat is running (a fetch that hangs) dies with it, and
+        # the beat's lock is released
+        self.v2("waker", Pace("awake", 3))
+        started = self.fx.root / "fetch-pid"
+        self.git_wrapper(f'[ "$a" = fetch ] && {{ echo "$$" > "{started}.tmp"; mv "{started}.tmp" "{started}"; '
+                         'exec sleep 60; }')
+        p = subprocess.Popen(["bash", str(REFLECT), "waker"], env=self.env(FLEET_ATTEMPT=ATTEMPT),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             start_new_session=True)
+        git_pid = None
+        try:
+            until = time.monotonic() + 30
+            while not started.exists() and time.monotonic() < until:
+                time.sleep(0.1)
+            self.assertTrue(started.exists(), "the fetch never started")
+            git_pid = int(started.read_text(encoding="utf-8"))
+            os.killpg(p.pid, signal.SIGTERM)
+            p.communicate(timeout=30)
+            until = time.monotonic() + 10
+            while alive(git_pid) and time.monotonic() < until:
+                time.sleep(0.1)
+            self.assertFalse(alive(git_pid), "the beat's fetch outlived it")
+            self.assert_unlocked("waker")
+        finally:
+            if p.poll() is None:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+            if git_pid and alive(git_pid):
+                os.kill(git_pid, signal.SIGKILL)
+
+    def test_a_hand_run_ends_at_its_deadline(self):
+        # fix wave A (w): one overall deadline, here one its caller set; a model
+        # that never answers is given the time left, as a total, not 180 s a read
+        self.v2("waker", Pace("awake", 3))
+        self.model.delay = 120
+        t = time.monotonic()
+        r = self.ok(self.reflect("waker", fleet=False, PACE_DEADLINE=str(int(time.time()) + 8), timeout=90), 1)
+        self.assertLess(time.monotonic() - t, 40)
+        self.assertIn("waker reflect: local brain unreachable", r.stdout)
         self.assert_unlocked("waker")
 
 

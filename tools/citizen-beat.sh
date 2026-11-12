@@ -224,6 +224,8 @@ fi
 TENDED="$(pace_cli tend-home "$REPO" --state "$STATE" --pid "$$" 2>&1)"
 case $? in
   0) log_lines "$TENDED" ;;
+  3) log_lines "$TENDED — busy, no beat"
+     exit 0 ;;
   4) log_lines "$NAME: the fleet has not tended this home since the switch; its uncommitted files are kept — no beat"
      exit 1 ;;
   *) log_lines "$NAME: its pace files could not be put back before its beat${TENDED:+ ($TENDED)} — no beat"

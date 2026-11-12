@@ -5,11 +5,13 @@ from __future__ import annotations
 # files (CADENCE.md, REST, EVENT-ONLY, inbox/, the .seen-* markers, beats/) are
 # read and written as regular files only, never through a link, and every
 # write is atomic (a temporary file, then a rename). Also the few git facts
-# the pace code asks of a home, each under a time bound.
+# the pace code asks of a home, each under a time bound, and never past a beat's
+# own deadline (PACE_DEADLINE); a beat's git dies with the beat (die_with_caller).
 
 import datetime as _dt
 import errno
 import os
+import re
 import signal
 import stat
 import subprocess
@@ -34,6 +36,11 @@ _TOKENS = ("GITHUB_TOKEN", "GH_TOKEN")
 # inherited GIT_LITERAL_PATHSPECS=1 turns ':(literal,icase)REST' into a file name)
 _PATHSPEC_ENV = ("GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS",
                  "GIT_ICASE_PATHSPECS")
+# a beat's own deadline, in seconds since the epoch (citizen-reflect.sh sets it):
+# no command run() starts outlives it
+DEADLINE_ENV = "PACE_DEADLINE"
+# the commands run() is running now, so a TERM to this process can stop them first
+_RUNNING: set = set()
 
 
 class LinkRefused(Exception):
@@ -313,24 +320,56 @@ def _stop_group(proc: subprocess.Popen) -> None:
             continue
 
 
-def git(home, *args, check: bool = False, timeout: float = 30) -> subprocess.CompletedProcess:
-    """git -C <home> <args>, with stdin closed, no prompt, no GITHUB_TOKEN or
-    GH_TOKEN, no caller variable pointing at another repository, and none that
-    changes how pathspecs are read. The
-    command runs in its own process group; at the time bound the whole group is
-    stopped and the result has returncode 124. A git that cannot start gives 127.
-    Output is text (UTF-8, undecodable bytes replaced). check=True raises
-    CalledProcessError for any non-zero result."""
-    cmd = ["git", "-C", str(home)] + [str(a) for a in args]
+def time_left() -> Optional[float]:
+    """Seconds left before PACE_DEADLINE (a beat's own deadline), or None when
+    none is set (or it is not a number of seconds since the epoch)."""
+    raw = os.environ.get(DEADLINE_ENV, "").strip()
+    if not re.fullmatch(r"[0-9]{1,12}(?:\.[0-9]{1,6})?", raw):
+        return None
+    return float(raw) - time.time()
+
+
+def _stop_all_then_die(signum, _frame) -> None:
+    for proc in tuple(_RUNNING):
+        _stop_group(proc)
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
+def die_with_caller() -> None:
+    """From now on a TERM, INT or HUP to this process first stops every command
+    run() is running, its whole process group (TERM, then KILL), and then ends
+    this process by that signal. run() starts each command in its own session,
+    so without this a git outlives the beat the fleet stops with TERM to its
+    process group. Call it from the main thread of a script (citizen_pace.py,
+    citizen-reflect.sh's steps)."""
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, _stop_all_then_die)
+
+
+def run(cmd: List[str], *, timeout: float, env: Optional[dict] = None) -> subprocess.CompletedProcess:
+    """cmd, with stdin closed, in its own process group, under timeout seconds
+    and never past PACE_DEADLINE: at the bound the whole group is stopped and
+    the result has returncode 124 (124 at once, and nothing run, when the
+    deadline has passed). A command that cannot start gives 127. Output is text
+    (UTF-8, undecodable bytes replaced). env: its environment (default this
+    process's)."""
+    name = os.path.basename(cmd[0])
+    left = time_left()
+    if left is not None:
+        if left <= 0:
+            return subprocess.CompletedProcess(cmd, 124, "", f"{name} not run: the beat's deadline has passed")
+        timeout = min(timeout, left)
     try:
         proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, env=_git_env(), start_new_session=True)
+                                stderr=subprocess.PIPE, env=env, start_new_session=True)
     except OSError as e:
-        result = subprocess.CompletedProcess(cmd, 127, "", f"git could not start: {e}")
-    else:
+        return subprocess.CompletedProcess(cmd, 127, "", f"{name} could not start: {e}")
+    _RUNNING.add(proc)
+    try:
         try:
             out, err = proc.communicate(timeout=timeout)
-            result = subprocess.CompletedProcess(cmd, proc.returncode, _text(out), _text(err))
+            return subprocess.CompletedProcess(cmd, proc.returncode, _text(out), _text(err))
         except subprocess.TimeoutExpired:
             _stop_group(proc)
             try:
@@ -339,8 +378,20 @@ def git(home, *args, check: bool = False, timeout: float = 30) -> subprocess.Com
                 out, err = b"", b""
                 for pipe in (proc.stdout, proc.stderr):
                     pipe.close()
-            result = subprocess.CompletedProcess(
-                cmd, 124, _text(out), _text(err) + f"\ngit timed out after {timeout}s")
+            return subprocess.CompletedProcess(
+                cmd, 124, _text(out), _text(err) + f"\n{name} timed out after {timeout:g}s")
+    finally:
+        _RUNNING.discard(proc)
+
+
+def git(home, *args, check: bool = False, timeout: float = 30) -> subprocess.CompletedProcess:
+    """git -C <home> <args> through run() (its own process group, the time
+    bound and the beat's deadline; 124 at the bound, 127 when git cannot
+    start), with no prompt, no GITHUB_TOKEN or GH_TOKEN, no caller variable
+    pointing at another repository, and none that changes how pathspecs are
+    read. check=True raises CalledProcessError for any non-zero result."""
+    cmd = ["git", "-C", str(home)] + [str(a) for a in args]
+    result = run(cmd, timeout=timeout, env=_git_env())
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
     return result

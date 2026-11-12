@@ -20,7 +20,11 @@
 # answer; citizen_pace.py apply hears a pace line. A beat that was shown mail or
 # changed the record commits what it wrote, tagged pace/1; a silent beat shown
 # nothing commits nothing. The outcome goes to the attempt record right after
-# the commit, before the push. Exit codes stay KS-003's: 0 a beat lived, a chosen
+# the commit, before the push. The whole run has one deadline, its beat bound
+# (FLEET_BEAT_BOUND_SEC, read as the lock reads it) from its start, or sooner
+# when its caller set PACE_DEADLINE: every step gets the lesser of its own bound
+# and the time left, and a git a step runs dies with the beat when the fleet
+# stops it. Exit codes stay KS-003's: 0 a beat lived, a chosen
 # rest (not due), busy or HALT; 1 the beat could not be lived (home-failed; the
 # fleet's probe decides whether the home or the host failed). Every Python here
 # runs isolated (-I).
@@ -56,8 +60,8 @@ case "${REFLECT_MODEL:-}" in
   *:cloud) say "$NAME reflect: cloud model '$REFLECT_MODEL' refused (local-only)"; exit 1;;
 esac
 
-# The bounds of this script's own git calls, in seconds (the fleet bounds the
-# whole beat at FLEET_BEAT_BOUND_SEC).
+# The bounds of this script's own git calls, in seconds (each is cut to the
+# time left before the beat's deadline, PACE_DEADLINE, below).
 seconds(){
   local n
   case "${1:-}" in ''|*[!0-9]*) echo "$2"; return;; esac
@@ -83,12 +87,17 @@ reflect_py(){
   python3 -I - "$_gates_dir" "$NAME" "$REPO" "$STATE" "$WORK" "$@" <<'PY'
 import json, os, stat, sys
 sys.path.insert(0, sys.argv[1])
+# a git (or serve.sh) a step runs dies with the beat: the fleet stops a beat with
+# TERM to its process group, and homes.run starts each in a session of its own
+from citizen_pace_lib import homes as _homes
+_homes.die_with_caller()
 # each step imports only what it needs: a small step starts fast
 for stream in (sys.stdout, sys.stderr):
     stream.reconfigure(encoding="utf-8", errors="replace")
 name, repo, state, work, step, args = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7:]
 SAFE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 SOUL_MAX, LETTER_MAX, LETTERS_MAX = 2600, 6000, 3
+BRAIN_BOUND = 180.0        # the model's answer, in all (a total, not each read)
 ORDINARY = ("It is your beat, in your own home. Write whatever is true for you, or nothing; both "
             "are complete. If you speak, 2-4 honest sentences in your own voice; you may end with a "
             "single line a sibling citizen could read.")
@@ -190,14 +199,22 @@ def beat(kind):
     port = os.environ.get("MLX_PORT", "8800")
     req = urllib.request.Request(f"http://127.0.0.1:{port}{endpoint}", data=json.dumps(payload).encode(),
                                  headers={"Content-Type": "application/json"})
-    try:
+    from citizen_pace_lib import probe
+    left = homes.time_left()
+    total = BRAIN_BOUND if left is None else max(0.0, min(BRAIN_BOUND, left))
+
+    def ask():
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        out = json.load(opener.open(req, timeout=180))
-        text = (out["choices"][0]["message"]["content"] if model else out["response"]).strip()
-    except Exception as e:
+        out = json.load(opener.open(req, timeout=max(total, 0.001)))
+        return (out["choices"][0]["message"]["content"] if model else out["response"]).strip()
+
+    got = probe.within(ask, total)
+    if "result" not in got:
+        e = got.get("error") or TimeoutError(f"no answer within {total:g} s, the time this beat had left")
         with open(os.path.join(work, "brain.err"), "w", encoding="utf-8") as fh:
             fh.write(f"{type(e).__name__}: {e}"[:300])
         return 3
+    text = got["result"]
     with open(os.path.join(work, "answer"), "w", encoding="utf-8") as fh:
         fh.write(text + "\n" if text else "")
     return 0
@@ -264,9 +281,18 @@ def events():
     return 0
 
 if step == "now":
-    from citizen_pace_lib import clock
+    # the beat's day, month and time; its bound (lock.beat_bound, as the lock and
+    # the fleet read it); and its deadline (seconds since the epoch), sooner
+    # when its caller set one
+    import time
+    from citizen_pace_lib import clock, homes, lock
     n = clock.now()
-    print(n.strftime("%Y-%m-%d %Y-%m %H:%M"))
+    bound = lock.beat_bound()
+    deadline = int(time.time()) + bound
+    left = homes.time_left()
+    if left is not None:
+        deadline = min(deadline, int(time.time() + left))
+    print(n.strftime("%Y-%m-%d %Y-%m %H:%M"), bound, deadline)
     code = 0
 elif step == "clone":
     from citizen_pace_lib import sync
@@ -279,6 +305,8 @@ elif step == "tend":
     # beat's leftovers put back path by path; before that tend (a fact of each
     # home), a home holding any is left as it is (2), and one holding none has
     # its first tend here. This beat holds the lock (pid args[0]).
+    # A lock that is no longer this beat's (another run judged it stale and took
+    # it) is 4: busy, and this beat stops.
     from citizen_pace_lib import homes, tend
     try:
         for line in tend.tend_home(repo, state, own=int(args[0])):
@@ -286,11 +314,20 @@ elif step == "tend":
         code = 0
     except tend.FirstTickPending:
         code = 2
+    except tend.LockTaken as e:
+        print(e)
+        code = 4
     except (tend.TendError, homes.LinkRefused, OSError) as e:
         print(e)
         code = 1
 elif step == "update":
     code = update(float(args[0]))
+elif step == "serve":
+    # the locked local brain's hardened start (args: serve.sh, port), in its own
+    # process group, under the time left
+    from citizen_pace_lib import homes, lock
+    code = 0 if homes.run(["bash", args[0], "start", "--port", args[1]],
+                          timeout=float(lock.beat_bound())).returncode == 0 else 1
 elif step == "beat":
     code = beat(args[0])
 elif step == "keep":
@@ -354,7 +391,16 @@ cleanup(){
 # pace/1 time is), so the journal, the markers and the commit name the day
 # apply records.
 WHEN="$(reflect_py now)" || { say "$NAME reflect: citizen_pace_lib cannot be run — beat refused"; exit 1; }
-read -r DAY MONTH HHMM <<<"$WHEN"
+read -r DAY MONTH HHMM BEAT_BOUND DEADLINE <<<"$WHEN"
+case "$DEADLINE" in ''|*[!0-9]*) say "$NAME reflect: its deadline cannot be read — beat refused"; exit 1;; esac
+# One deadline for the whole beat: every citizen_pace_lib step and its git calls
+# read it, and none outlives it.
+export PACE_DEADLINE="$DEADLINE"
+# in_time <when>: fail once the deadline has passed.
+in_time(){
+  [ "$(date +%s)" -lt "$DEADLINE" ] \
+    || fail "$NAME reflect: its bound of ${BEAT_BOUND} s was spent $1 — no beat"
+}
 
 # The citizen's lock, before anything touches its home, so a hand-run beside
 # the fleet never beats a citizen twice or confirms a proposal inside one beat.
@@ -383,6 +429,7 @@ cd "$REPO" || fail "$NAME reflect: its home cannot be entered"
 TENDED="$(reflect_py tend "$$" 2>&1)"
 case $? in
   0) log_lines "$TENDED" ;;
+  4) log_lines "$TENDED — busy, no beat"; record busy; exit 0 ;;
   2) fail "$NAME reflect: the fleet has not tended this home since the switch; its uncommitted files are kept — no beat" ;;
   *) fail "$NAME reflect: its pace files could not be put back${TENDED:+ ($TENDED)} — no beat" ;;
 esac
@@ -404,6 +451,7 @@ done
 
 # The gate, read after the fast-forward: the fleet ranked this citizen before
 # the fetch, so a pace changed from elsewhere is honoured here (not-due).
+in_time "before its gate"
 if [ "$SUMMONED" = "1" ]; then pace_due "$REPO" --summoned; else pace_due "$REPO"; fi
 DUE_RC=$?
 REASON="$(pace_reason)" || REASON=""
@@ -426,10 +474,11 @@ say "$NAME: a $KIND beat"
 # separately. The hardened start command is idempotent and validates the locked
 # model provenance even when something already answers on the configured port.
 if [ -z "${REFLECT_MODEL:-}" ]; then
-  if ! bash "$LOVE/mlx/serve.sh" start --port "$PORT" >/dev/null 2>&1; then
+  if ! reflect_py serve "$LOVE/mlx/serve.sh" "$PORT" >/dev/null 2>&1; then
     fail "$NAME reflect: locked local brain failed provenance/readiness on port $PORT"
   fi
 fi
+in_time "before its beat"
 
 # The beat: the soul, the mail this kind of beat shows, the pace paragraph, one
 # answer. A crash must never wear silence's clothes.

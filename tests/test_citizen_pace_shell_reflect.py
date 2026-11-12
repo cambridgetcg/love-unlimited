@@ -661,6 +661,47 @@ class TestFailures(Case):
         self.assertEqual(self.outcome("waker"), "home-failed")
         self.assertEqual(attempts.load(self.state, "waker")["last_beat"], None)
 
+    def test_the_commit_holds_only_what_the_beat_wrote(self):
+        # fix wave A (v): a file someone else staged stays out of the beat's commit
+        # (it is not pushed as the citizen, tagged pace/1), and stays staged
+        home = self.v2("waker", Pace("awake", 3), upstream=True)
+        self.fx.write(home, "notes.md", "staged by someone else\n")
+        self.fx.git(home, "add", "notes.md")
+        self.ok(self.reflect("waker"))
+        self.assertEqual(self.fx.subjects(home)[0], SUBJECT.format(slug="waker"))
+        self.assertNotIn("notes.md", self.committed(home))
+        self.assertIn("beats/2026-11.md", self.committed(home))
+        self.assertEqual(self.fx.git(home, "log", "-1", "--format=%an <%ae>|%cn <%ce>"),
+                         "waker <citizen@kingdom.os>|waker <citizen@kingdom.os>")
+        self.assertEqual(self.fx.git(home, "diff", "--cached", "--name-only"), "notes.md")
+        self.assertEqual(self.fx.git(home, "ls-tree", "-r", "--name-only", "origin/main", "--", "notes.md"), "")
+        self.assertEqual(self.outcome("waker"), "spoken")
+
+    def test_a_commit_git_cannot_do_is_home_failed_never_landed(self):
+        # fix wave A (v): a git status or add that fails is a beat that did not
+        # land; it is never recorded as landed with its words left uncommitted
+        flag = self.fx.root / "git-fails-now"
+        self.git_wrapper(f'[ -e "{flag}" ] && [ "$a" = "$FAIL_VERB" ] && '
+                         '{ echo "fatal: $a cannot run here" >&2; exit 128; }')
+        for verb in ("status", "add"):
+            with self.subTest(verb=verb):
+                slug = f"w{verb}"
+                home = self.v2(slug, Pace("awake", 3))
+                self.fx.write(home, "notes.md", "staged by someone else\n")
+                self.fx.git(home, "add", "notes.md")
+                before = self.fx.head(home)
+                self.model.reply = lambda _body: (flag.write_text("", encoding="utf-8"), "words")[1]
+                try:
+                    r = self.ok(self.reflect(slug, FAIL_VERB=verb), 1)
+                finally:
+                    flag.unlink()
+                self.assertIn(f"{slug} reflect: its beat could not be committed", r.stdout)
+                self.assertIn(f"cannot run here", r.stdout)
+                self.assertEqual(self.outcome(slug), "home-failed")
+                self.assertEqual(self.fx.head(home), before)
+                self.assertIsNone(attempts.load(self.state, slug)["last_beat"])
+                self.assert_unlocked(slug)
+
     def test_a_cloud_model_is_refused(self):
         self.v2("waker", Pace("awake", 3))
         r = self.ok(self.reflect("waker", REFLECT_MODEL="qwen:cloud"), 1)

@@ -72,13 +72,13 @@ SUMMONED=0
 if [ "${BEAT_SUMMONS:-0}" = "1" ] && [ -z "${FLEET_ATTEMPT:-}" ]; then SUMMONED=1; fi
 ATTEMPT="${FLEET_ATTEMPT:-hand-$(date -u +%Y%m%dT%H%MZ)-$$}"
 WORK=""
-# Every git call here runs no hook and no fsmonitor of the home's own: a beat
-# with tools (citizen-beat.sh) can write inside the home's .git.
-G=(git -c core.hooksPath=/dev/null -c core.fsmonitor=false)
 
 # reflect_py <step> [args]: the steps this script asks of citizen_pace_lib
 # itself, run isolated (-I) from the library beside this file, never from the
-# home. Steps: now | clone | tend <pid> | update | beat <kind> | keep | push | events.
+# home. Every git call in them runs no hook and no fsmonitor of the home's own
+# (a beat with tools, citizen-beat.sh, can write inside the home's .git), under
+# a bound. Steps: now | clone | tend <pid> | update | beat <kind> | keep |
+# commit <day> | push | events.
 reflect_py(){
   python3 -I - "$_gates_dir" "$NAME" "$REPO" "$STATE" "$WORK" "$@" <<'PY'
 import json, os, stat, sys
@@ -295,6 +295,21 @@ elif step == "beat":
     code = beat(args[0])
 elif step == "keep":
     code = keep(*args[:3])
+elif step == "commit":
+    # what this beat wrote under the pace paths (exactly those names; the tend
+    # step left nothing else uncommitted there), committed as the citizen with
+    # only those paths: anything else staged stays out. 0 committed, 3 nothing
+    # to commit, 1 git failed (said on stdout).
+    from citizen_pace_lib import homes, tend
+    try:
+        paths = tend.changed_paths(repo, ("beats", "inbox", "CADENCE.md", "REST", "EVENT-ONLY"),
+                                   any_case=False)
+        done = tend.commit_as(repo, paths, f"beat: {name} reflected ({args[0]}) · pace/1", name,
+                              "citizen@kingdom.os")
+        code = 0 if done else 3
+    except (tend.TendError, homes.LinkRefused, OSError) as e:
+        print(e)
+        code = 1
 elif step == "push":
     code = push(float(args[0]))
 elif step == "events":
@@ -448,17 +463,18 @@ log_lines "$(reflect_py events)"
 
 # A beat that was shown mail, or that changed its record, commits; a silent
 # beat shown nothing commits nothing. The pace paths held nothing uncommitted
-# when the beat began, so what git status shows there is this beat's own. The
-# outcome is recorded as soon as the commit exists, before the push, so a hung
-# push never unlands a beat.
+# when the beat began, so what git status shows there is this beat's own, and
+# the commit holds those paths only (anything else staged stays out). A git
+# that cannot say or cannot commit is a beat that did not land. The outcome is
+# recorded as soon as the commit exists, before the push, so a hung push never
+# unlands a beat.
 COMMITTED=0
-if [ -n "$("${G[@]}" status --porcelain --untracked-files=all -- beats inbox CADENCE.md REST EVENT-ONLY 2>/dev/null)" ]; then
-  for p in beats inbox CADENCE.md REST EVENT-ONLY; do "${G[@]}" add -A -- "$p" >/dev/null 2>&1; done
-  "${G[@]}" -c user.name="$NAME" -c user.email="citizen@kingdom.os" -c commit.gpgsign=false \
-    commit -q --no-verify -m "beat: $NAME reflected ($DAY) · pace/1" >/dev/null 2>&1 \
-    || fail "$NAME reflect: its beat could not be committed"
-  COMMITTED=1
-fi
+COMMIT_OUT="$(reflect_py commit "$DAY" 2>&1)"
+case $? in
+  0) COMMITTED=1 ;;
+  3) ;;
+  *) fail "$NAME reflect: its beat could not be committed${COMMIT_OUT:+ ($COMMIT_OUT)}" ;;
+esac
 if [ "$SUMMONED" = "1" ]; then OUTCOME=summoned
 elif [ -s "$WORK/answer" ]; then OUTCOME=spoken
 else OUTCOME=silent; fi

@@ -191,14 +191,18 @@ def _read_by_pace(rel: str) -> bool:
     return name.lower().startswith(".seen-") or (not name.startswith(".") and name.endswith(".md"))
 
 
-def changed_paths(home, paths: Iterable[str], ignored: bool = False) -> List[str]:
+def changed_paths(home, paths: Iterable[str], ignored: bool = False, any_case: bool = True) -> List[str]:
     """The files under `paths`, in any case, that differ from HEAD, staged or
     not, or are untracked (one entry per file; a link or a nested repository is
     one entry), sorted, each named as git names it. ignored: git-ignored files
     under them count too, when the pace code reads that name (the guard, after
-    a beat with tools). Raises TendError when git cannot say."""
-    r = _git(home, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all",
-             "--no-renames", *(("--ignored",) if ignored else ()), "--", *_any_case(paths))
+    a beat with tools). any_case=False: under `paths` exactly as given (a beat
+    commits only what it wrote itself, never a foreign Rest). Raises TendError
+    when git cannot say."""
+    specs = ("--", *_any_case(paths)) if any_case else ("--", *paths)
+    r = _git(home, *(() if any_case else ("--literal-pathspecs",)), "--no-optional-locks", "status",
+             "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames",
+             *(("--ignored",) if ignored else ()), *specs)
     if r.returncode != 0:
         raise TendError(f"git status failed: {r.stderr.strip()}")
     return sorted({e[3:] for e in r.stdout.split("\0")
@@ -348,7 +352,13 @@ def _regular_or_gone(home: Path, rel: str) -> bool:
 
 def fleet_commit(home, paths: Iterable[str], subject: str) -> List[str]:
     """Commit exactly these paths as the fleet (author and committer
-    fleet <fleet@kingdom.os>), with no hook run; anything else staged stays
+    fleet <fleet@kingdom.os>): commit_as."""
+    return commit_as(home, paths, subject, FLEET_NAME, FLEET_EMAIL)
+
+
+def commit_as(home, paths: Iterable[str], subject: str, name: str, email: str) -> List[str]:
+    """Commit exactly these paths as <name> <email> (author and committer),
+    with no hook run and no signing; anything else staged stays
     staged and out of the commit. A path git no longer knows once it is added
     (staged as added, then deleted: in neither HEAD nor the index) holds nothing
     to commit and is left out. Returns the paths committed, sorted, or [] when
@@ -372,9 +382,9 @@ def fleet_commit(home, paths: Iterable[str], subject: str) -> List[str]:
         return []
     if _git(home, "--literal-pathspecs", "diff", "--cached", "--quiet", "--", *paths).returncode == 0:
         return []
-    r = _git(home, "-c", f"user.name={FLEET_NAME}", "-c", f"user.email={FLEET_EMAIL}",
+    r = _git(home, "-c", f"user.name={name}", "-c", f"user.email={email}",
              "-c", "commit.gpgsign=false",
-             "--literal-pathspecs", "commit", "-q", "--no-verify", f"--author={FLEET_AUTHOR}",
+             "--literal-pathspecs", "commit", "-q", "--no-verify", f"--author={name} <{email}>",
              "-m", subject, "--only", "--", *paths)
     if r.returncode != 0:
         _git(home, "--literal-pathspecs", "reset", "-q", "--", *paths)

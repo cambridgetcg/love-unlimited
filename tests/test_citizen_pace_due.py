@@ -384,6 +384,31 @@ class TestLock(h.FixtureCase):
         self.assertFalse(lock.take(self.state, "kalam", os.getppid(), now=at(2 * MINUTE),
                                    bound=900).got)
 
+    def test_a_holder_s_own_longer_bound_keeps_its_lock(self):
+        # fix wave A (o): the holder writes its own bound into the lock, and a taker
+        # judges a live holder stale only at twice the larger of the two bounds
+        got = lock.take(self.state, "kalam", os.getppid(), now=NOW, bound=1800)
+        self.assertTrue(got.got)
+        self.assertEqual((self.dir / "bound").read_text(), "1800\n")
+        self.assertEqual(lock.holder(self.state, "kalam", now=NOW).bound, 1800)
+        later = at(40 * MINUTE)          # past twice the taker's 600 s, within twice the holder's
+        self.assertTrue(lock.held(self.state, "kalam", now=later, bound=600))
+        self.assertFalse(lock.take(self.state, "kalam", os.getpid(), now=later, bound=600).got)
+        got = lock.take(self.state, "kalam", os.getpid(), now=at(61 * MINUTE), bound=600)
+        self.assertEqual((got.got, got.reclaimed), (True, "older than 3600 s"))
+        self.assertEqual((self.dir / "bound").read_text(), "600\n")
+        lock.release(self.state, "kalam")
+        # a holder's shorter bound is judged by the taker's; a lock without one, or
+        # with one that is not a number, by the taker's alone
+        for text in (None, "120", "abc", "²", "1234567890", ""):
+            with self.subTest(bound=text):
+                self.plant(os.getppid(), st(at(-15 * MINUTE)))
+                if text is not None:
+                    (self.dir / "bound").write_text(text + "\n")
+                self.assertTrue(lock.held(self.state, "kalam", now=NOW, bound=600))
+                self.assertFalse(lock.held(self.state, "kalam", now=at(6 * MINUTE), bound=600))
+                lock.release(self.state, "kalam")
+
     def test_a_lock_with_no_pid_yet_is_judged_by_its_age(self):
         self.plant()
         self.assertFalse(lock.take(self.state, "kalam", os.getpid(), now=NOW, bound=600).got)

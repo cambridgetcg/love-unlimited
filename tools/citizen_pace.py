@@ -271,7 +271,9 @@ def p_lock():
     p.add_argument("slug")
     p.add_argument("--state", required=True)
     p.add_argument("--pid", type=int, required=True)
-    p.add_argument("--bound", help="the beat bound in seconds (default FLEET_BEAT_BOUND_SEC, else 600)")
+    p.add_argument("--bound", help="this run's own beat bound in seconds, kept in the lock; a held lock is "
+                                   "stale at twice the larger of it and its holder's (default "
+                                   "FLEET_BEAT_BOUND_SEC, else 600)")
     return p
 
 

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 # The per-citizen lock (spec section 3, "Keeping the clock honest"; CONTRACT
-# section 14): a folder <state>/<slug>.lock holding `pid` and `started` (a
-# stamp). citizen-reflect.sh and citizen-beat.sh take it before their gates, so
+# section 14): a folder <state>/<slug>.lock holding `pid`, `started` (a
+# stamp) and `bound` (the holder's own beat bound, in seconds). citizen-reflect.sh and citizen-beat.sh take it before their gates, so
 # a hand-run beside the fleet can never beat a citizen twice or confirm a
 # proposal inside one beat; a second run finds it held and writes `busy`. Tend,
 # the bring-up-to-date step and the heard-late step skip a home whose lock is
 # held. A lock is stale, and is reclaimed, when its pid is gone or it is older
-# than twice the beat bound (FLEET_BEAT_BOUND_SEC, 600 s by default).
+# than twice the beat bound: the larger of the holder's own and the taker's
+# (FLEET_BEAT_BOUND_SEC, 600 s by default), so a holder with a longer bound
+# (citizen-beat.sh's) is never reclaimed mid-beat.
 
 import datetime as _dt
 import errno
@@ -48,6 +50,7 @@ class Holder:
     pid: Optional[int]          # None when no pid is recorded (yet) or it is not a process number
     started: Optional[str]      # stamp, or None
     age_s: Optional[float]      # seconds since started (or since the folder was made)
+    bound: Optional[int] = None  # the holder's own beat bound, None when none is recorded
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,12 @@ def _ident(d: Path) -> Tuple[Optional[int], Optional[str]]:
     return pid, started
 
 
+def _bound_of(d: Path) -> Optional[int]:
+    """The bound a lock folder's holder recorded (1-9 digits), or None."""
+    text = _read_small(d / "bound") or ""
+    return int(text) if re.fullmatch(r"[0-9]{1,9}", text) and int(text) > 0 else None
+
+
 def holder(state, slug: str, now: Optional[_dt.datetime] = None) -> Optional[Holder]:
     """Who holds the citizen's lock, or None when there is no lock. A path that is
     not a plain folder (a stray file or a link) is a lock with no holder recorded."""
@@ -100,7 +109,7 @@ def holder(state, slug: str, now: Optional[_dt.datetime] = None) -> Optional[Hol
         age = ((now or clock.now()) - clock.parse_stamp(started)).total_seconds()
     else:
         age = time.time() - st.st_mtime
-    return Holder(pid, started, max(0.0, age))
+    return Holder(pid, started, max(0.0, age), _bound_of(d) if stat.S_ISDIR(st.st_mode) else None)
 
 
 def _alive(pid: int) -> bool:
@@ -116,10 +125,12 @@ def _alive(pid: int) -> bool:
 
 
 def stale_reason(h: Optional[Holder], bound: Optional[int] = None) -> str:
-    """Why a lock is stale ("pid N is gone", "older than S s"), or "" when it is held."""
+    """Why a lock is stale ("pid N is gone", "older than S s"), or "" when it is
+    held. Its age is judged against twice the larger of the holder's own bound
+    and this taker's (`bound`, else beat_bound())."""
     if h is None:
         return ""
-    limit = 2 * (beat_bound() if bound is None else bound)
+    limit = 2 * max(beat_bound() if bound is None else bound, h.bound or 0)
     if h.pid is not None and not _alive(h.pid):
         return f"pid {h.pid} is gone"
     if h.age_s is not None and h.age_s > limit:
@@ -171,8 +182,9 @@ def _write_new(path: Path, text: str) -> None:
 
 def take(state, slug: str, pid: int, now: Optional[_dt.datetime] = None,
          bound: Optional[int] = None) -> Taken:
-    """Take the citizen's lock for pid. A stale lock is reclaimed first (the
-    reason is returned, for the log); a held one is not taken."""
+    """Take the citizen's lock for pid, recording `bound` (else beat_bound())
+    as the holder's own. A stale lock is reclaimed first (the reason is
+    returned, for the log); a held one is not taken."""
     if type(pid) is not int or pid <= 0:
         raise ValueError(f"{pid!r} is not a process number")
     when = now or clock.now()
@@ -192,6 +204,7 @@ def take(state, slug: str, pid: int, now: Optional[_dt.datetime] = None,
         try:
             _write_new(d / "pid", f"{pid}\n")
             _write_new(d / "started", f"{clock.stamp(when)}\n")
+            _write_new(d / "bound", f"{beat_bound() if bound is None else int(bound)}\n")
         except OSError as e:
             if e.errno != errno.ENOENT:      # the folder is still ours: leave no half-made lock
                 _discard(d)

@@ -348,6 +348,47 @@ class TestBeatLock(Case):
         self.assertFalse(os.path.lexists(self.state / "waker.lock"))
         self.assertEqual(self.fx.claude_calls(), [])
 
+    def test_the_lock_is_the_beat_s_and_its_bound_covers_the_whole_beat(self):
+        # fix wave A (o), (z): the lock's pid is the beat's own, and the bound it
+        # records covers the beat, its clone, fetch and push, so a taker never
+        # judges it stale mid-beat
+        self.fx.make_home("waker")
+        seen = self.fx.root / "lock-seen"
+        lockdir = self.state / "waker.lock"
+        self.claude_does(f'{{ cat "{lockdir}/pid" "{lockdir}/bound"; echo "$PPID"; }} > "{seen}"')
+        self.ok(self.beat("waker", BEAT_WALLCLOCK_SEC="900"))
+        pid, bound, parent = seen.read_text(encoding="utf-8").split()
+        self.assertEqual(pid, parent)
+        self.assertGreaterEqual(int(bound), 900 + 60 + 20 + 30)
+
+    def test_a_wallclock_that_is_not_a_number_refuses_the_beat(self):
+        # fix wave A (o): a typo would leave the beat with no bound at all
+        self.fx.make_home("waker")
+        for value in ("6m", " 360", "0", "-5", "1e3", "9999999999"):
+            with self.subTest(value=value):
+                r = self.ok(self.beat("waker", BEAT_WALLCLOCK_SEC=value), 1)
+                self.assertIn(f"BEAT_WALLCLOCK_SEC '{value}' is not a number of seconds — waker's beat "
+                              "refused", r.stdout)
+                self.assertEqual(self.fx.claude_calls(), [])
+                self.assertFalse(os.path.lexists(self.state / "waker.lock"))
+
+    def test_its_clone_fetch_and_push_are_bounded(self):
+        # fix wave A (o): a hung clone, fetch or push cannot hold the lock unbounded
+        home = self.fx.make_home("waker")
+        self.fx.give_upstream(home)
+        self.claude_does('echo made > notes.md')
+        real = shutil.which("git", path=h.SYSTEM_PATH) or "/usr/bin/git"
+        self.fx.write_bin("git", '#!/bin/sh\nfor a in "$@"; do case "$a" in clone|fetch|push) '
+                                 f'exec sleep 50;; esac; done\nexec {real} "$@"\n')
+        fast = {"BEAT_CLONE_BOUND_SEC": "5", "BEAT_FETCH_BOUND_SEC": "5", "BEAT_PUSH_BOUND_SEC": "5"}
+        r = self.ok(self.beat("nobody", **fast), 1)
+        self.assertIn("ERROR: clone failed for citizen-nobody", r.stdout)
+        self.assertFalse(os.path.lexists(self.state / "nobody.lock"))
+        r = self.ok(self.beat("waker", **fast))
+        self.assertEqual(self.fx.claude_calls(), ["citizen-waker"])
+        self.assertIn("waker push FAILED — tended on a future pass", r.stdout)
+        self.assertFalse(os.path.lexists(self.state / "waker.lock"))
+
 
 # -- citizen-beat.sh: letters wait for the free lane ------------------------------------
 

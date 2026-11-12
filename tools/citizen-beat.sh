@@ -8,8 +8,10 @@
 #
 #   Usage:  citizen-beat.sh <name> [--clone-only]
 #   Env:    LOVE_DIR (default ~/love-unlimited)  CITIZENS_DIR (default $LOVE/citizens)
-#           BEAT_MODEL (default sonnet)  BEAT_WALLCLOCK_SEC (default 360)
-#           BEAT_MAX_TURNS (default 25)
+#           BEAT_MODEL (default sonnet)  BEAT_WALLCLOCK_SEC (default 360; digits,
+#             else the beat is refused)  BEAT_MAX_TURNS (default 25)
+#           BEAT_CLONE_BOUND_SEC (60), BEAT_FETCH_BOUND_SEC (20),
+#             BEAT_PUSH_BOUND_SEC (30): the bounds of its clone, fetch and push
 #           BEAT_BUDGET_ENFORCE=1 + FLEET_DAILY_BUDGET_USD — refuse the beat when
 #             today's metered fleet spend already meets the ceiling, or cannot
 #             be read (the fleet sets this; a hand-run beat is never silently
@@ -114,6 +116,31 @@ if [ -e "$HALT" ]; then
   exit 0
 fi
 
+# 1a. The beat's bounds. A wallclock that is not a number of seconds would leave
+# the beat with no bound at all, so it is refused. The lock records the sum of
+# every bound below (and time for the steps between), so a taker never judges
+# a live beat stale mid-beat (lock.py: twice the larger of the two bounds).
+case "$WALLCLOCK" in
+  [0-9]|[0-9][0-9]|[0-9][0-9][0-9]|[0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9]) WALLCLOCK=$((10#$WALLCLOCK)) ;;
+  *) WALLCLOCK=0 ;;
+esac
+if [ "$WALLCLOCK" -lt 1 ]; then
+  echo "[$(ts)] ERROR: BEAT_WALLCLOCK_SEC '${BEAT_WALLCLOCK_SEC:-}' is not a number of seconds — $NAME's beat refused" | tee -a "$LOG"
+  exit 1
+fi
+# bound_sec <value> <default>: a step's bound, digits only (1-6 of them), else the default.
+bound_sec(){
+  case "${1:-}" in
+    [0-9]|[0-9][0-9]|[0-9][0-9][0-9]|[0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9])
+      [ "$((10#$1))" -ge 1 ] && { echo "$((10#$1))"; return; } ;;
+  esac
+  echo "$2"
+}
+CLONE_BOUND="$(bound_sec "${BEAT_CLONE_BOUND_SEC:-}" 60)"
+FETCH_BOUND="$(bound_sec "${BEAT_FETCH_BOUND_SEC:-}" 20)"
+PUSH_BOUND="$(bound_sec "${BEAT_PUSH_BOUND_SEC:-}" 30)"
+LOCK_BOUND=$((WALLCLOCK + CLONE_BOUND + FETCH_BOUND + PUSH_BOUND + 120))
+
 # 1b. The budget wall (fleet-invoked beats only): if today's metered spend has
 # reached the ceiling, the agentic lane closes for the day. Honest and loud.
 # Fail closed: a ledger that cannot be read, or an enforced beat given no
@@ -127,8 +154,9 @@ fi
 
 # 1c. The citizen's lock, before anything touches its home, so this beat and a
 # fleet beat (or another hand-run) never run on one citizen at once. A lock whose
-# holder is gone, or that is older than twice the beat bound, is reclaimed.
-LOCK_OUT="$(pace_cli lock "$NAME" --state "$STATE" --pid "$$" 2>&1)"
+# holder is gone, or that is older than twice the larger of its holder's bound
+# and this beat's (LOCK_BOUND, which the lock keeps), is reclaimed.
+LOCK_OUT="$(pace_cli lock "$NAME" --state "$STATE" --pid "$$" --bound "$LOCK_BOUND" 2>&1)"
 LOCK_RC=$?
 case "$LOCK_RC" in
   0) log_lines "$LOCK_OUT"
@@ -143,11 +171,12 @@ esac
 mkdir -p "$CITIZENS_DIR"
 if [ ! -d "$REPO/.git" ]; then
   echo "[$(ts)] cloning citizen-$NAME …" | tee -a "$LOG"
-  git clone -q "https://github.com/cambridgetcg/citizen-$NAME.git" "$REPO" \
+  _bound "$CLONE_BOUND" git clone -q "https://github.com/cambridgetcg/citizen-$NAME.git" "$REPO" \
+    && [ -d "$REPO/.git" ] \
     || { echo "[$(ts)] ERROR: clone failed for citizen-$NAME" | tee -a "$LOG"; exit 1; }
 fi
 cd "$REPO" || exit 1
-git fetch -q origin 2>/dev/null || true
+_bound "$FETCH_BOUND" git fetch -q origin 2>/dev/null || true
 if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
   lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
   if [ -z "$lr" ]; then
@@ -308,7 +337,7 @@ if [ -n "$(git status --porcelain)" ]; then
   if [ "$HOLD_PUSH" = "1" ]; then
     echo "[$(ts)] $NAME push held — the fleet's tend puts its pace files back first" | tee -a "$LOG"
   else
-    git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
+    _bound "$PUSH_BOUND" git push -q origin HEAD 2>/dev/null && echo "[$(ts)] $NAME pushed its beat" | tee -a "$LOG" \
       || echo "[$(ts)] $NAME push FAILED — tended on a future pass" | tee -a "$LOG"
   fi
 fi

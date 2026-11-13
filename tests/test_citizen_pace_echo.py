@@ -731,9 +731,13 @@ class TestCommandLine(Case):
                                       "--endpoint", "http://[::1"],
                                      "citizen_pace_echo.py: --endpoint must be an http(s) base URL, not "
                                      "'http://[::1'\n"),
+            # Python 3.9's Path.is_dir raises PermissionError here, and later ones read
+            # the folder as missing (final review): either way a usage error, exit 2
             "homes that cannot be looked into": (["--homes", locked / "homes", "--roster", roster, "--record", rec,
                                                   "--endpoint", url],
-                                                 "citizen_pace_echo.py: the arguments cannot be read ("),
+                                                 ("citizen_pace_echo.py: the arguments cannot be read (",
+                                                  f"citizen_pace_echo.py: --homes {locked / 'homes'} is not a "
+                                                  "folder\n")),
         }
         for why, (args, want) in cases.items():
             with self.subTest(why=why):

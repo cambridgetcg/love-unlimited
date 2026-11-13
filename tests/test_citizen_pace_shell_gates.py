@@ -655,10 +655,14 @@ class TestGuardRestore(Case):
         self.claude_does('printf -- "- pace: awake, every 3 days\\n" >> CADENCE.md\n'
                          'printf "mine\\n" > EVENT-ONLY\nprintf "made\\n" > notes.md')
         r = self.ok(self.beat("keeper", BEAT_SUMMONS="1"))
+        # EVENT-ONLY was set aside before git failed (final review: never lost)
+        mine = tend.set_aside_dir(self.state, "keeper") / "20261120T0600Z" / "EVENT-ONLY"
         self.assertIn("keeper: its pace files could not all be checked and put back after its beat — those "
                       "left are kept out of its commit (guard-restore: git checkout CADENCE.md failed: "
-                      "error: the checkout failed; some of CADENCE.md, EVENT-ONLY may be put back already; "
+                      f"error: the checkout failed; set aside before it stopped, not deleted: EVENT-ONLY at {mine}; "
+                      "some of CADENCE.md, EVENT-ONLY may be put back already; "
                       "the citizen's next free beat is told once)", r.stdout)
+        self.assertEqual(mine.read_text(encoding="utf-8"), "mine\n")
         self.assertEqual(self.committed(home), ["notes.md"])
         self.assertFalse(os.path.lexists(home / "EVENT-ONLY"))         # put back before git failed
         self.assertEqual(self.fx.git(home, "diff", "--name-only"), cad.CADENCE)

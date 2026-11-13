@@ -784,12 +784,21 @@ class TestGuardRestore(Case):
         self.fx.write(home, "CADENCE.md", "# CADENCE — the pace of kalam\n\n- pace: awake, every 3 days\n")
         self.fx.write(home, "REST", "I rest\n")
         self.fx.write(home, f"inbox/.seen-{LETTER}", "seen by a tool\n")
+        tool_cadence = (home / "CADENCE.md").read_text(encoding="utf-8")
         r = self.ok(self.pace("guard-restore", home, "--state", self.state))
-        aside = tend.set_aside_dir(self.state, "kalam") / "20261120T0600Z" / f"inbox/.seen-{LETTER}"
+        base = tend.set_aside_dir(self.state, "kalam") / "20261120T0600Z"
+        aside = base / f"inbox/.seen-{LETTER}"
+        # nothing it puts back is lost (final review): REST and the marker moved out,
+        # the edit to CADENCE.md copied out before it is checked out
         self.assertEqual(r.stdout, "kalam: pace files put back after a beat with tools: "
                                    f"CADENCE.md, REST, inbox/.seen-{LETTER}\n"
+                                   f"kalam: REST was never committed — set aside at {base / 'REST'}, not deleted\n"
                                    f"kalam: inbox/.seen-{LETTER} was never committed — set aside at {aside}, "
-                                   "not deleted\n")
+                                   "not deleted\n"
+                                   "kalam: CADENCE.md had a change that was never committed — a copy set aside at "
+                                   f"{base / 'CADENCE.md'}, not deleted\n")
+        self.assertEqual(((base / "REST").read_text(encoding="utf-8"),
+                          (base / "CADENCE.md").read_text(encoding="utf-8")), ("I rest\n", tool_cadence))
         self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), before)
         self.assertFalse((home / "REST").exists())
         self.assertFalse((home / "inbox" / f".seen-{LETTER}").exists())
@@ -811,8 +820,11 @@ class TestTend(Case):
         self.assertEqual(self.bare_head(bare), self.fx.head(home))
         self.fx.write(home, "REST", "left by a killed beat\n")
         r = self.ok(self.pace("tend", self.fx.citizens, "--roster", roster, "--state", self.state))
-        self.assertEqual(r.stdout, "kalam: a killed beat's leftovers restored: REST\n")
+        rest = tend.set_aside_dir(self.state, "kalam") / "20261120T0600Z" / "REST"
+        self.assertEqual(r.stdout, "kalam: a killed beat's leftovers restored: REST\n"
+                                   f"kalam: REST was never committed — set aside at {rest}, not deleted\n")
         self.assertFalse((home / "REST").exists())
+        self.assertEqual(rest.read_text(encoding="utf-8"), "left by a killed beat\n")
 
     def test_one_home_that_cannot_be_read_ends_no_tick(self):
         # an inbox that cannot be listed, and an attempt record whose stamp an
@@ -831,7 +843,9 @@ class TestTend(Case):
         roster = self.roster("amara", "bodhi", "cyra")
         args = (self.fx.citizens, "--roster", roster, "--state", self.state)
         r = self.ok(self.pace("tend", *args))
-        self.assertEqual(r.stdout, "amara: a killed beat's leftovers restored: REST\n")
+        rest = tend.set_aside_dir(self.state, "amara") / "20261120T0600Z" / "REST"
+        self.assertEqual(r.stdout, "amara: a killed beat's leftovers restored: REST\n"
+                                   f"amara: REST was never committed — set aside at {rest}, not deleted\n")
         _, summary = lines_and_summary(self.ok(self.pace("sync", *args)))
         self.assertEqual(summary["homes"], 3)
         r = self.ok(self.pace("rank", *args))

@@ -219,28 +219,20 @@ def _unclean(home: Path) -> Optional[List[str]]:
     return sorted({ent[3:] for ent in r.stdout.split("\0") if len(ent) > 3})
 
 
-def _holds(home: Path, rev: str, oid: str) -> bool:
-    return homes.git(home, "merge-base", "--is-ancestor", oid, rev).returncode == 0
-
-
-def _elsewhere(home: Path, rev: str, at: Optional[str]) -> Tuple[Optional[str], str]:
-    """(the first remote branch whose history `rev` does not hold, why), or
-    (None, ""). origin/HEAD is only a pointer. For a home read at `at`, a branch
-    that its HEAD holds is the line the spec set aside, not more history."""
-    r = homes.git(home, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)", "refs/remotes/")
-    if r.returncode != 0:
-        return "", "its remote branches cannot be read"
-    for line in r.stdout.splitlines():
-        name, _sep, rest = line.partition("\0")
-        oid, _sep, symref = rest.partition("\0")
-        if symref or _holds(home, rev, oid):
-            continue
-        branch = name[len("refs/remotes/"):]
+def _elsewhere(home: Path, rev: str, at: Optional[str]) -> str:
+    """Why this home's history goes on where `rev` does not reach, or "": a
+    remote branch rev does not hold (homes.branches_beyond). For a home read
+    at `at`, a branch its HEAD holds is the line the spec set aside, not more
+    history."""
+    beyond = homes.branches_beyond(home, rev)
+    if beyond is None:
+        return "its remote branches cannot be read"
+    for branch, oid in beyond:
         if at is None:
-            return branch, f"its history continues on {branch}, which HEAD does not hold"
-        if not _holds(home, "HEAD", oid):
-            return branch, f"its history continues on {branch}, which neither HEAD nor {at} holds"
-    return None, ""
+            return f"its history continues on {branch}, which HEAD does not hold"
+        if homes.git(home, "merge-base", "--is-ancestor", oid, "HEAD").returncode != 0:
+            return f"its history continues on {branch}, which neither HEAD nor {at} holds"
+    return ""
 
 
 def _tree(home: Path, rev: str, *paths: str) -> Optional[List[Tuple[str, str, str, str]]]:
@@ -317,7 +309,7 @@ def read_home(home, slug: str, at: Optional[str] = None, view: Optional[Path] = 
     if not _SHA.match(rev):
         return Facts(slug, problem="its clone has no HEAD" if at is None
                      else f"the spec reads it at {at}, but its clone has no {at}")
-    _branch, why = _elsewhere(home, rev, at)
+    why = _elsewhere(home, rev, at)
     if why:
         return Facts(slug, problem=why)
     where = home

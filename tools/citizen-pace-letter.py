@@ -28,6 +28,12 @@ A ledger (default ~/.local/state/citizen-pace-letter/ledger.json) is written
 before each push; a re-run on a later day resumes only the homes whose push
 did not land, and a second run on the same day does nothing.
 
+One --deliver runs at a time: it takes an exclusive lock beside the ledger
+(<ledger>.lock) and reads the ledger again under it. A recipient whose remote
+holds a branch its own does not hold is stopped. A push that timed out is
+reported as of unknown outcome, and a later run reads GitHub first. PACE_NOW,
+when set, is said on stderr.
+
 Exit: 0 when the run did what it could (each home's outcome is printed); 2 for
 a usage error or a refusal, before anything is written.
 """
@@ -41,6 +47,8 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import argparse  # noqa: E402
 import datetime as _dt  # noqa: E402
+import errno  # noqa: E402
+import fcntl  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
@@ -80,6 +88,8 @@ STATUSES = ("deliver", "asked", "dropped", "stopped", "failed")
 LANDED = "pushed"
 _SAFE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 _AS_AI = ("-c", f"user.name={AI_NAME}", "-c", f"user.email={AI_EMAIL}", "-c", "commit.gpgsign=false")
+_AS_AI_ENV = {"GIT_AUTHOR_NAME": AI_NAME, "GIT_AUTHOR_EMAIL": AI_EMAIL,
+              "GIT_COMMITTER_NAME": AI_NAME, "GIT_COMMITTER_EMAIL": AI_EMAIL}
 _SHA = re.compile(r"[0-9a-f]{40}")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 _PLAIN_REF = re.compile(r"refs/heads/[A-Za-z0-9][A-Za-z0-9._/-]{0,199}")
@@ -118,15 +128,21 @@ def _valid_day(d) -> bool:
 def auth_args(base: str) -> List[str]:
     """The pinned credential helper for every git call that reaches the homes'
     remote: inherited helpers (osxkeychain, another account's) are cleared, and
-    on GitHub the one helper is `sol access run github --` for cambridgetcg."""
+    on GitHub the one helper is `sol access run github --` for cambridgetcg.
+    Nothing may prompt or ask an askpass program for what the helper lacks."""
     pinned = ["-c", "credential.helper="]
     if base.startswith(GITHUB):
         pinned += ["-c", f"credential.helper={GITHUB_HELPER}"]
-    return pinned
+    return pinned + ["-c", "credential.interactive=false", "-c", "core.askPass="]
+
+
+# the askpass programs a network call must never inherit (core.askPass is cleared in auth_args)
+_NO_ASKPASS = {"GIT_ASKPASS": None, "SSH_ASKPASS": None}
 
 
 def _net(home, base: str, *args, timeout: float):
-    return homes.git(home, *_SAFE, *auth_args(base), *args, timeout=timeout)
+    """Every git call that reaches the homes' remote (clone, ls-remote, push)."""
+    return homes.git(home, *_SAFE, *auth_args(base), *args, timeout=timeout, env=_NO_ASKPASS)
 
 
 # -- the ledger --------------------------------------------------------------------
@@ -160,6 +176,28 @@ def load_ledger(path) -> dict:
 
 def save_ledger(path, d: dict) -> None:
     homes.write_regular(Path(path), json.dumps(d, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def run_lock_path(ledger_path) -> Path:
+    p = Path(ledger_path)
+    return p.with_name(p.name + ".lock")
+
+
+def take_run_lock(ledger_path) -> Optional[int]:
+    """The exclusive lock of one --deliver run, beside the ledger: an open
+    descriptor holding it (closed, it is let go; the system lets it go when
+    the run dies), or None when another run holds it. A link is refused."""
+    lock = run_lock_path(ledger_path)
+    homes._make_parents(lock.parent)
+    fd = os.open(str(lock), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        os.close(fd)
+        if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+            return None
+        raise
+    return fd
 
 
 def ran_on(ledger: dict, day: str) -> bool:
@@ -417,6 +455,15 @@ def assess(work: Path, slug: str, e: dict, record: dict, roster: List[str], ledg
         h.status, h.why = "stopped", "its upstream is not a plain branch of origin"
         return h
     h.remoteref = loc.remoteref
+    beyond = homes.branches_beyond(path, "HEAD")
+    branch = loc.remoteref[len("refs/heads/"):]
+    if beyond is None:
+        h.status, h.why = "stopped", "its remote branches cannot be read"
+        return h
+    if beyond:
+        # eucatastrophe's and shannonme's history continued on a master their main did not hold
+        h.status, h.why = "stopped", f"its remote has {beyond[0][0]}, which {branch} does not hold"
+        return h
     links = homes.forbidden_links(path)
     if links:
         h.status, h.why = "stopped", f"its pace paths include links: {', '.join(links)}"
@@ -509,24 +556,30 @@ class Switch:
 
 # -- placing one letter ------------------------------------------------------------------
 
-def remote_head(home: Path, remoteref: str, base: str) -> str:
-    """The remote's head of that branch now, or ""."""
+def remote_head(home: Path, remoteref: str, base: str) -> Tuple[str, str]:
+    """(the remote's head of that branch now, "") ("" when it has none), or
+    ("", why the remote head could not be read)."""
     r = _net(home, base, "ls-remote", "-q", "origin", remoteref, timeout=HEAD_BOUND)
-    for ln in r.stdout.splitlines() if r.returncode == 0 else []:
+    if r.returncode != 0:
+        why = f"timed out after {HEAD_BOUND:g} s" if r.returncode == 124 else _first_line(r.stderr, r.returncode)
+        return "", why
+    for ln in r.stdout.splitlines():
         oid, _tab, ref = ln.partition("\t")
         if ref.strip() == remoteref and _SHA.fullmatch(oid.strip()):
-            return oid.strip()
-    return ""
+            return oid.strip(), ""
+    return "", ""
 
 
-def push(home: Path, remoteref: str, base: str) -> Tuple[bool, str]:
-    """Push HEAD to that branch once: no force, no retry, no hook."""
+def push(home: Path, remoteref: str, base: str) -> Tuple[str, str]:
+    """Push HEAD to that branch once: no force, no retry, no hook. ("pushed",
+    ""), ("refused", git's first line), or ("unknown", why) when it timed out:
+    a push that timed out may have landed."""
     r = _net(home, base, "push", "-q", "--no-verify", "origin", f"HEAD:{remoteref}", timeout=PUSH_BOUND)
     if r.returncode == 0:
-        return True, ""
+        return "pushed", ""
     if r.returncode == 124:
-        return False, f"timed out after {PUSH_BOUND:g} s"
-    return False, _first_line(r.stderr, r.returncode)
+        return "unknown", f"timed out after {PUSH_BOUND:g} s"
+    return "refused", _first_line(r.stderr, r.returncode)
 
 
 def commit_letter(h: Home, rel: str) -> Tuple[str, str]:
@@ -538,8 +591,9 @@ def commit_letter(h: Home, rel: str) -> Tuple[str, str]:
         return "", f"the letter could not be written ({e})"
     r = homes.git(h.path, *_SAFE, "add", "--", rel)
     if r.returncode == 0:
+        # Ai is the author and the committer, whatever GIT_*_NAME or _EMAIL the caller carries
         r = homes.git(h.path, *_SAFE, *_AS_AI, "commit", "-q", "--no-verify", f"--author={letter.AUTHOR}",
-                      "-m", letter.COMMIT_MESSAGE, "--", rel)
+                      "-m", letter.COMMIT_MESSAGE, "--", rel, env=_AS_AI_ENV)
     if r.returncode != 0:
         return "", f"the commit failed ({_first_line(r.stderr, r.returncode)})"
     return homes.head(h.path), ""
@@ -553,14 +607,23 @@ def deliver_one(h: Home, rel: str, ledger: dict, ledger_path: Path, base: str, n
              "commit": sha, "status": "pushing"}
     ledger["homes"][h.slug] = entry
     save_ledger(ledger_path, ledger)               # written before the push
-    if remote_head(h.path, h.remoteref, base) != h.base:
+    head, unread = remote_head(h.path, h.remoteref, base)
+    if unread:
+        entry["status"], entry["why"] = "head-unread", unread
+        line = (f"{h.slug}: not delivered — the remote head could not be read ({unread}); a later run "
+                "delivers it")
+    elif head != h.base:
         entry["status"] = "moved"
         line = f"{h.slug}: not delivered — its GitHub HEAD moved since it was read; a later run delivers it"
     else:
-        ok, why = push(h.path, h.remoteref, base)
-        if ok:
+        outcome, why = push(h.path, h.remoteref, base)
+        if outcome == "pushed":
             entry["status"] = LANDED
             line = f"{h.slug}: delivered — {rel} ({sha[:8]}), pushed"
+        elif outcome == "unknown":
+            entry["status"], entry["why"] = "push-unknown", why
+            line = (f"{h.slug}: outcome unknown — the push {why}, so it may have landed; a later run reads "
+                    "GitHub first")
         else:
             entry["status"], entry["why"] = "push-failed", why
             line = f"{h.slug}: not delivered — the push was refused ({why}); a later run delivers it"
@@ -619,10 +682,15 @@ def run_dry(read: List[Home], switch: Switch, per_run: Optional[int], now: _dt.d
 
 
 def run_check(read: List[Home], record: dict, ledger: dict, out) -> None:
-    reached = 0
+    reached = dropped = 0
     for h in read:
         if h.path is None:
             print(h.line(), file=out)
+            continue
+        if h.status == "dropped":
+            # never meant to get a letter: not a delivery that was lost
+            dropped += 1
+            print(f"{h.slug}: dropped — {h.why}; no letter was meant for it", file=out)
             continue
         try:
             c = cad.read_cadence(h.path, h.slug, record, clock.now())
@@ -651,7 +719,8 @@ def run_check(read: List[Home], record: dict, ledger: dict, out) -> None:
         else:
             why = f"{rel} is marked seen, but its CADENCE.md has no reached line"
         print(f"{h.slug}: not reached — {why}", file=out)
-    print(f"reached: {reached} of {len(read)} recipients", file=out)
+    more = f" ({dropped} dropped)" if dropped else ""
+    print(f"reached: {reached} of {len(read) - dropped} recipients a letter was meant for{more}", file=out)
 
 
 def run_deliver(read: List[Home], switch: Switch, a, record: dict, ledger: dict, ledger_path: Path,
@@ -672,6 +741,7 @@ def run_deliver(read: List[Home], switch: Switch, a, record: dict, ledger: dict,
     for h in read:
         if h.status != "deliver":
             print(h.line(), file=out)
+    print(_summary(read), file=out)
     rel = letter.letter_path(clock.day(now))
     done = 0
     for k, h in enumerate(chosen):
@@ -748,7 +818,15 @@ def main(argv=None, out=None, err=None) -> int:
         a = parser().parse_args(argv)
     except SystemExit as e:
         return int(e.code or 0)
-    now = clock.now()
+    try:
+        now = clock.now()
+    except ValueError:
+        print(f"citizen-pace-letter.py: PACE_NOW {os.environ.get('PACE_NOW', '').strip()!r} is not a time "
+              "(YYYY-MM-DDTHH:MMZ)", file=err)
+        return REFUSED
+    if os.environ.get("PACE_NOW", "").strip():
+        print(f"citizen-pace-letter.py: PACE_NOW is set, so this run's time is {clock.stamp(now)}, not the "
+              "clock's", file=err)
     try:
         record = records.load_record(Path(a.record) if a.record else None)
         if not record:
@@ -760,6 +838,30 @@ def main(argv=None, out=None, err=None) -> int:
     except (Refusal, ValueError, LinkRefused, OSError) as e:
         print(f"citizen-pace-letter.py: {e}", file=err)
         return REFUSED
+    lock = None
+    if a.deliver:
+        try:
+            lock = take_run_lock(ledger_path)
+            if lock is not None:
+                ledger = load_ledger(ledger_path)     # again, under the lock: another run may have written it
+        except (ValueError, LinkRefused, OSError) as e:
+            if lock is not None:
+                os.close(lock)
+            print(f"citizen-pace-letter.py: {e}", file=err)
+            return REFUSED
+        if lock is None:
+            print(f"citizen-pace-letter.py: another --deliver run holds {run_lock_path(ledger_path)}; this run "
+                  "does nothing", file=err)
+            return REFUSED
+    try:
+        return _run(a, record, roster, ledger, ledger_path, now, out, err)
+    finally:
+        if lock is not None:
+            os.close(lock)
+
+
+def _run(a, record: dict, roster: List[str], ledger: dict, ledger_path: Path, now: _dt.datetime, out,
+         err) -> int:
     if a.deliver and ran_on(ledger, clock.day(now)):
         print(f"a delivery run already happened today ({clock.day(now)}); this run does nothing — run "
               "again on a later day", file=out)

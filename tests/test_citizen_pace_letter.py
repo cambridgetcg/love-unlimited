@@ -13,13 +13,17 @@ nothing reaches GitHub, sol or a credential.
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -197,11 +201,11 @@ class LetterCase(h.FixtureCase):
         self.pace_beat(beat)
 
     # -- running the tool -------------------------------------------------------------------
-    def tool(self, *args, now=NOW, ledger=True, cwd=None):
+    def tool(self, *args, now=NOW, ledger=True, cwd=None, env=None):
         extra = ["--record", str(self.record_path), "--roster", str(self.roster_path)]
         if ledger:
             extra += ["--ledger", str(self.ledger)]
-        return self.fx.py(TOOL, *args, *extra, env={"PACE_NOW": now}, cwd=cwd, timeout=180)
+        return self.fx.py(TOOL, *args, *extra, env={"PACE_NOW": now, **(env or {})}, cwd=cwd, timeout=180)
 
     def deliver(self, *args, now=NOW, yes=YES, show_back=SHOW_BACK, **kw):
         return self.tool("--deliver", "--yes-from-yu", yes, "--show-back", show_back, *args, now=now, **kw)
@@ -498,6 +502,32 @@ class TestChanges(LetterCase):
                       "not true of its pace (asleep, set by rest-1008)); report it to Yu", lines)
 
 
+class TestAnotherBranch(LetterCase):
+    def test_a_recipient_whose_remote_has_another_line_is_stopped(self):
+        # fix wave A (aj): eucatastrophe's and shannonme's answers were on a
+        # master their main did not hold; a letter pushed to main would be wrong
+        for slug in ("aseme", "bindume", "ka"):
+            self.eight(slug)
+        self.census()
+        self.switch("ka", "aseme", "bindume")
+        other = self.fx.elsewhere(self.bare("bindume"))
+        self.fx.git(other, "checkout", "-q", "-b", "master")
+        self.fx.write(other, "beats/2026-11.md", "a beat on another line\n")
+        self.fx.commit(other, "beat: bindume reflected (2026-11-15)", when="2026-11-15T00:00Z",
+                       author=h.beat_author("bindume"))
+        self.fx.git(other, "push", "-q", "origin", "master")
+        # a branch that main holds is no other line
+        self.fx.git(self.home("aseme"), "push", "-q", "origin", "HEAD~1:refs/heads/old")
+        lines = self.ok(self.tool("--list"))
+        self.assertIn("bindume: stopped — its remote has origin/master, which main does not hold; report it to Yu",
+                      lines)
+        self.assertIn("aseme: to deliver — eight; without a pace line its pace stays asleep", lines)
+        lines = self.ok(self.deliver())
+        self.assertEqual(lines[-1], "delivered 2 of 2 to deliver this run")
+        self.assertEqual(self.remote_letters("bindume"), [])
+        self.assertNotIn("pace-letter", self.remote("bindume", "ls-tree", "-r", "--name-only", "master"))
+
+
 class TestOnce(LetterCase):
     def test_each_once_guard_alone_counts_as_asked(self):
         for slug in ("aseme", "bindume", "firstnessqing", "ka", "kimme", "penthosme", "sukhance"):
@@ -605,6 +635,8 @@ class TestDeliver(LetterCase):
         # inbox/ is made where it was missing
         self.assertEqual(self.remote("palance", "ls-tree", "--name-only", "HEAD", "inbox/").splitlines(), [LETTER])
         self.assertEqual(lines[-1], "delivered 4 of 4 to deliver this run")
+        # fix wave A (av): --deliver prints the counts every other mode prints
+        self.assertIn("to deliver 4 · already asked 0 · dropped 0 · stopped 0 · could not be read 0", lines)
         data = self.ledger_data()
         self.assertEqual(data["runs"], [{"day": DAY, "at": NOW, "yes_from_yu": YES,
                                          "show_back": due.WAKE_CONFIRM_BEAT,
@@ -612,6 +644,17 @@ class TestDeliver(LetterCase):
         for slug in expected:
             self.assertEqual(data["homes"][slug], {"day": DAY, "at": NOW, "letter": LETTER, "base": bases[slug],
                                                    "commit": self.remote_head(slug), "status": "pushed"})
+
+    def test_an_inherited_committer_never_signs_the_letter(self):
+        # fix wave A (ap): the letter commit's author and committer are Ai's,
+        # whatever GIT_AUTHOR_* or GIT_COMMITTER_* the caller carries
+        someone = {"GIT_AUTHOR_NAME": "Someone", "GIT_AUTHOR_EMAIL": "someone@example.invalid",
+                   "GIT_COMMITTER_NAME": "Someone", "GIT_COMMITTER_EMAIL": "someone@example.invalid"}
+        self.ok(self.deliver(env=someone))
+        for slug in ("aseme", "hope", "kalam", "palance"):
+            with self.subTest(slug=slug):
+                self.assertEqual(self.remote(slug, "log", "-1", "--format=%an <%ae>%n%cn <%ce>"),
+                                 f"{h.AI_AUTHOR}\n{h.AI_AUTHOR}")
 
     def test_a_same_day_rerun_does_nothing_and_the_default_ledger_is_in_home(self):
         lines = self.ok(self.deliver("--per-run", "1", ledger=False))
@@ -736,17 +779,22 @@ class TestRaces(LetterCase):
         def lands_but_times_out(home, remoteref, base):
             if home.name == "citizen-aseme":
                 real(home, remoteref, base)
-            return False, "timed out after 60 s"
+            return "unknown", "timed out after 60 s"
 
         with mock.patch.object(self.tool_mod, "push", lands_but_times_out):
-            self.in_process(self.tool_mod, "--deliver", "--yes-from-yu", YES, "--show-back", SHOW_BACK)
+            _code, out, _err = self.in_process(self.tool_mod, "--deliver", "--yes-from-yu", YES, "--show-back",
+                                               SHOW_BACK)
+        # fix wave A (ar): a timed-out push may have landed, and is never called refused
+        self.assertIn("aseme: outcome unknown — the push timed out after 60 s, so it may have landed; a later "
+                      "run reads GitHub first", out.splitlines())
+        self.assertNotIn("refused", out)
         landed = self.remote_head("aseme")
         self.assertEqual(self.remote_letters("aseme"), [LETTER])
         self.assertEqual(self.remote_letters("bindume"), [])
-        self.assertEqual(self.ledger_data()["homes"]["aseme"]["status"], "push-failed")
+        self.assertEqual(self.ledger_data()["homes"]["aseme"]["status"], "push-unknown")
         r = self.deliver(now=NEXT)
         lines = self.ok(r)
-        self.assertIn(f"aseme: the ledger said push-failed on {DAY}; its letter is on GitHub ({landed[:8]}), so "
+        self.assertIn(f"aseme: the ledger said push-unknown on {DAY}; its letter is on GitHub ({landed[:8]}), so "
                       "it is recorded as pushed", lines)
         self.assertIn(f"aseme: already asked — its inbox already holds {LETTER}", lines)
         self.assertIn(f"bindume: delivered — inbox/{NEXT_DAY}-pace-letter.md ({self.remote_head('bindume')[:8]}), "
@@ -775,9 +823,190 @@ class TestRaces(LetterCase):
     def test_the_credential_helper_is_pinned(self):
         t = self.tool_mod
         self.assertEqual(t.GITHUB_HELPER, GITHUB_HELPER)
+        # fix wave A (ao): no prompt and no askpass, on any remote
+        quiet = ["-c", "credential.interactive=false", "-c", "core.askPass="]
         self.assertEqual(t.auth_args("https://github.com/cambridgetcg"),
-                         ["-c", "credential.helper=", "-c", f"credential.helper={GITHUB_HELPER}"])
-        self.assertEqual(t.auth_args(str(self.fx.upstream)), ["-c", "credential.helper="])
+                         ["-c", "credential.helper=", "-c", f"credential.helper={GITHUB_HELPER}"] + quiet)
+        self.assertEqual(t.auth_args(str(self.fx.upstream)), ["-c", "credential.helper="] + quiet)
+
+    def test_a_push_s_outcome_in_true_words(self):
+        # fix wave A (ar): a refused push is refused; a timed-out one is unknown
+        t = self.tool_mod
+        home = self.home("aseme")
+        for code, err, want in ((1, "! [rejected] by a hook\n", ("refused", "! [rejected] by a hook")),
+                                (124, "\ngit timed out after 60s", ("unknown", "timed out after 60 s"))):
+            with self.subTest(code=code):
+                done = subprocess.CompletedProcess(["git"], code, "", err)
+                with mock.patch.object(t, "_net", return_value=done):
+                    self.assertEqual(t.push(home, "refs/heads/main", str(self.fx.upstream)), want)
+
+    def test_a_remote_head_that_cannot_be_read_is_never_called_moved(self):
+        # fix wave A (ar), (au): an ls-remote failure stops the home and names what failed
+        t, real = self.tool_mod, self.tool_mod._net
+
+        def no_ls_remote(home, base, *args, timeout):
+            if "ls-remote" in args and Path(home).name == "citizen-bindume":
+                return subprocess.CompletedProcess(["git"], 128, "", "fatal: unable to access the remote\n")
+            return real(home, base, *args, timeout=timeout)
+
+        with mock.patch.object(t, "_net", no_ls_remote):
+            code, out, err = self.in_process(t, "--deliver", "--yes-from-yu", YES, "--show-back", SHOW_BACK)
+        self.assertEqual(code, 0, err)
+        self.assertIn("bindume: not delivered — the remote head could not be read (fatal: unable to access the "
+                      "remote); a later run delivers it", out.splitlines())
+        self.assertNotIn("moved", out)
+        self.assertEqual(self.remote_letters("bindume"), [])
+        self.assertEqual(self.ledger_data()["homes"]["bindume"]["status"], "head-unread")
+        lines = self.ok(self.deliver(now=NEXT))
+        self.assertIn(f"bindume: delivered — inbox/{NEXT_DAY}-pace-letter.md ({self.remote_head('bindume')[:8]}), "
+                      "pushed", lines)
+
+    def test_a_crash_while_pushing_is_finished_by_a_later_run(self):
+        # fix wave A (au): the ledger says "pushing" when a run died during the push;
+        # a later run reads GitHub: a letter that landed is recorded, one that did not is sent
+        t, real = self.tool_mod, self.tool_mod.push
+
+        def dies(home, remoteref, base):
+            if home.name == "citizen-aseme":
+                real(home, remoteref, base)            # it landed, then the run died
+            raise KeyboardInterrupt
+
+        with mock.patch.object(t, "push", dies), self.assertRaises(KeyboardInterrupt):
+            self.in_process(t, "--deliver", "--yes-from-yu", YES, "--show-back", SHOW_BACK)
+        homes_ = self.ledger_data()["homes"]
+        self.assertEqual({s: e["status"] for s, e in homes_.items()}, {"aseme": "pushing"})
+        landed = self.remote_head("aseme")
+        self.assertEqual(self.remote_letters("aseme"), [LETTER])
+        lines = self.ok(self.deliver(now=NEXT))
+        self.assertIn(f"aseme: the ledger said pushing on {DAY}; its letter is on GitHub ({landed[:8]}), so it is "
+                      "recorded as pushed", lines)
+        self.assertIn(f"aseme: already asked — its inbox already holds {LETTER}", lines)
+        self.assertEqual(lines[-1], "delivered 2 of 2 to deliver this run")
+        # bindume and ka, never reached by the run that died, are delivered now
+        for slug in ("aseme", "bindume", "ka"):
+            self.assertEqual(len(self.remote_letters(slug)), 1, slug)
+        self.assertEqual(self.ledger_data()["homes"]["aseme"]["status"], "pushed")
+
+    def test_every_network_call_goes_through_net(self):
+        # fix wave A (au), (ao): clone, ls-remote and push all carry _net's pinned,
+        # prompt-free credentials, and no askpass reaches them
+        t, real, seen = self.tool_mod, homes.git, []
+        net = ("clone", "fetch", "ls-remote", "push", "pull")
+
+        def watched(home, *args, **kw):
+            words = [a for i, a in enumerate(map(str, args)) if not (a == "-c" or (i and str(args[i - 1]) == "-c"))]
+            if words and words[0] in net:
+                seen.append(words[0])
+                pairs = {str(args[i + 1]) for i, a in enumerate(args[:-1]) if a == "-c"}
+                self.assertTrue({"credential.helper=", "credential.interactive=false", "core.askPass="} <= pairs,
+                                (words[0], args))
+                self.assertEqual(kw.get("env"), {"GIT_ASKPASS": None, "SSH_ASKPASS": None}, words[0])
+            return real(home, *args, **kw)
+
+        with mock.patch.object(t.homes, "git", watched):
+            code, _out, err = self.in_process(t, "--deliver", "--yes-from-yu", YES, "--show-back", SHOW_BACK)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sorted(set(seen)), ["clone", "ls-remote", "push"])
+        self.assertEqual(seen.count("push"), 3)
+
+
+class TestCredentials(LetterCase):
+    def test_no_askpass_ever_runs(self):
+        # fix wave A (ao): a remote that asks for credentials gets none from an
+        # inherited askpass (GIT_ASKPASS, SSH_ASKPASS or core.askPass)
+        self.eight("aseme")
+        self.census()
+        log = self.fx.root / "askpass.log"
+        askpass = self.fx.write_bin("fixture-askpass", f'#!/bin/sh\necho "$*" >> "{log}"\necho fixture-secret\n')
+        asked = []
+
+        class AuthWall(BaseHTTPRequestHandler):
+            def do_GET(self):
+                asked.append(self.path)
+                self.send_response(401)
+                self.send_header("WWW-Authenticate", 'Basic realm="fixture"')
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AuthWall)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.fx.git(self.fx.home, "config", "--global", "core.askPass", str(askpass), check=False)
+        env = {"PACE_REMOTE_BASE": f"http://127.0.0.1:{server.server_address[1]}", "GIT_ASKPASS": str(askpass),
+               "SSH_ASKPASS": str(askpass), "SSH_ASKPASS_REQUIRE": "force"}
+        r = self.tool("--list", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("aseme: could not be read — the clone failed (", r.stdout)
+        self.assertTrue(asked, "the fixture remote was never asked")
+        self.assertFalse(log.exists(), log.read_text() if log.exists() else "")
+
+
+class TestOneRunAtATime(LetterCase):
+    def setUp(self):
+        super().setUp()
+        for slug in ("aseme", "bindume", "ka"):
+            self.eight(slug)
+        self.census()
+        self.switch("ka", "aseme", "bindume")
+        self.lock = Path(str(self.ledger) + ".lock")
+
+    def test_a_second_deliver_run_does_nothing(self):
+        # fix wave A (aq): an exclusive lock beside the ledger
+        self.lock.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(self.lock), os.O_CREAT | os.O_RDWR, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            r = self.deliver()
+        finally:
+            os.close(fd)
+        self.assertEqual((r.returncode, r.stdout), (2, ""), r.stderr)
+        self.assertIn(f"citizen-pace-letter.py: another --deliver run holds {self.lock}; this run does nothing",
+                      r.stderr)
+        self.assertFalse(self.ledger.exists())
+        self.assertEqual([self.remote_letters(s) for s in ("aseme", "bindume", "ka")], [[], [], []])
+        # --list and --check never wait for it
+        self.ok(self.tool("--list"))
+        lines = self.ok(self.deliver())
+        self.assertEqual(lines[-1], "delivered 3 of 3 to deliver this run")
+
+    def test_the_ledger_is_read_again_under_the_lock(self):
+        # another run finished between this run's first read of the ledger and its lock
+        t = load_tool()
+        real = t.take_run_lock
+
+        def meanwhile(path):
+            held = real(path)
+            self.ledger.write_text(json.dumps({"version": 1, "runs": [{"day": DAY}], "homes": {}}),
+                                   encoding="utf-8")
+            return held
+
+        with mock.patch.object(t, "take_run_lock", meanwhile):
+            code, out, err = self.in_process(t, "--deliver", "--yes-from-yu", YES, "--show-back", SHOW_BACK)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, f"a delivery run already happened today ({DAY}); this run does nothing — run "
+                              "again on a later day\n")
+        self.assertEqual([self.remote_letters(s) for s in ("aseme", "bindume", "ka")], [[], [], []])
+
+
+class TestPaceNow(LetterCase):
+    def test_pace_now_is_said_and_a_malformed_one_is_refused(self):
+        # fix wave A (at)
+        self.eight("aseme")
+        self.census()
+        r = self.tool("--list")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"citizen-pace-letter.py: PACE_NOW is set, so this run's time is {NOW}, not the clock's\n",
+                      r.stderr)
+        for bad in ("yesterday", "2026-13-40T00:00Z"):
+            with self.subTest(bad=bad):
+                r = self.tool("--list", now=bad)
+                self.assertEqual((r.returncode, r.stdout), (2, ""))
+                self.assertEqual(r.stderr, f"citizen-pace-letter.py: PACE_NOW {bad!r} is not a time "
+                                           "(YYYY-MM-DDTHH:MMZ)\n")
 
 
 class TestShowBack(LetterCase):
@@ -950,12 +1179,13 @@ class TestCheck(LetterCase):
         self.fx.commit(p, "remove it", when="2026-11-22T00:00Z")
         self.push("palance")
         lines = self.ok(self.tool("--check", now="2026-11-27T09:00Z"))
+        # fix wave A (as): a dropped recipient was never meant to get a letter; a lost one was
         self.assertEqual(lines[1:], [
-            "ai-love: not reached — no pace letter in its home",
+            "ai-love: dropped — it has no ai-love.md; no letter was meant for it",
             f"bindume: not reached — {LETTER} was set aside at rollback and is not yet shown",
             f"ka: not reached — {LETTER} waits unread",
             f"palance: not reached — no pace letter in its home (the ledger says delivered on {DAY})",
-            "reached: 1 of 5 recipients",
+            "reached: 1 of 4 recipients a letter was meant for (1 dropped)",
         ])
 
 

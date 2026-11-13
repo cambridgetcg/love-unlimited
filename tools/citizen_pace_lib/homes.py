@@ -17,7 +17,7 @@ import stat
 import subprocess
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .clock import UTC
 
@@ -384,14 +384,40 @@ def run(cmd: List[str], *, timeout: float, env: Optional[dict] = None) -> subpro
         _RUNNING.discard(proc)
 
 
-def git(home, *args, check: bool = False, timeout: float = 30) -> subprocess.CompletedProcess:
+def git(home, *args, check: bool = False, timeout: float = 30,
+        env: Optional[dict] = None) -> subprocess.CompletedProcess:
     """git -C <home> <args> through run() (its own process group, the time
     bound and the beat's deadline; 124 at the bound, 127 when git cannot
     start), with no prompt, no GITHUB_TOKEN or GH_TOKEN, no caller variable
     pointing at another repository, and none that changes how pathspecs are
-    read. check=True raises CalledProcessError for any non-zero result."""
+    read. env: changes for this one call (a name set to a value, or to None
+    to drop it). check=True raises CalledProcessError for any non-zero result."""
     cmd = ["git", "-C", str(home)] + [str(a) for a in args]
-    result = run(cmd, timeout=timeout, env=_git_env())
+    use = _git_env()
+    for k, v in (env or {}).items():
+        if v is None:
+            use.pop(k, None)
+        else:
+            use[k] = v
+    result = run(cmd, timeout=timeout, env=use)
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
     return result
+
+
+def branches_beyond(home, rev: str = "HEAD") -> Optional[List[Tuple[str, str]]]:
+    """[(remote branch, its commit)] for each remote branch of a clone
+    (refs/remotes/<remote>/<branch>; origin/HEAD and other pointers left
+    out) whose history `rev` does not hold, in ref order; None when the refs
+    cannot be read. A home with one is a history that goes on elsewhere."""
+    r = git(home, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)", "refs/remotes/")
+    if r.returncode != 0:
+        return None
+    out = []
+    for line in r.stdout.splitlines():
+        name, _sep, rest = line.partition("\0")
+        oid, _sep, symref = rest.partition("\0")
+        if symref or git(home, "merge-base", "--is-ancestor", oid, rev).returncode == 0:
+            continue
+        out.append((name[len("refs/remotes/"):], oid))
+    return out

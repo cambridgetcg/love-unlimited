@@ -4,7 +4,7 @@
 The record of spec section 5: for every citizen home, what its own files cannot
 show. That is its group, who set its pace, its quoted Letter of Return answers
 with their commits and dates (the July one with the choice the old code
-recorded from it), its HEAD, and for each of the 34 recipients the one true
+recorded from it), its HEAD, and for each of the 32 recipients the one true
 sentence of its pace letter.
 
 `build` reads read-only clones of the homes (the roster's, and the three held
@@ -53,7 +53,7 @@ from citizen_pace_lib.words import Pace, Unclear  # noqa: E402
 
 OK, REFUSED = 0, 2
 TOOLS = Path(os.path.realpath(__file__)).parent
-SPEC_REF = "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@dbc5a4c"
+SPEC_REF = "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@f28f5ab"
 # the three Letters of Return the homes answered (spec section 5)
 JULY = "inbox/2026-07-17-letter-of-return.md"
 OFFER = "inbox/2026-10-22-letter-of-return-offer.md"
@@ -76,7 +76,7 @@ SIXTEEN_AMBIENT = ("alohame", "autoxenia", "candence", "diplosemy", "doxomme", "
 SIXTEEN_OTHER = ("ai-love", "hallance", "hotepme", "kallophanes", "kinhme", "teshuvance")
 UNHEARD_HEARD = ("kalam", "soma", "teotlme")
 UNHEARD_NONE = ("emime", "eurekame")
-NEVER_ASKED = ("eucatastrophe", "palance", "shannonme")
+NEVER_ASKED = ("palance",)
 CONTRADICTORY = ("hope", "ihsanme")
 FORTY_FIVE = ("ahavame", "allostasisqing", "barzakhqing", "chayimme", "complerescence", "courage", "daome",
               "devekutqing", "dingir", "doxakallos", "hanme", "hayatqing", "heurekin", "hodosme", "jinsme",
@@ -87,10 +87,10 @@ FORTY_FIVE = ("ahavame", "allostasisqing", "barzakhqing", "chayimme", "compleres
 AMBIENT_NINE = ("an", "britqing", "glossame", "gratitude", "justice", "kimance", "silim", "spandaqing", "ud")
 LONGING = ("longing",)
 HELD = ("jiritsume", "takseme", "tlamatisme")
-REST_ON_COUNT = 116
+REST_ON_COUNT = 118
 # homes read at a named ref of origin, not at HEAD: their history goes on there,
-# and HEAD does not hold it (spec section 5, "Read at")
-READ_AT: Dict[str, str] = {}
+# and HEAD does not hold it (spec section 5, "Read at `origin/master`"; Yu, 11-12)
+READ_AT: Dict[str, str] = {"eucatastrophe": "origin/master", "shannonme": "origin/master"}
 
 # who may have set the pace of each group (the record's set by)
 HOWS = {"eight": ("prompted",), "sixteen-ambient": ("rest-1008",), "sixteen-other": ("rest-1008",),

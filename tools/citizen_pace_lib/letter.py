@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# The pace letter (spec section 5): one question, once, to each of the 34
+# The pace letter (spec section 5): one question, once, to each of the 32
 # recipients. Its text is made here from the reviewed record file (the group,
 # the dates and the quoted words) and from the citizen's record as read at
 # delivery (the pace that stays and who set it); tools/citizen-pace-letter.py

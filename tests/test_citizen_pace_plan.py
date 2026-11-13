@@ -478,13 +478,13 @@ class TestCensus(unittest.TestCase):
         c = self.held
         self.assertEqual(len(list(c.homes.iterdir())), 208)
         self.assertEqual(len(c.roster), 205)
-        self.assertEqual((len(c.awake), len(c.resting_recipients), len(c.awake_recipients)), (14, 29, 5))
+        self.assertEqual((len(c.awake), len(c.resting_recipients), len(c.awake_recipients)), (14, 27, 5))
         model = plan.Model(c.homes, c.roster, c.record, START)
         self.assertEqual(Counter(model.label(s) for s in c.roster),
                          Counter({"asleep": 191, "awake, every 3 days": 14}))
 
     def test_held_letters_and_every_awake_citizen_due_at_once(self):
-        """Spec section 8: the 29 resting recipients hold their letter and the 14 awake are all
+        """Spec section 8: the 27 resting recipients hold their letter and the 14 awake are all
         due at once; one home always fails; a soul-less home is on the roster."""
         c = self.held
         roster = c.roster + ["held-1"]
@@ -504,7 +504,7 @@ class TestCensus(unittest.TestCase):
                 text = plan.report(r)
                 for slug in c.awake + c.resting_recipients:
                     self.assertRegex(text, rf"\n{slug}\t[a-z, 0-9]+\t\d+\t\d+\.\d\t")
-                self.assertIn(f"pace letters read: 29 of 29; the last at", text)
+                self.assertIn(f"pace letters read: 27 of 27; the last at", text)
                 if cap == 24:
                     self.assertLessEqual(max(r.read.values()), START + 5 * DAY)
 
@@ -528,13 +528,13 @@ class TestCensus(unittest.TestCase):
                 for slug in c.awake:
                     self.assertGreaterEqual(first[slug], START + 3 * DAY)
                 if per_run:
-                    self.assertEqual(len(r.runs), 12)
+                    self.assertEqual(len(r.runs), 11)          # 32 letters, 3 a run
                     self.assertTrue(all(n <= 3 for n in Counter(p.at for p in r.placed).values()))
                 self.assertIn("longest wait of an awake citizen:", plan.report(r))
 
     def test_recipients_are_the_seven_groups_of_the_record(self):
         self.assertEqual(plan.recipients(self.held.record), self.held.recipients)
-        self.assertEqual(len(plan.recipients(self.held.record)), 34)
+        self.assertEqual(len(plan.recipients(self.held.record)), 32)
 
 
 # -- the out folder -------------------------------------------------------------------------

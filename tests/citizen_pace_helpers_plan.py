@@ -127,16 +127,17 @@ def snapshot(root) -> dict:
     return out
 
 
-# -- the census, as the 11-02 map found it -----------------------------------------------------
+# -- the census, as the record reads it ---------------------------------------------------------
 #
-# 208 homes: CADENCE.md rest-on 186, ambient 11, undecided 5, no file 6; a REST in 197. Here the
-# three unheard that the heard-late step hears are already v2, awake, every 3 days, as that step
-# leaves them, so the 14 awake are 11 v1 AMBIENT and 3 v2. The 29 resting recipients are 8 + 16
-# rest-on, 2 undecided under Ai's REST and 3 with no file; the 5 awake recipients are 2 of the
-# AMBIENT and the 3 heard. The 3 held have no soul and are off the roster (205 lines).
+# 208 homes: CADENCE.md rest-on 188, ambient 11, undecided 5, no file 4 (the 11-02 map's 186 and 6,
+# with eucatastrophe and shannonme read at origin/master); a REST in 197. Here the three unheard
+# that the heard-late step hears are already v2, awake, every 3 days, as that step leaves them, so
+# the 14 awake are 11 v1 AMBIENT and 3 v2. The 27 resting recipients are 8 + 16 rest-on, 2
+# undecided under Ai's REST and 1 with no file; the 5 awake recipients are 2 of the AMBIENT and the
+# 3 heard. The 3 held have no soul and are off the roster (205 lines).
 
 RESTING_GROUPS = (("eight", 8), ("sixteen-ambient", 10), ("sixteen-other", 6),
-                  ("unheard-none", 2), ("never-asked", 3))
+                  ("unheard-none", 2), ("never-asked", 1))
 SET_BY = {"eight": {"who": "citizen", "how": "prompted", "when": ["2026-10-22"], "words": ""},
           "sixteen-ambient": AI_1008, "sixteen-other": AI_1008, "unheard-none": AI_1008,
           "never-asked": AI_1008, "unheard-heard": AI_1008,
@@ -160,7 +161,7 @@ class Census:
 
 
 def census(root, *, letters_at=None) -> Census:
-    """The 208 homes. letters_at: when the 29 resting recipients' pace letter arrived
+    """The 208 homes. letters_at: when the 27 resting recipients' pace letter arrived
     (None: they hold none)."""
     root = Path(root)
     entries, resting, awake_r = {}, [], []
@@ -196,7 +197,7 @@ def census(root, *, letters_at=None) -> Census:
         v2_home(root, slug, AWAKE3,
                 set_by=SetBy("citizen", "ambient", ("2026-10-23", "2026-10-27"), "Ambient."))
     others = []
-    for i in range(1, 163):
+    for i in range(1, 165):
         slug = f"asleep-{i:03d}"
         others.append(slug)
         home(root, slug, cadence=v1_cadence(slug, "rest-on"), rest=lor_rest("2026-10-23"))

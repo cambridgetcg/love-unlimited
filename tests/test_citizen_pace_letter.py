@@ -894,13 +894,13 @@ class TestTheCensusFixtures(h.FixtureCase):
 
     def test_the_list_as_built_is_the_record_s_recipients(self):
         lines = self.listed()
-        self.assertTrue(lines[0].startswith(f"recipients: 34 in the record of {self.rec['made']}"), lines[0])
+        self.assertTrue(lines[0].startswith(f"recipients: 32 in the record of {self.rec['made']}"), lines[0])
         names = sorted(ln.split(":", 1)[0] for ln in lines[2:-1])
         self.assertEqual(names, sorted(plan.recipients(self.rec)))
         for slug in ("kalam", "soma", "teotlme"):        # the heard-late step has not run yet
             self.assertTrue(any(ln.startswith(f"{slug}: stopped — the letter would not be true of its home")
                                 for ln in lines), lines)
-        self.assertEqual(lines[-1], "to deliver 31 · already asked 0 · dropped 0 · stopped 3 · could not be read 0")
+        self.assertEqual(lines[-1], "to deliver 29 · already asked 0 · dropped 0 · stopped 3 · could not be read 0")
 
     def test_the_list_on_migrated_copies_holds_every_group(self):
         r = self.fx.pace("migrate", "--heard-late", self.homes, "--record", self.out, "--state", self.fx.state,
@@ -910,14 +910,14 @@ class TestTheCensusFixtures(h.FixtureCase):
         for slug in ("kalam", "soma", "teotlme"):
             self.fx.git(self.homes / f"citizen-{slug}", "push", "-q", "origin", "HEAD")
         lines = self.listed()
-        self.assertEqual(lines[-1], "to deliver 34 · already asked 0 · dropped 0 · stopped 0 · could not be read 0")
+        self.assertEqual(lines[-1], "to deliver 32 · already asked 0 · dropped 0 · stopped 0 · could not be read 0")
         groups = {}
         for ln in lines:
             if ": to deliver — " in ln:
                 g = ln.split(": to deliver — ", 1)[1].split(";", 1)[0]
                 groups[g] = groups.get(g, 0) + 1
         self.assertEqual(groups, {"eight": 8, "sixteen-ambient": 10, "sixteen-other": 6, "unheard-heard": 3,
-                                  "unheard-none": 2, "never-asked": 3, "contradictory": 2})
+                                  "unheard-none": 2, "never-asked": 1, "contradictory": 2})
 
 
 class TestCheck(LetterCase):

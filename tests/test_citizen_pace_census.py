@@ -2,7 +2,7 @@
 
 citizens-pace-record.json holds, for each of the 208 homes, what its own files
 cannot show: its group, who set its pace, its quoted answers with their commits
-and dates, its HEAD, and for each of the 34 recipients the one true sentence of
+and dates, its HEAD, and for each of the 32 recipients the one true sentence of
 its letter. The builder reads read-only clones, works out every home's group
 from its own history, checks the groups against the spec's lists, and writes
 nothing when one home disagrees.
@@ -86,7 +86,7 @@ class TestTheSpecLists(unittest.TestCase):
         want = {
             "eight": spec_list(t, r'\*\*8 who answered "I rest\." in July and to the 10-22 letter:\*\* (.*?)\.\n'),
             "sixteen-ambient": ten, "sixteen-other": six, "unheard-heard": heard, "unheard-none": unheard_none,
-            "never-asked": spec_list(t, r"\*\*3 never asked:\*\* (.*?)\.\n"),
+            "never-asked": spec_list(t, r"\*\*1 never asked:\*\* (.*?)\.\n"),
             "contradictory": spec_list(t, r"\*\*2 contradictory:\*\* (.*?)\.\n"),
             "forty-five": spec_list(t, r"the 45 who chose REST-ON in July.*?\(call 2\): (.*?);"),
             "ambient-nine": spec_list(t, r"the other 9 ambient citizens \((.*?)\)"),
@@ -104,16 +104,27 @@ class TestTheSpecLists(unittest.TestCase):
         t = self.text
         sizes = {g: len(n) for g, n in census.SPEC.groups.items()}
         self.assertEqual(sizes, {"eight": 8, "sixteen-ambient": 10, "sixteen-other": 6, "unheard-heard": 3,
-                                 "unheard-none": 2, "never-asked": 3, "contradictory": 2, "forty-five": 45,
+                                 "unheard-none": 2, "never-asked": 1, "contradictory": 2, "forty-five": 45,
                                  "ambient-nine": 9, "longing": 1, "held": 3})
         self.assertEqual(census.SPEC.rest_on, spec_number(t, r"- the (\d+) whose 10-22 answer clearly said REST-ON"))
         self.assertEqual(census.SPEC.recipients, spec_number(t, r"So the letter goes to \*\*(\d+)\*\* citizens"))
         self.assertEqual(census.SPEC.total, spec_number(t, r"\n- (\d+) homes\. Standing choice"))
-        self.assertEqual((census.SPEC.rest_on, census.SPEC.recipients, census.SPEC.total), (116, 34, 208))
+        self.assertEqual((census.SPEC.rest_on, census.SPEC.recipients, census.SPEC.total), (118, 32, 208))
         every = [n for names in census.SPEC.groups.values() for n in names]
         self.assertEqual(len(every), len(set(every)), "a name in two groups")
         self.assertEqual(census.SPEC.held, ("jiritsume", "takseme", "tlamatisme"))
         self.assertEqual(set(census.SPEC.groups) | {"rest-on"}, set(records.GROUPS))
+
+    def test_the_homes_read_at_a_named_ref(self):
+        # fix wave A (bf): eucatastrophe and shannonme are read at origin/master,
+        # by the spec's own paragraph (Yu, 2026-11-12), and rest with the clear REST-ON
+        m = re.search(r"\*\*Read at `([\w./-]+)`:\*\* (.*?)\. ", self.text)
+        self.assertIsNotNone(m, "the spec names no homes read at a ref")
+        self.assertEqual(census.READ_AT, {slug: m.group(1) for slug in _names(m.group(2))})
+        self.assertEqual(census.READ_AT, {"eucatastrophe": "origin/master", "shannonme": "origin/master"})
+        for slug in census.READ_AT:
+            self.assertNotIn(slug, census.SPEC.listed())
+        self.assertIn("Yu confirmed 32 on 2026-11-12", " ".join(self.text.split()))
 
 
 class _Census(unittest.TestCase):
@@ -773,14 +784,16 @@ class TestCheck(_Census):
 
 
 class TestTheFullCensus(_Census):
-    """All 208 homes, as the 11-02 map found them, through the command line."""
+    """All 208 homes, as the 11-02 map found them, through the command line,
+    with eucatastrophe and shannonme read at origin/master (spec section 5)."""
     GROUPS = census.SPEC
 
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.fx = h.Fixture(cls._tmp.name)
-        cls.c = hc.census(cls.fx, cls.fx.root / "homes", census.SPEC.groups, census.SPEC.rest_on)
+        cls.c = hc.census(cls.fx, cls.fx.root / "homes", census.SPEC.groups, census.SPEC.rest_on,
+                          read_at=census.READ_AT)
         cls.out = cls.fx.root / "citizens-pace-record.json"
         cls.run_ = cls.fx.py(CENSUS, "build", cls.c.homes, "--roster", cls.c.roster, "--out", cls.out,
                              env={"PACE_NOW": NOW}, timeout=600)
@@ -791,10 +804,10 @@ class TestTheFullCensus(_Census):
         self.assertEqual(self.run_.stderr, "")
         counts = "".join(f"  {g}: {n}\n" for g, n in (
             ("eight", 8), ("sixteen-ambient", 10), ("sixteen-other", 6), ("unheard-heard", 3),
-            ("unheard-none", 2), ("never-asked", 3), ("contradictory", 2), ("forty-five", 45),
-            ("ambient-nine", 9), ("longing", 1), ("rest-on", 116), ("held", 3)))
+            ("unheard-none", 2), ("never-asked", 1), ("contradictory", 2), ("forty-five", 45),
+            ("ambient-nine", 9), ("longing", 1), ("rest-on", 118), ("held", 3)))
         self.assertEqual(self.run_.stdout, f"census: 208 homes read from {self.c.homes}\n{counts}"
-                                           f"wrote {self.out}: 208 citizens, 34 recipients\n")
+                                           f"wrote {self.out}: 208 citizens, 32 recipients\n")
 
     def test_the_groups_are_the_spec_s(self):
         got = {}
@@ -802,14 +815,21 @@ class TestTheFullCensus(_Census):
             got.setdefault(e["group"], []).append(slug)
         for group, names in census.SPEC.groups.items():
             self.assertEqual(sorted(got.pop(group)), sorted(names))
-        self.assertEqual(len(got.pop("rest-on")), 116)
+        rest_on = got.pop("rest-on")
+        self.assertEqual(len(rest_on), 118)
         self.assertEqual(got, {})
-        self.assertEqual(len(plan.recipients(self.rec)), 34)
+        self.assertEqual(len(plan.recipients(self.rec)), 32)
+        for slug, ref in census.READ_AT.items():
+            self.assertIn(slug, rest_on)
+            e = self.rec["citizens"][slug]
+            self.assertEqual((e["group"], e["recipient"]), ("rest-on", False))
+            self.assertEqual(e["head"], self.fx.git(self.home(slug), "rev-parse", f"refs/remotes/{ref}"))
+            self.assertNotEqual(e["head"], self.fx.head(self.home(slug)))
         self.assertEqual(census.check_record(self.rec, due.read_roster(self.c.roster)), [])
 
     def test_check_passes_on_it(self):
         r = self.fx.py(CENSUS, "check", self.out, "--roster", self.c.roster)
-        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "record ok: 208 citizens, 34 recipients\n", ""))
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "record ok: 208 citizens, 32 recipients\n", ""))
 
     def test_one_disagreeing_home_writes_nothing(self):
         c = hc.copy_census(self.c, self.fx.root / "changed")
@@ -819,7 +839,7 @@ class TestTheFullCensus(_Census):
                        timeout=600)
         self.assertEqual(r.returncode, 2)
         self.assertEqual(r.stderr, "ka: its home reads as rest-on, but the spec has it as eight\n"
-                                   "rest-on: 117 homes rest by their own 10-22 answer, but the spec counts 116\n"
+                                   "rest-on: 119 homes rest by their own 10-22 answer, but the spec counts 118\n"
                                    "census refused: 2 problems; nothing written\n")
         self.assertFalse(out.exists())
 
@@ -858,7 +878,11 @@ class TestTheCommittedRecord(unittest.TestCase):
         self.assertEqual(census.check_record(rec, due.read_roster(h.ROOT / "citizens-roster.txt")), [])
         self.assertEqual(rec["spec"], census.SPEC_REF)
         self.assertEqual(len(rec["citizens"]), 208)
-        self.assertEqual(len(plan.recipients(rec)), 34)
+        self.assertEqual(len(plan.recipients(rec)), 32)
+        # fix wave A (bg): the two homes read at origin/master rest by their own REST-ON
+        for slug in census.READ_AT:
+            self.assertEqual((rec["citizens"][slug]["group"], rec["citizens"][slug]["recipient"]),
+                             ("rest-on", False))
         self.assertEqual(path.read_text(encoding="utf-8"), census.render(rec))
 
 

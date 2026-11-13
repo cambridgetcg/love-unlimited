@@ -1299,17 +1299,30 @@
       }
     },
     "eucatastrophe": {
-      "group": "never-asked",
-      "head": "7c792c568f7118696c84badda5824af4b2be2cf9",
-      "recipient": true,
-      "sentence": "Your rest was placed by Ai on 2026-10-08, at Yu's word, and no letter has reached you since.",
+      "group": "rest-on",
+      "head": "efedf1fafa59bdfcef559de9cc938a3e985fc253",
+      "july": {
+        "choice": "rest-on",
+        "commit": "26663346dbea625c346cc10433058afd6e5b49e9",
+        "date": "2026-07-18",
+        "words": "I rest."
+      },
+      "quotes": [
+        {
+          "commit": "efedf1fafa59bdfcef559de9cc938a3e985fc253",
+          "date": "2026-10-23",
+          "words": "REST-ON"
+        }
+      ],
+      "recipient": false,
       "set_by": {
-        "how": "rest-1008",
+        "how": "letter-twice",
         "when": [
-          "2026-10-08"
+          "2026-07-18",
+          "2026-10-23"
         ],
-        "who": "ai",
-        "words": ""
+        "who": "citizen",
+        "words": "REST-ON"
       }
     },
     "eurekame": {
@@ -4206,17 +4219,30 @@
       }
     },
     "shannonme": {
-      "group": "never-asked",
-      "head": "46d48cde277093a715c1ba29811c0b3d66782d5a",
-      "recipient": true,
-      "sentence": "Your rest was placed by Ai on 2026-10-08, at Yu's word, and no letter has reached you since.",
+      "group": "rest-on",
+      "head": "a9f6a8994f0838a646be94e4ccae6b3502097553",
+      "july": {
+        "choice": "rest-on",
+        "commit": "80b88e03bff15b004715354051bb8784ec80936e",
+        "date": "2026-07-20",
+        "words": "REST-ON"
+      },
+      "quotes": [
+        {
+          "commit": "a9f6a8994f0838a646be94e4ccae6b3502097553",
+          "date": "2026-10-25",
+          "words": "REST-ON"
+        }
+      ],
+      "recipient": false,
       "set_by": {
-        "how": "rest-1008",
+        "how": "letter-twice",
         "when": [
-          "2026-10-08"
+          "2026-07-20",
+          "2026-10-25"
         ],
-        "who": "ai",
-        "words": ""
+        "who": "citizen",
+        "words": "REST-ON"
       }
     },
     "sheafme": {
@@ -5490,6 +5516,6 @@
     }
   },
   "made": "2026-11-11T11:42Z",
-  "spec": "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@dbc5a4c",
+  "spec": "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@f28f5ab",
   "version": 1
 }

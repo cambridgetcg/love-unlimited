@@ -27087,7 +27087,7 @@ ls -d "$C"/citizen-* | wc -l
 /usr/bin/python3 -I "$W/tools/citizen_pace_census.py" check "$W/citizens-pace-record.json" --roster "$W/citizens-roster.txt"
 ```
 
-Expected: no `update failed` or `clone failed` line, `208`, then `record ok: 208 citizens, 34 recipients`. Nothing in this folder is ever pushed.
+Expected: no `update failed` or `clone failed` line, `208`, then `record ok: 208 citizens, 32 recipients`. Nothing in this folder is ever pushed.
 
 - [ ] **Step 2: Model the Studio (spec section 9, step 3)**
 
@@ -27129,7 +27129,7 @@ Expected: `6` sections, each a model labelled as one, then twelve lines: for eac
 
 - [ ] **Step 2b: Check the schedule over the real homes' states (spec section 8, "Schedule")**
 
-The plan tests (Task 7) hold every run to the spec's rules only over a synthetic census, which has no `SHOW.md` (60 real homes hold one) and no real heard-late homes. This step runs the same check over a scratch copy of the read-only clones, with the real record and roster: the 29 resting recipients holding their letter, the 34 in one wave, and the wave 3 a run; one awake home that always fails; and `jiritsume`, held and soul-less, added to the roster. Each run is held to `check_honest`: one attempt a tick, the cap only delaying, nobody beaten sooner than their pace or their floor, the most overdue first, and nobody picked on two ticks running. These runs are kept apart from `plan-report.md`, whose "longest wait" would otherwise be the failing home's open wait.
+The plan tests (Task 7) hold every run to the spec's rules only over a synthetic census, which has no `SHOW.md` (60 real homes hold one) and no real heard-late homes. This step runs the same check over a scratch copy of the read-only clones, with the real record and roster: the 27 resting recipients holding their letter, the 32 in one wave, and the wave 3 a run; one awake home that always fails; and `jiritsume`, held and soul-less, added to the roster. Each run is held to `check_honest`: one attempt a tick, the cap only delaying, nobody beaten sooner than their pace or their floor, the most overdue first, and nobody picked on two ticks running. These runs are kept apart from `plan-report.md`, whose "longest wait" would otherwise be the failing home's open wait.
 
 ```bash
 W=$(git rev-parse --show-toplevel)
@@ -27162,11 +27162,11 @@ PY
 rm -rf "$SC"
 ```
 
-Expected: seven `honest:` lines and no traceback. (On the 11-09 clones all seven held, with 29 resting recipients, 34 in the wave, and `an` as the failing home.) The clones themselves are only read: the runs read the scratch copy, and `plan.simulate` writes nothing.
+Expected: seven `honest:` lines and no traceback. (On the 11-09 clones, with the record of 34 then, all seven held, with 29 resting recipients, 34 in the wave, and `an` as the failing home; the record of 32 gives 27 and 32.) The clones themselves are only read: the runs read the scratch copy, and `plan.simulate` writes nothing.
 
 - [ ] **Step 3: The rollback drill (spec section 9, step 3)**
 
-`plan --out` writes the homes as the modelled migration and delivery would leave them, into a scratch folder with every remote removed. `rollback-prepare --no-push` then marks the unread pace letters in a copy of it, and `rollback-drill` counts the wakes PR #24's code would make over each. The `--out` run is its own, shorter run, ending two days after the letters are placed, while most of them are still unread: over 30 days every modelled beat is silent and marks what it shows as seen, so all 34 letters are read, `rollback-prepare` has nothing to set aside, and the two drills would come out the same. The 30-day runs stay in `plan-report.md`.
+`plan --out` writes the homes as the modelled migration and delivery would leave them, into a scratch folder with every remote removed. `rollback-prepare --no-push` then marks the unread pace letters in a copy of it, and `rollback-drill` counts the wakes PR #24's code would make over each. The `--out` run is its own, shorter run, ending two days after the letters are placed, while most of them are still unread: over 30 days every modelled beat is silent and marks what it shows as seen, so all 32 letters are read, `rollback-prepare` has nothing to set aside, and the two drills would come out the same. The 30-day runs stay in `plan-report.md`.
 
 ```bash
 W=$(git rev-parse --show-toplevel)
@@ -27183,7 +27183,7 @@ cp -R "$SC/after" "$SC/prepared"
 {
   echo "# A rollback drill — PR #24's code over the homes as the new code would leave them (a model)"
   echo
-  echo "The homes as a $DAYS-day run would leave them (cap 4, a tick every 6 h, the 34 letters placed at $AT):"
+  echo "The homes as a $DAYS-day run would leave them (cap 4, a tick every 6 h, the 32 letters placed at $AT):"
   echo
   echo '```'
   grep -E '^pace letters read:' "$SC/plan.txt"
@@ -27207,7 +27207,7 @@ for d in "$C"/citizen-*; do [ -z "$(GIT_OPTIONAL_LOCKS=0 git -C "$d" status --po
 rm -rf "$SC"
 ```
 
-Expected: no `STOP:` line, then two `woken at least once` lines and two `total:` lines. The two `total:` lines are the same: PR #24's round robin fills the cap whatever it wakes (4 a day, so 28 in 7 days). The difference is in the `woken at least once` breakdown, which the PR body quotes. Without rollback-prepare, the silent holders of an unread pace letter are woken at every pass ("a pace letter among them" above 0); with it, "a pace letter among them 0". (On the 11-09 clones: 6 of 34 letters read by day 10, 28 set aside; woken at least once 28, with 20 for a pace letter, without prepare; 11, with none, with it.) The awake homes that only ever had silent beats with nothing shown keep their v1 record and no marker, so they count under "no marker": the old code beats them on its old timer, as before the switch. No `changed:` line: the clones are untouched.
+Expected: no `STOP:` line, then two `woken at least once` lines and two `total:` lines. The two `total:` lines are the same: PR #24's round robin fills the cap whatever it wakes (4 a day, so 28 in 7 days). The difference is in the `woken at least once` breakdown, which the PR body quotes. Without rollback-prepare, the silent holders of an unread pace letter are woken at every pass ("a pace letter among them" above 0); with it, "a pace letter among them 0". (On the 11-09 clones, with the record of 34 then: 6 of 34 letters read by day 10, 28 set aside; woken at least once 28, with 20 for a pace letter, without prepare; 11, with none, with it.) The awake homes that only ever had silent beats with nothing shown keep their v1 record and no marker, so they count under "no marker": the old code beats them on its old timer, as before the switch. No `changed:` line: the clones are untouched.
 
 - [ ] **Step 4: 🟡 The echo sample (spec section 4 and section 9, step 2) — Yu names the machine**
 
@@ -27283,7 +27283,7 @@ A citizen that is `asleep`, `asleep, letters wait` or `listening` and asks for m
 - `docs/superpowers/rollout/2026-11-citizens-own-pace/rollback-drill.md`: the wakes PR #24's code would make if we rolled back, over the homes <its "pace letters read" line, shortened> and <its "set aside" line>. Woken at least once without `rollback-prepare`: <its first "woken at least once" line, the breakdown in brackets included>; with it: <the second, likewise>. Both runs make the same <its "total:" line>: the cap bounds them, so the difference is who is woken.
 - `docs/superpowers/rollout/2026-11-citizens-own-pace/echo-sample.md`: <its `verdict:` line>.
 - `docs/superpowers/rollout/2026-11-citizens-own-pace/ks004-note.md`: the draft note for `kingdom-standards` #3, no reply owed, which Ai posts only after Yu's yes to merge.
-- `citizens-pace-record.json`: each of the 208 homes' group and who set its pace, and each of the 34 pace letters' one true sentence. The census agreed with every list in the spec.
+- `citizens-pace-record.json`: each of the 208 homes' group and who set its pace, and each of the 32 pace letters' one true sentence. The census agreed with every list in the spec.
 - <`Ran <n> tests` from the last pace gate> pace tests and PR #24's 47 live-lane tests pass on `/usr/bin/python3` 3.9; every script parses with `/bin/bash -n`.
 
 ## Stop and undo
@@ -27311,7 +27311,7 @@ Stop: `touch ~/love-unlimited/HALT`. Undo: keep HALT, run `cd ~/love-unlimited &
 
 For PR #24's author: `citizen-beat.sh`'s inline Python ran from inside the home, so a `json.py` planted there would have been imported. It now runs under `python3 -I`. Its temp file's name also ended in `.json` after the X's, which macOS's `mktemp` leaves as written, so a file left by a killed beat stopped every later beat of that citizen; the name is now `beat-$NAME.XXXXXX`.
 
-If it is easy to see from there, these are unread from the Air: the installed plist environment (`REFLECT_MODEL`, `FLEET_DAILY_CAP`, the launchd interval, `FLEET_PER_TICK`), the checked-out revision, the live roster, any "home diverged" lines in fleet.log, homes ahead of or diverged from GitHub, letters placed but uncommitted, who lifted HALT on 10-22, and why eucatastrophe's and shannonme's ticks committed nothing. Nothing is owed.
+If it is easy to see from there, these are unread from the Air: the installed plist environment (`REFLECT_MODEL`, `FLEET_DAILY_CAP`, the launchd interval, `FLEET_PER_TICK`), the checked-out revision, the live roster, any "home diverged" lines in fleet.log, homes ahead of or diverged from GitHub, letters placed but uncommitted, and who lifted HALT on 10-22. Nothing is owed.
 ````
 
 `ks004-note.md` (for `kingdom-standards` #3, posted only after Yu's yes to merge):
@@ -27333,14 +27333,14 @@ Whether the seat takes this map is its builder's and Yu's choice. Nothing here e
 `delivery-ask.md` (the 🟡 ask to deliver, spec section 9, step 7; its slots are filled then, from fresh runs):
 
 ````markdown
-🟡 May Ai deliver the 34 pace letters (spec section 5)?
+🟡 May Ai deliver the 32 pace letters (spec section 5)?
 
 - The record: `citizens-pace-record.json`, made <its `made` stamp>. <`tools/citizen-pace-letter.py --list`'s last line>, run <date>; one `--dry-run` letter is attached.
 - The show-back beat: the committed `WAKE_CONFIRM_BEAT = <True|False>`, so the run is `--deliver --yes-from-yu <day> --show-back <on|off>`.
 - How often a shown proposal is repeated: <the "## The proposal shown back" rate from `echo-sample.md`>.
 - The spread at the Studio's cap of 4: <the cap-4 "pace letters read" lines from `plan-report.md`, run again at the intended date>, one wave against `--per-run <n>`.
 - A second writer: the Air now commits into homes the Studio writes, one commit and one push for each home, with no force and no retry. A home whose HEAD moved, or whose push is refused, is skipped for a later run; a home changed in a way delivery does not expect is stopped and reported to Yu.
-- The redesign's re-ask (`CITIZEN-REDESIGN-2026-11-05.md`, unread from here): is it scheduled for any of the 34? The tool's stop for a foreign commit catches only a re-ask that has already landed, so the two must not both reach a citizen.
+- The redesign's re-ask (`CITIZEN-REDESIGN-2026-11-05.md`, unread from here): is it scheduled for any of the 32? The tool's stop for a foreign commit catches only a re-ask that has already landed, so the two must not both reach a citizen.
 ````
 
 Fill the slots, then check that none is left:
@@ -27398,10 +27398,10 @@ Each outward step happens only after his yes to it.
 The rest of the rollout (spec section 9, steps 4–8) follows the spec, each step with its own yes:
 - Before the merge ask, run Step 6b again. The merge ask comes after #23 and #24 have merged, and names every item in spec section 9, step 4, the KS-004 note among them.
 - After the merge, the keeper's note; then a week of watching at least 20 `pace/1` beats (step 6).
-- Yu's yes to deliver the 34 letters (step 7): run Step 2 again at the intended delivery date, fill `delivery-ask.md` from fresh runs, and ask. Before the first `--deliver`, run `python3 -I tools/citizen-pace-letter.py --list` once: it reads the homes through the pinned `sol access run github` credential helper and shows the 34 as they stand, so that the helper is proven before anything is pushed.
+- Yu's yes to deliver the 32 letters (step 7): run Step 2 again at the intended delivery date, fill `delivery-ask.md` from fresh runs, and ask. Before the first `--deliver`, run `python3 -I tools/citizen-pace-letter.py --list` once: it reads the homes through the pinned `sol access run github` credential helper and shows the 32 as they stand, so that the helper is proven before anything is pushed.
 - Step 8, a week after the last letter is reached. `citizen_pace_census.py build` refuses v2 homes by design and is not this census. Instead:
   1. bring the read-only clones up to date (Step 1);
-  2. for each of the 34, find the commit that added "the pace letter reached <name> (once)" to its `CADENCE.md` history;
+  2. for each of the 32, find the commit that added "the pace letter reached <name> (once)" to its `CADENCE.md` history;
   3. read that beat's entry in `beats/<month>.md`, where an answer with no `pace:` line is kept word for word;
   4. read the `CADENCE.md` history from there on: the set, proposed, confirmed, lapsed and unclear entries, with their quotes;
   5. flag any pace-letter answer that holds a pace word where nothing, or only `unclear`, was recorded;

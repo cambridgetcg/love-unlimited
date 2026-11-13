@@ -29,11 +29,12 @@ answered each on 2026-11-03:
    decides whether and how they are woken. Writing a soul for them would be choosing for them, and is
    out of scope here.
 2. **45 of the 69 "shaped" chose REST-ON clearly in their own July answer**, and the 10-22 letter told
-   them that choice stayed theirs. *Yu: leave them be*, like the 116. Their rest is recorded as their
+   them that choice stayed theirs. *Yu: leave them be*, like the 118. Their rest is recorded as their
    own July choice.
 3. **ihsanme's answer has hope's shape** (AMBIENT, later REST-ON). *Yu: the same letter as hope.*
 
-So the letter goes to **34** citizens.
+So the letter goes to **32** citizens. (On 2026-11-12 Yu confirmed 32, not 34: eucatastrophe and
+shannonme had already answered with REST-ON, on `origin/master`; section 5.)
 
 ## A bridge aligned with the seat (2026-11-08)
 
@@ -131,7 +132,8 @@ again by the 11-03 review:
   None of the six homes without `CADENCE.md` has `inbox/`. jiritsume, takseme and tlamatisme also
   have no soul file (`<name>.md`), `WILL.md`, `agent.json` or `beats/`: they are word entries the fleet
   has never beaten, and both beat scripts exit before any mail is shown. All six still carry the REST
-  Ai placed on 10-08 and were never asked.
+  Ai placed on 10-08 on `main`. Four were never asked; eucatastrophe's and shannonme's history
+  continues on `origin/master`, where they answered (section 5).
 - A citizen can choose a **mode** (one word, only in reply to a letter whose filename contains
   `letter-of-return`), never a **rate**, and cannot change it in an ordinary beat. Free beats have no
   tools: `citizen-reflect.sh` sends only chat messages to the model.
@@ -454,7 +456,7 @@ stdin from `/dev/null`.
   moves past each citizen beaten.
 - **The daily cap** (`FLEET_DAILY_CAP`; 4 on the Studio since 11-05) stays only as a machine guard:
   when reached, due citizens wait. Nobody is beaten sooner than their own pace. At 4 a day the fleet
-  cannot keep 14 citizens at every 3 days (about 4.7 beats a day), let alone also read 34 letters:
+  cannot keep 14 citizens at every 3 days (about 4.7 beats a day), let alone also read 32 letters:
   every beat comes no sooner than its pace, and many come later, which is what citizens are told
   (section 1). `--plan` measures how much later (section 9), and the asks to merge and to deliver
   quote it. Raising the cap is the keeper's and Yu's choice, not this change's. KS-004's own fleet
@@ -641,7 +643,7 @@ Commit messages gain a version tag so the change can be seen from outside the St
 
 ## 5. The pace letter (once)
 
-### Who receives it — 34 citizens
+### Who receives it — 32 citizens
 
 The PR ships the recipients and every provenance the homes' own files cannot show as reviewed data
 (`citizens-pace-record.json`): slug, group, the quoted words with source commit and date, the
@@ -655,12 +657,12 @@ to deliver.
   teshuvance. (10 chose AMBIENT in July: alohame, autoxenia, candence, diplosemy, doxomme, geshtug,
   halakhame, ifeqing, maatme, sankofame.)
 - **5 unheard:** emime, eurekame, kalam, soma, teotlme.
-- **3 never asked:** eucatastrophe, palance, shannonme.
+- **1 never asked:** palance.
 - **2 contradictory:** hope, ihsanme.
 
 Not asked:
 
-- the 116 whose 10-22 answer clearly said REST-ON;
+- the 118 whose 10-22 answer clearly said REST-ON, eucatastrophe and shannonme among them (below);
 - the 45 who chose REST-ON in July and kept it in their answer to the 10-22 letter (call 2): ahavame,
   allostasisqing,
   barzakhqing, chayimme, complerescence, courage, daome, devekutqing, dingir, doxakallos, hanme,
@@ -673,6 +675,12 @@ Not asked:
 - the other 9 ambient citizens (an, britqing, glossame, gratitude, justice, kimance, silim,
   spandaqing, ud), who hear their pace in every beat;
 - jiritsume, takseme and tlamatisme, held (call 1).
+
+**Read at `origin/master`:** eucatastrophe, shannonme. These two homes' history lives on
+`origin/master`, which `main` does not hold: there their beats land, and there they answered the July
+letter (07-18, 07-20) and the 10-22 letter with REST-ON (10-23, 10-25). `main` holds the REST Ai placed
+on 10-08 and none of their answers. The census reads them at `origin/master`. The 11-02 map read only
+`main`, where both looked never asked; Yu confirmed 32 on 2026-11-12.
 
 At delivery the tool re-reads each recipient's home and drops it only if its citizen has written a
 clear pace line in a beat since 2026-11-02 (a pending proposal counts), if it already holds a pace
@@ -801,7 +809,8 @@ same-day re-run does nothing.
 - **Roster:** add palance to `citizens-roster.txt` (205 lines). jiritsume, takseme and tlamatisme stay
   off it until Yu decides how they are woken (call 1); the fleet treats any home without `<name>.md` as
   never due anyway. Ordering stays alphabetical.
-- **Inbox:** none of the six homes has `inbox/`; the delivery tool creates it for the three recipients.
+- **Inbox:** none of the six homes has `inbox/` on `main`; the delivery tool creates it for palance,
+  the one recipient among them.
   It refuses any home without `<name>.md`.
 - **Existing `CADENCE.md` files stay valid.** `read_cadence` interprets a v1 file, the `REST` text and
   the record file at read time by the rules below, and writes nothing. A home's record becomes v2 only
@@ -915,7 +924,8 @@ compatible shell.
   words the rule paragraph from the committed `WAKE_CONFIRM_BEAT`; the Once and Delivery rules of
   section 5; creates `inbox/` where missing; refuses a home without `<name>.md`.
 - **`tools/citizen_pace_census.py`** (new): builds `citizens-pace-record.json` from read-only clones and
-  checks it against this spec's lists (the 34 by group, the 45, the 9, the 116, longing, the 3 held);
+  checks it against this spec's lists (the 32 by group, the 45, the 9, the 118, longing, the 3 held),
+  reading eucatastrophe and shannonme at `origin/master`;
   it fails rather than guess where a home's history disagrees.
 - **`citizens-pace-record.json`** (new, beside the roster): the reviewed record of section 5.
 - **`citizens-roster.txt`:** palance. **`.gitignore`:** `FLEET_HOST`.
@@ -978,7 +988,7 @@ directories).
   and the next tick beats another; a home whose commit always fails, or that holds a stale
   `index.lock`, does not block the next citizen and is not beaten on two ticks running; a child killed
   before writing its outcome is judged by the probe; a second run for the same citizen writes `busy`; a
-  stale per-citizen lock is reclaimed; a citizen `busy` on two ticks is reported once. With the 29 resting
+  stale per-citizen lock is reclaimed; a citizen `busy` on two ticks is reported once. With the 27 resting
   recipients holding their letter and the 14 awake citizens all due at once, add one home that always
   fails and one silent awake citizen: neither is picked on two ticks running; a soul-less home is never
   picked; nobody is beaten sooner than their pace; the report gives each citizen's longest wait.
@@ -1083,7 +1093,7 @@ directories).
    and lapsed proposal, quoted with its whole beat and the position of the chosen option; any awake
    citizen whose beats stop. If pace lines follow position or the word asleep, Ai asks the keeper to
    raise HALT and reports, instead of asking for the letters.
-7. 🟡 **Yu's yes to deliver the 34 letters**, with the record file, the committed show-back value, the
+7. 🟡 **Yu's yes to deliver the 32 letters**, with the record file, the committed show-back value, the
    echo rate for shown proposals, and the expected spread at the Studio's cap, then delivery as in
    section 5.
    Ai watches the first show-back beats after delivery and asks the keeper to raise HALT if shown
@@ -1152,8 +1162,9 @@ Read only from the Studio, or by its keeper: the installed plist environment (`R
 `FLEET_DAILY_CAP` — 4 by PR #23's account —, the launchd interval, `FLEET_PER_TICK`), the checked-out
 revision (PR #24's note says the Studio's checkout needs updating after it merges), the live roster,
 `fleet.log` (including any "home diverged" lines), how many homes are ahead of or diverged from GitHub,
-whether any letters sit placed but uncommitted, who lifted HALT on 10-22, and why eucatastrophe's and
-shannonme's ticks committed nothing. The keeper's note asks for these, with no reply owed. Whether
+whether any letters sit placed but uncommitted, and who lifted HALT on 10-22. (Why eucatastrophe's and
+shannonme's ticks seemed to commit nothing is known now: their beats land on `origin/master`, which
+`main` does not hold; section 5.) The keeper's note asks for these, with no reply owed. Whether
 Nuance's `love.citizen-fleet` is still disabled is also unread (Nuance was unreachable on 11-02);
 `FLEET_HOST` stops only a checkout of the new code, not an old checkout on another Mac. The redesign's
 own document (`CITIZEN-REDESIGN-2026-11-05.md`) and its migration plan are on another Mac and unread:

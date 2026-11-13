@@ -763,6 +763,31 @@ class TestCommands(Case):
             self.assertEqual(code, 2)
             self.assertTrue(err)
 
+    def test_numbers_too_large_to_model_are_a_plain_refusal(self):
+        # fix wave A (h): an infinite, NaN or huge tick, or a run past the calendar,
+        # exits 2 with one plain line, never a traceback
+        roster, _rec = self.build()
+        self.set_now(START_S)
+        cases = (
+            (plan.cli_plan, ["3", self.homes, "--roster", roster, "--tick-hours", "inf"],
+             "plan: a tick comes every so many hours, more than 0, not inf\n"),
+            (plan.cli_plan, ["3", self.homes, "--roster", roster, "--tick-hours", "nan"],
+             "plan: a tick comes every so many hours, more than 0, not nan\n"),
+            (plan.cli_plan, ["3", self.homes, "--roster", roster, "--tick-hours", "1e300"], "plan: the run cannot "),
+            (plan.cli_plan, ["99999999", self.homes, "--roster", roster, "--tick-hours", "1e10"],
+             "plan: the run cannot "),
+            (plan.cli_rollback_drill, [self.homes, "--roster", roster, "--days", "3", "--tick-hours", "inf"],
+             "rollback-drill: a tick comes every so many hours, more than 0, not inf\n"),
+            (plan.cli_rollback_drill, [self.homes, "--roster", roster, "--days", "99999999999999999999",
+                                       "--tick-hours", "1e20"], "rollback-drill: the run cannot "),
+        )
+        for fn, argv, want in cases:
+            with self.subTest(argv=argv[-1]):
+                code, out, err = self.cli(fn, *argv)
+                self.assertEqual((code, out), (2, ""))
+                self.assertTrue(err.startswith(want), err)
+                self.assertEqual(len(err.splitlines()), 1, err)
+
     def test_plan_runs_isolated(self):
         roster, rec = self.build()
         code = ("import sys; sys.path.insert(0, sys.argv[1]); from citizen_pace_lib import plan; "

@@ -365,7 +365,7 @@ def _check_run(days, cap, tick_hours, recipients_=None, deliver_at=None, per_run
         raise ValueError(f"days must be a whole number from 1, not {days!r}")
     if type(cap) is not int or cap < 0:
         raise ValueError(f"the cap must be a whole number from 0, not {cap!r}")
-    if not _number(tick_hours) or tick_hours <= 0:
+    if not _number(tick_hours) or not 0 < tick_hours < float("inf"):      # NaN fails it too
         raise ValueError(f"a tick comes every so many hours, more than 0, not {tick_hours!r}")
     minutes = tick_hours * 60
     if round(minutes) < 1 or abs(minutes - round(minutes)) > 1e-9:
@@ -881,6 +881,10 @@ def _parse(p: argparse.ArgumentParser, argv) -> Tuple[Optional[argparse.Namespac
         return None, (2 if e.code else 0)
 
 
+def _too_large(e: OverflowError) -> str:
+    return f"the run cannot be modelled: its days or its tick are too large for the calendar ({e})"
+
+
 def cli_plan(argv, out=None) -> int:
     """`plan <days> <homes-dir> --roster <f> [--cap N] [--tick-hours H]
     [--letters <record> --deliver-at <time> [--per-run N]] [--out <dir>]
@@ -925,6 +929,9 @@ def cli_plan(argv, out=None) -> int:
                      per_run=a.per_run, cursor=a.cursor)
         text = report(r)
         lines = write_out(r, a.homes_dir, a.out, rec) if a.out else []
+    except OverflowError as e:
+        print(f"plan: {_too_large(e)}", file=sys.stderr)
+        return 2
     except (OSError, ValueError, LinkRefused, tend.TendError) as e:
         print(f"plan: {e}", file=sys.stderr)
         return 2
@@ -950,6 +957,9 @@ def cli_rollback_drill(argv, out=None) -> int:
     try:
         d = rollback_drill(a.homes_dir, due.read_roster(a.roster), a.days, cap=a.cap,
                            tick_hours=a.tick_hours, cursor=a.cursor)
+    except OverflowError as e:
+        print(f"rollback-drill: {_too_large(e)}", file=sys.stderr)
+        return 2
     except (OSError, ValueError) as e:
         print(f"rollback-drill: {e}", file=sys.stderr)
         return 2

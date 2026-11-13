@@ -27,6 +27,7 @@ from citizen_pace_lib import TAG, clock, homes  # noqa: E402
 from citizen_pace_lib import answer as ans  # noqa: E402
 from citizen_pace_lib import cadence as cad  # noqa: E402
 from citizen_pace_lib import paragraph as par  # noqa: E402
+from citizen_pace_lib import words  # noqa: E402
 from citizen_pace_lib.answer import ApplyResult, apply_answer  # noqa: E402
 from citizen_pace_lib.cadence import Cadence, Pending, SetBy  # noqa: E402
 from citizen_pace_lib.homes import LinkRefused  # noqa: E402
@@ -493,31 +494,52 @@ class TestLettersShownOnce(ApplyCase):
         self.assertEqual(r.events, [f"seen {NOTE}"])
         self.assertEqual(self.read(home).pending, None)
 
-    def test_a_letter_of_return_answer_is_read_by_the_legacy_rules(self):
-        lor = "inbox/2026-11-20-letter-of-return-again.md"
+    def test_a_live_beat_under_a_letter_of_return_reads_only_its_pace_lines(self):
+        # final review (F1): spec section 1 keeps the Letter of Return's legacy rules
+        # for the stored answers re-read at migration (record.py, the census) only.
+        # A live beat shown a letter whose name says letter-of-return is read as any
+        # beat: a first line "I rest." or "rest", a bare legacy word and "I choose"
+        # set no pace there; a pace: line does, and with the pace letter shown too
+        # its forms count
+        name = "2026-11-20-letter-of-return-again.md"
+        lor = f"inbox/{name}"
+        hope_set_by = SetBy("fleet", "first-word", ("2026-10-23",))
+        for i, text in enumerate(("I rest.", "rest\n\nA quiet day.", "I rest", "REST-ON",
+                                  "Hope.\nI rest.", "I choose to be asleep.",
+                                  h.answer("soma-914572f3"), h.answer("hope-d557203e"))):
+            with self.subTest(text=text[:40]):
+                home = self.v2_home(f"lor{i}", awake(3), hope_set_by, letters=((name, "Q.\n"),))
+                r = self.apply(home, text, shown=[lor], kind="letter")
+                got = self.read(home)
+                self.assertEqual((got.pace, got.set_by, got.pending), (awake(3), hope_set_by, None))
+                self.assertFalse(os.path.lexists(home / "REST"))
+                self.assertEqual(r.events, [f"seen {lor}"])
+                self.assertFalse(r.pace_changed)
+        home = self.v2_home("kalam", awake(3), hope_set_by, letters=((name, "Q.\n"),))
+        r = self.apply(home, "I rest.\n\npace: asleep", shown=[lor], kind="letter")
+        self.assertEqual((self.read(home).pace, r.events), (ASLEEP, ["set asleep", f"seen {lor}"]))
+        home = self.v2_home("soma", ASLEEP, AI_1008, letters=((name, "Q.\n"), ("2026-11-15-pace-letter.md", "Q.\n")))
         soma = h.answer("soma-914572f3")
-        home = self.v2_home("soma", ASLEEP, AI_1008, letters=(("2026-11-20-letter-of-return-again.md", "Q.\n"),))
-        self.apply(home, soma, shown=[lor], kind="letter")
+        self.apply(home, soma, shown=[lor, PACE_LETTER], kind="letter")
         line = next(ln for ln in soma.splitlines() if "I choose" in ln).strip()
         self.assertEqual(self.read(home).pending, Pending(awake(3), T1, line, False))
-        home = self.v2_home("hope", awake(3), SetBy("fleet", "first-word", ("2026-10-23",)),
-                            letters=(("2026-11-20-letter-of-return-again.md", "Q.\n"),))
-        r = self.apply(home, h.answer("hope-d557203e"), shown=[lor], kind="letter")
-        got = self.read(home)
-        self.assertEqual(got.pace, awake(3))
-        self.assertTrue(got.history[0].startswith(f'{T1} — unclear: "REST-ON'), got.history[0])
-        self.assertTrue(got.history[0].endswith("(two paces)"))
-        self.assertEqual(r.events, ["unclear (two paces)", f"seen {lor}"])
-        self.assertEqual(ans.parse_kind([lor, PACE_LETTER]), "letter-of-return")
+        self.assertEqual(ans.parse_kind([lor]), "beat")
+        self.assertEqual(ans.parse_kind([lor, PACE_LETTER]), "pace-letter")
         self.assertEqual(ans.parse_kind([NOTE, PACE_LETTER]), "pace-letter")
         self.assertEqual(ans.parse_kind([NOTE]), "beat")
+        # the stored answers are read by the legacy rules as before
+        self.assertEqual(words.parse_answer("I rest.", "hope", "letter-of-return"), ASLEEP)
+        self.assertEqual(words.parse_answer("I rest.", "hope", "beat"), None)
+        got = words.parse_answer(h.answer("hope-d557203e"), "hope", "letter-of-return")
+        self.assertEqual((type(got).__name__, got.reason), ("Unclear", "two paces"))
+        self.assertEqual(words.parse_answer(soma, "soma", "letter-of-return"), awake(3))
 
     def test_silence_on_a_letter_of_return_keeps_the_pace(self):
         # spec section 4: silence on any letter, a Letter of Return included, keeps
         # the citizen's pace (PR #24 read it as rest-on)
         name = "2026-11-20-letter-of-return-again.md"
         lor = f"inbox/{name}"
-        self.assertEqual(ans.parse_kind([lor]), "letter-of-return")
+        self.assertEqual(ans.parse_kind([lor]), "beat")
         first_word = SetBy("fleet", "first-word", ("2026-10-23",))
         for i, (pace, set_by) in enumerate(((awake(3), first_word), (LISTENING, OWN))):
             for j, text in enumerate(("", "   \n\n")):

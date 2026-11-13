@@ -343,7 +343,9 @@ def answer_lines(text: str, name: str, kind: str) -> List[Tuple[str, Result]]:
     kind "beat": only lines that begin with "pace:". "pace-letter": also a line
     that is only a pace word, and "I choose ..." anywhere. "letter-of-return":
     the legacy rules (a signature is skipped; the first line counts if it is a
-    legacy word, "rest" or "I rest"; a bare legacy word anywhere; "I choose ...").
+    legacy word, "rest" or "I rest"; a bare legacy word anywhere; "I choose ..."),
+    for the stored Letter of Return answers only (record.py, the census); a live
+    beat is never read by them (answer.parse_kind).
     A "pace:" label with nothing after it takes the next non-empty line as its
     phrase when that line names a pace (the quoted line is the two joined); a
     quoted or fenced line is never joined."""

@@ -53,11 +53,11 @@ def seen_text(day: str) -> str:
 
 
 def parse_kind(shown) -> str:
-    """How the answer is read: by the Letter of Return's legacy rules when one was
-    shown, by the pace letter's forms when the pace letter was, else as a beat."""
+    """How a live answer is read: by the pace letter's forms when the pace letter
+    was shown, else as a beat (only its pace: lines). The Letter of Return's
+    legacy rules are for the stored answers re-read at migration only (spec
+    section 1; record.py), never for a live beat, whatever its letter is named."""
     names = [str(s).rsplit("/", 1)[-1] for s in shown]
-    if any("letter-of-return" in n for n in names):
-        return "letter-of-return"
     if any("pace-letter" in n for n in names):
         return "pace-letter"
     return "beat"

@@ -1007,6 +1007,63 @@ class TestRank(HomeCase):
                 if slug in ("dirrec", "linkrec"):
                     self.assertEqual(assessed[slug].reason, "error")
 
+    def test_a_record_that_cannot_be_written_is_an_error_and_holds_up_no_one(self):
+        # final review (F2): a record that can be read but not written would let a
+        # beat land that cannot be recorded, so the same citizen would be ranked due
+        # on every tick and never backed off. It is read as a home that cannot be read
+        # ("error", never due); the others rank, and finding it out writes nothing
+        self.home("a", awake(3), last=at(-4 * DAY))
+        self.home("b", awake(3), last=at(-20 * DAY))           # the most overdue
+        self.home("c", awake(3), last=at(-5 * DAY))
+        roster = ["a", "b", "c"]
+        attempts.record_outcome(self.state, "b", "t-1", "silent", at(-8 * DAY))
+        lock_file = self.state / ".b.rw"
+        self.assertEqual([s for s, _ in due.rank(self.fx.citizens, roster, self.state, {}, NOW)], ["b", "c", "a"])
+
+        def unopenable():
+            lock_file.chmod(0o000)
+            self.addCleanup(lambda: lock_file.exists() and lock_file.chmod(0o600))
+
+        def linked():
+            lock_file.unlink()
+            lock_file.symlink_to(self.fx.outside / "elsewhere")
+
+        def record_folder():
+            (self.state / "b").unlink()
+            (self.state / "b").mkdir()
+
+        for why, make in (("its lock file cannot be opened", unopenable), ("its lock file is a link", linked),
+                          ("a folder stands at the record", record_folder)):
+            with self.subTest(why=why):
+                make()
+                before = sorted((p, os.lstat(self.state / p).st_mode) for p in os.listdir(self.state))
+                for write_seed in (True, False):
+                    self.assertEqual(self.due(self.fx.citizens / "citizen-b", "b", write_seed=write_seed),
+                                     Due(False, "error"))
+                got = due.rank(self.fx.citizens, roster, self.state, {}, NOW)
+                self.assertEqual([s for s, _ in got], ["c", "a"])
+                self.assertEqual(dict(due.assess(self.fx.citizens, roster, self.state, {}, NOW))["b"].reason,
+                                 "error")
+                self.assertTrue(due.next_line(self.fx.citizens, roster, self.state, {}, NOW)
+                                .startswith("next to wake: c "))
+                self.assertEqual(sorted((p, os.lstat(self.state / p).st_mode) for p in os.listdir(self.state)),
+                                 before)
+                # put right, the citizen is due again
+                if os.path.islink(lock_file):
+                    lock_file.unlink()
+                elif (self.state / "b").is_dir():
+                    (self.state / "b").rmdir()
+                else:
+                    lock_file.chmod(0o600)
+                self.assertEqual(self.due(self.fx.citizens / "citizen-b", "b").reason, "schedule")
+                attempts.record_outcome(self.state, "b", "t-1", "silent", at(-8 * DAY))
+        # a state folder that takes no new file: every record is unwritable, so no one is due
+        self.state.chmod(0o500)
+        self.addCleanup(self.state.chmod, 0o700)
+        self.assertEqual(due.rank(self.fx.citizens, roster, self.state, {}, NOW), [])
+        self.assertEqual({s: d.reason for s, d in due.assess(self.fx.citizens, roster, self.state, {}, NOW)},
+                         {"a": "error", "b": "error", "c": "error"})
+
     def test_rank_takes_a_roster_file(self):
         self.home("a", awake(3), last=at(-4 * DAY))
         roster = self.fx.roster("a")

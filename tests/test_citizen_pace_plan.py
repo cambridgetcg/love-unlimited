@@ -32,7 +32,7 @@ import citizen_pace_helpers as h  # noqa: E402
 import citizen_pace_helpers_plan as hp  # noqa: E402
 import citizen_pace_helpers_record as hr  # noqa: E402
 
-from citizen_pace_lib import clock, due, homes, plan, record, tend  # noqa: E402
+from citizen_pace_lib import attempts, clock, due, homes, plan, record, tend  # noqa: E402
 from citizen_pace_lib import cadence as cad  # noqa: E402
 from citizen_pace_lib.words import Pace  # noqa: E402
 
@@ -155,6 +155,13 @@ class TestModel(Case):
         (self.state / "dirrec").mkdir()
         (self.state / "linkrec").symlink_to(self.fx.outside)
         roster += list(unwritable)
+        # final review (F2): a record that can be read but not written (its lock file
+        # cannot be opened) is "error" too, even with a last beat that needs no seed
+        hp.v2_home(self.homes, "lockrec", AWAKE3, last=at(-4 * DAY))
+        attempts.record_outcome(self.state, "lockrec", "t-1", "silent", at(-4 * DAY))
+        (self.state / ".lockrec.rw").chmod(0o000)
+        self.addCleanup((self.state / ".lockrec.rw").chmod, 0o600)
+        roster.append("lockrec")
         rec = hp.record(blockme={"group": "rest-on", "set_by": hp.AI_1008})
         for on in (True, False):
             with self.subTest(show_back=on), mock.patch.object(due, "WAKE_CONFIRM_BEAT", on):
@@ -172,7 +179,7 @@ class TestModel(Case):
                     "blockme": "blocked", "soulless": "no-soul", "linked": "links", "unread": "unreadable",
                     "backoff": "backing-off", "mid": "mid-merge", "untagged": "schedule",
                     "farpending": "error" if on else "no-mail", "nohome": "no-home",
-                    "dirrec": "error", "linkrec": "error"})
+                    "dirrec": "error", "linkrec": "error", "lockrec": "error"})
         self.assertEqual(sorted(os.listdir(self.state / "dirrec")), [])
         self.assertEqual(os.readlink(self.state / "linkrec"), str(self.fx.outside))
 

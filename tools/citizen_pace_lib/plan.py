@@ -158,6 +158,7 @@ class _Citizen:
     links: list = field(default_factory=list)
     midmerge: bool = False
     refused: bool = False            # CADENCE.md could not be read through a link
+    unwritable: bool = False         # its attempt record cannot be written (state given)
     c: Optional[cad.Cadence] = None
     rec: dict = field(default_factory=dict)
     unread: list = field(default_factory=list)   # [(rel, arrival)], by name
@@ -224,6 +225,11 @@ class Model:
             except due.READ_ERRORS:
                 if not z.midmerge:      # due_for_home never reads a mid-merge home's record
                     raise
+            if self.state is not None and not z.midmerge:
+                try:
+                    attempts.check_writable(self.state, slug)
+                except due.READ_ERRORS:   # as due_for_home: never due ("error"); nothing written
+                    z.unwritable = True
             z.unread = [(rel, homes.letter_time(z.home, rel, _FAR)) for rel in homes.unread_letters(z.home)]
             z.show = _regular(z.home / SHOW) and not os.path.lexists(z.home / SHOW_SEEN)
             z.pace_letter = _holds_pace_letter(z.home)
@@ -272,6 +278,8 @@ class Model:
             return due.is_due(None, {}, now, [], z.soul, z.links, z.midmerge)
         if z.c is None or z.refused:
             return Due(False, "links")
+        if z.unwritable:
+            return Due(False, "error")
         try:
             if due.last_beat(z.c, z.rec, now) is None:
                 self._seed(z, now)

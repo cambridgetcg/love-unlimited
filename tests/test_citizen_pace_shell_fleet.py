@@ -770,6 +770,33 @@ class TestOutcomes(Case):
         self.assertEqual(self.day_count(), "1")
         self.assertEqual((self.rec("a")["failures"], self.rec("b")["failures"]), (0, 0))
 
+    def test_a_record_that_cannot_be_written_holds_up_no_one_and_the_tick_exits_0(self):
+        # final review (F2): b's record can be read but not written (its lock file
+        # left by a run as another user). It is never ranked, so its beat can never
+        # land unrecorded; it is named in the log on every tick, and the others are
+        # beaten, one a tick, with exit 0
+        self.use_stub()
+        self.v2("a", AWAKE, last="2026-11-12T06:00Z")
+        self.v2("b", AWAKE)                                   # the most overdue
+        self.v2("c", AWAKE, last="2026-11-11T06:00Z")
+        self.fx.roster("a", "b", "c")
+        attempts.record_outcome(self.state, "b", "20261109T0600Z-1-1", "silent", "2026-11-09T06:00Z")
+        tend.mark_first_tend(self.state, "b")
+        lock_file = self.state / ".b.rw"
+        lock_file.chmod(0o000)
+        self.addCleanup(lock_file.chmod, 0o600)
+        for now in (NOW, "2026-11-20T12:00Z"):
+            self.ok(self.fleet(now=now))
+        self.assertEqual(self.called(), ["c", "a"])
+        log = self.log()
+        self.assertEqual(log.count("b: gets no beats — its attempt record cannot be written"), 2, log)
+        self.assertNotIn("fleet → b", log)
+        self.assertEqual((self.rec("a")["attempt"]["outcome"], self.rec("c")["attempt"]["outcome"]),
+                         ("spoken", "spoken"))
+        lock_file.chmod(0o600)
+        self.ok(self.fleet(now="2026-11-20T18:00Z"))
+        self.assertEqual(self.called(), ["c", "a", "b"])
+
     def test_busy_on_two_ticks_running_is_reported_once(self):
         self.use_stub(a="busy")
         self.v2("a", AWAKE)

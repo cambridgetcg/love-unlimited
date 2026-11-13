@@ -166,7 +166,10 @@ def due_for_home(home, name: str, state, record: dict, now: _dt.datetime, summon
     ranking and the reflect gate), a citizen with no last beat anywhere has its
     clock started now in the attempt record; next and plan pass False. A home
     that cannot be read is not due ("error"), a stamp that no date can reach
-    (a proposal said at the end of time) included."""
+    (a proposal said at the end of time) included, and so is one whose attempt
+    record cannot be written (attempts.check_writable, which writes nothing):
+    its beat could land and not be recorded, so it would be due on every tick
+    and never backed off. A summons still passes."""
     home = Path(home)
     try:
         if not home.is_dir():
@@ -180,6 +183,7 @@ def due_for_home(home, name: str, state, record: dict, now: _dt.datetime, summon
             c = cadence.read_deciding(home, name, record, now)
         except LinkRefused:
             return Due(False, "links")
+        attempts.check_writable(state, name)
         rec = attempts.load(state, name)
         if write_seed and last_beat(c, rec, now) is None:
             rec = attempts.seed(state, name, now)

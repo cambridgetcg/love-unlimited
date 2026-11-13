@@ -470,7 +470,7 @@ DUE_RC=$?
 REASON="$(pace_reason)" || REASON=""
 if [ "$DUE_RC" -ne 0 ]; then
   case "$REASON" in
-    '')    if [ "$DUE_RC" -eq 2 ]; then fail "$NAME reflect: its home could not be read, or the pace gate could not be asked — no beat"
+    '')    if [ "$DUE_RC" -eq 2 ]; then fail "$NAME reflect: its home could not be read, its attempt record cannot be written, or the pace gate could not be asked — no beat"
            else fail "$NAME reflect: the pace gate could not be asked — no beat"; fi ;;
     links) fail "$NAME reflect: a pace path is a link or not of its kind — refused, nothing written" ;;
     *)     say "$NAME is not due ($REASON) — no beat"; record not-due; exit 0 ;;

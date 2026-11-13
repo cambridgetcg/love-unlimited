@@ -12,16 +12,18 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+import errno
 import fcntl
 import json
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Callable, Iterator, List, Optional
 
 from . import clock
 from .clock import DAY, HOUR
-from .homes import LinkRefused, read_regular, write_regular
+from .homes import TMP_SUFFIX, LinkRefused, read_regular, write_regular
 
 OUTCOMES = ("spoken", "silent", "not-due", "busy", "home-failed", "host-failed", "halted", "summoned")
 LANDED = ("spoken", "silent")
@@ -153,11 +155,48 @@ def save(state, slug: str, rec: dict) -> None:
     write_regular(path, json.dumps(_clean(slug, rec), sort_keys=True, ensure_ascii=True) + "\n")
 
 
+def _lock_path(state, slug: str) -> Path:
+    return Path(state) / f".{slug}.rw"
+
+
+def check_writable(state, slug: str) -> None:
+    """Raise OSError or LinkRefused when this citizen's record could not be
+    written now (update and save), found out without writing anything: the state
+    folder (or, while it is missing, the nearest folder above it, where it would
+    be made) is a plain folder this process may add files to; the record, its
+    temporary file and its lock file (<state>/.<slug>.rw) are not of another
+    kind; and the lock file, when it is there, opens for reading and writing.
+    A record that can be read but not written would let a beat land that
+    cannot be recorded, so due reads it as a home that cannot be read."""
+    path = record_path(state, slug)
+    folder = Path(state)
+    while not os.path.lexists(folder) and folder.parent != folder:
+        folder = folder.parent
+    if os.path.islink(folder) or not os.path.isdir(folder):
+        raise LinkRefused(f"{folder}: not a plain folder, so the attempt record of {slug} cannot be written")
+    if not os.access(folder, os.W_OK | os.X_OK):
+        raise PermissionError(errno.EACCES, f"the attempt record of {slug} cannot be written", str(folder))
+    if folder != Path(state):
+        return               # made on the first write
+    for p, regular in ((path, True), (path.with_name(path.name + TMP_SUFFIX), False),
+                       (_lock_path(state, slug), True)):
+        try:
+            mode = os.lstat(p).st_mode
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if stat.S_ISLNK(mode) or (regular and not stat.S_ISREG(mode)) or stat.S_ISDIR(mode):
+            raise LinkRefused(f"{p}: a link or not a regular file, so the attempt record of {slug} "
+                              "cannot be written")
+    lock = _lock_path(state, slug)
+    if os.path.lexists(lock):
+        os.close(os.open(str(lock), os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK))
+
+
 @contextlib.contextmanager
 def _locked(state, slug: str) -> Iterator[None]:
     """Hold <state>/.<slug>.rw locked, so two writers never lose a change."""
     os.makedirs(str(state), exist_ok=True)
-    fd = os.open(str(Path(state) / f".{slug}.rw"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    fd = os.open(str(_lock_path(state, slug)), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         yield

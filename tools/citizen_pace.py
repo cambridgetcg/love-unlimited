@@ -39,6 +39,7 @@ NO_BEATS = {"no-soul": "it has no {slug}.md",
              "error": "its home could not be read",
              "unreadable": "its pace cannot be read, so it gets no set beats; only a letter wakes it"}
 NO_BEATS_KEY = "no-beats-"
+RECORD_UNWRITABLE = "its attempt record cannot be written"
 # reasons that say nothing about whether a pace can be read: an unreadable pace's
 # report is kept through them, so a letter waking that citizen does not report it again
 PACE_SILENT = ("letter", "floor", "backing-off", "mid-merge", "no-home", "out-of-date")
@@ -127,7 +128,7 @@ def cmd_due(a) -> int:
         d = due.Due(False, sync.HELD_REASON)
     print(json.dumps(d.to_json(now), sort_keys=True))
     if d.reason == "error":
-        print(f"due: {home} could not be read", file=sys.stderr)
+        print(f"due: {home} could not be read, or its attempt record cannot be written", file=sys.stderr)
         return ERROR
     return OK if d.due else NOT
 
@@ -158,10 +159,12 @@ def _report_no_beats(state, assessed) -> None:
             once = bool(want and want not in keys and attempts.mark_reported(state, slug, want))
         except (OSError, ValueError, homes.LinkRefused):
             # its record cannot be written, so the report cannot be remembered: say it
-            # every tick, without "reported once", and rank the others
+            # every tick, without "reported once", and rank the others. Such a record
+            # is itself why due gave "error" (due.due_for_home), and is named so
             if d.reason not in NO_BEATS:
                 continue
-            print(f"{slug}: gets no beats — {NO_BEATS[d.reason].format(slug=slug)}", file=sys.stderr)
+            why = (RECORD_UNWRITABLE if d.reason == "error" else NO_BEATS[d.reason]).format(slug=slug)
+            print(f"{slug}: gets no beats — {why}", file=sys.stderr)
             continue
         if once:
             why = NO_BEATS[d.reason].format(slug=slug)

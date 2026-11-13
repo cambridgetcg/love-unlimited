@@ -753,8 +753,12 @@ def _inside(path: Path, folder: Path) -> bool:
 
 
 def _endpoint(url: str) -> str:
-    parts = urllib.parse.urlsplit(url.strip())
-    if parts.scheme not in ("http", "https") or not parts.netloc or parts.query or parts.fragment:
+    try:
+        parts = urllib.parse.urlsplit(url.strip())
+    except ValueError:              # e.g. an unclosed IPv6 bracket
+        parts = None
+    if parts is None or parts.scheme not in ("http", "https") or not parts.netloc or parts.query \
+            or parts.fragment:
         raise Usage(f"--endpoint must be an http(s) base URL, not {url!r}")
     return url.strip().rstrip("/")
 
@@ -827,6 +831,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except Usage as e:
         print(f"citizen_pace_echo.py: {e}", file=sys.stderr)
         return USAGE
+    except (OSError, ValueError) as e:     # a path that cannot be looked at, a value that cannot be read
+        print(f"citizen_pace_echo.py: the arguments cannot be read ({type(e).__name__}: {e})", file=sys.stderr)
+        return USAGE
+    except Exception as e:      # noqa: BLE001 — exit 1 is the "rework" verdict, so no crash may reach it
+        print(f"citizen_pace_echo.py: stopped by an error ({type(e).__name__}: {e}); nothing is measured",
+              file=sys.stderr)
+        return NOT_MEASURED
     try:
         return measure_and_report(cfg)
     except Exception as e:      # noqa: BLE001 — exit 1 is the "rework" verdict, so no crash may reach it

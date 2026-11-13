@@ -717,6 +717,32 @@ class TestCommandLine(Case):
                 self.assertNotIn("Traceback", r.stderr)
         self.assertEqual(self.model.requests, [])
 
+    def test_arguments_that_cannot_be_read_never_exit_as_rework(self):
+        # fix wave A (aw), fix round 1: a malformed endpoint, or a folder that cannot be
+        # looked into, is a usage error with a plain line, never a traceback and exit 1
+        rec, roster = self.two_souls()
+        url = f"http://127.0.0.1:{self.model.port}"
+        locked = self.fx.root / "locked"
+        locked.mkdir()
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o755)
+        cases = {
+            "a malformed endpoint": (["--homes", self.fx.citizens, "--roster", roster, "--record", rec,
+                                      "--endpoint", "http://[::1"],
+                                     "citizen_pace_echo.py: --endpoint must be an http(s) base URL, not "
+                                     "'http://[::1'\n"),
+            "homes that cannot be looked into": (["--homes", locked / "homes", "--roster", roster, "--record", rec,
+                                                  "--endpoint", url],
+                                                 "citizen_pace_echo.py: the arguments cannot be read ("),
+        }
+        for why, (args, want) in cases.items():
+            with self.subTest(why=why):
+                r = self.echo(*args)
+                self.assertEqual((r.returncode, r.stdout), (echo.USAGE, ""), r.stderr)
+                self.assertTrue(r.stderr.startswith(want), r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(self.model.requests, [])
+
     def test_answers_that_cannot_be_written_are_not_measured(self):
         # fix wave A (aw): the answers are written before the report; a failed
         # write is said on stderr and is never "rework"

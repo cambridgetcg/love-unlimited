@@ -902,6 +902,37 @@ class TestTheLastPace1VersionDecides(HomeCase):
         self.change(home, "kalam", cad.render_cadence(cadence_of(awake(3), last=at(-10 * DAY))))
         self.assertEqual(self.due(home, "kalam"), Due(False, "no-mail"))
 
+    def test_a_history_git_cannot_read_is_an_error_never_the_file_s_pace(self):
+        # final review (D): fail closed. When git cannot read the history of
+        # CADENCE.md (a timeout, a lock, a broken object), the home cannot be read:
+        # it is never due by what an untagged change wrote
+        home = self.tagged_home("kalam", ASLEEP, last=at(-10 * DAY))
+        self.change(home, "kalam", cad.render_cadence(cadence_of(awake(3), last=at(-10 * DAY))))
+        self.assertEqual(self.due(home, "kalam"), Due(False, "no-mail"))
+        real = cad.git
+        for failing in ("log", "ls-tree", "cat-file"):
+            with self.subTest(failing=failing):
+                def git(home_, *args, **kw):
+                    if args[:1] == (failing,):
+                        return subprocess.CompletedProcess(args, 124, "", f"git {failing} timed out after 30s")
+                    return real(home_, *args, **kw)
+
+                with mock.patch.object(cad, "git", git):
+                    self.assertEqual(self.due(home, "kalam"), Due(False, "error"))
+                    self.assertEqual(due.rank(self.fx.citizens, ["kalam"], self.state, {}, NOW), [])
+                    with self.assertRaises(cad.HistoryUnreadable) as cm:
+                        cad.read_deciding(home, "kalam", {}, NOW)
+                    self.assertIn(f"git {failing} timed out after 30s", str(cm.exception))
+                    self.assertIsInstance(cm.exception, OSError)
+        self.assertEqual(self.due(home, "kalam"), Due(False, "no-mail"))
+        # a repository with no commit yet has no history to read: its file decides
+        fresh = self.fx.citizens / "citizen-fresh"
+        fresh.mkdir(parents=True)
+        self.fx.git(fresh, "init", "-q")
+        self.fx.write(fresh, "fresh.md", "a soul\n")
+        self.fx.write(fresh, "CADENCE.md", cad.render_cadence(cadence_of(awake(3), last=at(-3 * DAY), name="fresh")))
+        self.assertEqual(self.due(fresh, "fresh"), Due(True, "schedule", NOW))
+
     def test_an_untagged_emptied_deleted_or_v1_file_is_never_blocked(self):
         for slug, text in (("an", ""), ("ud", None), ("zi", v1("zi", "rest-on", "2026-11-14 04:00"))):
             with self.subTest(slug=slug, text=text):

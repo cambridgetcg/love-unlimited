@@ -128,8 +128,12 @@ class TestModel(Case):
         hp.home(H, "unread")
         hp.v2_home(H, "backoff", AWAKE3, last=at(-4 * DAY))
         hp.seed_state(self.state, "backoff", last=at(-4 * DAY), retry=at(HOUR), failures=1)
-        hp.v2_home(H, "mid", AWAKE3, last=at(-4 * DAY))
-        hp.write(H / "citizen-mid" / ".git" / "MERGE_HEAD", "0" * 40 + "\n")
+        # a clone mid-merge: a repository of its own (its history must be readable,
+        # final review), with a MERGE_HEAD
+        d = hp.v2_home(H, "mid", AWAKE3, last=at(-4 * DAY))
+        self.fx.git(d, "init", "-q")
+        self.fx.commit(d, "beat: mid reflected (2026-11-12) \u00b7 pace/1")
+        hp.write(d / ".git" / "MERGE_HEAD", "0" * 40 + "\n")
         # awake by its last pace/1 version, then rewritten in a commit the new code did not make
         d = hp.v2_home(H, "untagged", AWAKE3, last=at(-3 * DAY))
         self.fx.git(d, "init", "-q")

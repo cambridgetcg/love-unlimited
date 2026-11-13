@@ -499,22 +499,47 @@ def notices(c: Cadence, since: Optional[str] = None) -> List[str]:
 
 # -- CADENCE.md changed outside pace/1 ---------------------------------------------
 
+class HistoryUnreadable(OSError):
+    """git could not read a home's history of CADENCE.md (a timeout, a lock, a
+    broken object, a folder that is not a repository). The home cannot be
+    read: due gives "error" and apply writes nothing, so a change made outside
+    pace/1 never decides because its history could not be looked at."""
+
+
 def _tagged(subject: str) -> bool:
     return subject.rstrip().endswith(TAG)
 
 
-def _cadence_log(home) -> List[Tuple[str, str]]:
-    """(commit, subject) of each commit that touched CADENCE.md, newest first."""
-    r = git(home, "log", "--format=%H%x1f%s", "--", CADENCE)
+def _git_says(home, r, what: str) -> None:
     if r.returncode != 0:
-        return []
-    return [tuple(ln.split("\x1f", 1)) for ln in r.stdout.splitlines() if "\x1f" in ln]
+        why = r.stderr.strip() or f"exit {r.returncode}"
+        raise HistoryUnreadable(f"{home}: git cannot read {what} ({why})")
+
+
+def _history(home, *fmt: str) -> str:
+    """git log of CADENCE.md in the home's history, in this format; "" for a
+    repository with no commit yet. Raises HistoryUnreadable when git cannot say."""
+    r = git(home, "log", *fmt, "--", CADENCE)
+    if r.returncode != 0:
+        born = git(home, "rev-parse", "-q", "--verify", "HEAD")
+        if born.returncode == 1 and not born.stdout.strip():
+            return ""            # no commit yet: no history to read
+        _git_says(home, r, f"the history of {CADENCE}")
+    return r.stdout
+
+
+def _cadence_log(home) -> List[Tuple[str, str]]:
+    """(commit, subject) of each commit that touched CADENCE.md, newest first.
+    Raises HistoryUnreadable when git cannot say."""
+    out = _history(home, "--format=%H%x1f%s")
+    return [tuple(ln.split("\x1f", 1)) for ln in out.splitlines() if "\x1f" in ln]
 
 
 def changed_outside_pace(home) -> bool:
     """The newest commit that touched CADENCE.md is not tagged pace/1, while an
     older one is: a pace/1 version exists and was changed by other code. A home
-    that never had a pace/1 commit (still v1) is not "changed"."""
+    that never had a pace/1 commit (still v1) is not "changed". Raises
+    HistoryUnreadable when git cannot read the history."""
     log = _cadence_log(home)
     if not log or _tagged(log[0][1]):
         return False
@@ -522,9 +547,9 @@ def changed_outside_pace(home) -> bool:
 
 
 def _newest_subject(home) -> Optional[str]:
-    """The subject of the newest commit that touched CADENCE.md, or None."""
-    r = git(home, "log", "-1", "--format=%s", "--", CADENCE)
-    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+    """The subject of the newest commit that touched CADENCE.md, or None when
+    none did. Raises HistoryUnreadable when git cannot say."""
+    return _history(home, "-1", "--format=%s").strip() or None
 
 
 def deciding_text(home) -> Optional[str]:
@@ -532,7 +557,8 @@ def deciding_text(home) -> Optional[str]:
     section 2): the home is a clone of its own (a .git folder, so its history is
     its own), the newest commit that touched CADENCE.md was made outside pace/1
     after a pace/1 one, and that pace/1 text is v2. Otherwise None.
-    read_deciding reads by it, and apply puts it back."""
+    read_deciding reads by it, and apply puts it back. Fails closed: when git
+    cannot read that history, HistoryUnreadable, never the file's own reading."""
     dot_git = Path(home) / ".git"
     if os.path.islink(dot_git) or not os.path.isdir(dot_git):
         return None
@@ -548,21 +574,24 @@ def read_deciding(home, name: str, record: dict, now: Optional[_dt.datetime] = N
     changed in a commit the new code did not make, after a pace/1 version, that
     version decides, as a disagreeing marker does, until the next commit for
     this home restores it; otherwise read_cadence's (deciding_text). Never
-    writes; raises LinkRefused as read_cadence does."""
+    writes; raises LinkRefused as read_cadence does, and HistoryUnreadable
+    (an OSError: a home that cannot be read) when git cannot read the history."""
     c = read_cadence(home, name, record, now)
     text = deciding_text(home)
     return c if text is None else _read_v2(text, name)
 
 
 def last_pace_text(home) -> Optional[str]:
-    """CADENCE.md as the newest pace/1 commit left it (a regular file), or None."""
+    """CADENCE.md as the newest pace/1 commit left it (a regular file), or None.
+    Raises HistoryUnreadable when git cannot read that commit."""
     for sha, subject in _cadence_log(home):
         if not _tagged(subject):
             continue
-        tree = git(home, "ls-tree", sha, "--", CADENCE).stdout
-        if not tree.startswith(("100644 blob ", "100755 blob ")):
+        tree = git(home, "ls-tree", sha, "--", CADENCE)
+        _git_says(home, tree, f"{CADENCE} in {sha[:12]}")
+        if not tree.stdout.startswith(("100644 blob ", "100755 blob ")):
             continue
         blob = git(home, "cat-file", "blob", f"{sha}:{CADENCE}")
-        if blob.returncode == 0:
-            return blob.stdout
+        _git_says(home, blob, f"{CADENCE} in {sha[:12]}")
+        return blob.stdout
     return None

@@ -1047,8 +1047,13 @@ class TestChangedOutsidePace(h.FixtureCase):
 
     def test_a_home_without_cadence_or_git(self):
         self.assertFalse(cad.changed_outside_pace(self.fx.make_home("palance", rest=AI_REST)))
-        self.assertFalse(cad.changed_outside_pace(self.fx.outside))
-        self.assertIsNone(cad.last_pace_text(self.fx.outside))
+        # a folder that is no repository has no history git can read (final review:
+        # fail closed); read_deciding never asks, as it is not a clone of its own
+        with self.assertRaises(cad.HistoryUnreadable):
+            cad.changed_outside_pace(self.fx.outside)
+        with self.assertRaises(cad.HistoryUnreadable):
+            cad.last_pace_text(self.fx.outside)
+        self.assertIsNone(cad.deciding_text(self.fx.outside))
         self.assertEqual(cad.read_deciding(self.fx.outside, "x", {}, clock.parse_stamp(NOW)).version, 0)
 
     def test_the_last_pace_1_version_decides_until_it_is_restored(self):

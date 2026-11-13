@@ -862,10 +862,14 @@ class TestRosterAndGitignore(unittest.TestCase):
         # fix wave A (am): anchored, so only the checkout's own FLEET_HOST is ignored
         self.assertIn("/FLEET_HOST", lines)
         self.assertNotIn("FLEET_HOST", lines)
-        for rel, ignored in (("FLEET_HOST", 0), ("tools/FLEET_HOST", 1)):
-            r = subprocess.run(["git", "-C", str(h.ROOT), "check-ignore", "-q", "--no-index", rel],
-                               capture_output=True, text=True)
-            self.assertEqual(r.returncode, ignored, (rel, r.stderr))
+        with tempfile.TemporaryDirectory() as tmp:     # this .gitignore alone, in a repository of its own
+            shutil.copyfile(h.ROOT / ".gitignore", Path(tmp) / ".gitignore")
+            env = {"PATH": os.environ.get("PATH", ""), "HOME": tmp, "GIT_CONFIG_NOSYSTEM": "1"}
+            subprocess.run(["git", "init", "-q", tmp], env=env, check=True, capture_output=True)
+            for rel, ignored in (("FLEET_HOST", 0), ("tools/FLEET_HOST", 1)):
+                r = subprocess.run(["git", "-C", tmp, "check-ignore", "-q", "--no-index", rel], env=env,
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, ignored, (rel, r.stderr))
 
 
 class TestTheCommittedRecord(unittest.TestCase):

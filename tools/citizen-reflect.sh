@@ -324,10 +324,10 @@ elif step == "tend":
         print(e)
         code = 4
     except tend.NotTended as e:
-        # tend stopped before it looked (a git at work in the home): the beat
-        # stops there too, as the gate does at that lock (not due, mid-merge)
+        # tend stopped before it looked: the beat stops there too, not due, and
+        # nobody is backed off for another's git; 5 mid-merge, 6 its git locked
         print(e)
-        code = 5
+        code = 5 if e.why == tend.NotTended.MID_MERGE else 6
     except (tend.TendError, homes.LinkRefused, OSError) as e:
         print(e)
         code = 1
@@ -442,6 +442,7 @@ case $? in
   0) log_lines "$TENDED" ;;
   4) log_lines "$TENDED — busy, no beat"; record busy; exit 0 ;;
   5) log_lines "$TENDED"; say "$NAME is not due (mid-merge) — no beat"; record not-due; exit 0 ;;
+  6) log_lines "$TENDED"; say "$NAME is not due (its git is locked) — no beat"; record not-due; exit 0 ;;
   2) fail "$NAME reflect: the fleet has not tended this home since the switch; its uncommitted files are kept — no beat" ;;
   *) fail "$NAME reflect: its pace files could not be put back${TENDED:+ ($TENDED)} — no beat" ;;
 esac

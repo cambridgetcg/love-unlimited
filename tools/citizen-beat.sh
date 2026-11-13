@@ -210,19 +210,17 @@ if [ ! -d "$REPO/.git" ]; then
     || { echo "[$(ts)] ERROR: clone failed for citizen-$NAME" | tee -a "$LOG"; exit 1; }
 fi
 cd "$REPO" || exit 1
-# A put-back a failed guard left (2d finishes it) waits for no fetch: commits
-# fetched on top of the beat's own would be built on before it is put back.
-if pace_cli put-back-pending "$REPO" --state "$STATE" >/dev/null 2>&1; then
-  log_lines "$NAME: pace files a beat with tools committed itself wait to be put back — no fetch or fast-forward until its tend has done it"
-else
-  _bound "$FETCH_BOUND" git fetch -q origin 2>/dev/null || true
-  if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
-    lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
-    if [ -z "$lr" ]; then
-      echo "[$(ts)] $NAME has no upstream — beats stay local until tended" | tee -a "$LOG"
-    elif [ "$lr" != "0/0" ]; then
-      echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended" | tee -a "$LOG"
-    fi
+# Fetched and fast-forwarded even with a put-back a failed guard left pending:
+# its key holds the upstream tip that guard saw, so commits fetched on top of
+# the beat's own are not taken for upstream's change to its pace files (2d
+# puts them back), and a REST or a letter from elsewhere is read below.
+_bound "$FETCH_BOUND" git fetch -q origin 2>/dev/null || true
+if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
+  lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
+  if [ -z "$lr" ]; then
+    echo "[$(ts)] $NAME has no upstream — beats stay local until tended" | tee -a "$LOG"
+  elif [ "$lr" != "0/0" ]; then
+    echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended" | tee -a "$LOG"
   fi
 fi
 [ -f "WILL.md" ] || { echo "[$(ts)] ERROR: $NAME has no WILL.md — not a citizen home" | tee -a "$LOG"; exit 1; }

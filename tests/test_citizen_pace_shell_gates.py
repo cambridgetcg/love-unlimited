@@ -722,29 +722,50 @@ class TestGuardRestore(Case):
         self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), self.fx.head(home))
         self.assertEqual([n["key"] for n in attempts.load(self.state, "maker")["notices"]], [tend.RESTORED])
 
-    def test_a_pending_put_back_is_finished_before_any_fetch(self):
-        # fix round 1 of Part 2 (A1): a put-back a failed guard left waits; step 2's
-        # fetch and fast-forward would bring another host's commits in on top of the
-        # beat's own pushed REST, so they wait until tend-home has finished it
-        home = self.fx.make_home("maker", cadence="the pace before the beat\n", when=HOME_MADE)
-        tend.mark_first_tend(self.state, "maker")
+    def pending_put_back(self, slug):
+        """A home whose beat with tools committed its own CADENCE.md and pushed it,
+        with the put-back its failed guard left (the tip it saw kept in the key).
+        Returns (home, bare, base, the beat's head)."""
+        home = self.fx.make_home(slug, cadence="the pace before the beat\n", when=HOME_MADE)
+        tend.mark_first_tend(self.state, slug)
         bare = self.fx.give_upstream(home)
         base = self.fx.head(home)
         self.fx.write(home, "CADENCE.md", "the beat's own pace\n")
-        beat_head = self.fx.commit(home, "my own pace", author=h.beat_author("maker"))
+        beat_head = self.fx.commit(home, "my own pace", author=h.beat_author(slug))
         self.fx.git(home, "push", "-q", "origin", "HEAD")
-        attempts.mark_reported(self.state, "maker", f"{tend.PUT_BACK}:{base}:{beat_head}:{base}")
+        attempts.mark_reported(self.state, slug, f"{tend.PUT_BACK}:{base}:{beat_head}:{base}")
+        return home, bare, base, beat_head
+
+    def test_a_pending_put_back_is_finished_after_a_fetch_and_fast_forward(self):
+        # fix round 2 of Part 2 (N1): step 2 fetches and fast-forwards a home with a
+        # put-back pending, as any other; the tip the guard saw is in the key, so
+        # another host's commits on top of the beat's own do not count as upstream's
+        # change to its pace files, and tend-home still puts CADENCE.md back
+        home, bare, base, beat_head = self.pending_put_back("maker")
         elsewhere = self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("maker"))
         r = self.ok(self.beat("maker"))
-        self.assertIn("maker: pace files a beat with tools committed itself wait to be put back — no fetch or "
-                      "fast-forward until its tend has done it", r.stdout)
+        self.assertEqual(self.fx.git(home, "rev-parse", "origin/main"), elsewhere)         # fetched
+        self.fx.git(home, "merge-base", "--is-ancestor", elsewhere, "HEAD")        # raises if not
+        self.assertTrue((home / "notes-elsewhere.md").exists())                          # fast-forwarded
         self.assertIn(f"maker: pace files a beat with tools committed itself put back as {base[:12]} has them, "
                       "as the fleet: CADENCE.md", r.stdout)
         self.assertEqual(self.fx.claude_calls(), ["citizen-maker"])
-        self.assertEqual(self.fx.git(home, "rev-parse", "origin/main"), beat_head)    # nothing fetched
-        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), elsewhere)
         self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), "the pace before the beat\n")
         self.assertFalse(tend.put_back_pending(self.state, "maker"))
+
+    def test_a_rest_chosen_elsewhere_holds_while_a_put_back_is_pending(self):
+        # fix round 2 of Part 2 (N1): the rest gate reads the home after the fetch
+        # and fast-forward, a put-back pending or not, so a REST the citizen chose on
+        # another host holds here at once; the fleet's tend finishes the put-back
+        home, bare, _base, _beat_head = self.pending_put_back("maker")
+        self.fx.push_from_elsewhere(bare, "REST", "chosen in maker's own free beat on the Studio\n",
+                                    author=h.beat_author("maker"))
+        r = self.ok(self.beat("maker"))
+        self.assertIn("maker rests by its own standing choice (REST or EVENT-ONLY) — no beat", r.stdout)
+        self.assertEqual(self.fx.claude_calls(), [])
+        self.assertTrue((home / "REST").exists())
+        self.assertTrue(tend.put_back_pending(self.state, "maker"))
+        self.assertFalse(os.path.lexists(self.state / "maker.lock"))
 
     def test_a_signal_after_the_beat_committed_its_own_rest_leaves_a_put_back(self):
         # fix round 1 of Part 2 (C1): a TERM (or a Ctrl-C) after a beat with full

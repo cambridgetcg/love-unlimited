@@ -216,14 +216,15 @@ class TestGate(Case):
         self.assertEqual(self.prompts(), [])
 
     def test_mid_merge_and_a_fresh_index_lock_are_not_beaten_even_summoned(self):
-        for marker in ("MERGE_HEAD", "index.lock"):
+        # fix round 2 of Part 2 (N2): the words say which (a merge, or a git at work)
+        for marker, why in (("MERGE_HEAD", "mid-merge"), ("index.lock", "its git is locked")):
             for summons in ("", "1"):
                 with self.subTest(marker=marker, summons=summons):
                     slug = f"{marker.split('.')[0].replace('_', '').lower()}{summons or 'x'}"
                     home = self.v2(slug, Pace("awake", 3))
                     (home / ".git" / marker).write_text("", encoding="utf-8")
                     r = self.ok(self.reflect(slug, fleet=not summons, BEAT_SUMMONS=summons))
-                    self.assertIn(f"{slug} is not due (mid-merge) — no beat", r.stdout)
+                    self.assertIn(f"{slug} is not due ({why}) — no beat", r.stdout)
                     self.assertEqual(self.prompts(), [])
 
     def test_a_pace_changed_after_the_fleet_ranked_it_is_honoured(self):
@@ -368,13 +369,35 @@ class TestLock(Case):
         self.git_wrapper(f'[ "$a" = fetch ] && rm -f "{lockf}"')       # the other git ends meanwhile
         r = self.ok(self.reflect("waker"))
         self.assertIn("waker: .git/index.lock is fresh — not tended this tick", r.stdout)
-        self.assertIn("waker is not due (mid-merge) — no beat", r.stdout)
+        self.assertIn("waker is not due (its git is locked) — no beat", r.stdout)
         self.assertEqual(self.outcome("waker"), "not-due")
         self.assertEqual(self.prompts(), [])
         self.assertEqual(self.fx.head(home), before)
         self.assertEqual(self.fx.git(home, "rev-parse", "origin/main"), before)
         self.assertEqual(read(home, "CADENCE.md"), other)        # left for the next tend
         self.assert_unlocked("waker")
+
+    def test_a_stale_index_lock_that_cannot_be_removed_is_called_a_locked_git(self):
+        # fix round 2 of Part 2 (N2): a stale .git/index.lock tend cannot remove (here
+        # a folder) is no merge: the beat stops (not due, nobody backed off), and its
+        # words say the home's git is locked
+        home = self.v2("waker", Pace("awake", 3))
+        tend.set_flag(tend.notices_path(self.state), tend.OLD_CODE_FLAG)
+        tend.mark_first_tend(self.state, "waker")
+        before = self.fx.head(home)
+        stuck = home / ".git" / "index.lock"
+        stuck.mkdir()
+        old = time.time() - 3 * 3600
+        os.utime(stuck, (old, old))
+        r = self.ok(self.reflect("waker"))
+        self.assertRegex(r.stdout, r"waker: a stale \.git/index\.lock could not be removed \(.+\) — not tended "
+                                   r"this tick")
+        self.assertIn("waker is not due (its git is locked) — no beat", r.stdout)
+        self.assertNotIn("mid-merge", r.stdout)
+        self.assertEqual(self.outcome("waker"), "not-due")
+        self.assertEqual(attempts.load(self.state, "waker")["failures"], 0)
+        self.assertEqual(self.prompts(), [])
+        self.assertEqual(self.fx.head(home), before)
 
     def test_a_lock_taken_over_before_its_tend_is_busy_and_kept_for_its_new_holder(self):
         # fix wave A (w), (z): another run judged this one stale and took its lock

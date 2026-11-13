@@ -94,10 +94,15 @@ class LockTaken(TendError):
 
 
 class NotTended(TendError):
-    """A beat's own tend (own=) stopped before it could look at the home: a git
-    at work there (a fresh .git/index.lock, or one that cannot be removed) or a
-    merge or rebase in progress. Nothing was changed; the beat must not build on
-    what its tend did not see."""
+    """A beat's own tend (own=) stopped before it could look at the home: its
+    git locked (a fresh .git/index.lock, or a stale one that cannot be removed;
+    why = LOCKED) or a merge or rebase in progress (why = MID_MERGE). None of
+    its pace files was changed (a stale .git/index.lock may have been removed
+    before a merge stopped it, and its words say so); the beat must not build
+    on what its tend did not see."""
+    LOCKED = "git-locked"
+    MID_MERGE = "mid-merge"
+    why = LOCKED
 
 
 class FirstTickPending(TendError):
@@ -453,13 +458,15 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
         raise LockTaken(f"{slug}: its lock is held by {who}, not by this beat" if who
                         else f"{slug}: its lock is gone — this beat no longer holds it")
 
-    def stopped(why: str, said: List[str], away: bool = False) -> List[str]:
+    def stopped(why: str, said: List[str], away: str = "") -> List[str]:
         """Tend stops here, before looking; the fleet's tend says on every tick
         why a pending put-back waits (citizen_pace.py tend-home refuses a beat
-        on a home left unmarked or with a put-back pending). away: a git is at
-        work in the home, and a beat's own tend raises NotTended."""
+        on a home left unmarked or with a put-back pending). away: NotTended's
+        why (its git locked, or mid-merge), and a beat's own tend raises it."""
         if own is not None and away:
-            raise NotTended("\n".join(said))
+            e = NotTended("\n".join(said))
+            e.why = away
+            raise e
         return said + ([_put_back_waits(slug, why)] if own is None and put_back_pending(state, slug) else [])
 
     links = forbidden_links(home)
@@ -472,18 +479,18 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     if age is not None:
         if age <= 2 * _bound(bound):
             return stopped(".git/index.lock is fresh", [f"{slug}: .git/index.lock is fresh — not tended this tick"],
-                           away=True)
+                           away=NotTended.LOCKED)
         try:
             os.unlink(home / ".git" / "index.lock")
         except OSError as e:
             return stopped("a stale .git/index.lock could not be removed",
                            [f"{slug}: a stale .git/index.lock could not be removed ({e}) — not tended this tick"],
-                           away=True)
+                           away=NotTended.LOCKED)
         lines.append(f"{slug}: stale .git/index.lock removed ({int(age)} s old)")
     if mid_merge(home):
         return stopped("a merge or rebase is in progress",
                        lines + ([f"{slug}: a merge or rebase is in progress — not tended this tick"]
-                                if own is not None else []), away=True)
+                                if own is not None else []), away=NotTended.MID_MERGE)
     try:
         pending = _put_back_key(state, slug)
         if pending:

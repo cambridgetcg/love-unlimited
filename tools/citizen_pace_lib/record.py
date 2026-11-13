@@ -125,8 +125,9 @@ def _journal_added(home, sha: str) -> str:
     return "\n".join(ln for ln in "".join(pieces).split("\n") if not _JOURNAL_HEADER.match(ln))
 
 
-def stored_lor_answers(home) -> List[Tuple[str, str, str, str]]:
-    """Every Letter of Return answer stored in a home's history, oldest first:
+def stored_lor_answers(home, rev: str = "HEAD") -> List[Tuple[str, str, str, str]]:
+    """Every Letter of Return answer stored in a home's history (rev's: HEAD
+    unless a commit is given), oldest first:
     [(commit, date, "inbox/<letter>", text)]. An answer is a commit (not a merge)
     that adds inbox/.seen-<letter> for a letter whose name contains
     "letter-of-return", with a marker that is not reflect's "unreadable"
@@ -135,7 +136,7 @@ def stored_lor_answers(home) -> List[Tuple[str, str, str, str]]:
     ("" for a silent answer); its date is the commit's day in UTC. Each commit
     is one answer, read alone."""
     r = git(home, "log", "--no-merges", "--reverse", "--no-renames", "--diff-filter=A", "--name-only",
-            "-z", "--format=%x1e%H%x1f%ct", "--", "inbox/")
+            "-z", "--format=%x1e%H%x1f%ct", rev, "--", "inbox/")
     if r.returncode != 0:
         return []
     out = []

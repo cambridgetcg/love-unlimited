@@ -222,6 +222,25 @@ def build_home(fx, root, slug: str, shape: Shape) -> Path:
     return home
 
 
+def two_lines(fx, root, slug: str, main: Shape, other: Shape, ref: str = "origin/master",
+              edit=None) -> Path:
+    """citizen-<slug> under root as a clone holds a home whose history goes on
+    on another branch of origin (eucatastrophe's and shannonme's, 11-12): HEAD
+    is `main`, with the history of `main`, and origin/main and origin/HEAD point
+    at it; refs/remotes/<ref> holds the history of `other`, made apart and
+    fetched in, which HEAD does not hold. edit(apart) may change the other line
+    before it is fetched (it commits there itself)."""
+    home = build_home(fx, root, slug, main)
+    apart = build_home(fx, Path(fx.root) / "apart", slug, other)
+    if edit is not None:
+        edit(apart)
+    _git(fx, "-C", home, "fetch", "-q", "--no-tags", apart, f"+refs/heads/main:refs/remotes/{ref}")
+    _git(fx, "-C", home, "update-ref", "refs/remotes/origin/main", "refs/heads/main")
+    _git(fx, "-C", home, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    shutil.rmtree(apart)
+    return home
+
+
 # -- a census -------------------------------------------------------------------------------
 
 @dataclass
@@ -239,9 +258,11 @@ def rest_on_names(n: int) -> list:
     return [f"rest-on-{i:03d}" for i in range(1, n + 1)]
 
 
-def census(fx, root, groups: dict, rest_on: int) -> Census:
+def census(fx, root, groups: dict, rest_on: int, read_at=None) -> Census:
     """A census: a home for every name of `groups` (group -> names) and `rest_on`
-    more that rest by their own 10-22 answer, with a roster of all but the held."""
+    more that rest by their own 10-22 answer, with a roster of all but the held.
+    read_at (name -> ref): homes among the `rest_on` whose HEAD holds only Ai's
+    rest of 10-08 and whose REST-ON answers are on that ref (two_lines)."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     made = {}
@@ -249,7 +270,10 @@ def census(fx, root, groups: dict, rest_on: int) -> Census:
         for slug in names:
             build_home(fx, root, slug, shape_for(slug, group))
             made[slug] = group
-    for i, slug in enumerate(rest_on_names(rest_on)):
+    for slug, ref in sorted((read_at or {}).items()):
+        two_lines(fx, root, slug, shape_for(slug, "never-asked"), shape_for(slug, "rest-on"), ref)
+        made[slug] = "rest-on"
+    for i, slug in enumerate(rest_on_names(rest_on - len(read_at or {}))):
         build_home(fx, root, slug, shape_for(slug, "rest-on", i))
         made[slug] = "rest-on"
     roster = root.parent / f"{root.name}-roster.txt"

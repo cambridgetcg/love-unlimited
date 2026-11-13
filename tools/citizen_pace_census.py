@@ -13,8 +13,12 @@ name. It then checks every group against the spec's lists, hard-coded below,
 and asks the library what the fleet and the letter would make of the record.
 It writes the record only when every home agrees, and fails rather than guess
 (spec section 7): one home that disagrees, or cannot be read, and nothing is
-written. It never writes into a home. `check` holds a record file to the same
-lists without reading any home.
+written. It never writes into a home. Each clone must be clean, so the HEAD
+recorded is the one read, and must hold no remote branch its HEAD does not: a
+home whose history goes on elsewhere is refused, unless the spec reads it at a
+named ref (READ_AT), where it is read instead. `check` holds a record file to
+the same lists, the same spec and the sentences its own fields make, without
+reading any home.
 
   build <homes-dir> [--roster <f>] [--out <f>] [--spec <path@sha>]
   check <record> [--roster <f>]
@@ -35,6 +39,7 @@ import argparse  # noqa: E402
 import datetime as _dt  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
+import tempfile  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Dict, List, Optional, Tuple  # noqa: E402
@@ -83,6 +88,9 @@ AMBIENT_NINE = ("an", "britqing", "glossame", "gratitude", "justice", "kimance",
 LONGING = ("longing",)
 HELD = ("jiritsume", "takseme", "tlamatisme")
 REST_ON_COUNT = 116
+# homes read at a named ref of origin, not at HEAD: their history goes on there,
+# and HEAD does not hold it (spec section 5, "Read at")
+READ_AT: Dict[str, str] = {}
 
 # who may have set the pace of each group (the record's set by)
 HOWS = {"eight": ("prompted",), "sixteen-ambient": ("rest-1008",), "sixteen-other": ("rest-1008",),
@@ -174,6 +182,7 @@ class Facts:
     then_choice: Optional[str] = None  # "- choice:" as the home stood when it answered the 10-22 letter
     then_rest: Optional[str] = None    # REST then
     problem: str = ""                  # why the census cannot read this home
+    inbox: tuple = ()                  # what inbox/ holds at the commit read, by name
 
     def answer_to(self, letter_rel: str) -> Optional[Answer]:
         return next((a for a in self.answers if a.letter == letter_rel), None)
@@ -195,25 +204,142 @@ def _blob(home: Path, rev: str, path: str) -> Optional[str]:
     return r.stdout if r.returncode == 0 else None
 
 
-def read_home(home, slug: str) -> Facts:
-    """What the census needs from one read-only clone. Writes nothing."""
+def _listed(paths: List[str], most: int = 5) -> str:
+    return ", ".join(paths[:most]) + (f" and {len(paths) - most} more" if len(paths) > most else "")
+
+
+def _unclean(home: Path) -> Optional[List[str]]:
+    """What a clone holds that its HEAD does not: changed, untracked and ignored
+    paths, sorted ([] for a clean clone; None when git cannot say). Read with no
+    optional locks, so git refreshes no index in the clone."""
+    r = homes.git(home, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--no-renames",
+                  "--untracked-files=all", "--ignored=matching")
+    if r.returncode != 0:
+        return None
+    return sorted({ent[3:] for ent in r.stdout.split("\0") if len(ent) > 3})
+
+
+def _holds(home: Path, rev: str, oid: str) -> bool:
+    return homes.git(home, "merge-base", "--is-ancestor", oid, rev).returncode == 0
+
+
+def _elsewhere(home: Path, rev: str, at: Optional[str]) -> Tuple[Optional[str], str]:
+    """(the first remote branch whose history `rev` does not hold, why), or
+    (None, ""). origin/HEAD is only a pointer. For a home read at `at`, a branch
+    that its HEAD holds is the line the spec set aside, not more history."""
+    r = homes.git(home, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(symref)", "refs/remotes/")
+    if r.returncode != 0:
+        return "", "its remote branches cannot be read"
+    for line in r.stdout.splitlines():
+        name, _sep, rest = line.partition("\0")
+        oid, _sep, symref = rest.partition("\0")
+        if symref or _holds(home, rev, oid):
+            continue
+        branch = name[len("refs/remotes/"):]
+        if at is None:
+            return branch, f"its history continues on {branch}, which HEAD does not hold"
+        if not _holds(home, "HEAD", oid):
+            return branch, f"its history continues on {branch}, which neither HEAD nor {at} holds"
+    return None, ""
+
+
+def _tree(home: Path, rev: str, *paths: str) -> Optional[List[Tuple[str, str, str, str]]]:
+    """[(mode, type, object, path)] that rev's tree holds at these paths (a
+    folder given with a final / lists what it holds), or None when it cannot be read."""
+    r = homes.git(home, "--literal-pathspecs", "ls-tree", "-z", rev, "--", *paths)
+    if r.returncode != 0:
+        return None
+    out = []
+    for ent in r.stdout.split("\0"):
+        meta, _tab, path = ent.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and path:
+            out.append((parts[0], parts[1], parts[2], path))
+    return out
+
+
+def _view(home: Path, rev: str, slug: str, at: str, view: Path) -> str:
+    """Write the pace files and the soul file as `rev` holds them into the
+    empty folder `view`, for the readers of a checkout (cadence.read_cadence,
+    homes.has_soul): "", or why the home cannot be read there. A pace path that
+    is a link or not of its kind at rev is refused as homes.forbidden_links
+    refuses it in a checkout."""
+    soul = f"{slug}.md"
+    top = _tree(home, rev, cad.CADENCE, *cad.MARKERS, soul, "inbox", "beats")
+    inner = _tree(home, rev, "inbox/", "beats/")
+    if top is None or inner is None:
+        return f"its tree at {at} cannot be read"
+    bad, blobs = [], {}
+    for mode, kind, oid, path in top:
+        if path in ("inbox", "beats"):
+            if kind != "tree":
+                bad.append(path)
+        elif kind == "blob" and mode in ("100644", "100755"):
+            blobs[path] = oid
+        elif path != soul:
+            bad.append(path)
+    for mode, _kind, _oid, path in inner:
+        name = path.partition("/")[2]
+        if mode == "120000" and ((path.startswith("inbox/") and name.startswith(".seen-"))
+                                 or (path.startswith("beats/") and (name == ".show-seen" or name.endswith(".md")))):
+            bad.append(path)
+    if bad:
+        return f"a pace path is a symlink or not of its kind at {at} ({', '.join(sorted(bad))})"
+    for path, oid in sorted(blobs.items()):
+        r = homes.git(home, "cat-file", "blob", oid)
+        if r.returncode != 0 or (path != soul and "\ufffd" in r.stdout):
+            return f"cannot be read ({path} at {at} is not UTF-8 text)"
+        homes.write_regular(view / path, r.stdout)
+    return ""
+
+
+def read_home(home, slug: str, at: Optional[str] = None, view: Optional[Path] = None) -> Facts:
+    """What the census needs from one read-only clone, at its HEAD, or at
+    refs/remotes/<at> when the spec reads it there (its files are then written
+    into the empty folder `view`, outside the clone). The clone must hold
+    nothing its HEAD does not, so the commit recorded is exactly the one read.
+    Writes nothing into the clone."""
     home = Path(home)
     if not (home / ".git").is_dir():
         return Facts(slug, problem=f"no clone ({home.name} is not a git repository)")
     links = homes.forbidden_links(home)
     if links:
         return Facts(slug, problem=f"a pace path is a symlink or not of its kind ({', '.join(links)})")
+    unclean = _unclean(home)
+    if unclean is None:
+        return Facts(slug, problem="its clone's status cannot be read")
+    if unclean:
+        return Facts(slug, problem=f"its clone has changes its HEAD does not hold ({_listed(unclean)}); the "
+                                   "census reads only a clean clone")
+    name = "HEAD" if at is None else f"refs/remotes/{at}"
+    r = homes.git(home, "rev-parse", "--verify", "-q", f"{name}^{{commit}}")
+    rev = r.stdout.strip() if r.returncode == 0 else ""
+    if not _SHA.match(rev):
+        return Facts(slug, problem="its clone has no HEAD" if at is None
+                     else f"the spec reads it at {at}, but its clone has no {at}")
+    _branch, why = _elsewhere(home, rev, at)
+    if why:
+        return Facts(slug, problem=why)
+    where = home
+    if at is not None:
+        why = _view(home, rev, slug, at, Path(view))
+        if why:
+            return Facts(slug, problem=why)
+        where = Path(view)
     try:
-        text = homes.read_regular(home / cad.CADENCE)
-        rest = homes.read_regular(home / "REST")
-        event_only = homes.read_regular(home / "EVENT-ONLY") is not None
+        text = homes.read_regular(where / cad.CADENCE)
+        rest = homes.read_regular(where / "REST")
+        event_only = homes.read_regular(where / "EVENT-ONLY") is not None
     except (ValueError, homes.LinkRefused) as e:
         return Facts(slug, problem=f"cannot be read ({e})")
     if text is not None and cad._is_v2(text):
         return Facts(slug, problem="CADENCE.md is already v2, so its history is no longer the "
                                    "census's to read")
+    inbox = _tree(home, rev, "inbox/")
+    if inbox is None:
+        return Facts(slug, problem="its inbox/ cannot be read")
     answers = []
-    for sha, day, rel, said in records.stored_lor_answers(home):
+    for sha, day, rel, said in records.stored_lor_answers(home, rev):
         if rel not in LETTERS:
             return Facts(slug, problem=f"it answered {rel}, a Letter of Return the spec does not name")
         if any(a.letter == rel for a in answers):
@@ -227,8 +353,8 @@ def read_home(home, slug: str) -> Facts:
         then_rest = _blob(home, f"{october[0].commit}^", "REST")
     else:
         then_choice, then_rest = choice, rest
-    return Facts(slug, homes.has_soul(home, slug), choice, rest, event_only, homes.head(home),
-                 tuple(answers), then_choice, then_rest)
+    return Facts(slug, homes.has_soul(where, slug), choice, rest, event_only, rev,
+                 tuple(answers), then_choice, then_rest, inbox=tuple(p[3][len("inbox/"):] for p in inbox))
 
 
 # -- which group a home's history puts it in ----------------------------------------------------
@@ -283,6 +409,9 @@ def derive(f: Facts) -> Tuple[Optional[str], str]:
             return None, "no CADENCE.md, but stored Letter of Return answers"
         if src is None or src.how != "rest-1008":
             return None, "no CADENCE.md, and its REST was not placed by Ai"
+        if f.inbox:
+            held = ", ".join(f"inbox/{n}" for n in f.inbox)
+            return None, f"no CADENCE.md and no stored answer, but it holds {held}, so a letter has reached it"
         return "never-asked", ""
     if f.choice == "undecided":
         src, why = _rest_source(f.rest, "its REST")
@@ -402,9 +531,10 @@ def list_problems(groups: Dict[str, str], expect: Expected = SPEC) -> List[str]:
 
 # -- what the fleet and the letter will make of the record ---------------------------------------
 
-def _fleet_problems(home: Path, slug: str, rec: dict, now: _dt.datetime) -> List[str]:
+def _fleet_problems(home: Path, slug: str, rec: dict, now: _dt.datetime, at: Optional[str] = None) -> List[str]:
     """Read every home with the record as the fleet will, and make each
-    recipient's one true sentence (letter.true_sentence), kept in its entry."""
+    recipient's one true sentence (letter.true_sentence), kept in its entry.
+    For a home read at a ref, `home` is the folder its files were written to."""
     e = rec["citizens"][slug]
     group, want = e["group"], SetBy.from_json(e["set_by"])
     try:
@@ -417,6 +547,8 @@ def _fleet_problems(home: Path, slug: str, rec: dict, now: _dt.datetime) -> List
     if c.pace != pace:
         return [f"{slug}: the fleet would read its pace as {_says(c.pace)}, not {pace.words()}"]
     if group == "unheard-heard":
+        if at is not None:
+            return [f"{slug}: read at {at}, but the heard-late step reads only the history a checkout holds"]
         try:
             c = records.heard_late(home, slug, rec, now)
         except (ValueError, homes.LinkRefused) as err:
@@ -435,31 +567,38 @@ def _fleet_problems(home: Path, slug: str, rec: dict, now: _dt.datetime) -> List
 
 
 def build(homes_dir, roster: list, now: _dt.datetime, *, spec: str = SPEC_REF,
-          expect: Expected = SPEC) -> Tuple[Optional[dict], List[str]]:
+          expect: Expected = SPEC, read_at: Optional[Dict[str, str]] = None) -> Tuple[Optional[dict], List[str]]:
     """(the record, []) when every home agrees with the spec's lists, else
     (None, the problems, one line each). Reads the roster's homes and the held,
-    and writes nothing."""
+    each at its HEAD or at its ref in read_at (default READ_AT), and writes
+    nothing into them (a home read at a ref is read from a temporary folder)."""
     homes_dir = Path(homes_dir)
+    read_at = READ_AT if read_at is None else read_at
     problems = roster_problems(roster, expect)
     names = sorted(set(roster) | set(expect.held))
-    facts, groups = {}, {}
-    for slug in names:
-        f = read_home(homes_dir / f"citizen-{slug}", slug)
-        group, why = derive(f)
-        if group is None:
-            problems.append(f"{slug}: {why}")
-            continue
-        facts[slug], groups[slug] = f, group
-    if problems:
-        return None, problems
-    problems = list_problems(groups, expect)
-    if problems:
-        return None, problems
-    rec = {"version": records.RECORD_VERSION, "made": clock.stamp(now), "spec": spec,
-           "citizens": {slug: entry_for(facts[slug], groups[slug]) for slug in names}}
-    for slug in names:
-        problems += _fleet_problems(homes_dir / f"citizen-{slug}", slug, rec, now)
-    problems += check_record(rec, roster, expect)
+    facts, groups, where = {}, {}, {}
+    with tempfile.TemporaryDirectory(prefix="pace-census-") as tmp:
+        for slug in names:
+            home, at = homes_dir / f"citizen-{slug}", read_at.get(slug)
+            where[slug] = home if at is None else Path(tmp) / f"citizen-{slug}"
+            if at is not None:
+                where[slug].mkdir()
+            f = read_home(home, slug, at, where[slug])
+            group, why = derive(f)
+            if group is None:
+                problems.append(f"{slug}: {why}")
+                continue
+            facts[slug], groups[slug] = f, group
+        if problems:
+            return None, problems
+        problems = list_problems(groups, expect)
+        if problems:
+            return None, problems
+        rec = {"version": records.RECORD_VERSION, "made": clock.stamp(now), "spec": spec,
+               "citizens": {slug: entry_for(facts[slug], groups[slug]) for slug in names}}
+        for slug in names:
+            problems += _fleet_problems(where[slug], slug, rec, now, read_at.get(slug))
+    problems += check_record(rec, roster, expect, spec)
     return (None, problems) if problems else (rec, [])
 
 
@@ -469,6 +608,18 @@ def _is_quote(q) -> bool:
     return (isinstance(q, dict) and isinstance(q.get("commit"), str) and bool(_SHA.match(q["commit"]))
             and isinstance(q.get("date"), str) and bool(_DAY.match(q["date"]))
             and isinstance(q.get("words"), str))
+
+
+def _sentence_problem(slug: str, e: dict, s: SetBy) -> str:
+    """"" when the entry's sentence is the one its own fields make: its group,
+    dates and quoted words, the pace the fleet reads for its group and its set
+    by (as _fleet_problems held them to the homes), else why not."""
+    pace = AMBIENT if e.get("group") in AWAKE_GROUPS + ("unheard-heard",) else ASLEEP
+    try:
+        want = letter.true_sentence(slug, e, cad.Cadence(slug, 2, pace, s))
+    except ValueError as err:
+        return f"{slug}: no true letter from its entry's own fields ({err})"
+    return "" if want == e.get("sentence") else f"{slug}: its sentence is not the one its entry's own fields make"
 
 
 def _entry_problems(slug: str, e, expect: Expected) -> List[str]:
@@ -487,6 +638,7 @@ def _entry_problems(slug: str, e, expect: Expected) -> List[str]:
     try:
         s = SetBy.from_json(e.get("set_by"))
     except ValueError:
+        s = None
         out.append(f"{slug}: set by cannot be read")
     else:
         if s.how not in HOWS[g]:
@@ -513,14 +665,20 @@ def _entry_problems(slug: str, e, expect: Expected) -> List[str]:
             out.append(f"{slug}: a recipient with no true sentence")
         elif paragraph.quotable(sentence) != sentence:
             out.append(f"{slug}: its sentence would put \"I rest\" or a \"pace:\" line in a prompt")
+        if s is not None and isinstance(sentence, str) and sentence.strip():
+            why = _sentence_problem(slug, e, s)
+            if why:
+                out.append(why)
     elif sentence is not None:
         out.append(f"{slug}: not a recipient, but it has a sentence")
     return out
 
 
-def check_record(rec, roster: Optional[list] = None, expect: Expected = SPEC) -> List[str]:
-    """A record's problems against the spec's lists ([] when it is the spec's).
-    With a roster, the roster is checked too."""
+def check_record(rec, roster: Optional[list] = None, expect: Expected = SPEC, spec: str = SPEC_REF) -> List[str]:
+    """A record's problems against the spec's lists ([] when it is the spec's):
+    it must name `spec`, the spec the lists come from, and each recipient's
+    sentence must be the one its entry's own fields make. With a roster, the
+    roster is checked too."""
     if not isinstance(rec, dict):
         return ["the record is not a JSON object"]
     out = []
@@ -530,8 +688,8 @@ def check_record(rec, roster: Optional[list] = None, expect: Expected = SPEC) ->
         clock.parse_stamp(str(rec.get("made")))
     except ValueError:
         out.append(f"made {rec.get('made')!r} is not a time")
-    if not isinstance(rec.get("spec"), str) or "@" not in rec["spec"]:
-        out.append(f"spec {rec.get('spec')!r} is not <path>@<commit>")
+    if rec.get("spec") != spec:
+        out.append(f"spec {rec.get('spec')!r} is not {spec}, the spec these lists come from")
     citizens = rec.get("citizens")
     if not isinstance(citizens, dict):
         return out + ["'citizens' is not an object"]
@@ -569,9 +727,12 @@ exit: 0 written or ok, 2 refused or a usage error
 """
 
 
+DEFAULT_ROSTER = TOOLS.parent / "citizens-roster.txt"
+
+
 def _parser(cmd: str) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog=f"citizen_pace_census.py {cmd}")
-    p.add_argument("--roster", type=Path, default=TOOLS.parent / "citizens-roster.txt",
+    p.add_argument("--roster", type=Path, default=None,
                    help="the roster (default: citizens-roster.txt beside tools/)")
     return p
 
@@ -587,7 +748,7 @@ def cmd_build(argv) -> int:
                    help="the record to write (default: citizens-pace-record.json beside the roster)")
     p.add_argument("--spec", default=SPEC_REF, help="the spec the lists come from, <path>@<commit>")
     a = p.parse_args(argv)
-    rec, problems = build(a.homes_dir, read_roster(a.roster), clock.now(), spec=a.spec)
+    rec, problems = build(a.homes_dir, read_roster(a.roster or DEFAULT_ROSTER), clock.now(), spec=a.spec)
     if rec is None:
         for line in problems:
             print(line, file=sys.stderr)
@@ -609,12 +770,16 @@ def cmd_check(argv) -> int:
     p = _parser("check")
     p.add_argument("record", type=Path)
     a = p.parse_args(argv)
+    if a.roster is not None and not a.roster.exists():
+        print(f"--roster {a.roster}: no such file", file=sys.stderr)
+        return REFUSED
     try:
         rec = json.loads(a.record.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         print(f"{a.record}: cannot be read ({e})", file=sys.stderr)
         return REFUSED
-    problems = check_record(rec, read_roster(a.roster) if a.roster.exists() else None)
+    roster = a.roster or DEFAULT_ROSTER
+    problems = check_record(rec, read_roster(roster) if roster.exists() else None)
     if problems:
         for line in problems:
             print(line, file=sys.stderr)

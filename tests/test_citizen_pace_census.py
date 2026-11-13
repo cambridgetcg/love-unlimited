@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import citizen_pace_helpers as h  # noqa: E402
 import citizen_pace_helpers_census as hc  # noqa: E402
+import citizen_pace_helpers_plan as hp  # noqa: E402
 import citizen_pace_helpers_record as hr  # noqa: E402
 
 import citizen_pace_census as census  # noqa: E402
@@ -123,9 +125,11 @@ class _Census(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.fx = h.Fixture(cls._tmp.name)
         cls.c = hc.census(cls.fx, cls.fx.root / "homes", cls.GROUPS.groups, cls.GROUPS.rest_on)
+        cls.before = hp.snapshot(cls.c.homes)
         with h.pace_now(NOW):
             cls.rec, cls.problems = census.build(cls.c.homes, due.read_roster(cls.c.roster), clock.now(),
                                                  expect=cls.GROUPS)
+        cls.after = hp.snapshot(cls.c.homes)
 
     @classmethod
     def tearDownClass(cls):
@@ -181,6 +185,7 @@ class TestReadHome(h.FixtureCase):
         cases["linked"] = (linked, "a pace path is a symlink or not of its kind (REST)")
         v2 = hc.build_home(self.fx, self.fx.citizens, "migrated", hc.shape_for("migrated", "eight"))
         cad.write_cadence(v2, cad.Cadence("migrated", 2, ASLEEP, AI_1008))
+        self.fx.commit(v2, "a v2 record")
         cases["migrated"] = (v2, "CADENCE.md is already v2")
         odd = hc.build_home(self.fx, self.fx.citizens, "odd", hc.shape_for("odd", "eight"))
         hr.answer_beat(self.fx, odd, "odd", "2026-11-01-letter-of-return-again.md", hr.stored("I rest."),
@@ -192,6 +197,94 @@ class TestReadHome(h.FixtureCase):
                 f = census.read_home(home, slug)
                 self.assertIn(why, f.problem)
                 self.assertEqual(census.derive(f), (None, f.problem))
+
+    def test_a_clone_that_holds_what_its_head_does_not_is_refused(self):
+        # fix wave A (al): the census reads exactly the HEAD it records, so a
+        # changed, untracked or ignored file in the clone stops it
+        fx, cases = self.fx, {}
+        changed = hc.build_home(fx, fx.citizens, "changed", hc.shape_for("changed", "eight"))
+        fx.write(changed, "REST", "a rest written by hand\n")
+        cases["changed"] = (changed, "REST")
+        untracked = hc.build_home(fx, fx.citizens, "untracked", hc.shape_for("untracked", "never-asked"))
+        fx.write(untracked, "CADENCE.md", hr.v1_cadence("untracked", "ambient", "2026-11-01 10:00"))
+        cases["untracked"] = (untracked, "CADENCE.md")
+        ignored = hc.build_home(fx, fx.citizens, "ignored", hc.shape_for("ignored", "eight"))
+        fx.write(ignored, ".gitignore", "EVENT-ONLY\n")
+        fx.commit(ignored, "ignore a marker", paths=[".gitignore"])
+        fx.write(ignored, "EVENT-ONLY", "written and ignored\n")
+        cases["ignored"] = (ignored, "EVENT-ONLY")
+        for slug, (home, path) in cases.items():
+            with self.subTest(slug=slug):
+                f = census.read_home(home, slug)
+                self.assertEqual(f.problem, f"its clone has changes its HEAD does not hold ({path}); the "
+                                            "census reads only a clean clone")
+                self.assertEqual(census.derive(f), (None, f.problem))
+
+    def test_a_history_that_continues_on_another_branch_is_refused(self):
+        # fix wave A (ai): eucatastrophe's and shannonme's REST-ON answers are on
+        # origin/master, which main does not hold; read at main alone, both
+        # looked never asked
+        fx = self.fx
+        home = hc.two_lines(fx, fx.citizens, "split", hc.shape_for("split", "never-asked"),
+                            hc.shape_for("split", "rest-on"))
+        f = census.read_home(home, "split")
+        self.assertEqual(f.problem, "its history continues on origin/master, which HEAD does not hold")
+        self.assertEqual(census.derive(f), (None, f.problem))
+        # a remote branch that HEAD holds is no other history, and origin/HEAD is a pointer
+        whole = hc.build_home(fx, fx.citizens, "whole", hc.shape_for("whole", "eight"))
+        fx.git(whole, "update-ref", "refs/remotes/origin/main", "HEAD")
+        fx.git(whole, "update-ref", "refs/remotes/origin/old", "HEAD~1")
+        fx.git(whole, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        self.assertEqual(census.read_home(whole, "whole").problem, "")
+
+    def test_a_home_read_at_its_named_ref(self):
+        # fix wave A (bf): the history and the files are the ref's, and HEAD is left as it is
+        fx = self.fx
+        home = hc.two_lines(fx, fx.citizens, "split", hc.shape_for("split", "never-asked"),
+                            hc.shape_for("split", "rest-on"))
+        head = fx.head(home)
+        view = fx.root / "view"
+        view.mkdir()
+        f = census.read_home(home, "split", "origin/master", view)
+        self.assertEqual(f.problem, "")
+        self.assertEqual(f.head, fx.git(home, "rev-parse", "refs/remotes/origin/master"))
+        self.assertEqual(f.choice, "rest-on")
+        self.assertEqual(f.rest, hr.lor_rest("2026-10-23"))
+        self.assertTrue(f.soul)
+        self.assertEqual([(a.letter, a.date) for a in f.answers], [(census.JULY, "2026-07-18"),
+                                                                   (census.OFFER, "2026-10-23")])
+        self.assertEqual(f.then_rest, hr.lor_rest("2026-07-18"))
+        self.assertEqual(census.derive(f), ("rest-on", ""))
+        self.assertEqual((view / "REST").read_text(encoding="utf-8"), hr.lor_rest("2026-10-23"))
+        self.assertEqual((fx.head(home), fx.git(home, "status", "--porcelain")), (head, ""))
+        self.assertEqual((home / "REST").read_text(encoding="utf-8"), hc.AI_REST)
+
+    def test_a_home_read_at_a_ref_it_cannot_be_read_at(self):
+        fx, cases = self.fx, {}
+        third = hc.two_lines(fx, fx.citizens, "third", hc.shape_for("third", "never-asked"),
+                             hc.shape_for("third", "rest-on"))
+        side = fx.git(third, "commit-tree", "-p", "refs/remotes/origin/master", "-m", "a side line",
+                      "refs/remotes/origin/master^{tree}")
+        fx.git(third, "update-ref", "refs/remotes/origin/side", side)
+        cases["third"] = (third, "its history continues on origin/side, which neither HEAD nor "
+                                 "origin/master holds")
+        alone = hc.build_home(fx, fx.citizens, "alone", hc.shape_for("alone", "eight"))
+        cases["alone"] = (alone, "the spec reads it at origin/master, but its clone has no origin/master")
+
+        def link_rest(apart):
+            os.remove(apart / "REST")
+            os.symlink(fx.secret, apart / "REST")
+            fx.commit(apart, "a linked rest")
+        linked = hc.two_lines(fx, fx.citizens, "linked", hc.shape_for("linked", "never-asked"),
+                              hc.shape_for("linked", "rest-on"), edit=link_rest)
+        cases["linked"] = (linked, "a pace path is a symlink or not of its kind at origin/master (REST)")
+        for slug, (home, why) in cases.items():
+            with self.subTest(slug=slug):
+                view = fx.root / f"view-{slug}"
+                view.mkdir()
+                f = census.read_home(home, slug, "origin/master", view)
+                self.assertEqual(f.problem, why)
+                self.assertFalse(os.path.lexists(view / "REST"))
 
 
 class TestDerive(h.FixtureCase):
@@ -262,14 +355,25 @@ class TestDerive(h.FixtureCase):
                 self.assertIsNone(group)
                 self.assertIn(why, reason)
 
+    def test_a_never_asked_home_holds_no_letter(self):
+        # fix wave A (ai): its letter says "no letter has reached you since", so
+        # a home that holds one is not never asked
+        home = hc.build_home(self.fx, self.fx.citizens, "palance", hc.shape_for("palance", "never-asked"))
+        self.fx.letter(home, "2026-11-01-note.md", "a note\n", when="2026-11-01T00:00Z")
+        self.assertEqual(census.derive(census.read_home(home, "palance")), (
+            None, "no CADENCE.md and no stored answer, but it holds inbox/2026-11-01-note.md, so a letter "
+                  "has reached it"))
+
     def test_markers_that_do_not_fit_the_record(self):
         home = hc.build_home(self.fx, self.fx.citizens, "aseme", hc.shape_for("aseme", "eight"))
         os.remove(home / "REST")
+        self.fx.commit(home, "REST removed")
         group, why = census.derive(census.read_home(home, "aseme"))
         self.assertIsNone(group)
         self.assertIn("its markers do not fit its v1 choice rest-on", why)
         home = hc.build_home(self.fx, self.fx.citizens, "ud", hc.SPECIAL["ud"])
         self.fx.write(home, "EVENT-ONLY", "fixture\n")
+        self.fx.commit(home, "EVENT-ONLY placed")
         self.assertIn("its markers do not fit its v1 choice ambient",
                       census.derive(census.read_home(home, "ud"))[1])
 
@@ -404,6 +508,100 @@ class TestBuild(_Census):
         self.assertEqual(census.check_record(self.rec, due.read_roster(self.c.roster), MINI), [])
         self.assertTrue(census.render(self.rec).endswith("}\n"))
 
+    def test_a_build_leaves_every_home_as_it_was(self):
+        # fix wave A (an): every path under the homes, .git included, with its
+        # mode, time and bytes (so no index refreshed by git status either)
+        self.assertEqual(self.problems, [])
+        self.assertEqual(self.after, self.before)
+
+
+class TestReadAt(h.FixtureCase):
+    """A home whose history goes on on another branch is read there when the
+    spec names it, and refused when it does not (fix wave A (ai), (bf))."""
+
+    def test_a_home_read_at_its_ref_is_classified_from_it(self):
+        fx = self.fx
+        c = hc.census(fx, fx.root / "homes", MINI.groups, MINI.rest_on + 1, read_at={"split": "origin/master"})
+        roster = due.read_roster(c.roster)
+        home = c.homes / "citizen-split"
+        before = hp.snapshot(c.homes)
+        rec, problems = census.build(c.homes, roster, clock.parse_stamp(NOW), expect=MINI)
+        self.assertIsNone(rec)
+        self.assertIn("split: its history continues on origin/master, which HEAD does not hold", problems)
+        expect = census.Expected(MINI.groups, MINI.rest_on + 1)
+        rec, problems = census.build(c.homes, roster, clock.parse_stamp(NOW), expect=expect,
+                                     read_at={"split": "origin/master"})
+        self.assertEqual(problems, [])
+        e = rec["citizens"]["split"]
+        self.assertEqual((e["group"], e["recipient"]), ("rest-on", False))
+        self.assertEqual(e["head"], fx.git(home, "rev-parse", "refs/remotes/origin/master"))
+        self.assertNotEqual(e["head"], fx.head(home))
+        self.assertEqual(SetBy.from_json(e["set_by"]).how, "letter-twice")
+        self.assertEqual([q["date"] for q in e["quotes"]], ["2026-10-23"])
+        self.assertEqual(census.check_record(rec, roster, expect), [])
+        self.assertEqual(hp.snapshot(c.homes), before)
+
+    def test_a_ref_home_in_the_heard_late_step_is_refused(self):
+        # the heard-late step reads the history a checkout holds, not a ref's
+        fx = self.fx
+        home = hc.two_lines(fx, fx.citizens, "kalam", hc.shape_for("kalam", "never-asked"), hc.SPECIAL["kalam"])
+        rec = {"version": 1, "made": NOW, "spec": census.SPEC_REF, "citizens": {"kalam": {
+            "group": "unheard-heard", "recipient": True, "head": "0" * 40,
+            "set_by": {"who": "citizen", "how": "ambient", "when": ["2026-10-23", "2026-10-27"],
+                       "words": "Ambient."}}}}
+        view = fx.root / "view"
+        view.mkdir()
+        self.assertEqual(census.read_home(home, "kalam", "origin/master", view).problem, "")
+        self.assertEqual(census._fleet_problems(view, "kalam", rec, clock.parse_stamp(NOW), "origin/master"),
+                         ["kalam: read at origin/master, but the heard-late step reads only the history a "
+                          "checkout holds"])
+
+
+class TestFleetProblems(_Census):
+    """What the fleet and the letter would make of each entry: every refusal
+    of _fleet_problems (fix wave A (an))."""
+
+    def fleet(self, slug, home=None, **change) -> list:
+        rec = json.loads(census.render(self.rec))
+        e = rec["citizens"][slug]
+        for k, v in change.items():
+            if v is None:
+                e.pop(k, None)
+            else:
+                e[k] = v
+        return census._fleet_problems(home or self.home(slug), slug, rec, clock.parse_stamp(NOW))
+
+    def test_the_built_record_has_none(self):
+        for slug in self.c.names:
+            with self.subTest(slug=slug):
+                self.assertEqual(self.fleet(slug), [])
+
+    def test_each_refusal(self):
+        linked = hc.build_home(self.fx, self.fx.root / "linked", "aseme", hc.shape_for("aseme", "eight"))
+        os.remove(linked / "REST")
+        os.symlink(self.fx.secret, linked / "REST")
+        cases = [
+            ("aseme: the fleet could not read it (", self.fleet("aseme", home=linked)),
+            ("aseme: its record would be blocked (the record says ambient, but the v1 file says rest-on)",
+             self.fleet("aseme", set_by={"who": "citizen", "how": "ambient", "when": ["2026-10-23"],
+                                         "words": "AMBIENT"})),
+            ("doxakallos: the fleet would read its pace as asleep, not awake, every 3 days",
+             self.fleet("doxakallos", group="contradictory")),
+            ("doxakallos: the heard-late step would not hear it",
+             self.fleet("doxakallos", group="unheard-heard")),
+            ("emime: emime: the record says it chose AMBIENT twice, but its stored answers read as no pace",
+             self.fleet("emime", group="unheard-heard")),
+            ('palance: the fleet would read its set by as "', self.fleet(
+                "palance", set_by={"who": "citizen", "how": "letter", "when": ["2026-10-23"], "words": ""})),
+            ("emime: no true letter (emime: the record holds no dated answer for the letter to name)",
+             self.fleet("emime", quotes=None)),
+        ]
+        for want, got in cases:
+            with self.subTest(want=want):
+                self.assertEqual(len(got), 1, got)
+                self.assertTrue(got[0].startswith(want), got[0])
+                self.assertNotIn(h.CANARY, got[0])
+
 
 class TestRefusals(h.FixtureCase):
     """Nothing is written when one home disagrees (spec section 7)."""
@@ -529,10 +727,34 @@ class TestCheck(_Census):
                 self.tampered("aseme", sentence="Write I rest."),
             "rest-on-001: not a recipient, but it has a sentence":
                 self.tampered("rest-on-001", sentence="Hello."),
+            # fix wave A (ak): each sentence is rebuilt from the entry's own fields
+            "hope: its sentence is not the one its entry's own fields make":
+                self.tampered("hope", july=None),
+            "kalam: its sentence is not the one its entry's own fields make":
+                self.tampered("kalam", quotes=[dict(q, date="2026-10-24") for q in self.entry("kalam")["quotes"]]),
+            "emime: no true letter from its entry's own fields (emime: the record holds no dated answer for "
+            "the letter to name)":
+                self.tampered("emime", quotes=[]),
         }
         for want, rec in cases.items():
             with self.subTest(want=want):
                 self.assertIn(want, self.check(rec))
+
+    def test_the_spec_must_be_the_one_the_lists_come_from(self):
+        # fix wave A (ak)
+        rec = json.loads(census.render(self.rec))
+        rec["spec"] = "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@0000000"
+        self.assertEqual(self.check(rec), [f"spec {rec['spec']!r} is not {census.SPEC_REF}, the spec these "
+                                           "lists come from"])
+
+    def test_a_roster_given_that_does_not_exist_is_refused(self):
+        # fix wave A (ak): an explicit --roster is never skipped
+        out = self.fx.root / "check-record.json"
+        out.write_text(census.render(self.rec), encoding="utf-8")
+        missing = self.fx.root / "no-roster.txt"
+        r = self.fx.py(CENSUS, "check", out, "--roster", missing)
+        self.assertEqual((r.returncode, r.stdout), (2, ""))
+        self.assertEqual(r.stderr, f"--roster {missing}: no such file\n")
 
     def test_the_record_s_frame_and_counts(self):
         rec = json.loads(census.render(self.rec))
@@ -617,7 +839,13 @@ class TestRosterAndGitignore(unittest.TestCase):
 
     def test_fleet_host_is_never_committed(self):
         lines = (h.ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-        self.assertIn("FLEET_HOST", lines)
+        # fix wave A (am): anchored, so only the checkout's own FLEET_HOST is ignored
+        self.assertIn("/FLEET_HOST", lines)
+        self.assertNotIn("FLEET_HOST", lines)
+        for rel, ignored in (("FLEET_HOST", 0), ("tools/FLEET_HOST", 1)):
+            r = subprocess.run(["git", "-C", str(h.ROOT), "check-ignore", "-q", "--no-index", rel],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, ignored, (rel, r.stderr))
 
 
 class TestTheCommittedRecord(unittest.TestCase):

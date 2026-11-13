@@ -96,7 +96,7 @@ kingdom-os/kingdom-vm/*.qcow2
 citizens/
 memory/.fleet-*
 # The Mac that runs the fleet names itself here (scutil --get LocalHostName); never shared
-FLEET_HOST
+/FLEET_HOST
 # Per-device beat telemetry — append-only, each host writes its own; tracking it
 # kept the tree perpetually dirty and blocked syzygy auto-sync of this repo.
 memory/fleet-economy.jsonl

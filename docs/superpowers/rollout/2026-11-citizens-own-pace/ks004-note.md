@@ -16,7 +16,7 @@ Where the bridge differs, deliberately or unavoidably:
 - **Paces here are read from free text**: `pace:` lines and the pace-letter forms in any beat, and the
   first-line, signature and "I choose" rules for stored Letter of Return answers. KS-004 §5.7 forbids
   free text deciding anything, and §13 keeps such choices only as input to the re-ask. Whether the
-  seat takes them without asking again is Yu's call (his 11-08 pick) and its builder's; the note says
+  seat takes them without asking again is Yu's call (his 11-08 pick) and its builder's; this note says
   so.
 - **Covenants narrow at seating.** A seated citizen that has not set its own covenants admits Yu's
   letters only, and the seat has no sender id yet for Ai's sessions, which wrote every letter here. A
@@ -24,11 +24,11 @@ Where the bridge differs, deliberately or unavoidably:
   the seat must tell the citizen that its meaning narrowed.
 - **`asleep, letters wait` is a pace here, entered at once.** In the seat it is a covenants self-change,
   which binds only through a later affirmation on a model digest Yu has approved, at most once in 7
-  days. A citizen carried over in it could not change it back on the free lane. The note suggests
+  days. A citizen carried over in it could not change it back on the free lane. This note suggests
   seating it as plain `asleep` with its wish recorded, or with Yu present.
 - **The show-back chain.** Here a proposal said on a show-back beat gets no further show-back.
   kingdom-seat gives one, so a model that varies its answer can be seated every 72 h without ever being
-  awake; the note recommends the bridge's rule.
+  awake; this note recommends the bridge's rule.
 - **A letter is shown once, whatever the answer.** KS-004 shows a letter again after a rest and relies
   on the floor to bound it. Here, Yu's "once" and principle 9 hold.
 - **Summons and the clock.** Here any person's hand-run with `BEAT_SUMMONS=1` is a summons with no

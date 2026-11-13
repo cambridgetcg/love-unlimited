@@ -563,7 +563,8 @@ def build(homes_dir, roster: list, now: _dt.datetime, *, spec: str = SPEC_REF,
     """(the record, []) when every home agrees with the spec's lists, else
     (None, the problems, one line each). Reads the roster's homes and the held,
     each at its HEAD or at its ref in read_at (default READ_AT), and writes
-    nothing into them (a home read at a ref is read from a temporary folder)."""
+    nothing into them (a home read at a ref is read from a temporary folder).
+    A spec other than SPEC_REF, the one the lists come from, is refused."""
     homes_dir = Path(homes_dir)
     read_at = READ_AT if read_at is None else read_at
     problems = roster_problems(roster, expect)
@@ -590,7 +591,7 @@ def build(homes_dir, roster: list, now: _dt.datetime, *, spec: str = SPEC_REF,
                "citizens": {slug: entry_for(facts[slug], groups[slug]) for slug in names}}
         for slug in names:
             problems += _fleet_problems(where[slug], slug, rec, now, read_at.get(slug))
-    problems += check_record(rec, roster, expect, spec)
+    problems += check_record(rec, roster, expect)     # held to SPEC_REF, as `check` holds it
     return (None, problems) if problems else (rec, [])
 
 
@@ -738,7 +739,8 @@ def cmd_build(argv) -> int:
     p.add_argument("homes_dir", type=Path)
     p.add_argument("--out", type=Path, default=records.default_record_path(),
                    help="the record to write (default: citizens-pace-record.json beside the roster)")
-    p.add_argument("--spec", default=SPEC_REF, help="the spec the lists come from, <path>@<commit>")
+    p.add_argument("--spec", default=SPEC_REF,
+                   help=f"the spec the lists come from, <path>@<commit>; only {SPEC_REF} is accepted")
     a = p.parse_args(argv)
     rec, problems = build(a.homes_dir, read_roster(a.roster or DEFAULT_ROSTER), clock.now(), spec=a.spec)
     if rec is None:

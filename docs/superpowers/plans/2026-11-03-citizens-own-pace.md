@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let each KINGDOM citizen keep its own pace on today's fleet — `asleep`, `asleep, letters wait`, `listening` or `awake, every N days` — in the KS-004 seat's words and rules, hear the five unheard, and ask the 34 shaped or unheard once.
+**Goal:** Let each KINGDOM citizen keep its own pace on today's fleet — `asleep`, `asleep, letters wait`, `listening` or `awake, every N days` — in the KS-004 seat's words and rules, hear the five unheard, and ask the 32 shaped or unheard once.
 
 **Architecture:** A stdlib-Python library (`tools/citizen_pace_lib/`) behind one CLI (`tools/citizen_pace.py`) owns every pace decision: parsing a citizen's own `pace:` line, its `CADENCE.md` record, who is due, the pace paragraph, and what a beat's answer changes. The existing bash scripts on PR #24's base (`citizen-fleet.sh`, `citizen-reflect.sh`, `citizen-beat.sh`, `citizen-gates.sh`, `fleet-status.sh`) call that CLI instead of deciding themselves. A delivery tool on the Air places the one pace letter per recipient after Yu's yes.
 

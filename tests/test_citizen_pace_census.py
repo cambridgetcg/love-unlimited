@@ -317,7 +317,7 @@ class TestDerive(h.FixtureCase):
     def test_the_names_do_not_decide(self):
         # aseme's history, under another name, is still one of the 8
         self.assertEqual(self.derive("someone", hc.shape_for("aseme", "eight")), ("eight", ""))
-        # and a listed name with the history of the 116 reads as the 116
+        # and a listed name with the history of the 118 reads as the 118
         self.assertEqual(self.derive("aseme", hc.shape_for("x", "rest-on")), ("rest-on", ""))
 
     def test_the_july_record_decides_the_sixteen_not_a_forgiving_reread(self):
@@ -677,6 +677,16 @@ class TestRefusals(h.FixtureCase):
         rec, problems = self.build()
         self.assertIsNone(rec)
         self.assertIn("emime: its v1 choice is undecided, but its October answers read as asleep", problems[0])
+
+    def test_a_spec_other_than_the_lists_is_refused(self):
+        # fix wave A (ak), fix round 1: build --spec X would write a record check refuses
+        other = "docs/superpowers/specs/2026-11-03-citizens-own-pace-design.md@0000000"
+        rec, problems = census.build(self.c.homes, self.roster, clock.parse_stamp(NOW), spec=other, expect=MINI)
+        self.assertIsNone(rec)
+        self.assertEqual(problems, [f"spec {other!r} is not {census.SPEC_REF}, the spec these lists come from"])
+        rec, problems = census.build(self.c.homes, self.roster, clock.parse_stamp(NOW), spec=census.SPEC_REF,
+                                     expect=MINI)
+        self.assertEqual((rec["spec"], problems), (census.SPEC_REF, []))
 
     def test_the_cli_writes_nothing_when_it_refuses(self):
         hc.build_home(self.fx, self.c.homes, "aseme", hc.shape_for("aseme", "rest-on"))

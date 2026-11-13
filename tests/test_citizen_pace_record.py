@@ -463,13 +463,20 @@ class TestTend(Case):
         self.assertEqual(self.status(home), "M WILL.md")      # not a pace file: left alone
         self.assertTrue(self.flag_set())
         self.assertEqual(tend.notices_path(self.fx.state).read_text(encoding="utf-8"), "old-code-tended\n")
-        # the next tick commits nothing: the leftovers of a killed beat are put back instead
+        # the next tick commits nothing: the leftovers of a killed beat are put back
+        # instead, each uncommitted change copied aside first (final review)
         self.leftovers(home, day="2026-11-21")
         head = self.fx.head(home)
+        rels = ("CADENCE.md", "REST", "beats/2026-11.md", "inbox/.seen-2026-11-18-a-note.md")
+        left = {rel: (home / rel).read_bytes() for rel in rels}
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
         self.assertEqual(self.tend("kalam"), [
             "kalam: a killed beat's leftovers restored: CADENCE.md, REST, beats/2026-11.md, "
-            "inbox/.seen-2026-11-18-a-note.md"])
+            "inbox/.seen-2026-11-18-a-note.md"] + [
+            f"kalam: {rel} had a change that was never committed — a copy set aside at {aside / rel}, "
+            "not deleted" for rel in rels])
         self.assertEqual((self.fx.head(home), self.status(home)), (head, "M WILL.md"))
+        self.assertEqual({rel: (aside / rel).read_bytes() for rel in rels}, left)
 
     def test_after_the_first_tick_leftovers_are_put_back_path_by_path(self):
         home = self.lettered_home()
@@ -482,19 +489,25 @@ class TestTend(Case):
         self.fx.git(home, "add", "REST")                                       # staged, never committed
         (home / "WILL.md").write_text("a will being edited\n", encoding="utf-8")
         head = self.fx.head(home)
+        moved = ("REST", "inbox/.seen-2026-11-18-a-note.md", "inbox/2026-11-19-placed.md")
+        copied = ("CADENCE.md", "beats/2026-11.md")
+        left = {rel: (home / rel).read_bytes() for rel in moved + copied}
         aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
         self.assertEqual(self.tend("kalam"), [
             "kalam: a killed beat's leftovers restored: CADENCE.md, REST, beats/2026-11.md, "
             "inbox/.seen-2026-11-18-a-note.md, inbox/2026-11-18-a-note.md, inbox/2026-11-19-placed.md"] + [
-            f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
-            for rel in ("inbox/.seen-2026-11-18-a-note.md", "inbox/2026-11-19-placed.md")])
+            f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted" for rel in moved] + [
+            f"kalam: {rel} had a change that was never committed — a copy set aside at {aside / rel}, "
+            "not deleted" for rel in copied])
         self.assertEqual(self.fx.head(home), head)
         self.assertEqual({p: (home / p).read_bytes() for p in committed}, committed)
-        for p in ("REST", "inbox/.seen-2026-11-18-a-note.md", "inbox/2026-11-19-placed.md"):
+        for p in moved:
             self.assertFalse(os.path.lexists(home / p), p)
-        # an untracked letter is moved out of the home, never deleted (fix wave A)
-        self.assertEqual((aside / "inbox/2026-11-19-placed.md").read_text(encoding="utf-8"),
-                         "An uncommitted letter.\n")
+        # nothing is lost: an untracked file is moved out of the home (fix wave A), and
+        # an uncommitted change to a tracked one is copied out first (final review); a
+        # deleted letter is only restored
+        self.assertEqual({rel: (aside / rel).read_bytes() for rel in moved + copied}, left)
+        self.assertFalse(os.path.lexists(aside / "inbox/2026-11-18-a-note.md"))
         self.assertEqual(self.status(home), "M WILL.md")
 
     def test_a_home_holding_only_rest(self):
@@ -502,11 +515,16 @@ class TestTend(Case):
         self.past_first_tick("eucatastrophe")
         self.leftovers(home)
         aside = tend.set_aside_dir(self.fx.state, "eucatastrophe") / "20261120T0600Z"
+        moved = ("CADENCE.md", "beats/2026-11.md", "inbox/.seen-2026-11-18-a-note.md")
+        left = {rel: (home / rel).read_bytes() for rel in moved + ("REST",)}
         self.assertEqual(self.tend("eucatastrophe"), [
             "eucatastrophe: a killed beat's leftovers restored: CADENCE.md, REST, beats/2026-11.md, "
             "inbox/.seen-2026-11-18-a-note.md"] + [
             f"eucatastrophe: {rel} was never committed — set aside at {aside / rel}, not deleted"
-            for rel in ("beats/2026-11.md", "inbox/.seen-2026-11-18-a-note.md")])
+            for rel in moved] + [
+            f"eucatastrophe: REST had a change that was never committed — a copy set aside at {aside / 'REST'}, "
+            "not deleted"])
+        self.assertEqual({rel: (aside / rel).read_bytes() for rel in left}, left)
         self.assertEqual((home / "REST").read_text(encoding="utf-8"), hr.AI_REST)
         for p in ("CADENCE.md", "inbox", "beats"):
             self.assertFalse(os.path.lexists(home / p), p)
@@ -539,11 +557,14 @@ class TestTend(Case):
         old = os.stat(lock).st_mtime - 1300
         os.utime(lock, (old, old))
         lines = self.tend("kalam")
-        self.assertEqual(len(lines), 3)
+        self.assertEqual(len(lines), 6, lines)
         self.assertRegex(lines[0], r"^kalam: stale \.git/index\.lock removed \(\d+ s old\)$")
         self.assertTrue(lines[1].startswith("kalam: a killed beat's leftovers restored: "))
-        self.assertTrue(lines[2].startswith("kalam: inbox/.seen-2026-11-18-a-note.md was never committed — "
-                                            "set aside at "))
+        for line, rel in zip(lines[2:4], ("REST", "inbox/.seen-2026-11-18-a-note.md")):
+            self.assertTrue(line.startswith(f"kalam: {rel} was never committed — set aside at "), line)
+        for line, rel in zip(lines[4:], ("CADENCE.md", "beats/2026-11.md")):
+            self.assertTrue(line.startswith(f"kalam: {rel} had a change that was never committed — a copy set "
+                                            "aside at "), line)
         self.assertFalse(lock.exists())
         # the bound comes from FLEET_BEAT_BOUND_SEC, as the fleet reads it
         lock.write_text("")
@@ -700,8 +721,11 @@ class TestTend(Case):
             self.assertTrue(tend.first_tend_done(self.fx.state, slug), slug)
         # from now on, each of them has a killed beat's leftovers restored
         self.fx.write(homes["merging"], "REST", "left by a killed beat\n")
-        self.assertEqual(self.tend(*slugs), ["merging: a killed beat's leftovers restored: REST"])
+        rest = tend.set_aside_dir(self.fx.state, "merging") / "20261120T0600Z" / "REST"
+        self.assertEqual(self.tend(*slugs), ["merging: a killed beat's leftovers restored: REST",
+                                             f"merging: REST was never committed — set aside at {rest}, not deleted"])
         self.assertFalse(os.path.lexists(homes["merging"] / "REST"))
+        self.assertEqual(rest.read_text(encoding="utf-8"), "left by a killed beat\n")
 
     def test_a_path_git_no_longer_knows_is_left_out_of_the_first_tick_s_commit(self):
         # fix wave A: a path staged as added and then deleted (AD) is in neither HEAD
@@ -728,7 +752,8 @@ class TestTend(Case):
         # fix wave A, a deliberate change from spec section 6's "removed": an
         # untracked regular file under inbox/ or beats/ may be a letter a person
         # placed, so it is moved out of the home, into the fleet's state folder, and
-        # logged by name; an entry that is not a regular file is still removed
+        # logged by name, and since the final review so is an untracked REST; a
+        # link is still removed
         home = self.lettered_home()
         self.past_first_tick("kalam")
         placed = {"inbox/2026-11-19-placed.md": "A letter a person placed.\n",
@@ -743,7 +768,8 @@ class TestTend(Case):
             "kalam: a killed beat's leftovers restored: REST, beats/2026-12.md, inbox/2026-11-19-linked.md, "
             "inbox/2026-11-19-placed.md, inbox/nested/x.md"] + [
             f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
-            for rel in ("beats/2026-12.md", "inbox/2026-11-19-placed.md", "inbox/nested/x.md")])
+            for rel in ("REST", "beats/2026-12.md", "inbox/2026-11-19-placed.md", "inbox/nested/x.md")])
+        placed["REST"] = "left by a killed beat\n"
         for rel, text in placed.items():
             self.assertFalse(os.path.lexists(home / rel), rel)
             self.assertEqual((aside / rel).read_text(encoding="utf-8"), text, rel)
@@ -873,6 +899,91 @@ class TestTend(Case):
                 self.assertTrue((dest / ".git").is_dir())
                 self.assertEqual(self.status(home), "")
 
+    def test_nothing_tend_discards_is_lost_without_a_copy(self):
+        # final review (C): after a home's first tend, an untracked REST, EVENT-ONLY
+        # or CADENCE.md is moved out, and an uncommitted change to a tracked pace
+        # file, letter or journal is copied out before the file is put back; each is
+        # named, and a second in the same minute goes beside the first, never over
+        # it. Only a link is removed with no copy, never followed
+        home = self.lettered_home()
+        plain = self.fx.make_home("ud", rest=hr.AI_REST, when="2026-10-08T12:00Z")
+        self.past_first_tick("kalam", "ud")
+        committed = {rel: (home / rel).read_bytes()
+                     for rel in ("CADENCE.md", "inbox/2026-11-18-a-note.md", "beats/2026-11.md")}
+        self.fx.write(home, "CADENCE.md", "a pace written by hand\n")
+        self.fx.write(home, "inbox/2026-11-18-a-note.md", "A note, edited by hand.\n")
+        self.fx.write(home, "beats/2026-11.md", "a journal edited by hand\n")
+        self.fx.write(home, "REST", "a rest by hand\n")
+        self.fx.write(home, "EVENT-ONLY", "listening, by hand\n")
+        self.fx.link(home, "inbox/2026-11-19-linked.md", self.fx.secret)
+        self.fx.write(plain, "CADENCE.md", "a pace by hand, never committed\n")
+        left = {rel: (home / rel).read_bytes() for rel in ("CADENCE.md", "inbox/2026-11-18-a-note.md",
+                                                           "beats/2026-11.md", "REST", "EVENT-ONLY")}
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
+        lines = self.tend("kalam", "ud")
+        self.assertEqual(lines, [
+            "kalam: a killed beat's leftovers restored: CADENCE.md, EVENT-ONLY, REST, beats/2026-11.md, "
+            "inbox/2026-11-18-a-note.md, inbox/2026-11-19-linked.md"] + [
+            f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
+            for rel in ("EVENT-ONLY", "REST")] + [
+            f"kalam: {rel} had a change that was never committed — a copy set aside at {aside / rel}, not deleted"
+            for rel in ("CADENCE.md", "beats/2026-11.md", "inbox/2026-11-18-a-note.md")] + [
+            "ud: a killed beat's leftovers restored: CADENCE.md",
+            f"ud: CADENCE.md was never committed — set aside at "
+            f"{tend.set_aside_dir(self.fx.state, 'ud') / '20261120T0600Z' / 'CADENCE.md'}, not deleted"])
+        self.assertEqual({rel: (aside / rel).read_bytes() for rel in left}, left)
+        self.assertEqual({rel: (home / rel).read_bytes() for rel in committed}, committed)
+        for rel in ("REST", "EVENT-ONLY", "inbox/2026-11-19-linked.md"):
+            self.assertFalse(os.path.lexists(home / rel), rel)
+        self.assertFalse(os.path.lexists(aside / "inbox/2026-11-19-linked.md"))   # a link: never copied
+        self.assertEqual(self.fx.secret.read_text(encoding="utf-8"), f"{h.CANARY}\n")
+        self.assertEqual((tend.set_aside_dir(self.fx.state, "ud") / "20261120T0600Z" / "CADENCE.md")
+                         .read_text(encoding="utf-8"), "a pace by hand, never committed\n")
+        self.assertEqual((self.status(home), self.status(plain)), ("", ""))
+        # the same minute again: beside the first, never over it
+        self.fx.write(home, "CADENCE.md", "written by hand again\n")
+        again = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z-2" / "CADENCE.md"
+        self.assertEqual(self.tend("kalam"), [
+            "kalam: a killed beat's leftovers restored: CADENCE.md",
+            f"kalam: CADENCE.md had a change that was never committed — a copy set aside at {again}, not deleted"])
+        self.assertEqual(again.read_text(encoding="utf-8"), "written by hand again\n")
+        self.assertEqual((aside / "CADENCE.md").read_bytes(), left["CADENCE.md"])
+
+    def test_a_change_that_cannot_be_copied_out_is_not_put_back(self):
+        # final review (C): fail closed. When a copy cannot be made, nothing of the
+        # home is changed and it is reported; no copy made before it is left behind
+        home = self.lettered_home()
+        self.past_first_tick("kalam")
+        self.fx.write(home, "beats/2026-11.md", "a journal edited by hand\n")
+        self.fx.write(home, "CADENCE.md", "a pace written by hand\n")
+        self.fx.write(home, "REST", "a rest by hand\n")
+        files, index = snapshot(home), self.fx.git(home, "ls-files", "--stage")
+        real = tend._copy_aside
+
+        def copy(home_, rel, state):
+            if rel == "beats/2026-11.md":
+                raise PermissionError(13, "Permission denied", "set-aside")
+            return real(home_, rel, state)
+
+        with mock.patch.object(tend, "_copy_aside", copy):
+            lines = self.tend("kalam")
+        self.assertEqual(lines, ["kalam: not tended — beats/2026-11.md: its uncommitted change could not be "
+                                 "copied out of the home ([Errno 13] Permission denied: 'set-aside'); "
+                                 "nothing was put back"])
+        self.assertEqual((snapshot(home), self.fx.git(home, "ls-files", "--stage")), (files, index))
+        self.assertEqual([p for p in tend.set_aside_dir(self.fx.state, "kalam").rglob("*") if p.is_file()], [])
+        # a set-aside folder that takes nothing: the same, in the words of the error
+        base = tend.set_aside_dir(self.fx.state, "kalam")
+        base.mkdir(parents=True, exist_ok=True)
+        base.chmod(0o500)
+        self.addCleanup(base.chmod, 0o700)
+        lines = self.tend("kalam")
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("kalam: not tended — CADENCE.md: its uncommitted change could not "
+                                            "be copied out of the home ("), lines[0])
+        self.assertTrue(lines[0].endswith("; nothing was put back"), lines[0])
+        self.assertEqual((snapshot(home), self.fx.git(home, "ls-files", "--stage")), (files, index))
+
 
 # -- citizen-beat.sh's guard -------------------------------------------------------
 
@@ -991,10 +1102,46 @@ class TestGuardRestore(Case):
         self.assertFalse(os.path.lexists(home / "REST"))
         self.assertFalse(os.path.lexists(home / "inbox"))
         self.assertIsNone(cad.read_cadence(home, "kalam", {}).pace)
-        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "inbox/.seen-2026-11-18-a-note.md"
-        self.assertEqual(notes, [f"kalam: inbox/.seen-2026-11-18-a-note.md was never committed — set aside "
-                                 f"at {aside}, not deleted"])
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
+        self.assertEqual(notes, [f"kalam: {rel} was never committed — set aside at {aside / rel}, not deleted"
+                                 for rel in ("REST", "inbox/.seen-2026-11-18-a-note.md")])
+        self.assertEqual((aside / "REST").read_text(encoding="utf-8"),
+                         "chosen via the Letter of Return 2026-11-19 — woken only by unread mail\n")
         self.assertEqual(self.status(home), "?? .gitignore")       # not a pace file: left alone
+
+    def test_the_guard_keeps_a_copy_of_what_it_puts_back(self):
+        # final review (C): a beat with tools that edits a tracked pace file or letter,
+        # or leaves an ignored EVENT-ONLY or CADENCE.md, sets no pace, and loses
+        # nothing: the edit is copied out before the file is put back, and the
+        # marker is moved out, each named in the notes
+        home = self.fx.make_home("kalam", cadence=V2, letters=(("2026-11-18-a-note.md", "A note.\n"),),
+                                 when="2026-11-01T00:00Z")
+        other = self.fx.make_home("ud", rest=hr.AI_REST, when="2026-10-08T12:00Z")
+        self.fx.write(home, "CADENCE.md", V2.replace("- pace: asleep", "- pace: awake, every 3 days"))
+        self.fx.write(home, "inbox/2026-11-18-a-note.md", "A note, rewritten by a beat with tools.\n")
+        self.fx.write(home, "EVENT-ONLY", "listening\n")
+        self.fx.write(home, ".gitignore", "EVENT-ONLY\n")
+        self.fx.write(other, "CADENCE.md", "a pace by a beat with tools\n")
+        self.fx.write(other, ".gitignore", "CADENCE.md\n")
+        left = {rel: (home / rel).read_bytes() for rel in ("CADENCE.md", "EVENT-ONLY", "inbox/2026-11-18-a-note.md")}
+        notes = []
+        self.assertEqual(tend.guard_restore(home, self.fx.state, notes=notes),
+                         ["CADENCE.md", "EVENT-ONLY", "inbox/2026-11-18-a-note.md"])
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
+        self.assertEqual(notes, [
+            f"kalam: EVENT-ONLY was never committed — set aside at {aside / 'EVENT-ONLY'}, not deleted"] + [
+            f"kalam: {rel} had a change that was never committed — a copy set aside at {aside / rel}, not deleted"
+            for rel in ("CADENCE.md", "inbox/2026-11-18-a-note.md")])
+        self.assertEqual({rel: (aside / rel).read_bytes() for rel in left}, left)
+        self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), V2)
+        self.assertEqual((home / "inbox/2026-11-18-a-note.md").read_text(encoding="utf-8"), "A note.\n")
+        self.assertFalse(os.path.lexists(home / "EVENT-ONLY"))
+        notes = []
+        self.assertEqual(tend.guard_restore(other, self.fx.state, notes=notes), ["CADENCE.md"])
+        ud = tend.set_aside_dir(self.fx.state, "ud") / "20261120T0600Z" / "CADENCE.md"
+        self.assertEqual(notes, [f"ud: CADENCE.md was never committed — set aside at {ud}, not deleted"])
+        self.assertEqual(ud.read_text(encoding="utf-8"), "a pace by a beat with tools\n")
+        self.assertFalse(os.path.lexists(other / "CADENCE.md"))
 
     def test_pace_files_in_another_case_are_put_back(self):
         # fix wave A: on the Mac's case-insensitive disk Rest is REST, and on any disk
@@ -1079,8 +1226,10 @@ class TestGuardRestore(Case):
         (self.fx.state / "ud").symlink_to(self.fx.outside / "elsewhere")
         notes = []
         self.assertEqual(tend.guard_restore(home, self.fx.state, notes=notes), ["REST"])
-        self.assertEqual(len(notes), 1, notes)
-        self.assertRegex(notes[0], r"^ud: its notice could not be kept \(.+\) — its next free beat is not "
+        self.assertEqual(len(notes), 2, notes)
+        rest = tend.set_aside_dir(self.fx.state, "ud") / "20261120T0600Z" / "REST"
+        self.assertEqual(notes[0], f"ud: REST was never committed — set aside at {rest}, not deleted")
+        self.assertRegex(notes[1], r"^ud: its notice could not be kept \(.+\) — its next free beat is not "
                                    r"told that its pace files were put back$")
 
     def test_a_put_back_the_guard_could_not_commit_is_finished_by_the_next_tend(self):
@@ -1155,9 +1304,10 @@ class TestGuardRestore(Case):
         notes = []
         self.assertEqual(tend.guard_restore(home, self.fx.state, base=base, notes=notes),
                          ["CADENCE.md", "EVENT-ONLY", "inbox/2026-11-19-mine.md"])
-        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "inbox/2026-11-19-mine.md"
-        self.assertEqual(notes, [f"kalam: inbox/2026-11-19-mine.md came only in a beat with tools' own commits "
-                                 f"— set aside at {aside}, not deleted"])   # upstream's letter is not
+        aside = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z"
+        self.assertEqual(notes, [f"kalam: {rel} came only in a beat with tools' own commits — set aside at "
+                                 f"{aside / rel}, not deleted"
+                                 for rel in ("EVENT-ONLY", "inbox/2026-11-19-mine.md")])   # upstream's letter is not
         self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), resting)
         self.assertEqual((home / "REST").read_text(encoding="utf-8"),
                          "letters wait — chosen in kalam's own free beat on the Studio\n")
@@ -1234,9 +1384,12 @@ class TestGuardRestore(Case):
         self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("kalam"))
         self.fx.git(home, "fetch", "-q", "origin")
         self.fx.git(home, "merge", "-q", "--ff-only", "@{u}")
+        again = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z-2" / "REST"
         self.assertEqual(self.tend("kalam"), [
             f"kalam: pace files a beat with tools committed itself put back as {base[:12]} has them, "
-            "as the fleet: REST"])
+            "as the fleet: REST",
+            f"kalam: REST came only in a beat with tools' own commits — set aside at {again}, not deleted"])
+        self.assertEqual(again.read_text(encoding="utf-8"), "the beat's own rest\n")
         self.assertFalse(os.path.lexists(home / "REST"))
         self.assertEqual(self.fx.git(home, "ls-tree", "--name-only", "HEAD", "--", "REST"), "")
         self.assertFalse(tend.put_back_pending(self.fx.state, "kalam"))
@@ -1256,9 +1409,11 @@ class TestGuardRestore(Case):
         self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("kalam"))
         self.fx.git(home, "fetch", "-q", "origin")
         self.fx.git(home, "merge", "-q", "--ff-only", "@{u}")
+        rest = tend.set_aside_dir(self.fx.state, "kalam") / "20261120T0600Z" / "REST"
         self.assertEqual(self.tend("kalam"), [
             f"kalam: pace files a beat with tools committed itself put back as {base[:12]} has them, "
-            "as the fleet: REST"])
+            "as the fleet: REST",
+            f"kalam: REST came only in a beat with tools' own commits — set aside at {rest}, not deleted"])
         self.assertFalse(os.path.lexists(home / "REST"))
 
     def test_a_put_back_that_finds_nothing_to_put_back_says_so(self):

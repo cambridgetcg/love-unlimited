@@ -247,7 +247,8 @@ def migrate_heard_late(home, name: str, record: dict, now: _dt.datetime, commit:
         cad.write_markers(home, c)
         tend.fleet_commit(home, tend.changed_paths(home, PACE_FILES), HEARD_LATE_SUBJECT.format(name=name))
     except (tend.TendError, LinkRefused, OSError):
-        tend.restore_paths(home, tend.changed_paths(home, PACE_FILES))
+        # only this step's own writes are there (it found none before it wrote)
+        tend.restore_paths(home, tend.changed_paths(home, PACE_FILES), own=True)
         raise
     return True
 

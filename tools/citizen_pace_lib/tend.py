@@ -11,9 +11,11 @@ from __future__ import annotations
 # new code are they committed instead, once, as the fleet: those are the old
 # code's. That first tend is a fact of each home, kept in its attempt record, so
 # a home skipped at the fleet's first tick keeps its leftovers until its own.
-# An untracked regular file under inbox/ or beats/ is never deleted: it may be a
-# letter a person placed, so it is moved out of the home, into
-# <state>/.set-aside/<slug>/, and named in the log.
+# Nothing tend or the guard discards is lost: an untracked regular file or
+# folder (it may be a letter a person placed, or a marker written by hand) is
+# moved out of the home, into <state>/.set-aside/<slug>/, and an uncommitted
+# change to a tracked file is copied there before the file is put back, each
+# named in the log; only a link is removed with no copy, never followed.
 # guard_restore does the same for citizen-beat.sh's beats with tools, which never
 # set a pace, against the commit before the beat (less what that beat pulled
 # from upstream, which is not its own); when that beat committed itself and the
@@ -62,12 +64,29 @@ OLD_CODE_FLAG = "old-code-tended"
 RESTORED = "restored"
 FIRST_TICK_LINE = ("tend: the first tick on pace/1 — each home's old-code leftovers, if any, are committed "
                    "once, at that home's first full tend; after it, a killed beat's leftovers are restored")
-# where untracked letters and journal files go instead of being deleted, under <state>
+# where what tend and the guard put back is kept instead of being lost, under <state>
 SET_ASIDE = ".set-aside"
-_KEPT = ("inbox", "beats")
 PUSH_TIMEOUT = 60
 # a home's own .git must not run anything in the fleet's git calls
 _SAFE = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
+
+
+class Aside(tuple):
+    """(path in the home, where it went): one entry tend or the guard kept in
+    <state>/.set-aside/ instead of losing it. copy: a copy of an uncommitted
+    change to a tracked file, which was then put back; otherwise the entry
+    itself was moved out of the home."""
+    copy = False
+
+    def __new__(cls, rel: str, dest: str, copy: bool = False):
+        self = super().__new__(cls, (rel, dest))
+        self.copy = copy
+        return self
+
+
+def _where(a) -> str:
+    rel, dest = a
+    return f"a copy of {rel} at {dest}" if getattr(a, "copy", False) else f"{rel} at {dest}"
 
 
 class TendError(RuntimeError):
@@ -81,7 +100,7 @@ def _partly(e: Exception, aside) -> TendError:
     """e, as a TendError that names the files set aside before it."""
     if not aside:
         return e if isinstance(e, TendError) else TendError(str(e))
-    where = ", ".join(f"{rel} at {dest}" for rel, dest in aside)
+    where = ", ".join(_where(a) for a in aside)
     err = TendError(f"{e}; set aside before it stopped, not deleted: {where}")
     err.aside = tuple(aside)
     return err
@@ -275,29 +294,124 @@ def _unlink(home: Path, rel: str) -> None:
 
 
 def set_aside_dir(state, slug: str) -> Path:
-    """<state>/.set-aside/<slug>: where tend moves this home's untracked letters,
-    journal files and folders, outside the home's git, instead of deleting them."""
+    """<state>/.set-aside/<slug>: where tend and the guard keep what they put
+    back in this home, outside the home's git, instead of losing it: untracked
+    files and folders moved out, and copies of uncommitted changes."""
     return Path(state) / SET_ASIDE / slug
 
 
-def set_aside_line(slug: str, rel: str, dest: str, committed: bool = False) -> str:
-    """committed: it came only in a beat with tools' own commits (a put-back)."""
+def set_aside_line(slug: str, rel: str, dest: str, committed: bool = False, copy: bool = False) -> str:
+    """committed: it came only in a beat with tools' own commits (a put-back).
+    copy: a copy of an uncommitted change to a tracked file, then put back."""
+    if copy:
+        return f"{slug}: {rel} had a change that was never committed — a copy set aside at {dest}, not deleted"
     how = "came only in a beat with tools' own commits" if committed else "was never committed"
     return f"{slug}: {rel} {how} — set aside at {dest}, not deleted"
 
 
-def _kept_aside(home: Path, rel: str) -> bool:
-    """Never deleted: an untracked regular file under inbox/ or beats/ (in any
-    case), and an untracked folder anywhere (git lists a repository inside the
-    home as one entry ending in "/")."""
+def _aside_line(slug: str, a, committed: bool = False) -> str:
+    return set_aside_line(slug, a[0], a[1], committed=committed, copy=getattr(a, "copy", False))
+
+
+def _movable(home: Path, rel: str) -> bool:
+    """Moved out of the home, never deleted: an untracked regular file, and an
+    untracked folder (git lists a repository inside the home as one entry
+    ending in "/"). A link, or anything else, is removed."""
     try:
         mode = os.lstat(home / rel.rstrip("/")).st_mode
     except OSError:
         return False
-    if stat.S_ISDIR(mode):
-        return True
-    top, sep, _rest = rel.partition("/")
-    return bool(sep) and top.lower() in _KEPT and stat.S_ISREG(mode)
+    return stat.S_ISDIR(mode) or stat.S_ISREG(mode)
+
+
+def _regular(path: Path) -> bool:
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
+def _uncommitted(home: Path, rels: List[str], rev: str = "HEAD") -> List[str]:
+    """Those of rels whose entry in the home is a regular file holding bytes
+    that neither HEAD nor rev holds at that path: an uncommitted change, staged
+    or not, which putting the path back as rev has it would lose. In order.
+    When git cannot say, every regular one: a copy too many, never one too few."""
+    files = [rel for rel in rels if _regular(home / rel)]
+    if not files:
+        return []
+    sums = _git(home, "hash-object", "--no-filters", "--", *files)
+    hashes = sums.stdout.split()
+    if sums.returncode != 0 or len(hashes) != len(files):
+        return files
+    held = set()
+    for r in dict.fromkeys(("HEAD", rev)):
+        tree = _git(home, "--literal-pathspecs", "ls-tree", "-r", "-z", r, "--", *files)
+        if tree.returncode != 0:
+            return files
+        for e in tree.stdout.split("\0"):
+            meta, tab, path = e.partition("\t")
+            parts = meta.split()
+            if tab and len(parts) == 3 and parts[1] == "blob":
+                held.add((path, parts[2]))
+    return [rel for rel, sha in zip(files, hashes) if (rel, sha) not in held]
+
+
+def _aside_dest(state, slug: str, rel: str) -> Path:
+    """<state>/.set-aside/<slug>/<UTC minute>/<rel>, or beside (never over) one
+    set aside before: <UTC minute>-2, -3, ..."""
+    base, stamp = set_aside_dir(state, slug), clock.now().strftime("%Y%m%dT%H%MZ")
+    dest, n = base / stamp / rel.rstrip("/"), 1
+    while os.path.lexists(dest):
+        n += 1
+        dest = base / f"{stamp}-{n}" / rel.rstrip("/")
+    return dest
+
+
+def _copy_aside(home: Path, rel: str, state) -> str:
+    """Copy one regular file's bytes (and its times) to where _set_aside would
+    move it; the file stays in the home. Never follows a link, never writes
+    over a file; a copy that fails midway is removed. Returns where it went."""
+    dest = _aside_dest(state, slug_of(home), rel)
+    os.makedirs(dest.parent, exist_ok=True)
+    with open(os.open(str(home / rel), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as fin:
+        st = os.fstat(fin.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            raise TendError(f"{rel} is not a regular file; not copied")
+        out = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        try:
+            with open(out, "wb") as fout:
+                shutil.copyfileobj(fin, fout)
+            os.utime(dest, ns=(st.st_atime_ns, st.st_mtime_ns))
+        except BaseException:
+            _drop_copy(state, slug_of(home), str(dest))
+            raise
+    return str(dest)
+
+
+def _same_bytes(a: Path, b: Path) -> bool:
+    try:
+        with open(os.open(str(a), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as fa, \
+                open(os.open(str(b), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as fb:
+            if not (stat.S_ISREG(os.fstat(fa.fileno()).st_mode) and stat.S_ISREG(os.fstat(fb.fileno()).st_mode)):
+                return False
+            while True:
+                x, y = fa.read(65536), fb.read(65536)
+                if x != y:
+                    return False
+                if not x:
+                    return True
+    except OSError:
+        return False
+
+
+def _drop_copy(state, slug: str, dest: str) -> None:
+    """Remove a copy this step made and no longer needs, and the folders it
+    leaves empty under <state>/.set-aside/<slug>/."""
+    try:
+        os.unlink(dest)
+    except OSError:
+        return
+    _drop_empty_parents(set_aside_dir(state, slug), Path(dest))
 
 
 def _set_aside(home: Path, rel: str, state) -> str:
@@ -305,11 +419,7 @@ def _set_aside(home: Path, rel: str, state) -> str:
     rename, to <state>/.set-aside/<slug>/<UTC minute>/<rel>, beside (never over)
     one set aside before; returns where it went. A folder on another disk than
     the state folder is left as it is."""
-    base, stamp = set_aside_dir(state, slug_of(home)), clock.now().strftime("%Y%m%dT%H%MZ")
-    dest, n = base / stamp / rel, 1
-    while os.path.lexists(dest):
-        n += 1
-        dest = base / f"{stamp}-{n}" / rel
+    dest = _aside_dest(state, slug_of(home), rel)
     os.makedirs(dest.parent, exist_ok=True)
     src = home / rel.rstrip("/")
     try:
@@ -323,24 +433,43 @@ def _set_aside(home: Path, rel: str, state) -> str:
     return str(dest)
 
 
-def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD") -> List[Tuple[str, str]]:
+def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD", *,
+                  own: bool = False) -> List[Aside]:
     """Put each path back as `rev` (HEAD) has it, path by path: one that is in
     rev is checked out alone (index and file); one that is not is dropped from
-    the index and removed, except an untracked regular file under inbox/ or
-    beats/, or an untracked folder (a repository inside the home), which is
-    moved to <state>/.set-aside/ whole (never deleted). Untracked entries go
-    first, so a link standing where a folder was is gone before that folder's
-    files come back. The paths are exact, as changed_paths names them. Returns
-    (path, where it went) for each entry set aside. Raises TendError when git
-    fails, at the step that failed, naming what it had set aside before."""
+    the index and taken out of the home. Nothing is lost on the way: an
+    untracked regular file or folder (a repository inside the home) is moved
+    to <state>/.set-aside/ whole, and a file in rev whose regular file in the
+    home holds bytes neither HEAD nor rev holds (an uncommitted change) is
+    first copied there. Only a link, or another entry that is neither, is
+    removed with no copy, never followed; a deleted file is only restored. The
+    copies are made before anything in the home changes: when one cannot be
+    made, nothing is put back (TendError, and no copy is left). own: every change under the
+    paths is the caller's own write in this same step (the heard-late step's,
+    after its commit failed), so none is kept. Untracked entries go first, so
+    a link standing where a folder was is gone before that folder's files come
+    back. The paths are exact, as changed_paths names them. Returns an Aside
+    (path, where it went; .copy for a copy) for each entry kept. Raises
+    TendError when git fails, at the step that failed, naming what it had set
+    aside before; a copy whose file the step never changed is dropped."""
     home = Path(home)
     paths = sorted(set(paths))
     tracked = _in_head(home, paths, rev)
-    keep = [rel for rel in paths if rel not in tracked and _kept_aside(home, rel)]
-    if keep and state is None:
-        raise TendError(f"{', '.join(keep)}: not in {rev}, and with no state folder they cannot be set "
-                        "aside; nothing was put back")
-    aside = []
+    keep = [] if own else [rel for rel in paths if rel not in tracked and _movable(home, rel)]
+    edited = [] if own else _uncommitted(home, [rel for rel in paths if rel in tracked], rev)
+    if (keep or edited) and state is None:
+        raise TendError(f"{', '.join(sorted(keep + edited))}: not in {rev}, or changed and never committed, "
+                        "and with no state folder they cannot be set aside; nothing was put back")
+    copies = {}
+    for rel in edited:
+        try:
+            copies[rel] = _copy_aside(home, rel, state)
+        except (TendError, LinkRefused, OSError) as e:
+            for dest in copies.values():
+                _drop_copy(state, slug_of(home), dest)
+            raise TendError(f"{rel}: its uncommitted change could not be copied out of the home ({e}); "
+                            "nothing was put back") from e
+    aside: List[Aside] = []
     try:
         for rel in paths:
             if rel not in tracked:
@@ -348,7 +477,7 @@ def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD") -> 
                 if r.returncode != 0:
                     raise TendError(f"git update-index {rel} failed: {r.stderr.strip()}")
                 if rel in keep:
-                    aside.append((rel, _set_aside(home, rel, state)))
+                    aside.append(Aside(rel, _set_aside(home, rel, state)))
                 else:
                     _unlink(home, rel)
         for rel in paths:
@@ -356,7 +485,16 @@ def restore_paths(home, paths: Iterable[str], state=None, rev: str = "HEAD") -> 
                 r = _git(home, "--literal-pathspecs", "checkout", "-q", rev, "--", rel)
                 if r.returncode != 0:
                     raise TendError(f"git checkout {rel} failed: {r.stderr.strip()}")
+                if rel in copies:
+                    aside.append(Aside(rel, copies.pop(rel), copy=True))
     except (TendError, LinkRefused, OSError) as e:
+        # a copy whose file still holds what was copied lost nothing: dropped;
+        # one whose file may have changed is kept, and named
+        for rel, dest in copies.items():
+            if _same_bytes(home / rel, Path(dest)):
+                _drop_copy(state, slug_of(home), dest)
+            else:
+                aside.append(Aside(rel, dest, copy=True))
         if not aside:
             raise
         raise _partly(e, aside) from e
@@ -431,10 +569,12 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     """Tend one home (spec section 6). Not a clone, holding links, or mid-merge:
     left alone, silently (due reports those). Its lock held, or a fresh
     .git/index.lock: left for the next tick, with a line. A stale index.lock is
-    removed. Then any changes to its pace paths are put back path by path (an
-    untracked letter or journal file is set aside, never deleted), or, at the
-    home's first full tend on the new code, committed once as the fleet and
-    pushed (a leftover that is not a regular file is removed even then); that
+    removed. Then any changes to its pace paths are put back path by path
+    (restore_paths: an untracked file is moved out to <state>/.set-aside/, an
+    uncommitted change to a tracked file is copied there first, and only a link
+    is removed), or, at the home's first full tend on the new code, committed
+    once as the fleet and pushed (a leftover that is not a regular file is
+    put back even then: a folder set aside, a link removed); that
     first tend is then kept in its attempt record (first_tend_done), and a home
     skipped at a tick keeps its leftovers until its own. Returns log lines.
     A put-back a failed guard left (put_back_pending) is finished first: what
@@ -500,7 +640,7 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
         if paths and not first:
             aside = restore_paths(home, paths, state)
             return (lines + [f"{slug}: a killed beat's leftovers restored: {', '.join(paths)}"]
-                    + [set_aside_line(slug, rel, dest) for rel, dest in aside])
+                    + [_aside_line(slug, a) for a in aside])
         if paths and own is not None:
             raise FirstTickPending(f"{slug}: the fleet has not tended this home since the switch")
         if paths:
@@ -511,7 +651,7 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
                 gone = [p for p in odd if p not in dict(aside)]
                 if gone:
                     lines.append(f"{slug}: leftovers that are not regular files removed: {', '.join(gone)}")
-                lines += [set_aside_line(slug, rel, dest) for rel, dest in aside]
+                lines += [_aside_line(slug, a) for a in aside]
             committed = fleet_commit(home, keep, LEFTOVER_SUBJECT) if keep else []
             if committed:
                 lines.append(f"{slug}: old-code leftover committed as the fleet ({_pushed(fleet_push(home))}): "
@@ -711,7 +851,7 @@ def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_hea
     said = (_put_back_line(slug, base, paths) if paths else
             f"{slug}: a put-back left after a beat with tools found none of its pace files to put back as "
             f"{_short(base)} has them — cleared")
-    return [said] + [set_aside_line(slug, rel, dest, committed=True) for rel, dest in aside]
+    return [said] + [_aside_line(slug, a, committed=True) for a in aside]
 
 
 def _told(state, slug: str) -> Optional[str]:
@@ -786,7 +926,7 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
             held = (f"; the commit before the beat could not be kept for the fleet ({unkept}), so a person "
                     f"must put them back as {_short(base)} has them")
         some = f"; some of {', '.join(tried)} may be put back already" if tried else ""
-        earlier = ("; set aside earlier, not deleted: " + ", ".join(f"{rel} at {dest}" for rel, dest in aside)
+        earlier = ("; set aside earlier, not deleted: " + ", ".join(_where(a) for a in aside)
                    if aside else "")
         err = TendError(f"{e}{earlier}{some}{held}{told}")
         err.aside = tuple(aside) + tuple(getattr(e, "aside", ()))
@@ -799,7 +939,7 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
         if why is not None:
             raise TendError(f"{', '.join(paths)} put back, but the citizen could not be told ({why})")
         return paths
-    notes += [set_aside_line(slug, rel, dest, committed=i < committed) for i, (rel, dest) in enumerate(aside)]
+    notes += [_aside_line(slug, a, committed=i < committed) for i, a in enumerate(aside)]
     if why is not None:
         notes.append(f"{slug}: its notice could not be kept ({why}) — its next free beat is not told "
                      "that its pace files were put back")

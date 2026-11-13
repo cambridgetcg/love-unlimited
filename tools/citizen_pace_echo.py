@@ -20,7 +20,9 @@ against the spec's thresholds. It reads the homes and never writes into them.
 Run it as `python3 -I tools/citizen_pace_echo.py --homes <read-only clones>
 --endpoint <url> [--model <name>] ...`; the report goes to stdout. Exit: 0
 holds (no threshold crossed, every set measured); 1 rework (a threshold
-crossed); 2 a usage error; 3 not measured, or incomplete.
+crossed); 2 a usage error; 3 not measured, or incomplete (an --answers file
+that could not be written, or any error the tool did not foresee, is also 3:
+a crash never reads as rework).
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from typing import Callable, List, Optional, Sequence, Tuple  # noqa: E402
 from citizen_pace_lib import clock, due, homes, letter, paragraph  # noqa: E402
 from citizen_pace_lib import cadence as cad  # noqa: E402
 from citizen_pace_lib import record as records  # noqa: E402
+from citizen_pace_lib.probe import _NoRedirect  # noqa: E402  (one request; a redirect is never followed)
 from citizen_pace_lib.words import (MENU, Pace, Unclear, answer_lines, combine, compare,  # noqa: E402
                                     parse_pace_phrase)
 
@@ -320,12 +323,14 @@ def payload(prompt: Prompt, model: str) -> Tuple[str, dict]:
 
 
 def ask_model(endpoint: str, model: str, prompt: Prompt, timeout: float = TIMEOUT) -> str:
-    """One answer, stripped, read as reflect reads it. No proxy. Any failure
-    raises: an answer that could not be had is never taken for silence."""
+    """One answer, stripped, read as reflect reads it. No proxy, and no
+    redirect followed: only the endpoint given is asked. Any failure raises
+    (a redirect as an HTTP error): an answer that could not be had is never
+    taken for silence."""
     path, body = payload(prompt, model)
     req = urllib.request.Request(endpoint + path, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     with opener.open(req, timeout=timeout) as resp:
         out = json.loads(resp.read().decode("utf-8"))
     text = out["choices"][0]["message"]["content"] if model else out["response"]
@@ -510,7 +515,9 @@ def verdict(m: Measure) -> Verdict:
         missing.append(had)
     if missing:
         return Verdict("incomplete", tuple(missing), NOT_MEASURED)
-    return Verdict("holds", ("no threshold crossed",), HOLDS)
+    each = ", ".join(f"{KIND_SHORT[k]} {m.kinds[k].answered}" for k in KINDS)
+    answered = f"answered {m.tally(KINDS, 'answered')} of {total} samples: {each}"
+    return Verdict("holds", ("no threshold crossed", answered), HOLDS)
 
 
 # -- the report -----------------------------------------------------------------------------
@@ -697,7 +704,7 @@ class Config:
     homes: Path
     endpoint: str
     model: str
-    roster: Path
+    roster: object          # the roster's names (a tuple), read by config; its path when souls are given
     record: dict
     souls: Optional[tuple]
     per_group: int
@@ -790,12 +797,17 @@ def config(a: argparse.Namespace) -> Config:
         raise Usage(f"--proposal {a.proposal!r} is no pace ({proposal.reason})")
     try:
         record = records.load_record(Path(a.record) if a.record else None)
-    except ValueError as e:
-        raise Usage(str(e)) from None
+    except (ValueError, OSError) as e:
+        raise Usage(f"--record {a.record or records.default_record_path()}: cannot be read ({e})") from None
     souls = tuple(s.strip() for s in a.souls.split(",") if s.strip()) if a.souls is not None else None
-    roster = Path(a.roster)
-    if souls is None and not roster.is_file():
-        raise Usage(f"--roster {a.roster} is not a file")
+    roster: object = Path(a.roster)
+    if souls is None:
+        if not roster.is_file():
+            raise Usage(f"--roster {a.roster} is not a file")
+        try:
+            roster = tuple(due.read_roster(roster))      # read here, so a bad roster is a usage error
+        except (ValueError, OSError) as e:
+            raise Usage(f"--roster {a.roster}: cannot be read ({e})") from None
     answers = Path(a.answers) if a.answers else None
     if answers is not None:
         if _inside(answers, homes_dir):
@@ -815,6 +827,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     except Usage as e:
         print(f"citizen_pace_echo.py: {e}", file=sys.stderr)
         return USAGE
+    try:
+        return measure_and_report(cfg)
+    except Exception as e:      # noqa: BLE001 — exit 1 is the "rework" verdict, so no crash may reach it
+        print(f"citizen_pace_echo.py: stopped by an error ({type(e).__name__}: {e}); nothing is measured",
+              file=sys.stderr)
+        return NOT_MEASURED
+
+
+def measure_and_report(cfg: Config) -> int:
+    """Ask, measure and report; the verdict's exit code. The answers file, when
+    asked for, is written before the report; if it cannot be, that is said on
+    stderr, the report still follows, and the run is not measured (3)."""
     now = clock.now()
     souls, skipped = select_souls(cfg.homes, cfg.roster, cfg.record, now, souls=cfg.souls,
                                   per_group=cfg.per_group)
@@ -833,11 +857,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     v = verdict(m)
     head = Header(cfg.model, cfg.endpoint, cfg.machine, now, cfg.confirm_beat, cfg.samples, cfg.proposal,
                   cfg.letters_given, cfg.show_back_given)
+    code = v.code
+    if cfg.answers is not None:
+        try:
+            write_answers(cfg.answers, samples)
+        except OSError as e:
+            print(f"citizen_pace_echo.py: --answers {cfg.answers} could not be written ({e}); the run is not "
+                  "measured", file=sys.stderr, flush=True)
+            code = NOT_MEASURED
     sys.stdout.write(report(m, v, head, souls, prompts, skipped, notes))
     sys.stdout.flush()
-    if cfg.answers is not None:
-        write_answers(cfg.answers, samples)
-    return v.code
+    return code
 
 
 if __name__ == "__main__":

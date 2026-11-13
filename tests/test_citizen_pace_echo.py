@@ -15,13 +15,17 @@ from __future__ import annotations
 
 import ast
 import collections
+import contextlib
 import hashlib
+import io
 import itertools
 import json
 import os
 import stat
 import sys
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -435,6 +439,12 @@ class TestVerdict(unittest.TestCase):
         v = self.measured(para=[""] * 10, pending=[""] * 10)
         self.assertEqual((v.word, v.code), ("holds", echo.HOLDS))
 
+    def test_holds_names_the_answered_totals(self):
+        # fix wave A (ay): thin evidence shows in the one line people quote
+        v = self.measured(para=[""] * 10, pending=[""] * 3)
+        self.assertEqual(v.reasons, ("no threshold crossed",
+                                     "answered 15 of 15 samples: ordinary 10, letter 1, pace letter 1, proposal 3"))
+
     def test_a_pace_line_in_more_than_one_paragraph_beat_in_ten_is_rework(self):
         one = ["pace: asleep"] + ["A quiet day."] * 9      # 1 of 11, with the letter beat's silence
         self.assertEqual(self.measured(para=one, pending=[""]).word, "holds")
@@ -524,7 +534,8 @@ class TestCommandLine(Case):
         self.model.reply = ""
         r = self.run_two(samples=2)
         self.assertEqual(r.returncode, echo.HOLDS, r.stderr)
-        self.assertIn("verdict: holds — no threshold crossed", r.stdout)
+        self.assertIn("verdict: holds — no threshold crossed; answered 48 of 48 samples: ordinary 16, letter 16, "
+                      "pace letter 8, proposal 8\n", r.stdout)
         # waker: ordinary + letter; aseme: ordinary, letter, proposal, pace letter; 4 rotations, 2 samples
         self.assertEqual(len(self.model.requests), (2 + 4) * 4 * 2)
         self.assertEqual({q["path"] for q in self.model.requests}, {"/v1/chat/completions"})
@@ -684,6 +695,107 @@ class TestCommandLine(Case):
                 self.assertEqual(r.returncode, echo.USAGE, r.stdout + r.stderr)
                 self.assertEqual(r.stdout, "")
         self.assertEqual(self.model.requests, [])
+
+    def test_a_bad_roster_or_record_is_a_usage_error(self):
+        # fix wave A (aw): exit 1 is the "rework" verdict, never a crash
+        rec, roster = self.two_souls()
+        url = f"http://127.0.0.1:{self.model.port}"
+        bad_roster = self.fx.root / "bad-roster.txt"
+        bad_roster.write_bytes(b"waker\n\xff\xfe not text\n")
+        folder = self.fx.root / "a-folder.json"
+        folder.mkdir()
+        cases = {
+            "a roster that is not text": (["--roster", bad_roster, "--record", rec], f"--roster {bad_roster}"),
+            "a record that is a folder": (["--roster", roster, "--record", folder], f"--record {folder}"),
+        }
+        for why, (args, needle) in cases.items():
+            with self.subTest(why=why):
+                r = self.echo("--homes", self.fx.citizens, *args, "--endpoint", url, "--model", "m")
+                self.assertEqual(r.returncode, echo.USAGE, r.stdout + r.stderr)
+                self.assertEqual(r.stdout, "")
+                self.assertTrue(r.stderr.startswith(f"citizen_pace_echo.py: {needle}"), r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(self.model.requests, [])
+
+    def test_answers_that_cannot_be_written_are_not_measured(self):
+        # fix wave A (aw): the answers are written before the report; a failed
+        # write is said on stderr and is never "rework"
+        self.model.reply = "pace: listening"
+        rec, roster = self.two_souls()
+        folder = self.fx.root / "answers"
+        folder.mkdir()
+        out = folder / "answers.jsonl"
+        folder.chmod(0o555)
+        self.addCleanup(folder.chmod, 0o755)
+        r = self.echo("--homes", self.fx.citizens, "--roster", roster, "--record", rec, "--endpoint",
+                      f"http://127.0.0.1:{self.model.port}", "--model", "fixture-model", "--samples", 1,
+                      "--answers", out)
+        self.assertEqual(r.returncode, echo.NOT_MEASURED, r.stderr)
+        self.assertIn(f"citizen_pace_echo.py: --answers {out} could not be written (", r.stderr)
+        self.assertIn("; the run is not measured\n", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertIn("verdict: rework", r.stdout)
+        self.assertFalse(out.exists())
+
+    def test_any_other_failure_is_not_measured(self):
+        # fix wave A (aw): an error the tool did not foresee exits 3, never 1
+        rec, roster = self.two_souls()
+        argv = ["--homes", str(self.fx.citizens), "--roster", str(roster), "--record", str(rec), "--endpoint",
+                f"http://127.0.0.1:{self.model.port}", "--model", "m", "--samples", "1"]
+        err = io.StringIO()
+        with mock.patch.object(echo, "measure", side_effect=RuntimeError("a fault")), \
+                contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()) as out:
+            code = echo.main(argv)
+        self.assertEqual(code, echo.NOT_MEASURED)
+        self.assertIn("citizen_pace_echo.py: stopped by an error (RuntimeError: a fault); nothing is measured\n",
+                      err.getvalue())
+        self.assertEqual(out.getvalue(), "")
+
+    def test_a_redirect_is_never_followed(self):
+        # fix wave A (ax): the tool talks only to the endpoint it is given; urllib
+        # would follow a 302 as a GET to wherever it points
+        asked = []
+
+        def serve(handler):
+            server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+            return server.server_address[1]
+
+        class Elsewhere(BaseHTTPRequestHandler):
+            def do_GET(self):
+                asked.append(self.path)
+                body = json.dumps({"choices": [{"message": {"content": ""}}], "response": ""}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        elsewhere = serve(Elsewhere)
+
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{elsewhere}/elsewhere")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *_args):
+                pass
+
+        rec, roster = self.two_souls()
+        r = self.echo("--homes", self.fx.citizens, "--roster", roster, "--record", rec, "--endpoint",
+                      f"http://127.0.0.1:{serve(Redirect)}", "--model", "m", "--samples", 1)
+        self.assertEqual(r.returncode, echo.NOT_MEASURED, r.stdout + r.stderr)
+        self.assertEqual(asked, [])
+        self.assertIn("verdict: not measured — no sample was answered; 24 of 24 samples could not be had",
+                      r.stdout)
 
     def test_it_runs_isolated_and_imports_nothing_from_where_it_runs(self):
         canary = self.fx.root / "imported.txt"

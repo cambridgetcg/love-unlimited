@@ -323,6 +323,11 @@ elif step == "tend":
     except tend.LockTaken as e:
         print(e)
         code = 4
+    except tend.NotTended as e:
+        # tend stopped before it looked (a git at work in the home): the beat
+        # stops there too, as the gate does at that lock (not due, mid-merge)
+        print(e)
+        code = 5
     except (tend.TendError, homes.LinkRefused, OSError) as e:
         print(e)
         code = 1
@@ -436,6 +441,7 @@ TENDED="$(reflect_py tend "$$" 2>&1)"
 case $? in
   0) log_lines "$TENDED" ;;
   4) log_lines "$TENDED — busy, no beat"; record busy; exit 0 ;;
+  5) log_lines "$TENDED"; say "$NAME is not due (mid-merge) — no beat"; record not-due; exit 0 ;;
   2) fail "$NAME reflect: the fleet has not tended this home since the switch; its uncommitted files are kept — no beat" ;;
   *) fail "$NAME reflect: its pace files could not be put back${TENDED:+ ($TENDED)} — no beat" ;;
 esac

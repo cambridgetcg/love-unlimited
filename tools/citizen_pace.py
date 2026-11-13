@@ -59,6 +59,8 @@ commands:
   guard-restore <home> --state <dir> [--base <commit>]
   tend <homes-dir> --roster <f> --state <dir>
   tend-home <home> --state <dir> --pid <pid>
+  put-back-pending <home> --state <dir>
+  keep-put-back <home> --state <dir> --base <commit>
   sync <homes-dir> --roster <f> --state <dir> [--bound S] [--within S]
   migrate --heard-late <homes-dir> [--record <f>] [--state <dir>] [--commit]
   plan <days> <homes-dir> --roster <f> [--cap N] [--tick-hours H]
@@ -68,7 +70,8 @@ commands:
   rollback-prepare <homes-dir> --roster <f> [--state <dir>] [--no-push]
 
 exit: 0 ok or due; 4 not due, busy or a host fault; 2 a usage error, or a home
-that cannot be read; tend-home: 3 the citizen's lock is another run's
+that cannot be read; tend-home: 3 the citizen's lock is another run's;
+put-back-pending: 0 one is pending, 4 none
 """
 
 
@@ -375,6 +378,10 @@ def cmd_tend_home(a) -> int:
     except tend.LockTaken as e:
         print(e)
         return TAKEN
+    except tend.NotTended as e:
+        # a git at work in the home: a beat with tools is guarded after it, so it
+        # may go on once the home has had its first tend (the checks below)
+        lines = str(e).splitlines()
     for line in lines:
         print(line)
     if not tend.first_tend_done(a.state, slug):
@@ -385,6 +392,35 @@ def cmd_tend_home(a) -> int:
         print(f"{slug}: pace files a beat with tools committed itself still wait to be put back; no beat "
               "builds on them", file=sys.stderr)
         return ERROR
+    return OK
+
+
+def p_put_back_pending():
+    p = _parser("put-back-pending", "Is a put-back a failed guard left pending? 0 yes, 4 no.")
+    p.add_argument("home")
+    p.add_argument("--state", required=True)
+    return p
+
+
+def cmd_put_back_pending(a) -> int:
+    _home_path, slug = _home(a)
+    return OK if tend.put_back_pending(a.state, slug) else NOT
+
+
+def p_keep_put_back():
+    p = _parser("keep-put-back", "A beat that ended before its guard: keep the put-back of its own commits.")
+    p.add_argument("home")
+    p.add_argument("--state", required=True)
+    p.add_argument("--base", required=True, help="the commit HEAD was before the beat")
+    return p
+
+
+def cmd_keep_put_back(a) -> int:
+    """0 kept (a line printed) or nothing to keep (HEAD is still --base)."""
+    home, slug = _home(a)
+    if tend.keep_put_back(home, a.state, a.base):
+        print(f"{slug}: its beat made commits of its own and ended before its guard — the fleet's tend puts "
+              f"its pace files back as {a.base[:12]} has them, and nothing is pushed until then")
     return OK
 
 
@@ -455,6 +491,8 @@ COMMANDS = {
     "lock": (p_lock, cmd_lock), "unlock": (p_unlock, cmd_unlock), "probe": (p_probe, cmd_probe),
     "guard-restore": (p_guard_restore, cmd_guard_restore), "tend": (p_tend, cmd_tend),
     "tend-home": (p_tend_home, cmd_tend_home),
+    "put-back-pending": (p_put_back_pending, cmd_put_back_pending),
+    "keep-put-back": (p_keep_put_back, cmd_keep_put_back),
     "sync": (p_sync, cmd_sync), "migrate": (p_migrate, cmd_migrate),
     "rollback-prepare": (p_rollback_prepare, cmd_rollback_prepare),
 }

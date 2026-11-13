@@ -92,6 +92,14 @@ os.execv(sys.executable, [sys.executable, "-I", {real!r}] + sys.argv[1:])
 '''
 
 
+def signals_as_default() -> None:
+    """For a child the test signals: INT and HUP as the default, even when this
+    run inherited them ignored (a suite run in the background); exec keeps an
+    ignored signal ignored, and bash cannot trap one it found ignored."""
+    for sig in (signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_DFL)
+
+
 class _Picky(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -460,6 +468,22 @@ class TestTickStart(Case):
         lock_pid, parent = seen.read_text(encoding="utf-8").split()
         self.assertEqual(lock_pid, parent)
 
+    def test_an_inherited_pace_deadline_is_not_the_fleet_s(self):
+        # fix round 1 of Part 2: PACE_DEADLINE is a beat's own (reflect sets it); one
+        # left in the environment would cut every git call of the tick and of the
+        # beat, so the fleet unsets it, as it unsets BEAT_SUMMONS
+        self.use_stub()
+        self.v2("waker", AWAKE)
+        self.fx.roster("waker")
+        path = self.tools / "citizen-reflect.sh"
+        seen = self.fx.root / "deadline-seen"
+        path.write_text(STUB_REFLECT.replace('name="$1"\n', f'name="$1"\necho "${{PACE_DEADLINE:-unset}}" > "{seen}"\n', 1),
+                        encoding="utf-8")
+        self.ok(self.fleet(PACE_DEADLINE="1"))           # long past
+        self.assertEqual(self.called(), ["waker"])
+        self.assertEqual(seen.read_text(encoding="utf-8").strip(), "unset")
+        self.assertNotIn("not on a branch", self.log())
+
     def test_a_failing_step_ends_the_tick_with_exit_1(self):
         # fix wave A (ah)
         self.use_stub()
@@ -626,6 +650,48 @@ class TestChild(Case):
                     os.kill(int(grandchild.read_text()), signal.SIGKILL)
                 except (ProcessLookupError, ValueError):
                     pass
+
+    def test_int_and_hup_reach_the_beat_in_flight_as_term(self):
+        # fix round 1 of Part 2: the beat is sent TERM whatever stopped the fleet,
+        # so its exit stays among reflect's own (0, 1, 124, 143, 137)
+        for sig in (signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signal=sig.name):
+                slug = f"slow{sig.name[3:].lower()}"
+                self.use_stub(**{slug: "hang"})
+                self.v2(slug, AWAKE)
+                self.fx.roster(slug)
+                got = self.stub / f"{slug}.signal"
+                path = self.tools / "citizen-reflect.sh"
+                path.write_text(STUB_REFLECT.replace(
+                    'name="$1"\n', 'name="$1"\nfor s in TERM INT HUP; do trap "echo $s > \\"$STUB_DIR/$name.signal\\"; '
+                                   'kill \\$(cat \\"$STUB_DIR/$name.grandchild\\") 2>/dev/null; exit 1" $s; done\n', 1),
+                    encoding="utf-8")
+                grandchild = self.stub / f"{slug}.grandchild"
+                p = subprocess.Popen(["bash", str(self.fleet_sh)], env=self.env(), stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+                                     cwd=str(self.fx.root), preexec_fn=signals_as_default)
+                try:
+                    until = time.monotonic() + 60
+                    while not grandchild.exists() and time.monotonic() < until:
+                        time.sleep(0.1)
+                    self.assertTrue(grandchild.exists(), self.log())
+                    time.sleep(0.2)
+                    p.send_signal(sig)
+                    p.communicate(timeout=30)
+                    self.assertEqual(p.returncode, 1)
+                    self.assertEqual(got.read_text(encoding="utf-8").strip(), "TERM")
+                    self.assert_gone(grandchild)
+                    self.assertIn(f"the tick was stopped ({sig.name[3:]}) — its beat in flight was stopped too",
+                                  self.log())
+                finally:
+                    if p.poll() is None:
+                        os.killpg(p.pid, signal.SIGKILL)
+                        p.wait()
+                    if grandchild.exists():
+                        try:
+                            os.kill(int(grandchild.read_text()), signal.SIGKILL)
+                        except (ProcessLookupError, ValueError):
+                            pass
 
     def test_halt_mid_beat_stops_the_childs_whole_group_and_is_halted(self):
         self.use_stub(a="halt")

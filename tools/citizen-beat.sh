@@ -60,6 +60,7 @@ MODEL="${BEAT_MODEL:-sonnet}"
 MAXTURNS="${BEAT_MAX_TURNS:-25}"
 LEDGER="$LOGDIR/fleet-economy.jsonl"
 BEAT_JSON=""      # the beat's result file, made just before the beat (4)
+BASE=""; GUARDED=0  # the commit before the beat (4), and whether its guard ran (4a)
 ts(){ date "+%Y-%m-%d %H:%M:%S"; }
 # The gates sit beside the real file, not beside ~/.local/bin/citizen-beat,
 # which is a link into tools/ that `kingdom beat` runs from PATH.
@@ -175,6 +176,16 @@ if [ "${BEAT_BUDGET_ENFORCE:-0}" = "1" ]; then
   fi
 fi
 
+# keep_put_back: for the EXIT trap. A beat that ended (TERM, Ctrl-C) after it
+# began and before its guard ran may have committed a pace change itself: the
+# put-back is kept in its attempt record (no network), so the fleet's tend puts
+# it back and sync pushes nothing until then. Its uncommitted leftovers are the
+# fleet's tend's, as a killed beat's are.
+keep_put_back(){
+  [ -n "$BASE" ] && [ "$GUARDED" = "0" ] || return 0
+  log_lines "$(pace_cli keep-put-back "$REPO" --state "$STATE" --base "$BASE" 2>&1)"
+}
+
 # 1c. The citizen's lock, before anything touches its home, so this beat and a
 # fleet beat (or another hand-run) never run on one citizen at once. A lock whose
 # holder is gone, or that is older than twice the larger of its holder's bound
@@ -183,7 +194,7 @@ LOCK_OUT="$(pace_cli lock "$NAME" --state "$STATE" --pid "$$" --bound "$LOCK_BOU
 LOCK_RC=$?
 case "$LOCK_RC" in
   0) log_lines "$LOCK_OUT"
-     trap 'stop_bound; [ -z "$BEAT_JSON" ] || rm -f "$BEAT_JSON"; pace_cli unlock "$NAME" --state "$STATE" --pid "$$" >/dev/null 2>&1' EXIT ;;
+     trap 'stop_bound; keep_put_back; [ -z "$BEAT_JSON" ] || rm -f "$BEAT_JSON"; pace_cli unlock "$NAME" --state "$STATE" --pid "$$" >/dev/null 2>&1' EXIT ;;
   4) log_lines "${LOCK_OUT:-$NAME: its lock is held} — busy, no beat"
      exit 0 ;;
   *) log_lines "ERROR: $NAME's lock could not be taken — beat refused${LOCK_OUT:+ ($LOCK_OUT)}"
@@ -199,13 +210,19 @@ if [ ! -d "$REPO/.git" ]; then
     || { echo "[$(ts)] ERROR: clone failed for citizen-$NAME" | tee -a "$LOG"; exit 1; }
 fi
 cd "$REPO" || exit 1
-_bound "$FETCH_BOUND" git fetch -q origin 2>/dev/null || true
-if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
-  lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
-  if [ -z "$lr" ]; then
-    echo "[$(ts)] $NAME has no upstream — beats stay local until tended" | tee -a "$LOG"
-  elif [ "$lr" != "0/0" ]; then
-    echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended" | tee -a "$LOG"
+# A put-back a failed guard left (2d finishes it) waits for no fetch: commits
+# fetched on top of the beat's own would be built on before it is put back.
+if pace_cli put-back-pending "$REPO" --state "$STATE" >/dev/null 2>&1; then
+  log_lines "$NAME: pace files a beat with tools committed itself wait to be put back — no fetch or fast-forward until its tend has done it"
+else
+  _bound "$FETCH_BOUND" git fetch -q origin 2>/dev/null || true
+  if ! git merge -q --ff-only '@{u}' >/dev/null 2>&1; then
+    lr="$(git rev-list --left-right --count '@{u}...HEAD' 2>/dev/null | tr '\t' '/')"
+    if [ -z "$lr" ]; then
+      echo "[$(ts)] $NAME has no upstream — beats stay local until tended" | tee -a "$LOG"
+    elif [ "$lr" != "0/0" ]; then
+      echo "[$(ts)] $NAME home diverged ($lr) — beat stays local until tended" | tee -a "$LOG"
+    fi
   fi
 fi
 [ -f "WILL.md" ] || { echo "[$(ts)] ERROR: $NAME has no WILL.md — not a citizen home" | tee -a "$LOG"; exit 1; }
@@ -310,6 +327,7 @@ case "$RC" in 124|143|137) echo "[$(ts)] (beat reached its time-bound — a citi
 # far it got and whether the citizen is told.
 GUARD_OUT="$(pace_cli guard-restore "$REPO" --state "$STATE" ${BASE:+--base "$BASE"} 2>&1)"
 GUARD_RC=$?
+GUARDED=1
 HOLD_PUSH=0
 if [ "$GUARD_RC" -eq 0 ]; then
   log_lines "$GUARD_OUT"

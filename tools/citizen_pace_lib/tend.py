@@ -50,7 +50,9 @@ LEFTOVER_SUBJECT = f"tend: old-code leftover · {TAG}"
 ROLLBACK_SUBJECT = f"tend: set aside unread pace letters for rollback · {TAG}"
 GUARD_SUBJECT = f"tend: pace files put back after a beat with tools · {TAG}"
 # the attempt record's "reported" key of a put-back a failed guard left:
-# put-back:<the commit before the beat>:<the beat's head>
+# put-back:<the commit before the beat>:<the beat's head>:<the upstream tip the
+# guard saw, "-" for none>; a key of three parts (written before the tip was
+# kept) knows no tip, so nothing in it counts as upstream's
 PUT_BACK = "put-back"
 ROLLBACK_TEXT = ROLLBACK_PREFIX + ", not shown — {day}\n"
 NOTICES_NAME = ".fleet-notices"
@@ -89,6 +91,13 @@ class LockTaken(TendError):
     """A beat tending its own home (own=) no longer holds the citizen's lock:
     another run judged it stale and took it. Nothing was changed; the beat
     must stop (busy)."""
+
+
+class NotTended(TendError):
+    """A beat's own tend (own=) stopped before it could look at the home: a git
+    at work there (a fresh .git/index.lock, or one that cannot be removed) or a
+    merge or rebase in progress. Nothing was changed; the beat must not build on
+    what its tend did not see."""
 
 
 class FirstTickPending(TendError):
@@ -427,8 +436,9 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     the beat committed itself is put back as the commit before it has it.
     own: the pid of a beat that holds the citizen's lock and tends its home before
     it begins (citizen-reflect.sh, citizen-beat.sh); that lock does not keep it
-    out (a lock that is not that pid's raises LockTaken, and nothing is
-    changed), and leftovers that cannot be put back raise, since the beat must not
+    out (a lock that is not that pid's raises LockTaken, a git at work in the
+    home or a merge in progress raises NotTended, and nothing is changed), and
+    leftovers that cannot be put back raise, since the beat must not
     build on them. Before the home's first full tend such a beat finds leftovers
     that may be the old code's: it changes none of them and raises
     FirstTickPending; a home holding none has its first tend in that beat."""
@@ -443,10 +453,13 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
         raise LockTaken(f"{slug}: its lock is held by {who}, not by this beat" if who
                         else f"{slug}: its lock is gone — this beat no longer holds it")
 
-    def stopped(why: str, said: List[str]) -> List[str]:
+    def stopped(why: str, said: List[str], away: bool = False) -> List[str]:
         """Tend stops here, before looking; the fleet's tend says on every tick
         why a pending put-back waits (citizen_pace.py tend-home refuses a beat
-        on a home left unmarked or with a put-back pending)."""
+        on a home left unmarked or with a put-back pending). away: a git is at
+        work in the home, and a beat's own tend raises NotTended."""
+        if own is not None and away:
+            raise NotTended("\n".join(said))
         return said + ([_put_back_waits(slug, why)] if own is None and put_back_pending(state, slug) else [])
 
     links = forbidden_links(home)
@@ -458,15 +471,19 @@ def tend_home(home, state, *, bound: Optional[float] = None, own: Optional[int] 
     age = index_lock_age(home)
     if age is not None:
         if age <= 2 * _bound(bound):
-            return stopped(".git/index.lock is fresh", [f"{slug}: .git/index.lock is fresh — not tended this tick"])
+            return stopped(".git/index.lock is fresh", [f"{slug}: .git/index.lock is fresh — not tended this tick"],
+                           away=True)
         try:
             os.unlink(home / ".git" / "index.lock")
         except OSError as e:
             return stopped("a stale .git/index.lock could not be removed",
-                           [f"{slug}: a stale .git/index.lock could not be removed ({e}) — not tended this tick"])
+                           [f"{slug}: a stale .git/index.lock could not be removed ({e}) — not tended this tick"],
+                           away=True)
         lines.append(f"{slug}: stale .git/index.lock removed ({int(age)} s old)")
     if mid_merge(home):
-        return stopped("a merge or rebase is in progress", lines)
+        return stopped("a merge or rebase is in progress",
+                       lines + ([f"{slug}: a merge or rebase is in progress — not tended this tick"]
+                                if own is not None else []), away=True)
     try:
         pending = _put_back_key(state, slug)
         if pending:
@@ -544,13 +561,44 @@ def _short(sha: str) -> str:
     return sha[:12]
 
 
-def _put_back_key(state, slug: str) -> Optional[Tuple[str, str, str]]:
-    """(key, base, beat head) of a put-back a failed guard left, or None."""
+def _put_back_key(state, slug: str) -> Optional[Tuple[str, str, str, Optional[str]]]:
+    """(key, base, beat head, upstream tip or None) of a put-back a failed guard
+    left, or None. An older key of three parts knows no tip (None)."""
     for k in attempts.load(state, slug)["reported"]:
         parts = k.split(":")
-        if len(parts) == 3 and parts[0] == PUT_BACK:
-            return k, parts[1], parts[2]
+        if len(parts) in (3, 4) and parts[0] == PUT_BACK:
+            return k, parts[1], parts[2], _put_back_key_tip(k)
     return None
+
+
+def _put_back_record(home, base: str, beat_head: str) -> str:
+    """The key that keeps a put-back: base, the beat's head, and the upstream tip
+    as it stands now (_fetched_tip), kept so a later fetch cannot change what
+    counts as upstream's when the fleet's tend finishes it."""
+    return f"{PUT_BACK}:{base}:{beat_head}:{_fetched_tip(home) or '-'}"
+
+
+def keep_put_back(home, state, base: str) -> Optional[str]:
+    """When HEAD has moved since base (a beat made commits of its own), keep the
+    put-back in the attempt record, so the fleet's tend finishes it and sync
+    holds the home meanwhile; the key, or None when HEAD is base. For a beat
+    that ended before its guard ran (citizen-beat.sh's EXIT trap). Raises
+    TendError when HEAD cannot be read, OSError / ValueError / LinkRefused when
+    the record cannot be written."""
+    home = Path(home)
+    beat_head = head(home)
+    if not beat_head:
+        raise TendError("HEAD cannot be read")
+    if beat_head == base:
+        return None
+    key = _put_back_record(home, base, beat_head)
+    attempts.mark_reported(state, slug_of(home), key)
+    return key
+
+
+def _put_back_key_tip(key: str) -> Optional[str]:
+    parts = key.split(":")
+    return parts[3] if len(parts) == 4 and parts[3] != "-" else None
 
 
 def put_back_pending(state, slug: str) -> bool:
@@ -582,16 +630,16 @@ def _merge_base(home, a: str, b: str) -> Optional[str]:
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
-def _beat_wrote(home, base: str, beat_head: str) -> List[Tuple[str, List[str]]]:
+def _beat_wrote(home, base: str, beat_head: str, tip: Optional[str]) -> List[Tuple[str, List[str]]]:
     """What the beat changed in its own commits (base..beat_head), as
     [(the commit to put it back from, the paths)]: a pace file is put back as
     base has it, except one that upstream commits the beat merged or rebased
-    onto changed (what the tracking ref was given by a fetch, _fetched_tip),
-    which is left as upstream made it, or, where the beat then changed it
-    again, put back as upstream has it."""
+    onto changed (upstream: what the tracking ref had been given by a fetch
+    when the guard ran, `tip`), which is left as upstream made it, or, where
+    the beat then changed it again, put back as upstream has it. With no tip
+    known, nothing counts as upstream's."""
     changed = _committed_between(home, base, beat_head, GUARD_PATHS)
-    tip = _fetched_tip(home) if changed else None
-    theirs = _merge_base(home, beat_head, tip) if tip else None
+    theirs = _merge_base(home, beat_head, tip) if tip and changed else None
     fork = _merge_base(home, base, theirs) if theirs else None
     upstream = set(_committed_between(home, fork, theirs, changed)) if fork else set()
     mine = [p for p in changed if p not in upstream]
@@ -617,12 +665,13 @@ def _put_back(home: Path, state, wrote: List[Tuple[str, List[str]]]) -> Tuple[Li
     return paths, aside
 
 
-def _put_back_since(home: Path, state, base: str, beat_head: str) -> Tuple[List[str], list]:
+def _put_back_since(home: Path, state, base: str, beat_head: str,
+                    tip: Optional[str]) -> Tuple[List[str], list]:
     """The pace files the beat changed in its own commits (_beat_wrote), put
     back where HEAD still holds the beat's version (a later commit's change is
     not the beat's), and committed as the fleet. Returns (the paths, what was
     set aside)."""
-    wrote = _beat_wrote(home, base, beat_head)
+    wrote = _beat_wrote(home, base, beat_head, tip)
     if wrote and head(home) != beat_head:
         later = set(_committed_between(home, beat_head, "HEAD", [p for _r, ps in wrote for p in ps]))
         wrote = [(rev, kept) for rev, kept in ((r, [p for p in ps if p not in later]) for r, ps in wrote)
@@ -642,17 +691,20 @@ def _put_back_line(slug: str, base: str, paths: List[str]) -> str:
             f"as the fleet: {', '.join(paths)}")
 
 
-def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_head: str) -> List[str]:
+def _finish_put_back(home: Path, state, slug: str, key: str, base: str, beat_head: str,
+                     tip: Optional[str]) -> List[str]:
     try:
         rev = _base_commit(home, base)
     except TendError as e:
         raise TendError(f"{e}; a person puts its pace files back by hand, then removes \"{key}\" from "
                         f"\"reported\" in {attempts.record_path(state, slug)}, and sync holds the home until "
                         "then") from e
-    paths, aside = _put_back_since(home, state, rev, beat_head)
+    paths, aside = _put_back_since(home, state, rev, beat_head, tip)
     attempts.clear_reported(state, slug, key)
-    return (([_put_back_line(slug, base, paths)] if paths else [])
-            + [set_aside_line(slug, rel, dest, committed=True) for rel, dest in aside])
+    said = (_put_back_line(slug, base, paths) if paths else
+            f"{slug}: a put-back left after a beat with tools found none of its pace files to put back as "
+            f"{_short(base)} has them — cleared")
+    return [said] + [set_aside_line(slug, rel, dest, committed=True) for rel, dest in aside]
 
 
 def _told(state, slug: str) -> Optional[str]:
@@ -691,14 +743,16 @@ def guard_restore(home, state, base: Optional[str] = None, notes: Optional[list]
             if not beat_head:
                 raise TendError("HEAD cannot be read after the beat")
             if beat_head != base:
-                # the beat made commits of its own: kept first, so the fleet finishes what this cannot
-                kept = f"{PUT_BACK}:{base}:{beat_head}"
+                # the beat made commits of its own: kept first, with the upstream tip
+                # as it is now, so the fleet finishes what this cannot
+                kept = _put_back_record(home, base, beat_head)
+                tip = _put_back_key_tip(kept)
                 try:
                     attempts.mark_reported(state, slug, kept)
                 except (OSError, ValueError, LinkRefused) as e:
                     kept, unkept = None, str(e) or type(e).__name__
                 rev = _base_commit(home, base)
-                wrote = _beat_wrote(home, rev, beat_head)
+                wrote = _beat_wrote(home, rev, beat_head, tip)
                 tried = sorted(p for _r, ps in wrote for p in ps)
                 if wrote:
                     tried, aside = _put_back(home, state, wrote)

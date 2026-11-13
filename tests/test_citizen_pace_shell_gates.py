@@ -107,6 +107,14 @@ class Case(h.FixtureCase):
         return (self.fx.memory / f"citizen-{slug}.log").read_text(encoding="utf-8")
 
 
+def signals_as_default() -> None:
+    """For a child the test signals: INT and HUP as the default, even when this
+    run inherited them ignored (a suite run in the background); exec keeps an
+    ignored signal ignored, and bash cannot trap one it found ignored."""
+    for sig in (signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_DFL)
+
+
 def alive(pid: int) -> bool:
     """The process is there and not a zombie (ps reads it so)."""
     try:
@@ -713,6 +721,77 @@ class TestGuardRestore(Case):
         self.ok(self.fx.pace("sync", *args, env=self.env()))
         self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), self.fx.head(home))
         self.assertEqual([n["key"] for n in attempts.load(self.state, "maker")["notices"]], [tend.RESTORED])
+
+    def test_a_pending_put_back_is_finished_before_any_fetch(self):
+        # fix round 1 of Part 2 (A1): a put-back a failed guard left waits; step 2's
+        # fetch and fast-forward would bring another host's commits in on top of the
+        # beat's own pushed REST, so they wait until tend-home has finished it
+        home = self.fx.make_home("maker", cadence="the pace before the beat\n", when=HOME_MADE)
+        tend.mark_first_tend(self.state, "maker")
+        bare = self.fx.give_upstream(home)
+        base = self.fx.head(home)
+        self.fx.write(home, "CADENCE.md", "the beat's own pace\n")
+        beat_head = self.fx.commit(home, "my own pace", author=h.beat_author("maker"))
+        self.fx.git(home, "push", "-q", "origin", "HEAD")
+        attempts.mark_reported(self.state, "maker", f"{tend.PUT_BACK}:{base}:{beat_head}:{base}")
+        elsewhere = self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("maker"))
+        r = self.ok(self.beat("maker"))
+        self.assertIn("maker: pace files a beat with tools committed itself wait to be put back — no fetch or "
+                      "fast-forward until its tend has done it", r.stdout)
+        self.assertIn(f"maker: pace files a beat with tools committed itself put back as {base[:12]} has them, "
+                      "as the fleet: CADENCE.md", r.stdout)
+        self.assertEqual(self.fx.claude_calls(), ["citizen-maker"])
+        self.assertEqual(self.fx.git(home, "rev-parse", "origin/main"), beat_head)    # nothing fetched
+        self.assertEqual(self.fx.git(bare, "rev-parse", "HEAD"), elsewhere)
+        self.assertEqual((home / "CADENCE.md").read_text(encoding="utf-8"), "the pace before the beat\n")
+        self.assertFalse(tend.put_back_pending(self.state, "maker"))
+
+    def test_a_signal_after_the_beat_committed_its_own_rest_leaves_a_put_back(self):
+        # fix round 1 of Part 2 (C1): a TERM (or a Ctrl-C) after a beat with full
+        # tools committed REST itself ends the script before its guard; the EXIT
+        # trap keeps the put-back, so the fleet's tend finishes it and sync holds
+        # the home meanwhile
+        home = self.fx.make_home("waker", when=HOME_MADE)
+        tend.mark_first_tend(self.state, "waker")
+        base = self.fx.head(home)
+        started = self.fx.root / "claude-pid"
+        self.fx.write_bin("claude", "#!/bin/sh\nprintf 'mine\\n' > REST\n"
+                                    "git add REST >/dev/null 2>&1; git commit -q -m 'my own rest' >/dev/null 2>&1\n"
+                                    f'echo "$$" > "{started}.tmp"; mv "{started}.tmp" "{started}"\n'
+                                    "exec sleep 60\n")
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=sig.name):
+                if started.exists():
+                    started.unlink()
+                p = subprocess.Popen(["bash", str(BEAT), "waker"], env=self.env(BEAT_FULL_TOOLS="1"),
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     preexec_fn=signals_as_default)
+                child = None
+                try:
+                    until = time.monotonic() + 30
+                    while not started.exists() and time.monotonic() < until:
+                        time.sleep(0.1)
+                    self.assertTrue(started.exists(), "the beat never started")
+                    child = int(started.read_text(encoding="utf-8"))
+                    p.send_signal(sig)
+                    p.communicate(timeout=30)
+                finally:
+                    if p.poll() is None:
+                        p.kill()
+                        p.wait()
+                    if child and alive(child):
+                        os.kill(child, signal.SIGKILL)
+                beat_head = self.fx.head(home)
+                self.assertEqual(self.fx.subjects(home)[0], "my own rest")
+                self.assertTrue(tend.put_back_pending(self.state, "waker"))
+                self.assertIn(f"{tend.PUT_BACK}:{base}:{beat_head}:-", attempts.load(self.state, "waker")["reported"])
+                self.assertFalse(os.path.lexists(self.state / "waker.lock"))
+                lines = tend.tend_homes(self.fx.citizens, ["waker"], self.state)
+                self.assertIn(f"waker: pace files a beat with tools committed itself put back as {base[:12]} has "
+                              "them, as the fleet: REST", lines)
+                self.assertFalse(os.path.lexists(home / "REST"))
+                self.assertFalse(tend.put_back_pending(self.state, "waker"))
+                base = self.fx.head(home)
 
     def test_a_home_before_its_first_tend_gets_no_beat_with_tools(self):
         # fix round 1: before a home's first full tend, what is uncommitted under its

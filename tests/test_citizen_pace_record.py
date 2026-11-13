@@ -1205,6 +1205,78 @@ class TestGuardRestore(Case):
         self.assertEqual((teo / "REST").read_text(encoding="utf-8"), "chosen on the Studio\n")
         self.assertEqual(self.files_in(teo), [("D", "EVENT-ONLY")])
 
+    def test_a_put_back_finished_later_keeps_the_tip_the_guard_saw(self):
+        # fix round 1 of Part 2 (A1): a beat with full tools commits its own REST
+        # and pushes it; its guard cannot commit the put-back; another host pushes
+        # on top, and a fetch and fast-forward bring that in before the fleet's
+        # tend. The upstream tip is the one the guard saw, kept in the key, never
+        # read again later, so the beat's own REST is still put back
+        home = self.fx.make_home("kalam", cadence=V2, when="2026-11-01T00:00Z")
+        self.past_first_tick("kalam")
+        bare = self.fx.give_upstream(home)
+        base = self.fx.head(home)
+        tip = self.fx.git(home, "rev-parse", "origin/main")
+        self.fx.write(home, "REST", "the beat's own rest\n")
+        beat_head = self.fx.commit(home, "my own rest", author=h.beat_author("kalam"))
+        self.fx.git(home, "push", "-q", "origin", "HEAD")
+        real = tend._git
+
+        def git(home_, *args, **kw):
+            if "commit" in args:
+                return subprocess.CompletedProcess(args, 1, "", "error: gpg failed to sign the data")
+            return real(home_, *args, **kw)
+
+        with mock.patch.object(tend, "_git", git):
+            with self.assertRaises(tend.TendError):
+                tend.guard_restore(home, self.fx.state, base=base)
+        self.assertIn(f"{tend.PUT_BACK}:{base}:{beat_head}:{tip}", attempts.load(self.fx.state, "kalam")["reported"])
+        self.fx.git(home, "checkout", "-q", "HEAD", "--", "REST")      # as a later tend would find it
+        self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("kalam"))
+        self.fx.git(home, "fetch", "-q", "origin")
+        self.fx.git(home, "merge", "-q", "--ff-only", "@{u}")
+        self.assertEqual(self.tend("kalam"), [
+            f"kalam: pace files a beat with tools committed itself put back as {base[:12]} has them, "
+            "as the fleet: REST"])
+        self.assertFalse(os.path.lexists(home / "REST"))
+        self.assertEqual(self.fx.git(home, "ls-tree", "--name-only", "HEAD", "--", "REST"), "")
+        self.assertFalse(tend.put_back_pending(self.fx.state, "kalam"))
+
+    def test_an_older_key_with_no_tip_puts_the_beat_s_change_back(self):
+        # fix round 1 of Part 2: a key written before the tip was kept
+        # (put-back:<base>:<head>) knows no upstream tip, so nothing counts as
+        # upstream's: what the beat changed is put back
+        home = self.fx.make_home("kalam", cadence=V2, when="2026-11-01T00:00Z")
+        self.past_first_tick("kalam")
+        bare = self.fx.give_upstream(home)
+        base = self.fx.head(home)
+        self.fx.write(home, "REST", "the beat's own rest\n")
+        beat_head = self.fx.commit(home, "my own rest", author=h.beat_author("kalam"))
+        self.fx.git(home, "push", "-q", "origin", "HEAD")
+        attempts.mark_reported(self.fx.state, "kalam", f"{tend.PUT_BACK}:{base}:{beat_head}")
+        self.fx.push_from_elsewhere(bare, "notes-elsewhere.md", "x\n", author=h.beat_author("kalam"))
+        self.fx.git(home, "fetch", "-q", "origin")
+        self.fx.git(home, "merge", "-q", "--ff-only", "@{u}")
+        self.assertEqual(self.tend("kalam"), [
+            f"kalam: pace files a beat with tools committed itself put back as {base[:12]} has them, "
+            "as the fleet: REST"])
+        self.assertFalse(os.path.lexists(home / "REST"))
+
+    def test_a_put_back_that_finds_nothing_to_put_back_says_so(self):
+        # fix round 1 of Part 2: finishing a put-back that puts nothing back is
+        # said, once, as the key is cleared
+        home = self.fx.make_home("kalam", cadence=V2, when="2026-11-01T00:00Z")
+        self.past_first_tick("kalam")
+        base = self.fx.head(home)
+        self.fx.write(home, "notes.md", "the beat's own work\n")
+        beat_head = self.fx.commit(home, "my own work", author=h.beat_author("kalam"))
+        attempts.mark_reported(self.fx.state, "kalam", f"{tend.PUT_BACK}:{base}:{beat_head}:-")
+        self.assertEqual(self.tend("kalam"), [
+            f"kalam: a put-back left after a beat with tools found none of its pace files to put back as "
+            f"{base[:12]} has them — cleared"])
+        self.assertFalse(tend.put_back_pending(self.fx.state, "kalam"))
+        self.assertEqual(self.fx.head(home), beat_head)
+        self.assertEqual(self.tend("kalam"), [])
+
     def test_an_inherited_pathspec_setting_does_not_blind_the_guard(self):
         # fix round 1: GIT_LITERAL_PATHSPECS=1 would read ':(literal,icase)REST' as a
         # file of that name and match nothing; git is run without it

@@ -34,7 +34,8 @@ NOTICE_CAP = 20
 SEEDED = "now"
 _SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
 _ID = re.compile(r"\S{1,200}")
-_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,99}")
+# up to 200: tend's put-back:<base>:<beat head>:<upstream tip> is 131 with SHA-1
+_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}")
 # what an attempt's outcome may change, kept so a second outcome for the same
 # attempt (the fleet's host-failed after the child's home-failed) can undo it
 _UNDO = ("last_beat", "seeded", "failures", "retry_after", "busy_ticks")

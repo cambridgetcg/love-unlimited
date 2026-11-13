@@ -352,6 +352,30 @@ class TestLock(Case):
         self.assertIsNone(attempts.load(self.state, "waker")["attempt"])
         self.assertEqual(self.fx.head(home), before)
 
+    def test_a_home_its_tend_could_not_look_at_gets_no_beat(self):
+        # fix round 1 of Part 2 (B5): tend stops before it looks at a fresh
+        # .git/index.lock (or mid-merge); if that lock is gone by the gate, a killed
+        # beat's uncommitted CADENCE.md would be committed as this beat's and pushed.
+        # The beat stops where its tend stopped, as the gate would at that lock
+        home = self.v2("waker", Pace("awake", 3), upstream=True)
+        tend.set_flag(tend.notices_path(self.state), tend.OLD_CODE_FLAG)
+        tend.mark_first_tend(self.state, "waker")
+        before = self.fx.head(home)
+        other = cad.render_cadence(Cadence("waker", 2, Pace("awake", 4), MINE, last_beat=OLD))
+        self.fx.write(home, "CADENCE.md", other)               # a killed beat with tools left it
+        lockf = home / ".git" / "index.lock"
+        lockf.write_text("", encoding="utf-8")
+        self.git_wrapper(f'[ "$a" = fetch ] && rm -f "{lockf}"')       # the other git ends meanwhile
+        r = self.ok(self.reflect("waker"))
+        self.assertIn("waker: .git/index.lock is fresh — not tended this tick", r.stdout)
+        self.assertIn("waker is not due (mid-merge) — no beat", r.stdout)
+        self.assertEqual(self.outcome("waker"), "not-due")
+        self.assertEqual(self.prompts(), [])
+        self.assertEqual(self.fx.head(home), before)
+        self.assertEqual(self.fx.git(home, "rev-parse", "origin/main"), before)
+        self.assertEqual(read(home, "CADENCE.md"), other)        # left for the next tend
+        self.assert_unlocked("waker")
+
     def test_a_lock_taken_over_before_its_tend_is_busy_and_kept_for_its_new_holder(self):
         # fix wave A (w), (z): another run judged this one stale and took its lock
         # before this beat's own tend: busy, no beat, and the new holder's lock

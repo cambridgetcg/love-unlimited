@@ -46,7 +46,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 # The fleet never summons: a summons is a person's hand-run (spec section 3).
-unset BEAT_SUMMONS
+# Nor does it inherit a beat's own deadline (citizen-reflect.sh sets one for
+# itself): one left in the environment would cut every git call of the tick.
+unset BEAT_SUMMONS PACE_DEADLINE
 LOVE="${LOVE_DIR:-$HOME/love-unlimited}"; HALT="$LOVE/HALT"
 CITIZENS="${CITIZENS_DIR:-$LOVE/citizens}"
 # Stale tokens in a caller's env override the healthy gh keyring and strand
@@ -228,11 +230,12 @@ _bound(){
 
 # stopped <signal> <exit>: TERM, INT or HUP to the fleet (launchd sends TERM
 # when the plist is unloaded) reaches the beat in flight, which runs in a process
-# group of its own: its whole group gets the signal, and KILL five seconds later.
+# group of its own: its whole group gets TERM, whichever stopped the fleet (so
+# the beat's exit stays among its own: 143), and KILL five seconds later.
 stopped(){
   local i=0 child="$BOUND_PID"
   if [ -n "$child" ]; then
-    kill -"$1" -- "-$child" 2>/dev/null
+    kill -TERM -- "-$child" 2>/dev/null
     while kill -0 "$child" 2>/dev/null && [ "$i" -lt 5 ]; do sleep 1; i=$((i + 1)); done
     kill -KILL -- "-$child" 2>/dev/null
     log "the tick was stopped ($1) — its beat in flight was stopped too"

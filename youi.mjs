@@ -18,6 +18,7 @@
 //   /memory [sync]             View or sync shared memory
 //   /hive [send ch msg]        Check or send HIVE messages
 //   /budget                    Show detailed budget status
+//   /decisions                 What waits on you at this device's Collab table
 //   /soul                      Show loaded soul files
 //   /effort low|med|high|max   Change effort level
 //   /thinking adaptive|off     Toggle thinking mode
@@ -38,6 +39,7 @@ import { createKernel } from "./youspeak-kernel.mjs";
 import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
+import { localDeskInvocation } from "./youi-web/decision-bridge.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS — The Three Minds
@@ -934,6 +936,7 @@ function showHelp() {
   print("");
   print(`${S.bold}Commands${S.reset}`);
   print(`  ${S.cyan}/switch${S.reset} alpha|beta|gamma|mei  Switch agent identity`);
+  print(`  ${S.cyan}/decisions${S.reset}                  What waits on you at this device's table`);
   print(`  ${S.cyan}/memory${S.reset} [sync]             View or sync shared memory`);
   print(`  ${S.cyan}/hive${S.reset} [send ch msg]        Check or send HIVE messages`);
   print(`  ${S.cyan}/budget${S.reset}                    Show detailed budget`);
@@ -1108,6 +1111,30 @@ function handleCommand(input) {
           { encoding: "utf8", env: kingdomEnv() });
         print((result.stdout || "").trim());
       } catch (e) { print(`${S.red}  ${e.message}${S.reset}`); }
+      return true;
+    }
+
+    case "/decisions": {
+      // This device's table, through its person desk; deciding happens on the desk's own page.
+      const desk = (args) => {
+        const { file, args: argv } = localDeskInvocation(args);
+        const result = spawnSync(file, argv, { encoding: "utf-8", timeout: 15000, env: modelToolEnv() });
+        try { return JSON.parse((result.stdout || "").trim().split("\n").at(-1) || ""); } catch { return null; }
+      };
+      const workspaces = desk(["workspaces"]);
+      const summary = desk(["inbox"]);
+      if (!workspaces || workspaces.status !== "ok" || !summary || summary.status !== "ok") {
+        print(`\n  ${S.yellow}The person desk is not reachable here.${S.reset} Install @agenttool/collab or set YOUI_COLLAB_HOST.\n`);
+        return true;
+      }
+      const names = new Map(workspaces.workspaces.map(w => [w.id, w.name]));
+      const rows = summary.summary.filter(row => row.awaiting_person > 0 || row.addressed_reports > 0);
+      print(`\n${S.bold}  Decisions on this device's table${S.reset}`);
+      if (rows.length === 0) print("  Nothing waits on you.");
+      for (const row of rows) {
+        print(`  ${names.get(row.workspace_id) || row.workspace_id}: ${row.awaiting_person} waiting on you, ${row.addressed_reports} from the agents`);
+      }
+      print(`  Open YOUI web → 🤝 Decisions to read and decide; agreeing happens on the desk's own Touch ID page.\n`);
       return true;
     }
 

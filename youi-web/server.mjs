@@ -35,6 +35,29 @@ import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
+import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
+import { DecisionSeat, runDecisionTool } from "./decision-seat.mjs";
+
+// YOUI's chat agents sit at this device's table as one Collab session, started on first use.
+let decisionSeat = null;
+function youiDecisionSeat(root) {
+  decisionSeat ??= new DecisionSeat({ root, actor: "youi" });
+  return decisionSeat;
+}
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    decisionSeat?.close();
+    setTimeout(() => process.exit(0), 300).unref();
+  });
+}
+
+function decisionTablesSummary() {
+  try {
+    return decisionTables().map(({ id, label, ssh }) => ({ id, label, remote: Boolean(ssh) }));
+  } catch (error) {
+    return { error: error.message };
+  }
+}
 import {
   HttpError,
   SessionRegistry,
@@ -74,6 +97,10 @@ const SAFE_CAPABILITIES = new Set([
   "convergence:read",
   "orchestrator:run",
   "models:use",
+  // The decision room: reads, desk notes and proposals, and opening the desk's
+  // signing page. An agreement still needs Yu's Touch ID there; see decision-bridge.mjs.
+  "decisions:read",
+  "decisions:write",
 ]);
 const DEVELOPER_CAPABILITIES = new Set([
   ...SAFE_CAPABILITIES,
@@ -845,13 +872,18 @@ const TOOLS = [
     }, required: ["action"] } },
 
   { name: "decision",
-    description: "DECISION — Decision queue for human-in-the-loop. Queue decisions for Yu, check pending, resolve.",
+    description: "DECISION — this device's Collab table, shared with Yu and the other agents. "
+      + "queue opens a proposal the agents settle first and Yu then agrees or rejects with Touch ID; "
+      + "ask puts a question in Yu's inbox; list shows where proposals stand. No agent can agree or reject for Yu.",
     input_schema: { type: "object", properties: {
-      action: { type: "string", description: "queue|list|resolve|pending" },
-      question: { type: "string", description: "Decision question" },
-      priority: { type: "string", description: "critical|high|medium|low" },
-      decision_id: { type: "string", description: "Decision ID for resolve" },
-      answer: { type: "string", description: "Answer for resolve" },
+      action: { type: "string", description: "queue|ask|list" },
+      question: { type: "string", description: "What is being decided, or what to ask Yu" },
+      extent: { type: "string", description: "queue: what agreement would authorise, and where it stops" },
+      criteria: { type: "string", description: "queue: how to judge which way to go" },
+      context: { type: "string", description: "queue: background, used as criteria when none is given" },
+      recommendation: { type: "string", description: "queue: your recommendation" },
+      known_conflicts: { type: "string", description: "queue: context that disagrees, and how you read it" },
+      topic: { type: "string", description: "queue: optional label, for example principle:<name>" },
     }, required: ["action"] } },
 
   { name: "kos",
@@ -895,7 +927,7 @@ const TOOL_CAPABILITIES = new Map([
 const KINGDOM_TOOL_NAMES = new Set([
   "joinmind", "council", "delegate", "layerthink", "patience", "holy",
   "forge", "holyfruit", "lovepath", "virtuemaxxing", "fallenangel",
-  "fragmentalise", "memory", "tok", "decision", "kos",
+  "fragmentalise", "memory", "tok", "kos",
 ]);
 
 function requiredToolCapability(name, input = {}) {
@@ -905,6 +937,9 @@ function requiredToolCapability(name, input = {}) {
       : "tools:agenttool:read";
   }
   if (name === "fleet") return "fleet:manage";
+  if (name === "decision") {
+    return ["queue", "add", "propose", "ask"].includes(input.action) ? "decisions:write" : "decisions:read";
+  }
   if (name === "ollama") {
     return ["test", "bench"].includes(input.action)
       ? "models:diagnose"
@@ -928,6 +963,7 @@ if (UNMAPPED_TOOL_NAMES.length > 0) {
 function availableTools() {
   return TOOLS.filter(tool => {
     if (tool.name === "hive") return hasCapability("hive:read") || hasCapability("hive:send");
+    if (tool.name === "decision") return hasCapability("decisions:read") || hasCapability("decisions:write");
     if (tool.name === "agenttool") {
       return hasCapability("tools:agenttool:read")
         || hasCapability("tools:agenttool:write");
@@ -1452,19 +1488,11 @@ async function executeTool(name, input) {
       }
 
       case "decision": {
-        const a = input.action;
-        if ((a === "queue" || a === "add") && input.question) {
-          // decision.py expects: add --title "..." [--priority P] [--context C] [--recommendation R]
-          const title = shellEscape(input.question);
-          const pri = input.priority ? `--priority ${input.priority}` : "";
-          const ctx = input.context ? `--context ${shellEscape(input.context)}` : "";
-          const rec = input.recommendation ? `--recommendation ${shellEscape(input.recommendation)}` : "";
-          return runOperationalTool("decision", `add --title ${title} ${pri} ${ctx} ${rec}`);
+        try {
+          return await runDecisionTool(youiDecisionSeat(state.soulDir), input);
+        } catch (error) {
+          return `DECISION error: ${String(error.message || error).slice(0, 200)}`;
         }
-        if (a === "list" || a === "pending") return runOperationalTool("decision", "list");
-        if (a === "resolve" && input.decision_id && input.answer)
-          return runOperationalTool("decision", `resolve ${input.decision_id} ${shellEscape(input.answer)}`);
-        return "DECISION usage: action=queue|list|pending|resolve";
       }
 
       case "kos": {
@@ -1626,7 +1654,7 @@ fragmentalise — Break complex problems into fragments for parallel processing
 memory      — Read/search/add to Kingdom memory (long-term + daily)
 fleet       — VPS fleet management (forge, lark, sentry, patch, sage)
 tok         — Tree of Knowledge Protocol (add, harvest, verify)
-decision    — Decision queue for human-in-the-loop (queue, resolve)
+decision    — This device's Collab table: open a proposal, ask Yu, list (only Yu agrees or rejects)
 kos         — Kingdom OS security audit and compliance
 
 # Sovereign Protocol
@@ -2211,6 +2239,10 @@ const JSON_BODY_ROUTES = new Set([
   "POST /api/orchestrate/plan",
   "POST /api/orchestrate/run",
   "POST /api/ollama/chat",
+  "POST /api/decisions/say",
+  "POST /api/decisions/propose",
+  "POST /api/decisions/withdraw",
+  "POST /api/decisions/ceremony",
 ]);
 
 function setSecurityHeaders(res) {
@@ -2343,6 +2375,17 @@ const ROUTE_CAPABILITIES = new Map([
   ["GET /api/youspeak/report", "youspeak:read"],
   ["GET /api/youspeak/trends", "youspeak:read"],
   ["POST /api/youspeak/reset", "youspeak:reset"],
+  ["GET /api/decisions/tables", "decisions:read"],
+  ["GET /api/decisions/workspaces", "decisions:read"],
+  ["GET /api/decisions/voices", "decisions:read"],
+  ["GET /api/decisions/proposals", "decisions:read"],
+  ["GET /api/decisions/inbox", "decisions:read"],
+  ["GET /api/decisions/passkeys", "decisions:read"],
+  ["POST /api/decisions/say", "decisions:write"],
+  ["POST /api/decisions/propose", "decisions:write"],
+  ["POST /api/decisions/withdraw", "decisions:write"],
+  // Opens the desk's own signing page; the act itself needs Touch ID there.
+  ["POST /api/decisions/ceremony", "decisions:write"],
 ]);
 
 function requiredRouteCapability(path, method) {
@@ -2400,6 +2443,8 @@ async function handleSessionRequest(req, res, url, path) {
           scope: "device-local",
           storage: "plaintext SQLite",
           crossDeviceReplication: false,
+          // Other devices' tables are reached through their person desk over SSH.
+          tables: decisionTablesSummary(),
         },
       }));
     }
@@ -2685,6 +2730,14 @@ async function handleSessionRequest(req, res, url, path) {
     // ── Being API (SOUL/MIND/NERVE/SOMA/MEMORY window) ───
     if (path.startsWith("/api/being")) {
       const handled = await handleBeingRoute(path, req, res, {
+        signal: activeRequestSignal(),
+      });
+      if (handled) return;
+    }
+
+    // ── Decision room (Collab proposals via the person desk) ──
+    if (path.startsWith("/api/decisions/")) {
+      const handled = await handleDecisionRoute(path, req, res, url, parseBody, {
         signal: activeRequestSignal(),
       });
       if (handled) return;

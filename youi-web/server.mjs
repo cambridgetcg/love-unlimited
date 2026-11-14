@@ -35,7 +35,14 @@ import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat, ollamaCloudKeyConfigured } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
-import { decisionTables, handleDecisionRoute } from "./decision-bridge.mjs";
+import {
+  decisionTables,
+  handleDecisionRoute,
+  readDeviceWeather,
+  weatherPromptLine,
+  weatherToAgentSetting,
+} from "./decision-bridge.mjs";
+import { CHAT_MODES, isMindMode, mindModeTurn } from "./mind-modes.mjs";
 import { runDecisionTool } from "./decision-seat.mjs";
 import { TableSeats, runCouncilTool, runDelegateTool } from "./table-tools.mjs";
 import { CLAUDE_CODE_FLOOR_VERSION, CLAUDE_MODELS, claudeCodeEffort, claudeCodeMinVersion } from "./claude-models.mjs";
@@ -151,6 +158,11 @@ const MAX_BODY_BYTES = Math.min(
 // The per-message ceiling on calls to other minds (docs/YOUI-MINDS-DESIGN.md
 // §3.3): 6 by default, YOUI_MIND_CALLS_PER_MESSAGE bounded to 1–20.
 const MIND_CALLS_PER_MESSAGE = mindCallsPerMessage(process.env.YOUI_MIND_CALLS_PER_MESSAGE);
+// Whether the agent is shown this device's weather line in each turn's
+// context block (decision-bridge.mjs, "Device weather"). The device is the
+// person's, so it is off unless YOUI_WEATHER_TO_AGENT=on; an unknown value
+// stops startup here.
+const WEATHER_TO_AGENT = weatherToAgentSetting(process.env.YOUI_WEATHER_TO_AGENT);
 
 const SAFE_CAPABILITIES = new Set([
   "chat",
@@ -1797,7 +1809,8 @@ A mind receives only the text you put in the tool call (in a pipeline or layerth
 // Orchestrate mode's hint (docs/YOUI-MINDS-DESIGN.md §3.1): the minds this
 // session is offered, grouped by provider. How to call them is in the system
 // prompt (mindsToolsGuide); direct mode's block says only that it is direct.
-function mindsPromptSection(minds) {
+// A mind mode that applies (§7) lists the same minds under its own heading.
+function mindsPromptSection(minds, mindMode = null) {
   const self = modelProvider(state.model);
   const groups = new Map();
   for (const mind of minds) {
@@ -1810,8 +1823,10 @@ function mindsPromptSection(minds) {
   const callable = hasCapability("orchestrator:run")
     ? "How to call them is under the minds tool catalogue in the system prompt."
     : "This session lacks orchestrator:run, so they are not callable (see the system prompt).";
-  return `# Minds (orchestrate mode)
-Orchestrate mode is on: you may bring other minds into a task when it warrants it. ${callable}
+  const heading = mindMode
+    ? `# Minds (for ${mindMode.label})\n${callable}`
+    : `# Minds (orchestrate mode)\nOrchestrate mode is on: you may bring other minds into a task when it warrants it. ${callable}`;
+  return `${heading}
 Listed below are the minds granted to this session that answered a probe (reachable) or have not been checked yet (unchecked; the first call proves them).
 ${lines.join("\n") || "- (none reachable and granted right now)"}`;
 }
@@ -1828,12 +1843,16 @@ const CONTEXT_BLOCK_CLOSE = "[/YOUI context]";
  *   thinking and effort) and, in orchestrate mode, the minds offered. Every
  *   turn states its mode, so a direct turn after an orchestrate one takes the
  *   earlier hint back (Claude Code replays earlier messages on --resume).
+ *   A mind mode (`mindMode`, mind-modes.mjs) adds its paragraph, then the
+ *   minds offered when it applies. With YOUI_WEATHER_TO_AGENT=on, `weather`
+ *   (readDeviceWeather's answer) adds one line; off, it is null and the block
+ *   is what it was before weather existed.
  * A Claude turn sends `system` as Claude Code's system prompt and `context`
  * as a fenced block at the top of the user message (contextBlock), so the
  * cached system prompt does not change with them. YOUI's own Ollama/vLLM loop
  * appends `context` after `system`, as the dynamic suffix it always was.
  */
-function buildPrompt({ minds = null } = {}) {
+function buildPrompt({ minds = null, mindMode = null, weather = null } = {}) {
   let gitBranch = "N/A";
   try {
     gitBranch = execSync("git branch --show-current", {
@@ -1854,16 +1873,21 @@ function buildPrompt({ minds = null } = {}) {
 - The date, git branch, model, mode, thinking and effort are given for each turn, under "This turn".`;
   const parts = [...staticParts(), { name: PROMPT_PART_NAMES.environment, text: environment }];
 
-  const mode = minds
-    ? "orchestrate (the minds offered this turn are listed below)"
-    : "direct (work alone; call other minds only when the person asks)";
+  const mode = mindMode
+    ? mindMode.modeLine
+    : minds
+      ? "orchestrate (the minds offered this turn are listed below)"
+      : "direct (work alone; call other minds only when the person asks)";
   const turn = `# This turn
 - Date: ${new Date().toISOString().split("T")[0]}
 - Git branch: ${gitBranch}
 - Model: ${state.model}
 - Mode: ${mode}
-- Thinking: ${state.thinking} | Effort: ${state.effort}`;
-  const context = minds ? `${turn}\n\n---\n\n${mindsPromptSection(minds)}` : turn;
+- Thinking: ${state.thinking} | Effort: ${state.effort}${weather ? `\n${weatherPromptLine(weather)}` : ""}`;
+  const sections = [turn];
+  if (mindMode) sections.push(mindMode.section);
+  if (minds && (!mindMode || mindMode.applies)) sections.push(mindsPromptSection(minds, mindMode));
+  const context = sections.join("\n\n---\n\n");
 
   return { system: parts.map(part => part.text).join("\n\n---\n\n"), context, parts };
 }
@@ -3166,6 +3190,8 @@ const ROUTE_CAPABILITIES = new Map([
   ["GET /api/usage", "status:read"],
   // The minds registry: a read of grants and cached probes, never a model call.
   ["GET /api/minds", "status:read"],
+  // This device's weather from its own collab host: a reading, which authorises nothing.
+  ["GET /api/weather", "status:read"],
   ["POST /api/chat", "chat"],
   ["POST /api/switch", "settings:write"],
   ["POST /api/settings", "settings:write"],
@@ -3269,6 +3295,8 @@ async function handleSessionRequest(req, res, url, path) {
         session: { id: state.sessionId },
         capabilities: [...state.capabilities].sort(),
         privacy: runtimePrivacyBoundary(),
+        // YOUI_WEATHER_TO_AGENT: whether the agent is shown the device weather line.
+        weatherToAgent: WEATHER_TO_AGENT,
         collaboration: {
           coordinator: "@agenttool/collab",
           scope: "device-local",
@@ -3288,6 +3316,12 @@ async function handleSessionRequest(req, res, url, path) {
         callable: hasCapability("orchestrator:run"),
         calls_per_message: MIND_CALLS_PER_MESSAGE,
       });
+    }
+
+    // ── Device weather (decision-bridge.mjs, "Device weather") ────
+    // A host that cannot give a reading is a normal answer: { available: false, reason, detail }.
+    if (path === "/api/weather" && req.method === "GET") {
+      return sendJson(res, 200, await readDeviceWeather());
     }
 
     // ── LOVE UNLIMITED: Instances & Convergence ──────────────────
@@ -3449,7 +3483,7 @@ async function handleSessionRequest(req, res, url, path) {
         }
       }
       if (body.chatMode !== undefined) {
-        if (["direct", "orchestrate"].includes(body.chatMode)) state.chatMode = body.chatMode;
+        if (CHAT_MODES.includes(body.chatMode)) state.chatMode = body.chatMode;
         else errors.push(`invalid chatMode: ${body.chatMode}`);
       }
       // Phase 3: reasoning_effort for Ollama Cloud models
@@ -4174,7 +4208,8 @@ async function handleChatTurn(req, res, signal) {
     });
   } else {
     let minds = null;
-    if (forceMode === "orchestrate") {
+    let mindMode = null;
+    if (forceMode === "orchestrate" || isMindMode(forceMode)) {
       const listing = await mindsRegistry.list({ capabilities: state.capabilities });
       throwIfAborted(signal);
       minds = offeredMinds(listing);
@@ -4185,9 +4220,27 @@ async function handleChatTurn(req, res, signal) {
         calls_per_message: MIND_CALLS_PER_MESSAGE,
       });
     }
+    // A mind mode (docs/YOUI-MINDS-DESIGN.md §7) is the person's hint for this
+    // message. It applies only when the mind tools are offered on this turn;
+    // otherwise the hint says why not, and the page is told the same sentence.
+    // It never widens what the turn may do.
+    if (isMindMode(forceMode)) {
+      mindMode = mindModeTurn(forceMode, {
+        callable: availableTools().some(tool => MIND_TOOL_NAMES.includes(tool.name)),
+        offered: minds.length,
+        callsPerMessage: MIND_CALLS_PER_MESSAGE,
+      });
+      if (mindMode.notice) sendSSE(res, "notice", { message: mindMode.notice });
+    }
+    // This device's weather, for the agent only when YOUI_WEATHER_TO_AGENT=on.
+    let weather = null;
+    if (WEATHER_TO_AGENT) {
+      weather = await readDeviceWeather();
+      throwIfAborted(signal);
+    }
     state.messages.push({ role: "user", content: userMessage });
     chatMessages = state.messages;
-    prompt = buildPrompt({ minds });
+    prompt = buildPrompt({ minds, mindMode, weather });
     // YOUI's own loop sends one system prompt per request, the per-turn context after the stable part.
     systemPrompt = isOllamaModel(state.model) ? `${prompt.system}\n\n---\n\n${prompt.context}` : prompt.system;
   }

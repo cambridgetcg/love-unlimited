@@ -169,6 +169,39 @@ credential-authorized session recovery across restart.
 Stop the foreground process with `Ctrl-C`. If it was detached, resolve the
 exact PID from `lsof` and stop that PID. Do not use a broad `pkill node`.
 
+### Device weather line
+
+The sidebar's **This device** line shows one reading of this device from its
+own AgentTool Collab host (`agenttool-collab-host weather`, an
+`agenttool.collab-weather/1` reading) through `GET /api/weather`, which needs
+`status:read` (in `safe`). The page asks every 60 seconds and shows the host's
+one-line `says`, its notes when there are any, and how long ago it was read.
+Once a reading is older than its `good_for_seconds` (60) it is marked stale and
+dimmed. It is the host's own report, not proof; nothing in YOUI behaves
+differently because of it, and YOUI keeps no reading once it has answered. It
+is plain text, not a badge, with no colour for good or bad.
+
+- YOUI runs `<host> weather` on this device only: the host is
+  `YOUI_COLLAB_HOST` or the installed default, a `.js` bundle runs under
+  `YOUI_COLLAB_BUN` as the decision room's desk does, with no person verb, no
+  journal and never over SSH. A read has its own 5 s timeout, overlapping reads
+  share one host process, and it never waits in, or holds a place in, the
+  decision room's gate of three desk processes.
+- With no reading the line says why: `not_in_installed_build` (the installed
+  collab build predates the weather command), `host_missing`, or `failed`.
+  The route answers these with 200, not an error.
+- `YOUI_WEATHER_TO_AGENT` is `on` or `off`; absent or empty is `off`, and any
+  other value stops startup. **On:** each message's per-turn `[YOUI context]`
+  block gets one line with the current `says` and its age (or "not read" and
+  why), so it reaches the agent's model provider with the message; it never
+  enters the cached system prompt. The host is read once per message, and the
+  sidebar says the agent is shown the line. **Off:** nothing is read for the
+  agent, and the prompt is the same bytes as before the line existed.
+
+Tested with a fake host (`tests/test_youi_weather.mjs`). Not tested: the page
+in a browser, and a reading viewed through an SSH tunnel from another device,
+where the age is reckoned with the viewing browser's clock.
+
 ## 5. Current remote viewing
 
 Do not bind the web process directly to a LAN or public interface. If remote

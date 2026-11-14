@@ -388,12 +388,17 @@ test("a host that refuses, fails or answers something else is reported, never a 
 
 test("a slow host is killed, with its whole process group, at the timeout", async t => {
   const fake = fakeHost(t, { weatherMode: "hang" });
+  // Long enough for the fake to start and record its child even when the
+  // whole suite runs at once (400 ms was not, on a loaded run).
+  const timeoutMs = 2_000;
   const started = Date.now();
-  const answer = await readDeviceWeather({ ...process.env, ...fake.env }, { timeoutMs: 400 });
+  const reading = readDeviceWeather({ ...process.env, ...fake.env }, { timeoutMs });
+  const [{ host, child }] = await until(() => fake.pids().length && fake.pids(), { timeoutMs, label: "the fake's pids" });
+  assert.ok(alive(host) && alive(child), "both are running before the timeout");
+  const answer = await reading;
   const took = Date.now() - started;
-  assert.deepEqual(answer, { available: false, reason: "failed", detail: "the collab host did not answer within 0.4 s" });
-  assert.ok(took >= 350 && took < 3_000, `answered after ${took} ms`);
-  const [{ host, child }] = await until(() => fake.pids().length && fake.pids(), { label: "the fake's pids" });
+  assert.deepEqual(answer, { available: false, reason: "failed", detail: "the collab host did not answer within 2 s" });
+  assert.ok(took >= timeoutMs - 50 && took < timeoutMs + 3_000, `answered after ${took} ms`);
   await until(() => !alive(host) && !alive(child), { label: "the host and its child to be killed" });
 });
 
@@ -478,31 +483,31 @@ test("a weather read and the desk's gate of three never wait on each other", asy
   const port = await startServer(t, fake.env);
   const browser = await browserSession(port);
 
-  // A slow reading does not hold up a decision read.
-  fake.set("weather-delay-ms", 1_500);
-  let weatherDone = 0;
-  const slowWeather = browser.get("/api/weather").then(response => { weatherDone = Date.now(); return response; });
+  // A slow reading does not hold up a decision read: the decision read is
+  // answered while the weather read is still running.
+  fake.set("weather-delay-ms", 2_000);
+  let weatherDone = false;
+  const slowWeather = browser.get("/api/weather").then(response => { weatherDone = true; return response; });
   await until(() => fake.calls().some(call => call.args[0] === "weather"), { label: "the weather read to start" });
-  const before = Date.now();
   const workspaces = await browser.get("/api/decisions/workspaces");
   assert.equal(workspaces.status, 200);
-  assert.ok(Date.now() - before < 1_000, "the decision read did not wait for the weather read");
-  assert.equal(weatherDone, 0, "and the weather read is still running");
+  assert.equal(weatherDone, false, "the decision read did not wait for the weather read");
   assert.equal((await slowWeather).json.available, true);
 
-  // Four slow desk reads: three hold the gate, one queues. A reading still answers at once.
+  // Four slow desk reads: three hold the gate and one queues. A reading is
+  // still answered while all four wait, so it took no place in the gate.
   fake.set("weather-delay-ms", 0);
-  fake.set("desk-delay-ms", 1_500);
-  let deskDone = 0;
+  fake.set("desk-delay-ms", 2_000);
+  let deskDone = false;
   const desk = ["w1", "w2", "w3", "w4"].map(workspace => browser.get(`/api/decisions/inbox?workspace=${workspace}`)
-    .then(response => { deskDone = deskDone || Date.now(); return response; }));
+    .then(response => { deskDone = true; return response; }));
   await until(() => fake.calls().filter(call => call.args[1] === "inbox").length === 3, { label: "the gate to fill" });
-  const weatherStarted = Date.now();
   const reading = await browser.get("/api/weather");
   assert.equal(reading.json.available, true);
-  assert.ok(Date.now() - weatherStarted < 1_000, "the weather read did not queue behind the desk's gate");
-  assert.equal(deskDone, 0, "the desk reads were still running");
+  assert.equal(deskDone, false, "the weather read did not queue behind the desk's gate");
+  assert.equal(fake.calls().filter(call => call.args[1] === "inbox").length, 3, "the fourth desk read was still queued");
   for (const response of await Promise.all(desk)) assert.equal(response.status, 200);
+  assert.equal(fake.calls().filter(call => call.args[1] === "inbox").length, 4);
 });
 
 // ── The agent's switch ──────────────────────────────────────────────

@@ -21,6 +21,9 @@ export const MIND_MODES = Object.freeze({
       + " and say where they differ. Do not fuse them or pick a winner, even where a tool result suggests fusing."
       + " You may add your own answer last, marked as your own.",
     why: "Agreement between minds that read each other is worth less, and the person asked to see the difference.",
+    // One split of two minds (ensemble's minimum).
+    minCalls: 2,
+    needs: "the mode needs two",
   }),
   hive: Object.freeze({
     label: "HIVE 合",
@@ -29,6 +32,8 @@ export const MIND_MODES = Object.freeze({
       + " Keep what did not merge (a disagreement, or a point you did not take up) as a short \"Not merged:\" line"
       + " rather than smoothing it away. HIVE here is a way of answering, not the retired HIVE message bus.",
     why: "One answer is easier to act on, and a merge that hides a disagreement misstates it.",
+    minCalls: 2,
+    needs: "the mode needs two",
   }),
   fenhe: Object.freeze({
     label: "分分合合",
@@ -37,8 +42,12 @@ export const MIND_MODES = Object.freeze({
       + " Split again: give the draft to two or three minds to criticise, each alone and none seeing another's criticism"
       + " (ensemble, with the draft in its question, does this). Merge: answer with the draft revised by that criticism."
       + ` Stay inside this message's mind-call budget (${callsPerMessage} calls; each split costs one call per mind),`
-      + " stop where it runs out, and say how many split-and-merge rounds ran.",
+      + " stop where it runs out, and say how many split-and-merge rounds ran (the whole of 分分合合 is two).",
     why: "The second split tests the merge.",
+    // Two splits of two minds: below four calls the second split, the step the
+    // mode exists for, would be refused (mind-tools.mjs, reserve).
+    minCalls: 4,
+    needs: "the mode needs four (two splits of two minds)",
   }),
 });
 
@@ -53,15 +62,15 @@ export function isMindMode(mode) {
 }
 
 // Why a mode cannot apply to this message, or null when it can.
-function cannotApply({ callable, offered, callsPerMessage }) {
+function cannotApply(spec, { callable, offered, callsPerMessage }) {
   if (!callable) return "this session lacks orchestrator:run, so the tools that call other minds are not offered";
   if (offered < MIND_MODE_MIN_MINDS) {
     return offered === 0
       ? "no mind is granted and reachable for this session right now"
       : "only one mind is granted and reachable for this session right now, and the mode needs two";
   }
-  if (callsPerMessage < MIND_MODE_MIN_MINDS) {
-    return `this message may make only ${callsPerMessage} mind call, and the mode needs two`;
+  if (callsPerMessage < spec.minCalls) {
+    return `this message may make only ${callsPerMessage} mind call${callsPerMessage === 1 ? "" : "s"}, and ${spec.needs}`;
   }
   return null;
 }
@@ -81,7 +90,7 @@ function cannotApply({ callable, offered, callsPerMessage }) {
 export function mindModeTurn(mode, { callable, offered, callsPerMessage }) {
   if (!isMindMode(mode)) throw new TypeError(`Not a mind mode: ${mode}`);
   const spec = MIND_MODES[mode];
-  const reason = cannotApply({ callable, offered, callsPerMessage });
+  const reason = cannotApply(spec, { callable, offered, callsPerMessage });
   if (reason) {
     const notice = `${spec.label} could not apply to this message: ${reason}.`;
     return {

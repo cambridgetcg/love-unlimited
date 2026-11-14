@@ -4129,6 +4129,26 @@ function abortableDelay(milliseconds, signal) {
   });
 }
 
+/**
+ * `promise`'s value, or the turn's cancellation as soon as `signal` aborts,
+ * whichever comes first. The work behind `promise` is not stopped: use it for
+ * work other callers may share.
+ */
+function untilAborted(promise, signal) {
+  if (!signal) return promise;
+  throwIfAborted(signal);
+  return new Promise((resolveValue, rejectValue) => {
+    const onAbort = () => {
+      rejectValue(signal.reason instanceof Error ? signal.reason : new Error("Browser chat turn cancelled"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      value => { signal.removeEventListener("abort", onAbort); resolveValue(value); },
+      error => { signal.removeEventListener("abort", onAbort); rejectValue(error); },
+    );
+  });
+}
+
 async function handleChat(req, res) {
   const turnState = activeState();
   if (turnState.chatInFlight) {
@@ -4233,10 +4253,11 @@ async function handleChatTurn(req, res, signal) {
       if (mindMode.notice) sendSSE(res, "notice", { message: mindMode.notice });
     }
     // This device's weather, for the agent only when YOUI_WEATHER_TO_AGENT=on.
+    // The turn stops waiting for it when the person goes away; the read itself
+    // is shared with other callers (readDeviceWeather), so it runs on for them.
     let weather = null;
     if (WEATHER_TO_AGENT) {
-      weather = await readDeviceWeather();
-      throwIfAborted(signal);
+      weather = await untilAborted(readDeviceWeather(), signal);
     }
     state.messages.push({ role: "user", content: userMessage });
     chatMessages = state.messages;

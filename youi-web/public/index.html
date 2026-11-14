@@ -1196,15 +1196,15 @@ button, select, textarea, input { font: inherit; }
       </div>
       <!-- Mind modes: what the agent is asked to do with the minds for each message (docs/YOUI-MINDS-DESIGN.md §7) -->
       <div class="mode-toggle mind-modes">
-        <button id="mode-split" class="mode-btn" onclick="setChatMode('split')" title="Two or three minds answer apart; the agent gives each answer under its mind's name and says where they differ">
+        <button id="mode-split" class="mode-btn" onclick="setChatMode('split')" title="Asks the agent to have two or three minds answer apart, and to give each answer under its mind's name and say where they differ (a request: the agent decides, and a notice says when the mode cannot apply)">
           <span class="mode-label">SPLIT 分</span>
           <span class="mode-desc">Answers apart</span>
         </button>
-        <button id="mode-hive" class="mode-btn" onclick="setChatMode('hive')" title="The agent consults minds and answers with one voice, naming who contributed and what did not merge">
+        <button id="mode-hive" class="mode-btn" onclick="setChatMode('hive')" title="Asks the agent to consult minds and answer with one voice, naming who contributed and what did not merge (a request: the agent decides, and a notice says when the mode cannot apply)">
           <span class="mode-label">HIVE 合</span>
           <span class="mode-desc">One voice</span>
         </button>
-        <button id="mode-fenhe" class="mode-btn" onclick="setChatMode('fenhe')" title="Split, merge into a draft, split again to criticise it, then merge, within the message's mind-call budget">
+        <button id="mode-fenhe" class="mode-btn" onclick="setChatMode('fenhe')" title="Asks the agent to split, merge into a draft, split again to criticise it, then merge, within the message's mind-call budget (a request: the agent decides, and a notice says when the mode cannot apply)">
           <span class="mode-label">分分合合</span>
           <span class="mode-desc">Split, merge, twice</span>
         </button>
@@ -1907,24 +1907,66 @@ function renderMinds(minds, problem = '', callable = false) {
 
 const WEATHER_POLL_MS = 60_000;
 let weatherAnswer = null;      // the last answer, kept only to show it and its age
+let weatherClock = null;       // how old that answer was when it arrived, and when that was here
 let weatherToAgent = null;     // YOUI_WEATHER_TO_AGENT, from /api/status; null until known
 
 async function fetchWeather() {
+  let answer;
+  let clock = null;
   try {
     const response = await fetch('/api/weather');
-    weatherAnswer = response.ok
-      ? await response.json()
-      : { available: false, detail: response.status === 403 ? 'this session lacks status:read' : `the server answered ${response.status}` };
+    if (response.ok) {
+      answer = await response.json();
+      clock = weatherClockAt(response, answer);
+    } else {
+      // fromPage: this page could not read the server's answer; the agent's line is read apart from it.
+      answer = { available: false, fromPage: true,
+        detail: response.status === 403 ? 'this session lacks status:read' : `the server answered ${response.status}` };
+    }
   } catch {
-    weatherAnswer = { available: false, detail: 'the server did not answer' };
+    answer = { available: false, fromPage: true, detail: 'the server did not answer' };
   }
+  weatherAnswer = answer;
+  weatherClock = clock;
   renderWeather();
+}
+
+// A reading's age is reckoned on the server's clock (the answer's Date header),
+// which is the clock the host read. This browser's clock may be set differently,
+// as when the page is viewed from another device. The header is in whole seconds,
+// so the age can read up to a second young. Without the header, this browser's
+// clock is used.
+function weatherClockAt(response, answer) {
+  const readAt = Date.parse(answer && answer.read_at);
+  const serverNow = Date.parse((response.headers && response.headers.get('Date')) || '');
+  const ageMs = (Number.isFinite(serverNow) ? serverNow : Date.now()) - readAt;
+  return { ageMs: Math.max(0, ageMs), wall: Date.now(), mono: performance.now() };
+}
+
+// Seconds since the reading was taken: its age on arrival plus the time since, here.
+// Elapsed time is the later of the wall clock (which counts a sleeping laptop) and
+// the monotonic clock (which a clock set back cannot reverse).
+function weatherAgeSeconds() {
+  if (!weatherClock || !Number.isFinite(weatherClock.ageMs)) return NaN;
+  const elapsed = Math.max(0, Date.now() - weatherClock.wall, performance.now() - weatherClock.mono);
+  return Math.round((weatherClock.ageMs + elapsed) / 1000);
 }
 
 function weatherAge(seconds) {
   if (seconds < 60) return `${seconds} s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   return `${Math.round(seconds / 3600)} h`;
+}
+
+// Whether the agent is shown a weather line with each message (YOUI_WEATHER_TO_AGENT).
+// With the switch on it is shown one even when there is no reading: the server's
+// "not read" and why. Null while the switch is not known.
+function weatherAgentClause(answer) {
+  if (weatherToAgent === false) return 'not shown to the agent';
+  if (weatherToAgent !== true) return null;
+  return answer.fromPage
+    ? 'the agent is shown its own reading of this device with each message'
+    : 'the agent is shown this line with each message';
 }
 
 function renderWeather() {
@@ -1939,11 +1981,11 @@ function renderWeather() {
     box.classList.remove('stale');
     line.textContent = `Weather not read: ${String(answer.detail || answer.reason || 'no reason given')}.`;
     notes.replaceChildren();
-    meta.textContent = '';
+    meta.textContent = weatherAgentClause(answer) || '';
     return;
   }
   const goodFor = Number(answer.good_for_seconds);
-  const age = Math.max(0, Math.round((Date.now() - Date.parse(answer.read_at)) / 1000));
+  const age = weatherAgeSeconds();
   const stale = !(Number.isFinite(age) && age <= goodFor);
   box.classList.toggle('stale', stale);
   line.textContent = String(answer.says);
@@ -1958,7 +2000,7 @@ function renderWeather() {
     stale ? `stale: older than its ${goodFor} s` : null,
     notRead ? `${notRead} not read` : null,
     "the host's own report; it authorises nothing",
-    weatherToAgent === true ? 'the agent is shown this line with each message' : weatherToAgent === false ? 'not shown to the agent' : null,
+    weatherAgentClause(answer),
   ].filter(Boolean).join(' · ');
 }
 

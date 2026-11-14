@@ -208,7 +208,7 @@ without the agent, no capability, and nothing to what `minds_used` discloses.
 |---|---|---|---|
 | `split` | SPLIT 分 | Ask two or three minds the same question independently (`ensemble`); give their answers one by one, each under its mind's name and in its own words as far as length allows; say where they differ; do not fuse them or pick a winner; its own answer, if any, last and marked as its own. | Agreement between minds that read each other is worth less, and the person asked to see the difference. |
 | `hive` | HIVE 合 | Consult minds as it sees fit and answer with one voice; name which minds contributed; keep what did not merge as a short "Not merged:" line. | One answer is easier to act on, and a merge that hides a disagreement misstates it. |
-| `fenhe` | 分分合合 | Split; merge into a draft itself; split again so each mind criticises the draft without seeing the others' criticism; merge into the answer. Stay inside the message's mind-call ceiling and say how many split-and-merge rounds ran. | The second split tests the merge. |
+| `fenhe` | 分分合合 | Split; merge into a draft itself; split again so each mind criticises the draft without seeing the others' criticism; merge into the answer. Stay inside the message's mind-call ceiling and say how many split-and-merge rounds ran (the whole of 分分合合 is two). | The second split tests the merge. |
 
 **The name.** HIVE here names a way of answering: the retired HIVE message
 bus (§1) stays retired, and the `hive:read`, `hive:send` and `fleet:manage`
@@ -230,7 +230,9 @@ How it runs (`youi-web/mind-modes.mjs`; `buildPrompt` and `handleChatTurn` in
 - A mode applies only when the mind tools are offered on this turn
   (`orchestrator:run`), the registry offers at least two minds (the agent's own
   model counts, since `ensemble` can call it as a separate mind that sees no
-  conversation), and the message's ceiling allows at least two calls. When it
+  conversation), and the message's ceiling allows the calls the mode needs: two
+  for SPLIT 分 and HIVE 合 (one split of two minds), four for 分分合合 (two
+  splits of two, since below four its second split would be refused). When it
   cannot apply, the block says so and why, the agent is asked to say so in one
   line, no minds are listed, and the page shows the same sentence through the
   existing `notice` event, for example "SPLIT 分 could not apply to this
@@ -241,11 +243,14 @@ How it runs (`youi-web/mind-modes.mjs`; `buildPrompt` and `handleChatTurn` in
   it never reaches an autonomous cycle. Raw mode has no prompt and ignores it.
 - `ensemble`'s own result still ends "fuse the answers in your reply"; the
   SPLIT hint tells the agent not to, rather than changing the tool.
-- One round of 分分合合 (two splits) costs six calls with three minds in each
-  split, the default ceiling, and four with two. Under a lower `YOUI_MIND_CALLS_PER_MESSAGE` the hint states
-  the ceiling and the agent stops where it runs out.
+- A round is one split and the merge after it, so the whole of 分分合合 is two
+  rounds, the hint asks the agent to say how many ran, and the hint and this
+  document count them the same way. The two splits cost six calls with three
+  minds in each, the default ceiling, and four with two. The hint states the
+  message's ceiling, and the agent stops where it runs out.
 - The page's mode control has a second row, `SPLIT 分`, `HIVE 合` and
-  `分分合合`, and `/mode` takes the same values. The choice lasts for the
+  `分分合合`, and `/mode` takes the same values. Each button's title asks the
+  agent for the mode rather than saying what it will do. The choice lasts for the
   conversation view as orchestrate and direct do (the session's state). There
   is no new SSE event: answers reach the page as before, in the agent's reply
   and the collapsed tool card.
@@ -257,9 +262,15 @@ the Claude Code system prompt file and the tool schemas (YOUI's own loop and
 the MCP bridge's `tools/list`) are the same bytes in all five modes; the
 cannot-apply sentence appears in the block and as the page's notice when
 `orchestrator:run` is missing, when one mind is offered and when the ceiling
-is one call; a SPLIT turn's `minds_used` has the same fields as a direct
-turn's and no answer text. **Not tested:** what a live model does with any of
-these hints. This build makes no live model call, so whether a model gives
-SPLIT's answers apart, keeps HIVE's "Not merged:" line or runs 分分合合's
-rounds as asked is unknown until the person tries it. The page itself was not
-exercised in a browser.
+is below the mode's need (three calls for 分分合合 end to end; one call for each
+mode, and two and three for 分分合合, in the hint itself); a SPLIT turn's
+`minds_used` has the same fields as a direct turn's and no answer text. YOUI's
+own part of the system prompt (from the tool list on) and the tools are also
+pinned to digests taken from the build before the modes
+(`tests/test_youi_static_prompt.mjs`). The page's mode
+control was run in a `node:vm` context with a stub page
+(`tests/test_youi_page.mjs`): the chosen mode is marked and sent to the server.
+**Not tested:** what a live model does with any of these hints. This build
+makes no live model call, so whether a model gives SPLIT's answers apart, keeps
+HIVE's "Not merged:" line or runs 分分合合's rounds as asked is unknown until
+the person tries it. The page itself was not opened in a browser.

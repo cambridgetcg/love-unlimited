@@ -490,14 +490,24 @@ function unavailable(reason, detail) {
 }
 
 // One line of plain text: control characters and line breaks become spaces,
-// so a reading can never add a line to the agent's context block.
+// so a reading can never add a line to the agent's context block, and format
+// characters (bidi overrides, zero-width spaces) are dropped, so what the page
+// shows and the agent reads is the text as it reads.
 function oneLine(value, max) {
   return String(value)
+    .replace(/\p{Cf}+/gu, "")
     .replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
 }
+
+// The protocol's window (WEATHER_GOOD_FOR_SECONDS): a host may name a shorter
+// one, never a longer. And how far ahead of this device's clock a read_at may
+// be: the host reads the same clock moments before YOUI does, so a reading
+// dated later than this is not one YOUI can place in time.
+const MAX_GOOD_FOR_SECONDS = 60;
+const READ_AT_SLACK_MS = 5_000;
 
 // The fields YOUI passes on, or null when the reading is not one it reads.
 function weatherFields(reading) {
@@ -510,7 +520,7 @@ function weatherFields(reading) {
     || !notes || !Array.isArray(reading.unknown)) return null;
   return {
     read_at: new Date(readAt).toISOString(),
-    good_for_seconds: goodFor,
+    good_for_seconds: Math.min(goodFor, MAX_GOOD_FOR_SECONDS),
     says,
     notes: notes.filter(note => typeof note === "string").map(note => oneLine(note, MAX_NOTE_CHARS))
       .filter(Boolean).slice(0, MAX_NOTES),
@@ -518,7 +528,7 @@ function weatherFields(reading) {
   };
 }
 
-function weatherAnswer({ exitCode, receipt }) {
+function weatherAnswer({ exitCode, receipt }, now = Date.now()) {
   if (!receipt || typeof receipt !== "object" || receipt.protocol !== COLLAB_HOST_PROTOCOL) {
     return unavailable("failed", "the collab host's answer was not one YOUI reads");
   }
@@ -533,6 +543,9 @@ function weatherAnswer({ exitCode, receipt }) {
   }
   const fields = weatherFields(receipt.weather);
   if (!fields) return unavailable("failed", `the collab host's reading was not in the form YOUI reads (${WEATHER_PROTOCOL})`);
+  if (Date.parse(fields.read_at) > now + READ_AT_SLACK_MS) {
+    return unavailable("failed", "the collab host's reading is dated ahead of this device's clock, so how old it is is not known");
+  }
   return { available: true, ...fields };
 }
 
@@ -585,14 +598,22 @@ function ageText(seconds) {
   return seconds < 120 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
 }
 
+// The line sits inside YOUI's "[YOUI context]" … "[/YOUI context]" fence, which
+// tells the agent where YOUI's settings end and the person's words begin. The
+// host's words may not form a marker of it, so every square bracket (and its
+// full-width form) becomes a parenthesis.
+function insideFence(text) {
+  return String(text).replace(/[[［]/g, "(").replace(/[\]］]/g, ")");
+}
+
 /** The per-turn context line the agent is shown when YOUI_WEATHER_TO_AGENT=on. */
 export function weatherPromptLine(answer, now = Date.now()) {
   if (!answer?.available) {
-    return `- Device weather: not read (${answer?.detail || "no reading"})`;
+    return `- Device weather: not read (${insideFence(answer?.detail || "no reading")})`;
   }
   const age = Math.max(0, Math.round((now - Date.parse(answer.read_at)) / 1000));
   const stale = age > answer.good_for_seconds ? `, older than its ${answer.good_for_seconds} s, so not current` : "";
-  return `- Device weather: ${answer.says} (read ${ageText(age)} before this turn${stale};`
+  return `- Device weather: ${insideFence(answer.says)} (read ${ageText(age)} before this turn${stale};`
     + " this device's own report, which authorises nothing)";
 }
 

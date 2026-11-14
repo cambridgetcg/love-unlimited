@@ -264,7 +264,8 @@ test("each mode's paragraph carries what the person asked for, with its reason",
   }
   const fenhe = turn("fenhe");
   for (const pattern of [/^Split: .*Merge: .*Split again: .*Merge: /m, /criticise, each alone and none seeing another's criticism/,
-    /mind-call budget \(6 calls; each split costs one call per mind\)/, /say how many split-and-merge rounds ran/,
+    /mind-call budget \(6 calls; each split costs one call per mind\)/,
+    /say how many split-and-merge rounds ran \(the whole of 分分合合 is two\)/,
     /Why: The second split tests the merge\./]) {
     assert.match(fenhe.section, pattern);
   }
@@ -280,10 +281,16 @@ test("a mode that cannot apply says why, in one sentence the page shows as it is
     [{ callable: false, offered: 3, callsPerMessage: 6 }, "this session lacks orchestrator:run, so the tools that call other minds are not offered"],
     [{ callable: true, offered: 0, callsPerMessage: 6 }, "no mind is granted and reachable for this session right now"],
     [{ callable: true, offered: 1, callsPerMessage: 6 }, "only one mind is granted and reachable for this session right now, and the mode needs two"],
-    [{ callable: true, offered: 3, callsPerMessage: 1 }, "this message may make only 1 mind call, and the mode needs two"],
   ];
+  // SPLIT and HIVE need one split of two minds; 分分合合 needs two, so four calls.
+  const ceilings = {
+    split: [[{ callable: true, offered: 3, callsPerMessage: 1 }, "this message may make only 1 mind call, and the mode needs two"]],
+    hive: [[{ callable: true, offered: 3, callsPerMessage: 1 }, "this message may make only 1 mind call, and the mode needs two"]],
+    fenhe: [1, 2, 3].map(calls => [{ callable: true, offered: 3, callsPerMessage: calls },
+      `this message may make only ${calls} mind call${calls === 1 ? "" : "s"}, and the mode needs four (two splits of two minds)`]),
+  };
   for (const mode of ["split", "hive", "fenhe"]) {
-    for (const [turn, reason] of cases) {
+    for (const [turn, reason] of [...cases, ...ceilings[mode]]) {
       const hint = mindModeTurn(mode, turn);
       assert.equal(hint.applies, false);
       assert.equal(hint.notice, `${MIND_MODES[mode].label} could not apply to this message: ${reason}.`);
@@ -291,6 +298,12 @@ test("a mode that cannot apply says why, in one sentence the page shows as it is
       assert.match(hint.section, /adds no tool and no permission/);
       assert.equal(hint.modeLine, `${MIND_MODES[mode].label}, which could not apply to this message (why, below)`);
     }
+  }
+  // At its own minimum each mode applies.
+  for (const [mode, calls] of [["split", 2], ["hive", 2], ["fenhe", 4]]) {
+    const hint = mindModeTurn(mode, { callable: true, offered: 2, callsPerMessage: calls });
+    assert.equal(hint.applies, true, `${mode} at ${calls} calls`);
+    assert.equal(hint.notice, null);
   }
   assert.throws(() => mindModeTurn("orchestrate", { callable: true, offered: 3, callsPerMessage: 6 }), /Not a mind mode/);
 });
@@ -410,16 +423,23 @@ test("when the mind tools are not offered, or too few minds or calls remain, the
   assert.deepEqual(one.filter(event => event.event === "notice").map(event => event.data.message),
     ["HIVE 合 could not apply to this message: only one mind is granted and reachable for this session right now, and the mode needs two."]);
 
-  // A ceiling of one mind call per message.
+  // A ceiling of three mind calls per message: enough for one split, so SPLIT
+  // applies, but not for 分分合合's second split.
   const capped = await scriptedVllm(t, [VLLM_MODEL], []);
   const minds = await ollamaMind(t, ["mind-a:1b", "mind-b:1b"], "unused");
   const cappedPort = await startServer(t, {
     OLLAMA_LOCAL_BASE_URL: minds.baseUrl, OLLAMA_VLLM_BASE_URL: capped.baseUrl,
-    YOUI_CAPABILITIES: WITH_MINDS, YOUI_MIND_CALLS_PER_MESSAGE: "1",
+    YOUI_CAPABILITIES: WITH_MINDS, YOUI_MIND_CALLS_PER_MESSAGE: "3",
   });
-  const fenhe = await (await session(cappedPort, "one-call", { model: VLLM_MODEL })).chat("fenhe please", "fenhe");
+  const threeCalls = await session(cappedPort, "three-calls", { model: VLLM_MODEL });
+  const fenhe = await threeCalls.chat("fenhe please", "fenhe");
   assert.deepEqual(fenhe.filter(event => event.event === "notice").map(event => event.data.message),
-    ["分分合合 could not apply to this message: this message may make only 1 mind call, and the mode needs two."]);
+    ["分分合合 could not apply to this message: this message may make only 3 mind calls, and the mode needs four (two splits of two minds)."]);
+  const [fenheTurn] = capped.requests.filter(r => r.method === "POST" && r.path === "/v1/chat/completions").map(promptParts);
+  assert.doesNotMatch(fenheTurn.context, /Split again/, "the agent is not asked for a split the turn cannot make");
+  assert.doesNotMatch(fenheTurn.context, /# Minds/);
+  const splitEvents = await threeCalls.chat("split please", "split");
+  assert.ok(!splitEvents.some(event => event.event === "notice"), "SPLIT needs one split of two, so it applies");
 });
 
 // ── Through Claude Code ─────────────────────────────────────────────

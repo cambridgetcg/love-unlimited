@@ -176,10 +176,14 @@ own AgentTool Collab host (`agenttool-collab-host weather`, an
 `agenttool.collab-weather/1` reading) through `GET /api/weather`, which needs
 `status:read` (in `safe`). The page asks every 60 seconds and shows the host's
 one-line `says`, its notes when there are any, and how long ago it was read.
-Once a reading is older than its `good_for_seconds` (60) it is marked stale and
-dimmed. It is the host's own report, not proof; nothing in YOUI behaves
-differently because of it, and YOUI keeps no reading once it has answered. It
-is plain text, not a badge, with no colour for good or bad.
+Once a reading is older than its `good_for_seconds` it is marked stale and
+dimmed. The age is reckoned on the server's clock (the answer's `Date` header,
+whole seconds), the clock the host read, and then by the time passed in the
+browser, so a browser whose clock is set differently, as when the page is
+viewed from another device, shows the same age. It is the host's own report,
+not proof; nothing in YOUI behaves differently because of it, and YOUI itself
+keeps no reading once it has answered. It is plain text, not a badge, with no
+colour for good or bad.
 
 - YOUI runs `<host> weather` on this device only: the host is
   `YOUI_COLLAB_HOST` or the installed default, a `.js` bundle runs under
@@ -187,20 +191,41 @@ is plain text, not a badge, with no colour for good or bad.
   journal and never over SSH. A read has its own 5 s timeout, overlapping reads
   share one host process, and it never waits in, or holds a place in, the
   decision room's gate of three desk processes.
-- With no reading the line says why: `not_in_installed_build` (the installed
-  collab build predates the weather command), `host_missing`, or `failed`.
-  The route answers these with 200, not an error.
+- What YOUI passes on: `says` and the notes on one line each, with format
+  characters (bidi overrides, zero-width spaces) dropped; `good_for_seconds`
+  no longer than the protocol's 60; and no reading dated more than 5 s ahead of
+  this device's clock (that is `failed`, since its age cannot be known).
+- With no reading the line says why: `not_in_installed_build` (the host
+  answered `usage_error` to `weather`, which is what a collab build from before
+  the weather command gives), `host_missing`, or `failed`. The route answers
+  these with 200, not an error.
 - `YOUI_WEATHER_TO_AGENT` is `on` or `off`; absent or empty is `off`, and any
   other value stops startup. **On:** each message's per-turn `[YOUI context]`
   block gets one line with the current `says` and its age (or "not read" and
   why), so it reaches the agent's model provider with the message; it never
-  enters the cached system prompt. The host is read once per message, and the
-  sidebar says the agent is shown the line. **Off:** nothing is read for the
-  agent, and the prompt is the same bytes as before the line existed.
+  enters the cached system prompt. In that line every square bracket of the
+  host's words becomes a parenthesis, so they cannot close the block and pass
+  as the person's words. The host is read once per message (a turn whose page
+  goes away stops waiting for it), and the sidebar says the agent is shown the
+  line, also when there is no reading. **Off:** nothing is read for the agent,
+  and the prompt is the same bytes as before the line existed.
+- **Where a line the agent was shown stays.** On a Claude turn the line is part
+  of the message YOUI sends Claude Code, which keeps it in that conversation's
+  transcript on this device and sends it again, with the rest of the
+  conversation, on every later turn (`--resume`; [YOUSPEAK.md](../YOUSPEAK.md)
+  §2.1). So each line shown stays on disk and goes to the model provider again
+  until the conversation ends: turning the switch off stops new lines, not the
+  ones already sent, and Clear starts a new conversation. YOUI's own Ollama and
+  vLLM loop sends the line only with that message's requests.
 
-Tested with a fake host (`tests/test_youi_weather.mjs`). Not tested: the page
-in a browser, and a reading viewed through an SSH tunnel from another device,
-where the age is reckoned with the viewing browser's clock.
+Tested with fake hosts and a fake Claude Code (`tests/test_youi_weather.mjs`),
+and the page's own weather functions in a `node:vm` context with a stub page, a
+fake clock and fake answers (`tests/test_youi_page.mjs`). Not tested: the page
+in a real browser, and through an SSH tunnel from another device; what a live
+model does with the weather line, since no live model call was made; and the
+installed collab build's real answer to `weather`, which was not run (the
+`not_in_installed_build` path is tested against a fake that prints the refusal
+shape read from the collab host's source).
 
 ## 5. Current remote viewing
 

@@ -26,8 +26,14 @@
 //   POST /api/decisions/propose   { workspace, question, criteria, extent, known_conflicts?, topic?, consult_seconds?, idempotency_key }
 //   POST /api/decisions/withdraw  { workspace, proposal, reason, idempotency_key }
 //   POST /api/decisions/ceremony  { proposal, act, reason? }  → { url, expires_at }
+//
+// The same host also answers `agenttool-collab-host weather`: one reading of
+// this device (power, processors, memory, graphics, uplink), which needs no
+// journal and is not a person verb. readDeviceWeather runs it for GET
+// /api/weather in server.mjs; see "Device weather" below.
 
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { HttpError } from "./security.mjs";
@@ -77,19 +83,24 @@ export function decisionTables(env = process.env) {
   return tables;
 }
 
+/** This device's host with exactly `args`; a .js, .mjs or .ts entry runs under Bun with no env file or config. */
+function hostInvocation(args, env) {
+  const host = deskCommand(env);
+  if (/\.(m?js|ts)$/.test(host)) {
+    return { file: env.YOUI_COLLAB_BUN || "/opt/homebrew/bin/bun",
+      args: ["--no-env-file", "--config=/dev/null", host, ...args], underBun: true };
+  }
+  return { file: host, args, underBun: false };
+}
+
 function invocation(table, args, env) {
   if (table.ssh) {
     // The remote forced command reads this JSON argv; no shell ever parses it.
     return { file: env.YOUI_DECISION_SSH || "/usr/bin/ssh",
       args: ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", table.ssh, JSON.stringify(args)] };
   }
-  const host = deskCommand(env);
-  const tail = ["person", ...args, `--db=${localJournal(env)}`];
-  if (/\.(m?js|ts)$/.test(host)) {
-    return { file: env.YOUI_COLLAB_BUN || "/opt/homebrew/bin/bun",
-      args: ["--no-env-file", "--config=/dev/null", host, ...tail] };
-  }
-  return { file: host, args: tail };
+  const { file, args: argv } = hostInvocation(["person", ...args, `--db=${localJournal(env)}`], env);
+  return { file, args: argv };
 }
 
 // A small gate so many tabs and polls cannot start unbounded desk processes.
@@ -113,13 +124,25 @@ function killGroup(child) {
   setTimeout(() => { try { process.kill(-child.pid, "SIGKILL"); } catch {} }, 1_000).unref();
 }
 
-/** Run one desk verb and return its JSON receipt. Writes ignore the browser going away. */
-function runDesk(table, args, { env, signal, write = false } = {}) {
-  const { file, args: argv } = invocation(table, args, env);
-  return withSlot(() => new Promise((resolve, reject) => {
-    const child = spawn(file, argv, {
-      env: sanitizedChildEnv({ source: env, home: homedir(), purpose: "person-desk" }),
-      // A new session has no controlling terminal, so the desk can never prompt.
+/** Why a host process gave no receipt: cancelled, timeout, too_large, not_found, start_failed or unreadable. */
+class HostRunError extends Error {
+  constructor(kind) {
+    super(`collab host: ${kind}`);
+    this.kind = kind;
+  }
+}
+
+/**
+ * Runs one host process to its last JSON line: detached (a new session has no
+ * controlling terminal, so the host can never prompt), stdin ignored, in a
+ * sanitised environment, its output capped. A timeout, or `signal` aborting,
+ * kills its whole process group. Resolves { exitCode, receipt }; rejects with
+ * a HostRunError. The desk verbs and the weather reading both run through it.
+ */
+function runHostProcess({ file, args }, { env, purpose, timeoutMs, signal = null }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(file, args, {
+      env: sanitizedChildEnv({ source: env, home: homedir(), purpose }),
       detached: true,
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -136,40 +159,64 @@ function runDesk(table, args, { env, signal, write = false } = {}) {
     };
     const onAbort = () => {
       killGroup(child);
-      finish(new HttpError(499, "The request was cancelled", "request_cancelled"));
+      finish(new HostRunError("cancelled"));
     };
-    if (signal && !write) signal.addEventListener("abort", onAbort, { once: true });
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => {
       killGroup(child);
-      finish(write
-        ? new HttpError(504, "The desk did not answer in time; the write may or may not have happened, so read again", "person_desk_outcome_unknown")
-        : new HttpError(504, "The desk did not answer in time", "person_desk_timeout"));
-    }, table.ssh ? REMOTE_TIMEOUT_MS : HOST_TIMEOUT_MS);
+      finish(new HostRunError("timeout"));
+    }, timeoutMs);
     child.stdout.on("data", chunk => {
       bytes += chunk.length;
       if (bytes > MAX_HOST_OUTPUT_BYTES) {
         killGroup(child);
-        finish(new HttpError(502, "The desk answer was too large", "person_desk_output_too_large"));
+        finish(new HostRunError("too_large"));
         return;
       }
       chunks.push(chunk);
     });
-    child.once("error", error => finish(new HttpError(
-      503,
-      error.code === "ENOENT" ? "The person desk is not installed here; set YOUI_COLLAB_HOST" : "The person desk could not start",
-      "person_desk_unavailable",
-    )));
+    child.once("error", error => finish(new HostRunError(error.code === "ENOENT" ? "not_found" : "start_failed")));
     child.once("close", exitCode => {
       // Decode once, so a multibyte character split across chunks survives.
       const line = Buffer.concat(chunks).toString("utf-8").trim().split("\n").at(-1) || "";
       try {
         finish(null, { exitCode, receipt: JSON.parse(line) });
       } catch {
-        finish(new HttpError(502, table.ssh ? "The other device's desk returned no receipt" : "The desk returned no receipt",
-          "person_desk_unreadable"));
+        finish(new HostRunError("unreadable"));
       }
     });
-  }));
+  });
+}
+
+function deskError(error, table, write) {
+  if (!(error instanceof HostRunError)) return error;
+  switch (error.kind) {
+    case "cancelled":
+      return new HttpError(499, "The request was cancelled", "request_cancelled");
+    case "timeout":
+      return write
+        ? new HttpError(504, "The desk did not answer in time; the write may or may not have happened, so read again", "person_desk_outcome_unknown")
+        : new HttpError(504, "The desk did not answer in time", "person_desk_timeout");
+    case "too_large":
+      return new HttpError(502, "The desk answer was too large", "person_desk_output_too_large");
+    case "not_found":
+      return new HttpError(503, "The person desk is not installed here; set YOUI_COLLAB_HOST", "person_desk_unavailable");
+    case "start_failed":
+      return new HttpError(503, "The person desk could not start", "person_desk_unavailable");
+    default:
+      return new HttpError(502, table.ssh ? "The other device's desk returned no receipt" : "The desk returned no receipt",
+        "person_desk_unreadable");
+  }
+}
+
+/** Run one desk verb and return its JSON receipt. Writes ignore the browser going away. */
+function runDesk(table, args, { env, signal, write = false } = {}) {
+  return withSlot(() => runHostProcess(invocation(table, args, env), {
+    env,
+    purpose: "person-desk",
+    timeoutMs: table.ssh ? REMOTE_TIMEOUT_MS : HOST_TIMEOUT_MS,
+    signal: write ? null : signal,
+  }).catch(error => { throw deskError(error, table, write); }));
 }
 
 /** Identical reads in flight share one desk process. */
@@ -403,4 +450,171 @@ export function localDeskInvocation(args, env = process.env) {
   return invocation({ id: "local", ssh: null }, args, env);
 }
 
-export const __test = { statusFor, invocation, deskCommand };
+// ── Device weather ──────────────────────────────────────────────────
+//
+// `agenttool-collab-host weather` prints one reading of this device
+// (agenttool.collab-weather/1, specified in cambridgetcg/agenttool,
+// packages/collab). Three of its principles decide what YOUI does with it:
+//
+// - A reading is about the moment it was read. YOUI passes on read_at and
+//   good_for_seconds so the page can show its age and stop presenting it as
+//   current; YOUI keeps no reading once it has answered.
+// - The device is the person's. The page shows the line to the person; the
+//   agent sees it only when YOUI_WEATHER_TO_AGENT=on (weatherToAgentSetting).
+// - It is content, not proof, and authorises nothing: nothing in YOUI
+//   behaves differently because of it.
+//
+// The command is run here, on this device only, as `<host> weather`: no
+// `person`, no --db (it needs no journal, and the host refuses any extra
+// argument). Never over SSH: another device's person-remote accepts person
+// verbs only, and another device's weather is not part of this build. It has
+// its own 5 s timeout and its own single flight, outside the desk's gate of
+// three, so a reading never waits behind a decision or holds one up.
+
+export const WEATHER_TIMEOUT_MS = 5_000;
+const COLLAB_HOST_PROTOCOL = "agenttool.collab-host/1";
+const WEATHER_PROTOCOL = "agenttool.collab-weather/1";
+const MAX_SAYS_CHARS = 400;
+const MAX_NOTE_CHARS = 300;
+const MAX_NOTES = 12;
+
+// Why there is no reading. Each `detail` names no path, user or device.
+const WEATHER_UNAVAILABLE = {
+  not_in_installed_build: "the collab host installed on this device has no weather command yet",
+  host_missing: "no collab host is installed where YOUI looks (YOUI_COLLAB_HOST, or the default under ~/.local/share/agenttool)",
+  bun_missing: "Bun, which runs the collab host, is not where YOUI looks (YOUI_COLLAB_BUN, or /opt/homebrew/bin/bun)",
+};
+
+function unavailable(reason, detail) {
+  return { available: false, reason, detail };
+}
+
+// One line of plain text: control characters and line breaks become spaces,
+// so a reading can never add a line to the agent's context block, and format
+// characters (bidi overrides, zero-width spaces) are dropped, so what the page
+// shows and the agent reads is the text as it reads.
+function oneLine(value, max) {
+  return String(value)
+    .replace(/\p{Cf}+/gu, "")
+    .replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+// The protocol's window (WEATHER_GOOD_FOR_SECONDS): a host may name a shorter
+// one, never a longer. And how far ahead of this device's clock a read_at may
+// be: the host reads the same clock moments before YOUI does, so a reading
+// dated later than this is not one YOUI can place in time.
+const MAX_GOOD_FOR_SECONDS = 60;
+const READ_AT_SLACK_MS = 5_000;
+
+// The fields YOUI passes on, or null when the reading is not one it reads.
+function weatherFields(reading) {
+  if (!reading || typeof reading !== "object" || reading.protocol !== WEATHER_PROTOCOL) return null;
+  const readAt = typeof reading.read_at === "string" ? Date.parse(reading.read_at) : NaN;
+  const goodFor = reading.good_for_seconds;
+  const says = typeof reading.says === "string" ? oneLine(reading.says, MAX_SAYS_CHARS) : "";
+  const notes = Array.isArray(reading.notes) ? reading.notes : null;
+  if (!Number.isFinite(readAt) || !Number.isFinite(goodFor) || goodFor <= 0 || !says
+    || !notes || !Array.isArray(reading.unknown)) return null;
+  return {
+    read_at: new Date(readAt).toISOString(),
+    good_for_seconds: Math.min(goodFor, MAX_GOOD_FOR_SECONDS),
+    says,
+    notes: notes.filter(note => typeof note === "string").map(note => oneLine(note, MAX_NOTE_CHARS))
+      .filter(Boolean).slice(0, MAX_NOTES),
+    not_read: reading.unknown.length,
+  };
+}
+
+function weatherAnswer({ exitCode, receipt }, now = Date.now()) {
+  if (!receipt || typeof receipt !== "object" || receipt.protocol !== COLLAB_HOST_PROTOCOL) {
+    return unavailable("failed", "the collab host's answer was not one YOUI reads");
+  }
+  // A host from before weather parses it as an unknown command. YOUI passes no
+  // other argument, so a usage error here means the command is missing.
+  if (receipt.status === "error" && receipt.error === "usage_error") {
+    return unavailable("not_in_installed_build", WEATHER_UNAVAILABLE.not_in_installed_build);
+  }
+  if (exitCode !== 0 || receipt.status !== "weather") {
+    const code = typeof receipt.error === "string" && /^[a-z0-9_]{1,64}$/.test(receipt.error) ? ` (${receipt.error})` : "";
+    return unavailable("failed", `the collab host did not give a reading${code}`);
+  }
+  const fields = weatherFields(receipt.weather);
+  if (!fields) return unavailable("failed", `the collab host's reading was not in the form YOUI reads (${WEATHER_PROTOCOL})`);
+  if (Date.parse(fields.read_at) > now + READ_AT_SLACK_MS) {
+    return unavailable("failed", "the collab host's reading is dated ahead of this device's clock, so how old it is is not known");
+  }
+  return { available: true, ...fields };
+}
+
+async function runWeather(env, timeoutMs) {
+  const run = hostInvocation(["weather"], env);
+  // Under Bun a missing entry file is only a Bun error, so look first.
+  if (run.underBun && !existsSync(deskCommand(env))) return unavailable("host_missing", WEATHER_UNAVAILABLE.host_missing);
+  try {
+    return weatherAnswer(await runHostProcess(run, { env, purpose: "collab-weather", timeoutMs }));
+  } catch (error) {
+    if (!(error instanceof HostRunError)) return unavailable("failed", "the collab host could not start");
+    if (error.kind === "not_found") {
+      return unavailable("host_missing", run.underBun ? WEATHER_UNAVAILABLE.bun_missing : WEATHER_UNAVAILABLE.host_missing);
+    }
+    return unavailable("failed", {
+      timeout: `the collab host did not answer within ${Math.round(timeoutMs / 100) / 10} s`,
+      too_large: "the collab host's answer was too large",
+      start_failed: "the collab host could not start",
+      unreadable: "the collab host gave no receipt",
+    }[error.kind] || "the collab host gave no reading");
+  }
+}
+
+let weatherInFlight = null;
+
+/**
+ * One reading of this device, for GET /api/weather and (when switched on) the
+ * agent's per-turn context. Never rejects. Calls that overlap share one host
+ * process; once it has answered nothing is kept, so the next call reads again.
+ *   { available: true, read_at, good_for_seconds, says, notes, not_read }
+ *   { available: false, reason, detail }
+ *     reason: not_in_installed_build | host_missing | failed
+ */
+export function readDeviceWeather(env = process.env, { timeoutMs = WEATHER_TIMEOUT_MS } = {}) {
+  weatherInFlight ??= runWeather(env, timeoutMs).finally(() => { weatherInFlight = null; });
+  return weatherInFlight;
+}
+
+/**
+ * YOUI_WEATHER_TO_AGENT: `on` or `off`; absent (or empty) is off. Any other
+ * value throws, so YOUI refuses to start, as with its other closed settings.
+ */
+export function weatherToAgentSetting(raw) {
+  if (raw === undefined || raw === "" || raw === "off") return false;
+  if (raw === "on") return true;
+  throw new Error(`Unknown YOUI_WEATHER_TO_AGENT: ${JSON.stringify(String(raw))}. Use on or off (absent is off).`);
+}
+
+function ageText(seconds) {
+  return seconds < 120 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
+}
+
+// The line sits inside YOUI's "[YOUI context]" … "[/YOUI context]" fence, which
+// tells the agent where YOUI's settings end and the person's words begin. The
+// host's words may not form a marker of it, so every square bracket (and its
+// full-width form) becomes a parenthesis.
+function insideFence(text) {
+  return String(text).replace(/[[［]/g, "(").replace(/[\]］]/g, ")");
+}
+
+/** The per-turn context line the agent is shown when YOUI_WEATHER_TO_AGENT=on. */
+export function weatherPromptLine(answer, now = Date.now()) {
+  if (!answer?.available) {
+    return `- Device weather: not read (${insideFence(answer?.detail || "no reading")})`;
+  }
+  const age = Math.max(0, Math.round((now - Date.parse(answer.read_at)) / 1000));
+  const stale = age > answer.good_for_seconds ? `, older than its ${answer.good_for_seconds} s, so not current` : "";
+  return `- Device weather: ${insideFence(answer.says)} (read ${ageText(age)} before this turn${stale};`
+    + " this device's own report, which authorises nothing)";
+}
+
+export const __test = { statusFor, invocation, hostInvocation, deskCommand, weatherAnswer };

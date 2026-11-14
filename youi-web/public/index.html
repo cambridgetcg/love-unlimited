@@ -282,6 +282,9 @@ button, select, textarea, input { font: inherit; }
   color: var(--text-primary);
   box-shadow: 0 0 16px var(--agent-glow);
 }
+/* The mind modes (docs/YOUI-MINDS-DESIGN.md §7): a second row under Orchestrate and Direct */
+.mode-toggle.mind-modes { margin-top: 6px; }
+.mode-toggle.mind-modes .mode-btn { padding: 8px 4px; }
 .mode-icon { font-size: 1.3rem; }
 .mode-label { font-size: 0.75rem; font-weight: 600; }
 .mode-desc { font-size: 0.6rem; color: var(--text-dim); text-align: center; }
@@ -297,6 +300,12 @@ button, select, textarea, input { font: inherit; }
 }
 .dispatch-row .dl { color: var(--text-dim); }
 .dispatch-row .dv { color: var(--text-primary); font-weight: 500; }
+
+/* This device's weather: one plain line, never a badge, no colour for good or bad */
+.weather-line { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; overflow-wrap: anywhere; }
+.weather-notes div { font-size: 0.65rem; color: var(--text-dim); line-height: 1.4; margin-top: 2px; overflow-wrap: anywhere; }
+.weather-meta { font-size: 0.6rem; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+#weather-box.stale { opacity: 0.5; }
 
 /* Minds view (orchestrate mode): what the registry reports, by provider */
 .mind-state { font-family: var(--mono); font-size: 0.62rem; }
@@ -1159,6 +1168,16 @@ button, select, textarea, input { font: inherit; }
       </div>
     </div>
 
+    <!-- This device's weather, from its own collab host (GET /api/weather) -->
+    <div class="sidebar-section" id="weather-section">
+      <h3>This device</h3>
+      <div id="weather-box">
+        <div class="weather-line" id="weather-line">Weather: not read yet</div>
+        <div class="weather-notes" id="weather-notes"></div>
+        <div class="weather-meta" id="weather-meta"></div>
+      </div>
+    </div>
+
     <!-- Settings -->
     <!-- Orchestrator Mode -->
     <div class="sidebar-section" id="orchestrator-section">
@@ -1173,6 +1192,21 @@ button, select, textarea, input { font: inherit; }
           <span class="mode-icon">💬</span>
           <span class="mode-label">Direct</span>
           <span class="mode-desc">Works alone</span>
+        </button>
+      </div>
+      <!-- Mind modes: what the agent is asked to do with the minds for each message (docs/YOUI-MINDS-DESIGN.md §7) -->
+      <div class="mode-toggle mind-modes">
+        <button id="mode-split" class="mode-btn" onclick="setChatMode('split')" title="Asks the agent to have two or three minds answer apart, and to give each answer under its mind's name and say where they differ (a request: the agent decides, and a notice says when the mode cannot apply)">
+          <span class="mode-label">SPLIT 分</span>
+          <span class="mode-desc">Answers apart</span>
+        </button>
+        <button id="mode-hive" class="mode-btn" onclick="setChatMode('hive')" title="Asks the agent to consult minds and answer with one voice, naming who contributed and what did not merge (a request: the agent decides, and a notice says when the mode cannot apply)">
+          <span class="mode-label">HIVE 合</span>
+          <span class="mode-desc">One voice</span>
+        </button>
+        <button id="mode-fenhe" class="mode-btn" onclick="setChatMode('fenhe')" title="Asks the agent to split, merge into a draft, split again to criticise it, then merge, within the message's mind-call budget (a request: the agent decides, and a notice says when the mode cannot apply)">
+          <span class="mode-label">分分合合</span>
+          <span class="mode-desc">Split, merge, twice</span>
         </button>
       </div>
       <!-- Minds the registry offers (orchestrate mode); docs/YOUI-MINDS-DESIGN.md §3.2 -->
@@ -1742,9 +1776,11 @@ async function boot() {
     if (data.chatMode) setChatMode(data.chatMode);
     bootLine(`Connected to ${location.host}`, true);
     if (data.agent) bootLine(`${data.agent.name} ${data.agent.emoji} · ${data.model}`, true);
+    startWeather(data.weatherToAgent);
   } catch (e) {
     console.warn('Status fetch failed:', e);
     bootLine('The server did not answer; opening anyway', false);
+    startWeather(null);
   }
   // The usage dashboard fills in once the app is open.
   fetchUsageDashboard();
@@ -1762,7 +1798,11 @@ async function boot() {
 // call them through review, ensemble, decompose, pipeline and layerthink (§3.3); the panel
 // shows the same registry (GET /api/minds).
 
-let chatMode = 'direct'; // 'orchestrate' or 'direct'; the server's state decides at boot
+// 'direct', 'orchestrate', or a mind mode ('split', 'hive', 'fenhe'); the server's state decides at boot.
+// A mind mode is a hint for each message (§7): the agent still decides every mind call, and when the
+// mode cannot apply the turn's notice says why.
+let chatMode = 'direct';
+const CHAT_MODES = ['direct', 'orchestrate', 'split', 'hive', 'fenhe'];
 
 function safeClassToken(value, fallback = 'unknown') {
   const token = String(value ?? '').trim().toLowerCase();
@@ -1770,11 +1810,14 @@ function safeClassToken(value, fallback = 'unknown') {
 }
 
 function setChatMode(mode) {
+  if (!CHAT_MODES.includes(mode)) return;
   chatMode = mode;
-  document.getElementById('mode-orchestrate').classList.toggle('active', mode === 'orchestrate');
-  document.getElementById('mode-direct').classList.toggle('active', mode === 'direct');
-  document.getElementById('minds-panel').style.display = mode === 'orchestrate' ? 'block' : 'none';
-  if (mode === 'orchestrate') fetchMinds();
+  for (const each of CHAT_MODES) {
+    document.getElementById(`mode-${each}`).classList.toggle('active', mode === each);
+  }
+  // Every mode but direct reads the minds registry for its turns, so the panel shows it.
+  document.getElementById('minds-panel').style.display = mode === 'direct' ? 'none' : 'block';
+  if (mode !== 'direct') fetchMinds();
 
   // Persist to server
   fetch('/api/settings', {
@@ -1853,6 +1896,120 @@ function renderMinds(minds, problem = '', callable = false) {
     ? `${offered} offered; the agent can call them through review, ensemble, decompose, pipeline and layerthink, `
       + 'and each mind receives only the text the tool sends it.'
     : `${offered} offered, but this session lacks orchestrator:run, so the agent cannot call them.`;
+}
+
+// ─── DEVICE WEATHER ──────────────────────────────────────
+// One reading of this device from its own collab host (GET /api/weather).
+// A reading is about the moment it was read: the line shows its age, and once
+// it is older than good_for_seconds it is marked stale and dimmed. It is the
+// host's own report, not proof, and nothing on this page acts on it. Every
+// string is set with textContent.
+
+const WEATHER_POLL_MS = 60_000;
+let weatherAnswer = null;      // the last answer, kept only to show it and its age
+let weatherClock = null;       // how old that answer was when it arrived, and when that was here
+let weatherToAgent = null;     // YOUI_WEATHER_TO_AGENT, from /api/status; null until known
+
+async function fetchWeather() {
+  let answer;
+  let clock = null;
+  try {
+    const response = await fetch('/api/weather');
+    if (response.ok) {
+      answer = await response.json();
+      clock = weatherClockAt(response, answer);
+    } else {
+      // fromPage: this page could not read the server's answer; the agent's line is read apart from it.
+      answer = { available: false, fromPage: true,
+        detail: response.status === 403 ? 'this session lacks status:read' : `the server answered ${response.status}` };
+    }
+  } catch {
+    answer = { available: false, fromPage: true, detail: 'the server did not answer' };
+  }
+  weatherAnswer = answer;
+  weatherClock = clock;
+  renderWeather();
+}
+
+// A reading's age is reckoned on the server's clock (the answer's Date header),
+// which is the clock the host read. This browser's clock may be set differently,
+// as when the page is viewed from another device. The header is in whole seconds,
+// so the age can read up to a second young. Without the header, this browser's
+// clock is used.
+function weatherClockAt(response, answer) {
+  const readAt = Date.parse(answer && answer.read_at);
+  const serverNow = Date.parse((response.headers && response.headers.get('Date')) || '');
+  const ageMs = (Number.isFinite(serverNow) ? serverNow : Date.now()) - readAt;
+  return { ageMs: Math.max(0, ageMs), wall: Date.now(), mono: performance.now() };
+}
+
+// Seconds since the reading was taken: its age on arrival plus the time since, here.
+// Elapsed time is the later of the wall clock (which counts a sleeping laptop) and
+// the monotonic clock (which a clock set back cannot reverse).
+function weatherAgeSeconds() {
+  if (!weatherClock || !Number.isFinite(weatherClock.ageMs)) return NaN;
+  const elapsed = Math.max(0, Date.now() - weatherClock.wall, performance.now() - weatherClock.mono);
+  return Math.round((weatherClock.ageMs + elapsed) / 1000);
+}
+
+function weatherAge(seconds) {
+  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  return `${Math.round(seconds / 3600)} h`;
+}
+
+// Whether the agent is shown a weather line with each message (YOUI_WEATHER_TO_AGENT).
+// With the switch on it is shown one even when there is no reading: the server's
+// "not read" and why. Null while the switch is not known.
+function weatherAgentClause(answer) {
+  if (weatherToAgent === false) return 'not shown to the agent';
+  if (weatherToAgent !== true) return null;
+  return answer.fromPage
+    ? 'the agent is shown its own reading of this device with each message'
+    : 'the agent is shown this line with each message';
+}
+
+function renderWeather() {
+  const box = document.getElementById('weather-box');
+  const line = document.getElementById('weather-line');
+  const notes = document.getElementById('weather-notes');
+  const meta = document.getElementById('weather-meta');
+  if (!box || !line || !notes || !meta) return;
+  const answer = weatherAnswer;
+  if (!answer) return;
+  if (answer.available !== true) {
+    box.classList.remove('stale');
+    line.textContent = `Weather not read: ${String(answer.detail || answer.reason || 'no reason given')}.`;
+    notes.replaceChildren();
+    meta.textContent = weatherAgentClause(answer) || '';
+    return;
+  }
+  const goodFor = Number(answer.good_for_seconds);
+  const age = weatherAgeSeconds();
+  const stale = !(Number.isFinite(age) && age <= goodFor);
+  box.classList.toggle('stale', stale);
+  line.textContent = String(answer.says);
+  notes.replaceChildren(...(Array.isArray(answer.notes) ? answer.notes : []).map(note => {
+    const row = document.createElement('div');
+    row.textContent = String(note);
+    return row;
+  }));
+  const notRead = Number(answer.not_read) || 0;
+  meta.textContent = [
+    Number.isFinite(age) ? `read ${weatherAge(age)} ago` : 'read at an unknown time',
+    stale ? `stale: older than its ${goodFor} s` : null,
+    notRead ? `${notRead} not read` : null,
+    "the host's own report; it authorises nothing",
+    weatherAgentClause(answer),
+  ].filter(Boolean).join(' · ');
+}
+
+function startWeather(toAgent) {
+  weatherToAgent = typeof toAgent === 'boolean' ? toAgent : null;
+  fetchWeather();
+  setInterval(fetchWeather, WEATHER_POLL_MS);
+  // The age moves between readings, and a reading turns stale without a new fetch.
+  setInterval(renderWeather, 15_000);
 }
 
 // A mind tool's report of which providers and models received content in this
@@ -2711,13 +2868,13 @@ function handleCommand(text) {
   const cmd = parts[0].toLowerCase();
   switch (cmd) {
     case '/help':
-      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /mode orchestrate|direct · /classify <task> · /plan <task> · /tools');
+      addSystemMessage('Commands: /switch alpha|beta|gamma · /clear · /model opus|sonnet|haiku|glm-5.1|... · /effort low|med|high|max · /mode orchestrate|direct|split|hive|fenhe · /classify <task> · /plan <task> · /tools');
       break;
     case '/mode':
-      if (parts[1] === 'orchestrate' || parts[1] === 'direct') {
+      if (CHAT_MODES.includes(parts[1])) {
         setChatMode(parts[1]);
         addSystemMessage(`Mode: ${parts[1]}`);
-      } else addSystemMessage('Usage: /mode orchestrate|direct');
+      } else addSystemMessage('Usage: /mode orchestrate|direct|split|hive|fenhe');
       break;
     case '/classify': {
       const taskText = parts.slice(1).join(' ');

@@ -58,7 +58,7 @@
 //   FAKE:detached-holder       starts a process outside its group that holds stdout, then answers and exits
 // Anything else is echoed back as "Echo: <message>".
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import crypto from "node:crypto";
@@ -110,6 +110,13 @@ log({ step: "start", argv, cwd: process.cwd(), env, mcp, systemPrompt });
 // The transcript registry: { cost, usage } per kept session.
 const kept = SESSIONS && !argv.includes("--no-session-persistence") && (flag("--session-id") || flag("--resume"));
 const transcript = kept ? join(SESSIONS, `${sessionId}.json`) : null;
+// Written whole and renamed into place: a run YOUI stops can still be writing
+// when the next turn's run reads the file, and must never leave it half written.
+function saveTranscript(record) {
+  const temporary = `${transcript}.${process.pid}.tmp`;
+  writeFileSync(temporary, JSON.stringify(record));
+  renameSync(temporary, transcript);
+}
 if (transcript) {
   mkdirSync(SESSIONS, { recursive: true });
   if (flag("--session-id") && existsSync(transcript)) {
@@ -132,7 +139,7 @@ if (transcript) {
     setTimeout(() => process.exit(1), 10);
     await new Promise(() => {});
   }
-  if (flag("--session-id")) writeFileSync(transcript, JSON.stringify({ cost: 0, usage: {} }));
+  if (flag("--session-id")) saveTranscript({ cost: 0, usage: {} });
 }
 const saved = transcript ? JSON.parse(readFileSync(transcript, "utf-8")) : { cost: 0, usage: {} };
 
@@ -214,7 +221,7 @@ function result({ text = "", isError = false, stopReason = "end_turn", subtype =
       contextWindow: 1000000,
     },
   };
-  if (transcript) writeFileSync(transcript, JSON.stringify({ cost: total, usage: { ...saved.usage, ...modelUsage } }));
+  if (transcript) saveTranscript({ cost: total, usage: { ...saved.usage, ...modelUsage } });
   out({
     type: "result",
     subtype,

@@ -504,6 +504,8 @@ test("GET /api/weather needs status:read, refuses other methods, and answers one
   assert.equal(read.status, 200);
   assert.deepEqual(Object.keys(read.json).sort(), WEATHER_KEYS, "only these fields; the host's sections stay with the host");
   assert.equal(read.json.says, SAYS);
+  assert.ok(Math.abs(Date.parse(read.headers.date) - Date.now()) < 10_000,
+    "the answer carries the server's Date header, by which the page reckons a reading's age");
   for (const identifier of [fake.dir, homedir(), hostname(), userInfo().username, "Apple M2"]) {
     assert.ok(!read.text.includes(identifier), `the answer does not carry ${identifier}`);
   }

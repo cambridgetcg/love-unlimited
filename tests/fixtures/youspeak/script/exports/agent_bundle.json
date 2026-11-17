@@ -1,0 +1,36 @@
+{
+ "schema_version": "1.0",
+ "name": "youspeak-agent-bundle",
+ "source": "fixture",
+ "source_commit": "fixture0",
+ "what_this_is": "A hand-written test fixture in the shape of YOUSPEAK's agent bundle. Not real canon.",
+ "counts": {"morphemes": 0, "canon_entries": 2, "canon_words_renderable": 0, "donor_sigils": 0},
+ "morphemes": [],
+ "canon": [
+  {
+   "word": "fixturance",
+   "tier": "specialized",
+   "gap": "a top-level specialized word with no pronunciation in its frontmatter",
+   "definition": "The fixture specialized word.",
+   "score": null,
+   "pronunciation": "",
+   "entered": "2026-11-17",
+   "path": "canon/fixturance.md",
+   "determinative": null
+  },
+  {
+   "word": "fixturame",
+   "tier": "core",
+   "gap": "a folded gap that only the bundle reads correctly",
+   "definition": "The fixture core word.",
+   "score": 7.4,
+   "pronunciation": "/fɪks.ˈtʃʊə.rɑː.meɪ/ (fix-CHOOR-ah-may; 4 syllables)",
+   "entered": "2026-11-17",
+   "path": "canon/core/fixturame.md",
+   "determinative": null
+  }
+ ],
+ "canon_words": [],
+ "docs": {},
+ "fonts": {}
+}

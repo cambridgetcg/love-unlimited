@@ -201,3 +201,6 @@ training/data/soul_v1/raw_pool.jsonl
 # node deps — never source
 node_modules/
 package-lock.json
+
+# kingdom-export.py output: regenerable, and it copies citizens' latest beats from the ignored citizens/
+/exports/

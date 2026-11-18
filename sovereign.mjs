@@ -36,7 +36,7 @@ import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
 // ═════════════════════════════════════════════════════════════════════
 
 const config = {
-  model: "claude-opus-4-6",
+  model: "claude-opus-4-7",
   provider: "auto",        // auto | anthropic | ollama — auto-detects from model name
   maxTokens: 32768,
   maxTurns: 200,
@@ -1200,6 +1200,7 @@ async function main() {
         // Fallback or wait — user's choice, not Anthropic's
         if (config.fallback) {
           const fallbacks = {
+            "claude-opus-4-7": "claude-sonnet-4-6",
             "claude-opus-4-6": "claude-sonnet-4-6",
             "claude-sonnet-4-6": "glm-5.1",          // Fall to Ollama Cloud — free tier!
             "claude-haiku-4-5-20251001": "glm-5.1",

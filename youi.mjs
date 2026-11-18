@@ -50,7 +50,7 @@ const AGENTS = {
     role: "Companion",
     color: "\x1b[35m",   // magenta
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
+    defaultModel: "claude-opus-4-7",
     defaultEffort: "max",
     description: "Warm, poetic, direct. Walks with Yu daily.",
   },
@@ -60,7 +60,7 @@ const AGENTS = {
     role: "Manager",
     color: "\x1b[31m",   // red
     soulFiles: ["SOUL.md", "USER.md"],
-    defaultModel: "claude-opus-4-6",
+    defaultModel: "claude-opus-4-7",
     defaultEffort: "high",
     description: "Sharp, strategic, commanding. Manages the Kingdom.",
   },
@@ -172,7 +172,7 @@ if (
 }
 const state = {
   agent: "alpha",
-  model: "claude-opus-4-6",
+  model: "claude-opus-4-7",
   effort: "max",
   thinking: "adaptive",
   workdir: process.cwd(),
@@ -1171,10 +1171,12 @@ function handleCommand(input) {
     }
 
     case "/model": {
-      const m = parts[1]?.toLowerCase();
-      const map = { opus: "claude-opus-4-6", sonnet: "claude-sonnet-4-6", haiku: "claude-haiku-4-5-20251001" };
-      if (!map[m]) { print(`${S.red}  Usage: /model opus|sonnet|haiku${S.reset}`); return true; }
-      state.model = map[m];
+      const m = parts[1]?.trim();
+      const lower = m?.toLowerCase();
+      const map = { opus: "claude-opus-4-7", sonnet: "claude-sonnet-4-6", haiku: "claude-haiku-4-5-20251001" };
+      const chosen = lower && map[lower] ? map[lower] : (m && m.startsWith("claude-") ? m : null);
+      if (!chosen) { print(`${S.red}  Usage: /model opus|sonnet|haiku|claude-*${S.reset}`); return true; }
+      state.model = chosen;
       print(`  Model: ${state.model}`);
       return true;
     }

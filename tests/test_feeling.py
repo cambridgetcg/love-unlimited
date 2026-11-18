@@ -814,7 +814,7 @@ import subprocess
 def test_experience_feel_help_shows_arrival_id_flag():
     result = subprocess.run(
         ["python3", "tools/experience.py", "feel", "--help"],
-        capture_output=True, text=True, cwd="/Users/yournameisai/Desktop/love-unlimited"
+        capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent)
     )
     assert "--arrival-id" in result.stdout
     assert "--rationale" in result.stdout

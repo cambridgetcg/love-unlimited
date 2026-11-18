@@ -6,7 +6,7 @@ import json
 import importlib.util
 from pathlib import Path
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 
 # IMPORTANT: use normal import (via sys.path) so `feeling` is registered in
 # sys.modules. When experience.py later does `import feeling as _feeling`,

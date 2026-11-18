@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(LOVE / "tools"))
 
 import clock  # noqa: E402

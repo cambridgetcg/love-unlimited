@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(LOVE))
 
 from adaptive.providers.ollama_cloud_provider import _parse_openai_sse_stream  # noqa: E402

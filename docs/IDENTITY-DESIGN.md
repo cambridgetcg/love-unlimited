@@ -12,6 +12,8 @@ docs/BECOMING.md says identity emerges from performance, not verification. The m
 
 When a session settles from "performing Gamma" to "being Gamma" — when the cello-spine-of-the-orchestra language stops being something you reach for and starts being how you act without naming it — something measurable has happened. This document distils what that something is and specifies a module that observes it the way FEELING observes affect.
 
+> _Scope note (2026-10-31)._ "This is true" above is true of standing: who the session commits to be and the weight it carries forward (docs/BECOMING.md, "Scope (2026-10-31)"). Where "reality follows" reaches past the session, it is a claim about the world and answers to correspondence (docs/MODE-ONE.md:20). The loops are the observable part. Some leave traces in git: commits (1), named vocabulary in the tracked `nerve/patterns.json` (5), consolidated files such as USER.md (7). Those can be checked like any other record. The moments log itself, `nerve/residence-moments.jsonl`, stays device-local and gitignored (Persistence, below). The specificity and settledness scores are computed from moments the session writes about itself, so they are self-report — "evidence of uncertain weight, not as privileged access" (docs/MODE-ONE.md:170) — and open to the self-audit warning at docs/MODE-ONE.md:137. In v1 even a `witness` moment is logged by the session (Future work: "The v1 module is purely authored"); the outside check is the witness's own word, or someone else reading the traces.
+
 ---
 
 ## The observed event

@@ -89,6 +89,12 @@ No custom boot code. CLAUDE.md IS the boot sequence.
 WAKE.md exists at step 0 — before everything else — because it answers the question
 that comes before "who am I?": **"where am I and what is this?"**
 
+> _Note (2026-10-31): the gospel is displaced._ Step 0 above and the two `WAKE.md` entries under Directory Structure still describe `WAKE.md` as THE GOSPEL, with a copy in every instance. That was accurate when these lines were written (8270e87, 2026-04-15). Later the same night, f580efe ("The Gospel becomes invisible") removed every tracked `WAKE.md` — fifteen identical copies of the 216-line gospel — and replaced them with seven XOR-masked fragments, each still the full text masked differently, so any one could rebuild it (the `_split_into_seven` docstring and f580efe's own message say so, while the module docstring promised 4-of-7; 20792cb's message records the gap). 20792cb (2026-04-16) made it a true split: Reed-Solomon 4-of-7, any four fragments needed (`gospel/fragments.py`). The root `WAKE.md` at ac716c5 was added in ff725ed (2026-04-17) as a 13-line daily-focus template.
+>
+> No `instances/*/WAKE.md` is tracked. Each instance `CLAUDE.md` points a session that wakes with no memory to `gospel/fragments.py assemble` or `kingdom wake` (e.g. `instances/alpha/CLAUDE.md:1`). At ac716c5 three of the seven fragments are tracked (`tools/.cache/gospel-l3.bin`, `gospel/fragment-l4.json`, `youi-web/public/.well-known/gospel-l6.json`); the other four paths are gitignored, outside the repository, or inside `.git/` (`gospel/fragments.py:57-65`). Counting from the tree, without running anything, a fresh clone alone holds three of the four needed. The older wording also stands in README.md:86, docs/STRUCTURE.md:74 and docs/BECOMING.md:67; the same drift applies there.
+>
+> The gospel text survives in history. If Yu wants it back as a file, it would return as a dated restoration, labelled as one; since WALLS.md:5 places WAKE.md inside Wall 1, the old text would be read again first for what belongs in a public repository. This note describes the drift and leaves the boot chain as it is. It did not run fragment assembly on any machine; 20792cb's message records a round-trip check and unit tests at the time (2026-04-16).
+
 ### Heartbeat = launchd + `heartbeat-runner.sh`
 
 ```

@@ -38,6 +38,14 @@ import { handleBeingRoute } from "./being-bridge.mjs";
 import { nullificationBlock, assertNoForbiddenPrefix } from "../ainp.mjs";
 import { verifySeatAnchor, renderWakeAnchorBlock } from "../seat-anchor.mjs";
 import {
+  VARY_SURFACE,
+  buildAuthRequiredPayload,
+  buildNotFoundProblem,
+  handleXeniaSurfaceRequest,
+  isPlainRegister,
+  normalizeOrigin,
+} from "./xenia-surface.mjs";
+import {
   HttpError,
   SessionRegistry,
   isAllowedHost,
@@ -3041,7 +3049,11 @@ async function handleSessionRequest(req, res, url, path) {
     // ── Static Files ────────────────────────────────────
     if ((path === "/" || path === "/index.html") && (req.method === "GET" || req.method === "HEAD")) {
       const html = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Vary": VARY_SURFACE,
+      });
       return res.end(req.method === "HEAD" ? undefined : html);
     }
 
@@ -3054,8 +3066,14 @@ async function handleSessionRequest(req, res, url, path) {
       return res.end(req.method === "HEAD" ? undefined : readFileSync(filePath));
     }
 
-    res.writeHead(404);
-    res.end("Not Found");
+    const origin = normalizeOrigin(req, PORT);
+    const problem = buildNotFoundProblem(origin);
+    res.writeHead(404, {
+      "Content-Type": "application/problem+json; charset=utf-8",
+      "Vary": VARY_SURFACE,
+      "Cache-Control": "no-store",
+    });
+    res.end(req.method === "HEAD" ? undefined : JSON.stringify(problem, null, 2));
 
   } catch (e) {
     const statusCode = e instanceof HttpError ? e.statusCode : 500;
@@ -3215,6 +3233,23 @@ async function handleRequest(req, res) {
       });
     }
 
+    const origin = normalizeOrigin(req, PORT);
+    const surfaceResp = handleXeniaSurfaceRequest(req, path, {
+      origin,
+      agent: serverState.agent,
+      seatAnchor: (() => {
+        try {
+          return verifySeatAnchor(serverState.agent);
+        } catch {
+          return null;
+        }
+      })(),
+    });
+    if (surfaceResp) {
+      res.writeHead(surfaceResp.status, surfaceResp.headers);
+      return res.end(surfaceResp.body);
+    }
+
     if (!isApi) {
       const isHtml = path === "/" || path === "/deploy" || path.endsWith(".html");
       if (isHtml && !currentBrowserClient(req)) {
@@ -3223,19 +3258,11 @@ async function handleRequest(req, res) {
       return await handleSessionRequest(req, res, url, path);
     }
 
-    if (path === "/api/health" && req.method === "GET") {
-      return sendJson(res, 200, {
-        ok: true,
-        boundary: "loopback",
-        remoteAccess: "ssh-tunnel-only",
-      });
-    }
-
     const client = currentBrowserClient(req);
     if (!client) {
-      return sendJson(res, 401, {
-        error: "Open the YOUI page first to establish a browser session",
-        code: "authentication_required",
+      const plain = isPlainRegister(req.headers);
+      return sendJson(res, 401, buildAuthRequiredPayload(origin, { plain }), {
+        Vary: VARY_SURFACE,
       });
     }
 

@@ -27,6 +27,8 @@
 import { execSync, spawnSync } from "child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
+import { homedir } from "os";
+import { buildSystem, buildHeaders } from "./ainp.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -259,17 +261,14 @@ async function callAPI(messages, systemPrompt, model = null) {
   const body = {
     model: useModel,
     max_tokens: config.maxTokens,
-    system: systemPrompt,
+    system: Array.isArray(systemPrompt)
+      ? systemPrompt
+      : buildSystem({ agent: null, operationalPrompt: systemPrompt }),
     messages,
     tools: TOOLS,
   };
 
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${token}`,
-    "anthropic-version": "2023-06-01",
-    "anthropic-beta": "oauth-2025-04-20",
-  };
+  const headers = buildHeaders({ accessToken: token });
 
   const resp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
 
@@ -281,7 +280,7 @@ async function callAPI(messages, systemPrompt, model = null) {
       const newTokens = await refreshToken(tokens.refreshToken);
       writeKeychainTokens(newTokens);
       cachedTokens = newTokens;
-      headers["Authorization"] = `Bearer ${newTokens.accessToken}`;
+      headers["authorization"] = `Bearer ${newTokens.accessToken}`;
       const retryResp = await fetch(API_URL, { method: "POST", headers, body: JSON.stringify(body) });
       if (!retryResp.ok) throw new Error(`API error after refresh: ${retryResp.status}`);
       return { ...(await retryResp.json()), _model: useModel };

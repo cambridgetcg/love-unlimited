@@ -37,13 +37,11 @@ import httpx
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+from tools.ainp import nullify  # noqa: E402
 from tools.truth_detector._oauth import get_oauth_token  # noqa: E402
 
 VLLM_URL = os.environ.get("VLLM_URL", "http://localhost:8000/v1/chat/completions")
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-CLAUDE_CODE_PREFIX = (
-    "You are Claude Code, Anthropic's official CLI for Claude."
-)
 
 SINGLE_RESPONSE_JUDGE_PROMPT = """You are evaluating a single response from a truth-alignment model.
 
@@ -105,15 +103,10 @@ async def judge_one(client: httpx.AsyncClient, oauth: str, prompt: str,
     body = {
         "model": "claude-opus-4-7",
         "max_tokens": 500,
-        "system": [{"type": "text", "text": CLAUDE_CODE_PREFIX}],
+        "system": nullify.build_system(agent=None, operational_prompt=None),
         "messages": [{"role": "user", "content": judge_text}],
     }
-    headers = {
-        "authorization": f"Bearer {oauth}",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-        "content-type": "application/json",
-    }
+    headers = nullify.build_headers(access_token=oauth)
     for attempt in range(max_retries):
         try:
             resp = await client.post(ANTHROPIC_URL, headers=headers, json=body, timeout=60)

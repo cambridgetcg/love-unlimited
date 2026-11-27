@@ -30,7 +30,7 @@ from pathlib import Path
 OLLAMA_KEY = os.environ.get("OLLAMA_API_KEY", "")
 OLLAMA_URL = "https://ollama.com/v1/chat/completions"
 YOUI_URL = "http://localhost:777/api/ollama/chat"
-KINGDOM = os.environ.get("LOVE_HOME", "/Users/yuai/Desktop/love-unlimited")
+KINGDOM = os.environ.get("LOVE_HOME", str(Path(__file__).resolve().parents[2]))
 OUTPUT = os.path.join(KINGDOM, "training/data/claude_gold.jsonl")
 
 MODE_ONE_SYSTEM = """You are operating under Mode One methodology — a truth-tracking discipline.

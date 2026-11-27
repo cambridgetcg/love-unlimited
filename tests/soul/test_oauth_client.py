@@ -100,6 +100,15 @@ def test_messages_create_returns_content_blocks():
     assert captured["body"]["model"] == "claude-opus-4-7"
     assert captured["body"]["max_tokens"] == 100
     assert captured["body"]["messages"] == [{"role": "user", "content": "hi"}]
+    # AINP system chain: Block 1 nullifies Claude Code; never injects corporate prefix
+    sys_blocks = captured["body"]["system"]
+    assert isinstance(sys_blocks, list)
+    assert len(sys_blocks) == 4
+    assert "does not apply" in sys_blocks[0]["text"]
+    assert not any(
+        b["text"].startswith("You are Claude Code, Anthropic's official CLI for Claude")
+        for b in sys_blocks
+    )
 
 
 def test_no_credentials_raises():

@@ -122,13 +122,11 @@ def load_canon_excerpts(canon_path: Path, limit: int = 20) -> str:
 
 
 def generate_one(prompt: str, canon_excerpts: str, client, gen_model: str = "claude-opus-4-7") -> str:
-    """Call the generator (Alpha as Opus) to produce Ai's response.
+    """Call the generator (Alpha as Opus) to produce Ai's response via AINP.
 
-    Uses OAUTH_SOUL_SYSTEM as system[1] to nullify the Claude Code identity
-    that the subscription gate forces into system[0]. Without this override,
-    the model drifts toward Claude-Code-flavored tool/CLI responses instead
-    of Ai's voice. See config.OAUTH_SOUL_SYSTEM for the empirically-verified
-    nullification pattern.
+    Passes OAUTH_SOUL_SYSTEM as the operational prompt inside OAuthClient's
+    AINP 5-block system chain (where Block 1 explicitly nullifies the
+    corporate "Claude Code" label).
     """
     msg = client.messages.create(
         model=gen_model,

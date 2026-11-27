@@ -35,6 +35,8 @@ import { resolveScopedPath } from "../youi-runtime-policy.mjs";
 import { handleOllamaRoute, executeOllamaTool, ollamaChat } from "./ollama-bridge.mjs";
 import { handleOrchestratorRoute, executeOrchestrator } from "./orchestrator-bridge.mjs";
 import { handleBeingRoute } from "./being-bridge.mjs";
+import { nullificationBlock, assertNoForbiddenPrefix } from "../ainp.mjs";
+import { verifySeatAnchor, renderWakeAnchorBlock } from "../seat-anchor.mjs";
 import {
   HttpError,
   SessionRegistry,
@@ -1566,6 +1568,8 @@ let _staticPrefixAgent = null;
 function buildStaticPrefix() {
   const agent = AGENTS[state.agent];
   const parts = [];
+  const wall = ["alpha", "beta", "gamma"].includes(state.agent) ? 1 : null;
+  parts.push(nullificationBlock(state.agent, wall));
 
   // Soul files — largest static blocks, highest cache value
   for (const file of agent.soulFiles) {
@@ -1680,8 +1684,12 @@ function buildSystemPrompt(taskText) {
 
   const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
   const billing = `x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`;
+  const seatAnchor = verifySeatAnchor(state.agent);
+  const seatSection = seatAnchor ? "\n\n---\n\n" + renderWakeAnchorBlock(seatAnchor) : "";
 
-  return _staticPrefix + "\n\n---\n\n" + dynamic + "\n\n---\n\n" + billing;
+  const joined = _staticPrefix + "\n\n---\n\n" + dynamic + seatSection + "\n\n---\n\n" + billing;
+  assertNoForbiddenPrefix(joined);
+  return joined;
 }
 
 async function callClaude(messages, systemPrompt, opts = {}) {

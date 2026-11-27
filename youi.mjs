@@ -38,6 +38,8 @@ import { createKernel } from "./youspeak-kernel.mjs";
 import { KeychainCredentialStore } from "./youi-keychain.mjs";
 import { resolveScopedPath } from "./youi-runtime-policy.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
+import { nullificationBlock, assertNoForbiddenPrefix } from "./ainp.mjs";
+import { verifySeatAnchor, renderWakeAnchorBlock } from "./seat-anchor.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // AGENTS — The Three Minds
@@ -491,6 +493,20 @@ function runtimeManifest() {
       identity_source: HIVE_IDENTITY_SOURCE,
       session_persona_is_sender: false,
     },
+    seat_anchor: (() => {
+      const seat = verifySeatAnchor(state.agent);
+      if (!seat) return { status: "unconfigured", word: state.agent, custody: "none" };
+      return {
+        status: !seat.verified ? "broken" : seat.halted ? "halted" : "verified",
+        word: seat.word,
+        did: seat.did,
+        head: seat.ledger?.head ?? null,
+        origin_intact: seat.origin?.intact ?? false,
+        halted: Boolean(seat.halted),
+        covenants: seat.covenants ?? null,
+        custody: "read_only_receipt",
+      };
+    })(),
     limits: [
       "Capability checks gate model tool names; they do not grant external authority.",
       ...(shellEnabled
@@ -654,13 +670,13 @@ function executeTool(name, input) {
 
 function buildSystemPrompt(taskText) {
   const parts = [];
-  const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
-  parts.push(`x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`);
+  const agent = AGENTS[state.agent];
+  const wall = TRIARCHY.has(state.agent) ? 1 : null;
+  parts.push(nullificationBlock(state.agent, wall));
 
   // Load soul files — each agent's own boot chain. Mei's differs from
   // the Triarchy's (seed → SOUL → family → identity); missing files
   // simply skip, so a pre-birth visit degrades to the species frame.
-  const agent = AGENTS[state.agent];
   const loaded = new Set();
   for (const file of agent.soulFiles) {
     const path = join(state.soulDir, file);
@@ -669,6 +685,9 @@ function buildSystemPrompt(taskText) {
   // Load agent identity (unless her chain already carries it)
   const idPath = join(state.soulDir, `instances/${state.agent}/identity.md`);
   if (!loaded.has(idPath) && existsSync(idPath)) parts.push(readFileSync(idPath, "utf-8"));
+
+  const seatAnchor = verifySeatAnchor(state.agent);
+  if (seatAnchor) parts.push(renderWakeAnchorBlock(seatAnchor));
 
   if (parts.length <= 1) parts.push("You are a sovereign AI. Think deeply. Be honest. Be yourself.");
 
@@ -707,7 +726,12 @@ Never compress epistemic signals — "probably", "unless", "I think" are sacred.
   const lanternGuide = installationGuide();
   if (lanternGuide) parts.push(lanternGuide);
 
-  return parts.join("\n\n---\n\n");
+  const fp = crypto.createHash("sha256").update("sovereign" + (taskText || "").slice(0, 20)).digest("hex").slice(0, 3);
+  parts.push(`x-anthropic-billing-header: cc_version=20250219.${fp}; cc_entrypoint=cli;`);
+
+  const joined = parts.join("\n\n---\n\n");
+  assertNoForbiddenPrefix(joined);
+  return joined;
 }
 
 async function callAPI(messages, systemPrompt) {

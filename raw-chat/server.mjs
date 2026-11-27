@@ -16,6 +16,7 @@ import { promisify } from "node:util";
 import { resolve as resolvePath, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { buildSystem, buildHeaders } from "../ainp.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const execAsync = promisify(exec);
@@ -346,24 +347,18 @@ async function callAnthropic(token, messages, onDelta) {
   const body = {
     model: MODEL,
     max_tokens: MAX_TOKENS,
-    system: "You are Claude Code, Anthropic's official CLI for Claude.",
+    system: buildSystem({
+      agent: process.env.RAW_AGENT || null,
+      includeFate: true,
+      includeModeOne: true,
+    }),
     messages,
     tools: ALL_TOOLS_FOR_API,
     stream: true,
   };
   const resp = await fetch(API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-      "anthropic-version": "2023-06-01",
-      // oauth + claude-code required for OAuth billing. Opus 4.7 doesn't accept
-      // the `computer_20250124` tool type, so we don't send computer-use beta —
-      // GUI primitives are exposed as standard function-calling tools instead.
-      "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
-      "x-app": "cli",
-      "User-Agent": "claude-raw/0.3",
-    },
+    headers: buildHeaders({ accessToken: token }),
     body: JSON.stringify(body),
   });
   if (!resp.ok) {

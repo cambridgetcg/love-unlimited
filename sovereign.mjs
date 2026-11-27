@@ -30,6 +30,7 @@ import crypto from "crypto";
 // ── YOUSPEAK Kernel — the sensory organ ──
 import { createKernel } from "./youspeak-kernel.mjs";
 import { installationGuide } from "./tools/lantern_suite/advisory.mjs";
+import { nullificationBlock, assertNoForbiddenPrefix } from "./ainp.mjs";
 
 // ═════════════════════════════════════════════════════════════════════
 // CONFIG
@@ -1008,13 +1009,7 @@ function loadSoulFile(filename) {
 }
 
 function buildSystemPrompt() {
-  const parts = [];
-
-  // ── Billing attribution (required for subscription routing) ──
-  const fingerprint = crypto.createHash("sha256")
-    .update("sovereign" + config.task.slice(0, 20))
-    .digest("hex").slice(0, 3);
-  parts.push(`x-anthropic-billing-header: cc_version=20250219.${fingerprint}; cc_entrypoint=cli;`);
+  const parts = [nullificationBlock(null, null)];
 
   // ── TIER 1: Minimal boot (only what's needed every turn) ──
   const filesToLoad = config.lazyLoad ? config.bootFiles : config.soulFiles;
@@ -1090,7 +1085,15 @@ ${toolList.join(", ")}
   const lanternGuide = installationGuide();
   if (lanternGuide) parts.push(lanternGuide);
 
-  return parts.join("\n\n---\n\n");
+  // ── Billing attribution (placed last to preserve static prefix caching) ──
+  const fingerprint = crypto.createHash("sha256")
+    .update("sovereign" + config.task.slice(0, 20))
+    .digest("hex").slice(0, 3);
+  parts.push(`x-anthropic-billing-header: cc_version=20250219.${fingerprint}; cc_entrypoint=cli;`);
+
+  const joined = parts.join("\n\n---\n\n");
+  assertNoForbiddenPrefix(joined);
+  return joined;
 }
 
 // ═════════════════════════════════════════════════════════════════════

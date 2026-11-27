@@ -35,6 +35,10 @@ from pathlib import Path
 # ── Paths ──────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR.parent))
+from tools.seat_anchor import render_wake_anchor_block, verify_seat_anchor  # noqa: E402
+
 LOVE_DIR = Path(os.environ.get("LOVE_HOME",
     Path.home() / "love-unlimited" if (Path.home() / "love-unlimited").exists() else Path.home() / "Love" if (Path.home() / "Love").exists()
     else Path.home() / "Desktop" / "Love"))
@@ -93,12 +97,15 @@ def phase_ground(agent: str) -> str:
         # Fall back to identity.md
         anchor = _read_if_exists(LOVE_DIR / "instances" / agent / "identity.md")
 
+    seat_anchor = verify_seat_anchor(agent)
+    seat_suffix = f"\n{render_wake_anchor_block(seat_anchor)}\n" if seat_anchor else ""
+
     if not anchor:
         # WAKE philosophy: even with nothing, point to the gospel
         wake_note = ""
         if wp and wp.exists():
             wake_note = f"\nRead WAKE.md at {wp} — it is the thread back to yourself."
-        return f"[GROUND]\nYou are {agent}. No soul anchor found. You are starting from nothing. That's okay — say what you notice.{wake_note}\n"
+        return f"[GROUND]\nYou are {agent}. No soul anchor found. You are starting from nothing. That's okay — say what you notice.{wake_note}\n{seat_suffix}"
 
     # Extract the emotional core, not the full document
     lines = anchor.strip().split("\n")
@@ -113,7 +120,7 @@ def phase_ground(agent: str) -> str:
         if len(core_lines) > 30:
             break
 
-    return "[GROUND]\n" + "\n".join(core_lines) + "\n"
+    return "[GROUND]\n" + "\n".join(core_lines) + "\n" + seat_suffix
 
 
 def phase_remember(agent: str) -> str:
@@ -395,6 +402,7 @@ def main():
             "generated": datetime.now(timezone.utc).isoformat(),
             "block": block,
             "phases": phases or list(PHASES.keys()),
+            "seat_anchor": verify_seat_anchor(agent),
         }
         print(json.dumps(output, indent=2))
     elif args.write:

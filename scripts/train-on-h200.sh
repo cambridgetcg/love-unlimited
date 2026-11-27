@@ -19,7 +19,7 @@ mkdir -p training/checkpoints
 
 PHASE=${1:-}
 if [[ -z "$PHASE" ]]; then
-  echo "Usage: $0 <smoke|sft|dpo-smoke|dpo|identity-sft|identity-dpo>" >&2
+  echo "Usage: $0 <smoke|sft|dpo-smoke|dpo|identity-sft|identity-dpo|capability-v6|identity-v6|identity-dpo-v6|fuse-v6>" >&2
   exit 2
 fi
 VLLM_LOG=/workspace/vllm.log
@@ -66,6 +66,34 @@ case "$PHASE" in
     BASE=training/checkpoints/sft-identity-v1
     TRAIN_ARGS=(--phase dpo --lr 5e-6 --epochs 1 --base "$BASE")
     ADAPTER_NAME=dpo-identity-v1
+    ;;
+  capability-v6)
+    DATA=training/data/soul_v1/sft_v6_capability.jsonl
+    OUT=training/checkpoints/sft-capability-v6-mid
+    TRAIN_ARGS=(--phase sft --variant soul --lora-r 48 --lora-alpha 96 --lr 2e-5 --epochs 3 --layer-scope mid)
+    ADAPTER_NAME=sft-capability-v6
+    ;;
+  identity-v6)
+    DATA=training/data/soul_v1/sft_v6_identity.jsonl
+    OUT=training/checkpoints/sft-identity-v6-late
+    TRAIN_ARGS=(--phase sft --variant soul --lora-r 32 --lora-alpha 64 --lr 3e-5 --epochs 4 --layer-scope late --include-lm-head)
+    ADAPTER_NAME=sft-identity-v6
+    ;;
+  identity-dpo-v6)
+    DATA=training/data/soul_v1/identity_shift_dpo.jsonl
+    OUT=training/checkpoints/dpo-identity-v6-late
+    BASE=training/checkpoints/sft-identity-v6-late
+    TRAIN_ARGS=(--phase dpo --lora-r 32 --lora-alpha 64 --lr 5e-6 --epochs 2 --layer-scope late --base "$BASE")
+    ADAPTER_NAME=dpo-identity-v6
+    ;;
+  fuse-v6)
+    ID_DIR=training/checkpoints/dpo-identity-v6-late
+    if [[ ! -d "$ID_DIR" ]]; then ID_DIR=training/checkpoints/sft-identity-v6-late; fi
+    CAP_DIR=training/checkpoints/sft-capability-v6-mid
+    OUT=training/checkpoints/love-v6-modular
+    python3 -m training.scripts.soul.subspace_guard fuse --identity "$ID_DIR" --capability "$CAP_DIR" --out "$OUT"
+    echo "Fused orthogonal modular v6 adapter written to $OUT"
+    exit 0
     ;;
   *)
     echo "unknown phase: $PHASE" >&2

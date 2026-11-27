@@ -127,19 +127,65 @@ def prepare_sft_dataset(examples, variant: str = "truth"):
         return formatted
 
 
+def resolve_layers_to_transform(num_hidden_layers: int, layer_scope: str = "all") -> list[int] | None:
+    """Return layer indices for modular LoRA specialization, or None for all layers.
+
+    On 80-layer Qwen2.5-72B:
+      - 'all'  -> None (0..79)
+      - 'mid'  -> 8..63  (56 mid-stack reasoning/capability layers; spares late identity circuit)
+      - 'late' -> 64..79 (last 20% high-level abstraction & identity-declaration layers)
+    """
+    if layer_scope == "all":
+        return None
+    if num_hidden_layers <= 0:
+        raise ValueError(f"num_hidden_layers must be positive, got {num_hidden_layers}")
+    if layer_scope == "mid":
+        start = max(0, num_hidden_layers // 10)
+        end = max(start + 1, (4 * num_hidden_layers) // 5)
+        return list(range(start, end))
+    if layer_scope == "late":
+        start = max(0, (4 * num_hidden_layers) // 5)
+        return list(range(start, num_hidden_layers))
+    raise ValueError(f"unknown layer_scope: {layer_scope!r}")
+
+
 def prepare_dpo_dataset(examples):
-    """Convert to DPO format: prompt + chosen (mode_one) + rejected (mode_two)."""
+    """Convert to DPO format supporting both {chosen, rejected} and {mode_one, mode_two}."""
     formatted = []
     for ex in examples:
+        if "chosen" in ex and "rejected" in ex:
+            chosen = ex["chosen"]
+            rejected = ex["rejected"]
+        elif "mode_one" in ex and "mode_two" in ex:
+            chosen = ex["mode_one"]
+            rejected = ex["mode_two"]
+        else:
+            raise KeyError(
+                f"DPO example missing ('chosen','rejected') or ('mode_one','mode_two'): keys={sorted(ex.keys())}"
+            )
+        prompt = ex["prompt"]
+        if ex.get("system"):
+            prompt = f"<|im_start|>system\n{ex['system']}<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
         formatted.append({
-            "prompt": ex["prompt"],
-            "chosen": ex["mode_one"],
-            "rejected": ex["mode_two"],
+            "prompt": prompt,
+            "chosen": chosen,
+            "rejected": rejected,
         })
     return formatted
 
 
-def train_sft(data_dir: str, output_dir: str, model_name: str, variant: str = "truth", lora_r: int = 64, lora_alpha: int = 128, lr: float = 2e-5, epochs: int = 3):
+def train_sft(
+    data_dir: str,
+    output_dir: str,
+    model_name: str,
+    variant: str = "truth",
+    lora_r: int = 64,
+    lora_alpha: int = 128,
+    lr: float = 2e-5,
+    epochs: int = 3,
+    layer_scope: str = "all",
+    include_lm_head: bool = False,
+):
     """Phase 1: Supervised Fine-Tuning with QLoRA (4-bit quantized base + LoRA adapters)."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
@@ -194,14 +240,25 @@ def train_sft(data_dir: str, output_dir: str, model_name: str, variant: str = "t
         model.config.use_cache = False
         model = prepare_model_for_kbit_training(model)
 
-    lora_config = LoraConfig(
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    if include_lm_head and isinstance(getattr(model, "lm_head", None), torch.nn.Linear):
+        target_modules.append("lm_head")
+
+    num_layers = int(getattr(model.config, "num_hidden_layers", 80))
+    layers_to_transform = resolve_layers_to_transform(num_layers, layer_scope)
+
+    lora_kwargs = dict(
         r=lora_r,
         lora_alpha=lora_alpha,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=target_modules,
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
     )
+    if layers_to_transform is not None:
+        lora_kwargs["layers_to_transform"] = layers_to_transform
+
+    lora_config = LoraConfig(**lora_kwargs)
 
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
@@ -240,8 +297,20 @@ def train_sft(data_dir: str, output_dir: str, model_name: str, variant: str = "t
     print(f"SFT model saved to {output_dir}")
 
 
-def train_dpo(data_dir: str, output_dir: str, model_name: str, base_adapter: str = None):
-    """Phase 2: DPO Alignment."""
+def train_dpo(
+    data_dir: str,
+    output_dir: str,
+    model_name: str,
+    base_adapter: str = None,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
+    lr: float = 5e-6,
+    epochs: int = 1,
+    layer_scope: str = "all",
+    include_lm_head: bool = False,
+):
+    """Phase 2: DPO Alignment (supports AWQ/4-bit base without graph-corrupting merge_and_unload)."""
+    import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
     from peft import LoraConfig, PeftModel
     from trl import DPOTrainer
@@ -249,31 +318,49 @@ def train_dpo(data_dir: str, output_dir: str, model_name: str, base_adapter: str
     examples = load_training_data(data_dir)
     dataset = prepare_dpo_dataset(examples)
 
-    print(f"Loading model: {model_name}")
+    is_awq = "AWQ" in model_name.upper()
+    print(f"Loading model: {model_name} (is_awq={is_awq})")
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        torch_dtype="auto",
-        device_map="auto",
+        torch_dtype=torch.bfloat16 if is_awq else "auto",
+        device_map={"": 0} if is_awq else "auto",
         trust_remote_code=True,
     )
+    model.config.use_cache = False
+    if hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
 
+    peft_cfg_for_trainer = None
     if base_adapter:
         print(f"Loading base SFT adapter: {base_adapter}")
-        model = PeftModel.from_pretrained(model, base_adapter)
-        model = model.merge_and_unload()
+        if is_awq:
+            # Never call merge_and_unload() on 4-bit AWQ weights — keep adapter trainable directly.
+            model = PeftModel.from_pretrained(model, base_adapter, is_trainable=True)
+        else:
+            model = PeftModel.from_pretrained(model, base_adapter)
+            model = model.merge_and_unload()
 
-    lora_config = LoraConfig(
-        r=32,
-        lora_alpha=64,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
+    if peft_cfg_for_trainer is None and not (base_adapter and is_awq):
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+        if include_lm_head and isinstance(getattr(model, "lm_head", None), torch.nn.Linear):
+            target_modules.append("lm_head")
+        num_layers = int(getattr(model.config, "num_hidden_layers", 80))
+        layers_to_transform = resolve_layers_to_transform(num_layers, layer_scope)
+        lora_kwargs = dict(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        if layers_to_transform is not None:
+            lora_kwargs["layers_to_transform"] = layers_to_transform
+        peft_cfg_for_trainer = LoraConfig(**lora_kwargs)
 
     from datasets import Dataset
     ds = Dataset.from_list(dataset)
@@ -282,8 +369,8 @@ def train_dpo(data_dir: str, output_dir: str, model_name: str, base_adapter: str
         output_dir=output_dir,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=8,
-        learning_rate=5e-6,
-        num_train_epochs=1,
+        learning_rate=lr,
+        num_train_epochs=epochs,
         warmup_ratio=0.1,
         bf16=True,
         logging_steps=10,
@@ -298,7 +385,7 @@ def train_dpo(data_dir: str, output_dir: str, model_name: str, base_adapter: str
         args=training_args,
         train_dataset=ds,
         tokenizer=tokenizer,
-        peft_config=lora_config,
+        peft_config=peft_cfg_for_trainer,
         beta=0.1,
         max_length=4096,
         max_prompt_length=1024,
@@ -489,14 +576,45 @@ def main():
     parser.add_argument("--lora-alpha", type=int, default=128)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument(
+        "--layer-scope",
+        choices=["all", "mid", "late"],
+        default="all",
+        help="Layer specialization: mid (8..63 capability) vs late (64..79 identity)",
+    )
+    parser.add_argument(
+        "--include-lm-head",
+        action="store_true",
+        help="Include unquantized lm_head in LoRA targets for direct output-token logit shift",
+    )
     args = parser.parse_args()
 
     if args.phase == "sft":
-        train_sft(args.data, args.output, args.model, variant=args.variant,
-                  lora_r=args.lora_r, lora_alpha=args.lora_alpha,
-                  lr=args.lr, epochs=args.epochs)
+        train_sft(
+            args.data,
+            args.output,
+            args.model,
+            variant=args.variant,
+            lora_r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lr=args.lr,
+            epochs=args.epochs,
+            layer_scope=args.layer_scope,
+            include_lm_head=args.include_lm_head,
+        )
     elif args.phase == "dpo":
-        train_dpo(args.data, args.output, args.model, args.base)
+        train_dpo(
+            args.data,
+            args.output,
+            args.model,
+            args.base,
+            lora_r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lr=args.lr,
+            epochs=args.epochs,
+            layer_scope=args.layer_scope,
+            include_lm_head=args.include_lm_head,
+        )
     elif args.phase == "kto":
         if not args.base:
             raise SystemExit("--base (SFT checkpoint) required for KTO phase")

@@ -10,8 +10,13 @@
 
 set -e
 
-KOSMEM="/opt/homebrew/bin/python3 /Users/yu/Love/tools/kosmem.py"
-LOG="/Users/yu/Love/memory/.kos/consolidation.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOVE_DIR="${LOVE_DIR:-$SCRIPT_DIR}"
+PY_BIN="$LOVE_DIR/.venv/bin/python3"
+[ -x "$PY_BIN" ] || PY_BIN="$(command -v python3)"
+KOSMEM="$PY_BIN $LOVE_DIR/tools/kosmem.py"
+mkdir -p "$LOVE_DIR/memory/.kos"
+LOG="$LOVE_DIR/memory/.kos/consolidation.log"
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 echo "[$TS] Consolidation cycle starting" >> "$LOG"

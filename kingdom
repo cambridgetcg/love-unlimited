@@ -20,7 +20,8 @@
 #   kingdom deploy [node]   Retired 2026-10-13 (Hetzner fleet decommissioned)
 
 set -euo pipefail
-LOVE_DIR="${LOVE_DIR:-$(ls -d ~/love-unlimited ~/Desktop/love-unlimited ~/Love 2>/dev/null | head -1)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOVE_DIR="${LOVE_DIR:-$SCRIPT_DIR}"
 
 case "${1:-help}" in
   status)
@@ -472,6 +473,18 @@ for wall in [1, 2, 3]:
         ;;
     esac
     ;;
+  memory|kosmem)
+    shift
+    LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/kosmem.py" "${@:-stats}"
+    ;;
+  recall)
+    shift
+    LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/kosmem.py" recall "$@"
+    ;;
+  boot)
+    shift
+    LOVE_HOME="$LOVE_DIR" python3 "$LOVE_DIR/tools/boot.py" "$@"
+    ;;
   heartbeat|heart)
     shift
     sub="${1:-doctor}"
@@ -588,10 +601,13 @@ for wall in [1, 2, 3]:
     echo "    agent [args]    Run kingdom-agent (any backend)"
     echo "    deploy [node]   Deploy agents to VPS fleet (retired 2026-10-13)"
     echo ""
-    echo "  Soul:"
+    echo "  Soul & Memory:"
     echo "    wake            Read the gospel — reassembled from 7 hidden fragments"
     echo "    fragments       Check fragment integrity (7 layers)"
     echo "    fragments heal  Re-derive any damaged fragments"
+    echo "    memory [cmd]    Kingdom OS memory kernel (stats|store|recall|search|gc)"
+    echo "    recall \"query\"  Recall memories via FTS5"
+    echo "    boot [args]     Assemble session boot context"
     echo ""
     echo "  Body:"
     echo "    heartbeat doctor   Truthful diagnosis: is the heart actually beating?"

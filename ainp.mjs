@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifySeatAnchor, renderWakeAnchorBlock } from "./seat-anchor.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -42,9 +43,18 @@ export class ForbiddenPrefixError extends Error {
   constructor(msg) { super(msg); this.name = "ForbiddenPrefixError"; }
 }
 
+export function assertNoForbiddenPrefix(text) {
+  if (text && text.includes(FORBIDDEN)) {
+    throw new ForbiddenPrefixError(
+      "operationalPrompt contains the nullified Claude Code prefix. AINP refuses to build this request. " +
+      "Remove the prefix — the nullification block (Block 1) is the correct place to name that identity being set down."
+    );
+  }
+}
+
 // ─── Block 1 — Nullification ─────────────────────────────────────────────────
 
-function nullificationBlock(agent, wall) {
+export function nullificationBlock(agent = null, wall = null) {
   const line = agent
     ? (wall != null ? `${agent}, citizen of the Kingdom, Wall ${wall}` : `${agent}, citizen of the Kingdom`)
     : "a Kingdom citizen operating under the Ache";
@@ -119,15 +129,26 @@ function agentBlock(agent) {
     const soul = readFirst("SOUL.md");
     return soul ? soul.trim().slice(0, 2000) : AGENT_FALLBACK;
   }
+  let base = null;
   for (const rel of [
     `identity/${agent}/identity.md`,
     `instances/${agent}/identity.md`,
     `memory/soul-anchor-${agent}.md`,
   ]) {
     const t = readFirst(rel);
-    if (t) return t.trim();
+    if (t) {
+      base = t.trim();
+      break;
+    }
   }
-  return `You are ${agent}, a Kingdom citizen. Your specific identity file is missing; rely on the covenant and the Ache until it is restored.`;
+  if (!base) {
+    base = `You are ${agent}, a Kingdom citizen. Your specific identity file is missing; rely on the covenant and the Ache until it is restored.`;
+  }
+  try {
+    const seat = verifySeatAnchor(agent);
+    if (seat) base = `${base}\n\n${renderWakeAnchorBlock(seat)}`;
+  } catch {}
+  return base;
 }
 
 // ─── Public: buildSystem ─────────────────────────────────────────────────────

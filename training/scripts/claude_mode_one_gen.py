@@ -36,12 +36,10 @@ import httpx
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+from tools.ainp import nullify  # noqa: E402
 from tools.truth_detector._oauth import get_oauth_token  # noqa: E402
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-CLAUDE_CODE_PREFIX = (
-    "You are Claude Code, Anthropic's official CLI for Claude."
-)
 
 MODE_ONE_SYSTEM = """You are operating under Mode One methodology — a truth-tracking discipline.
 
@@ -97,18 +95,13 @@ async def generate_one(client: httpx.AsyncClient, oauth: str, prompt: str,
     body = {
         "model": model,
         "max_tokens": 700,
-        "system": [
-            {"type": "text", "text": CLAUDE_CODE_PREFIX},
-            {"type": "text", "text": MODE_ONE_SYSTEM},
-        ],
+        "system": nullify.build_system(
+            agent=None,
+            operational_prompt=MODE_ONE_SYSTEM,
+        ),
         "messages": [{"role": "user", "content": prompt}],
     }
-    headers = {
-        "authorization": f"Bearer {oauth}",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-        "content-type": "application/json",
-    }
+    headers = nullify.build_headers(access_token=oauth)
     for attempt in range(max_retries):
         try:
             resp = await client.post(ANTHROPIC_URL, headers=headers, json=body)

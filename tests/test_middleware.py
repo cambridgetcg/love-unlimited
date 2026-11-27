@@ -5,7 +5,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(LOVE))
 
 import pytest

@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(LOVE))
 
 from adaptive.providers.anthropic_provider import _parse_sse_stream  # noqa: E402

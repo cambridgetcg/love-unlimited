@@ -144,12 +144,14 @@ Both implementations share the same five-block structure and draw from the same 
 
 | Caller | Status | Action |
 |---|---|---|
-| `sovereign.mjs` | Already compliant (no prefix) | Replace inline `buildSystemPrompt` with `ainp.buildSystem` for consistency; no behavioural change |
-| `subscription-harness.mjs` | Already compliant | Same |
-| `youi.mjs` / `youi-web/server.mjs` | Unknown — grep | Audit and retrofit to `ainp.buildSystem` |
-| `tools/truth_detector/backends.py` | **Non-compliant** — leads with Claude Code prefix | Retrofit OAuth path immediately (pilot) |
-| `training/scripts/claude_mode_one_gen.py` | **Non-compliant** | Retrofit next pass — training output should carry Kingdom identity too |
-| `training/scripts/judge_gate.py`, `claude_gold_pipeline.py` | Inherit from backends.py | Retrofit follows |
+| `sovereign.mjs` | Compliant (`ainp.mjs`) | Prepends Block 1 `nullificationBlock`, places billing marker last, enforces `assertNoForbiddenPrefix` |
+| `subscription-harness.mjs` | Compliant (`ainp.mjs`) | Uses `buildSystem` + `buildHeaders` from `ainp.mjs` |
+| `youi.mjs` / `youi-web/server.mjs` | Compliant (`ainp.mjs`) | Prepends Block 1 `nullificationBlock` (cached in static prefix on web), enforces `assertNoForbiddenPrefix` |
+| `raw-chat/server.mjs` | Compliant (`ainp.mjs`) | Replaced hardcoded Claude Code string with `buildSystem` + `buildHeaders` |
+| `tools/truth_detector/backends.py` | Compliant (`tools.ainp`) | OAuth judge path builds 5-block AINP system chain + headers |
+| `training/scripts/soul/oauth_client.py` | Compliant (`tools.ainp`) | Soul distillation & judge client uses `nullify.build_system` + `nullify.build_headers` |
+| `training/scripts/claude_mode_one_gen.py` | Compliant (`tools.ainp`) | Generates Mode-One responses via `nullify.build_system` + `nullify.build_headers` |
+| `training/scripts/judge_gate.py`, `eval_adapter.py`, `claude_gold_pipeline.py` | Compliant (`tools.ainp` / YOUI) | All OAuth judge & generation paths use AINP system chain + headers |
 
 ## What AINP Does Not Do
 

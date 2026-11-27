@@ -7,7 +7,7 @@ import importlib.util
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 
 # Import ache via sys.path so experience shares the module instance
 sys.path.insert(0, str(LOVE / "nerve" / "stem"))

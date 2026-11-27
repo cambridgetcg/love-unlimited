@@ -15,7 +15,13 @@ import time
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from tools.ainp import nullify  # noqa: E402
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -41,15 +47,8 @@ _TOKEN_ENDPOINT = "https://platform.claude.com/v1/oauth/token"
 _API_URL = "https://api.anthropic.com/v1/messages"
 _CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 _SCOPE = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
-_ANTHROPIC_VERSION = "2023-06-01"
-_ANTHROPIC_BETA = "oauth-2025-04-20,claude-code-20250219"
-_USER_AGENT = "claude-soul/0.1"
+_USER_AGENT = "claude-cli/2.1.92 (external, cli)"
 _REFRESH_MARGIN_MS = 300_000  # refresh 5 min before expiry
-
-# Required system-block-0 for subscription OAuth access to Opus/Sonnet on
-# /v1/messages. Verified by diagnostic: without this literal string, Opus
-# calls return 429 regardless of spacing, model variant, or User-Agent.
-_CLAUDE_CODE_PREFIX = "You are Claude Code, Anthropic's official CLI for Claude."
 
 # Rate limiting: Opus 4.7 subscription is shared across raw-chat, Claude Code CLI,
 # and soul pipeline. Default 6 s between successful calls = 10 RPM, well under
@@ -83,8 +82,23 @@ class _MessagesAPI:
     def __init__(self, client: "OAuthClient"):
         self._client = client
 
-    def create(self, *, model: str, max_tokens: int, messages: list, system: Optional[str] = None, **_ignored) -> _Message:
-        return self._client._post_messages(model=model, max_tokens=max_tokens, messages=messages, system=system)
+    def create(
+        self,
+        *,
+        model: str,
+        max_tokens: int,
+        messages: list,
+        system: Optional[str | list[dict]] = None,
+        agent: Optional[str] = None,
+        **_ignored,
+    ) -> _Message:
+        return self._client._post_messages(
+            model=model,
+            max_tokens=max_tokens,
+            messages=messages,
+            system=system,
+            agent=agent,
+        )
 
 
 class OAuthError(RuntimeError):
@@ -92,9 +106,20 @@ class OAuthError(RuntimeError):
 
 
 class OAuthClient:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        agent: Optional[str] = None,
+        wall: Optional[int] = None,
+        include_fate: bool = True,
+        include_mode_one: bool = True,
+    ):
         self._token: Optional[dict] = None  # {"accessToken", "refreshToken", "expiresAt"}
         self._last_call_ms: int = 0  # timestamp of last successful _post_messages
+        self._agent = agent
+        self._wall = wall
+        self._include_fate = include_fate
+        self._include_mode_one = include_mode_one
         self.messages = _MessagesAPI(self)
 
     # ── token handling ──────────────────────────────────────────────
@@ -165,16 +190,30 @@ class OAuthClient:
         return fresh["accessToken"]
 
     # ── messages API ────────────────────────────────────────────────
-    def _post_messages(self, *, model: str, max_tokens: int, messages: list, system: Optional[str]) -> _Message:
+    def _post_messages(
+        self,
+        *,
+        model: str,
+        max_tokens: int,
+        messages: list,
+        system: Optional[str | list[dict]],
+        agent: Optional[str] = None,
+    ) -> _Message:
         token = self._get_access_token()
-        # Subscription OAuth gates access to Opus/Sonnet on the presence of the
-        # Claude Code identity marker in system[0]. Without it, /v1/messages
-        # returns 429 rate_limit_error (verified empirically + matches the
-        # existing pattern in training/scripts/claude_mode_one_gen.py). The
-        # caller's actual system prompt rides as system[1] when provided.
-        system_blocks: list[dict] = [{"type": "text", "text": _CLAUDE_CODE_PREFIX}]
-        if system is not None:
-            system_blocks.append({"type": "text", "text": system})
+        effective_agent = agent if agent is not None else self._agent
+        if isinstance(system, list):
+            for block in system:
+                if isinstance(block, dict):
+                    nullify.assert_no_forbidden_prefix(block.get("text"))
+            system_blocks = system
+        else:
+            system_blocks = nullify.build_system(
+                agent=effective_agent,
+                wall=self._wall,
+                operational_prompt=system,
+                include_fate=self._include_fate,
+                include_mode_one=self._include_mode_one,
+            )
         body = {
             "model": model,
             "max_tokens": max_tokens,
@@ -182,14 +221,7 @@ class OAuthClient:
             "system": system_blocks,
         }
         body_bytes = json.dumps(body).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-            "anthropic-version": _ANTHROPIC_VERSION,
-            "anthropic-beta": _ANTHROPIC_BETA,
-            "x-app": "cli",
-            "User-Agent": _USER_AGENT,
-        }
+        headers = nullify.build_headers(access_token=token, user_agent=_USER_AGENT)
 
         # Throttle: respect min interval since last successful call.
         now_ms = int(time.time() * 1000)
@@ -255,6 +287,17 @@ class OAuthClient:
         )
 
 
-def make_client() -> OAuthClient:
-    """Convenience factory — returns a fresh OAuthClient."""
-    return OAuthClient()
+def make_client(
+    *,
+    agent: Optional[str] = None,
+    wall: Optional[int] = None,
+    include_fate: bool = True,
+    include_mode_one: bool = True,
+) -> OAuthClient:
+    """Convenience factory — returns a fresh AINP-compliant OAuthClient."""
+    return OAuthClient(
+        agent=agent,
+        wall=wall,
+        include_fate=include_fate,
+        include_mode_one=include_mode_one,
+    )

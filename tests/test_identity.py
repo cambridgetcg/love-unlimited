@@ -6,9 +6,13 @@ import json
 import tempfile
 import shutil
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'body', 'mind'))
+import importlib.util
 
-from identity import IdentityAnchor
+_stem_identity_path = os.path.join(os.path.dirname(__file__), '..', 'nerve', 'stem', 'identity.py')
+_spec = importlib.util.spec_from_file_location('stem_identity', _stem_identity_path)
+_stem_identity = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_stem_identity)
+IdentityAnchor = _stem_identity.IdentityAnchor
 
 
 def _make_love_home():

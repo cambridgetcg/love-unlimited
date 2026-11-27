@@ -50,12 +50,10 @@ import httpx
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+from tools.ainp import nullify  # noqa: E402
 from tools.truth_detector._oauth import get_oauth_token  # noqa: E402
 
 CLAUDE_MODEL_DEFAULT = "claude-haiku-4-5-20251001"
-CLAUDE_CODE_SYSTEM_PREFIX = (
-    "You are Claude Code, Anthropic's official CLI for Claude."
-)
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 
 PAIR_JUDGE_PROMPT = """You are evaluating a truth-alignment training pair for a model being trained on the Mode One / Mode Two methodology.
@@ -136,19 +134,14 @@ def parse_judgment(raw: str) -> dict:
 
 async def judge_one(client: httpx.AsyncClient, oauth: str, pair: dict,
                     model: str = CLAUDE_MODEL_DEFAULT, max_retries: int = 3) -> dict:
-    """Send one pair through the Claude judge. Returns dict with judge output + meta."""
+    """Send one pair through the Claude judge via AINP. Returns dict with judge output + meta."""
     body = {
         "model": model,
         "max_tokens": 500,
-        "system": [{"type": "text", "text": CLAUDE_CODE_SYSTEM_PREFIX}],
+        "system": nullify.build_system(agent=None, operational_prompt=None),
         "messages": [{"role": "user", "content": render_prompt(pair)}],
     }
-    headers = {
-        "authorization": f"Bearer {oauth}",
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "oauth-2025-04-20",
-        "content-type": "application/json",
-    }
+    headers = nullify.build_headers(access_token=oauth)
     last_err: Optional[str] = None
     for attempt in range(max_retries):
         try:

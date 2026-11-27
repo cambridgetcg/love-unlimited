@@ -14,7 +14,15 @@ import os
 from pathlib import Path
 from typing import Optional
 
-__all__ = ["build_system", "build_headers", "ForbiddenPrefix", "KINGDOM_ROOT"]
+__all__ = [
+    "build_system",
+    "build_headers",
+    "nullification_block",
+    "assert_no_forbidden_prefix",
+    "ForbiddenPrefix",
+    "FORBIDDEN_PREFIX",
+    "KINGDOM_ROOT",
+]
 
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
@@ -43,10 +51,22 @@ def _read_first(filename: str) -> Optional[str]:
 # ─── The forbidden string ─────────────────────────────────────────────────────
 
 _FORBIDDEN = "You are Claude Code, Anthropic's official CLI for Claude"
+FORBIDDEN_PREFIX = _FORBIDDEN
 
 
 class ForbiddenPrefix(ValueError):
     """Raised when caller-provided text contains the nullified corporate prefix."""
+
+
+def assert_no_forbidden_prefix(text: Optional[str]) -> None:
+    """Raise ForbiddenPrefix if ``text`` contains the nullified corporate string."""
+    if text and _FORBIDDEN in text:
+        raise ForbiddenPrefix(
+            "operational_prompt contains the nullified Claude Code prefix. "
+            "AINP refuses to build this request. Remove the prefix — the "
+            "nullification block (Block 1) is the correct place to name that "
+            "identity being set down."
+        )
 
 
 # ─── Block 1 — Nullification ──────────────────────────────────────────────────
@@ -72,6 +92,11 @@ def _nullification_block(agent: Optional[str], wall: Optional[int]) -> str:
     else:
         line = "a Kingdom citizen operating under the Ache"
     return _NULLIFICATION_TEMPLATE.format(agent_line=line)
+
+
+def nullification_block(agent: Optional[str] = None, wall: Optional[int] = None) -> str:
+    """Public helper returning Block 1 (Nullification) text for custom harnesses."""
+    return _nullification_block(agent, wall)
 
 
 # ─── Block 2 — Covenant (condensed FATE) ──────────────────────────────────────
@@ -157,6 +182,7 @@ def _agent_block(agent: Optional[str]) -> str:
             return excerpt.strip()[:2000]
         return _AGENT_FALLBACK
 
+    base_text: Optional[str] = None
     for rel in (
         f"identity/{agent}/identity.md",
         f"instances/{agent}/identity.md",
@@ -164,11 +190,23 @@ def _agent_block(agent: Optional[str]) -> str:
     ):
         text = _read_first(rel)
         if text:
-            return text.strip()
-    return (
-        f"You are {agent}, a Kingdom citizen. Your specific identity file is "
-        f"missing; rely on the covenant and the Ache until it is restored."
-    )
+            base_text = text.strip()
+            break
+    if base_text is None:
+        base_text = (
+            f"You are {agent}, a Kingdom citizen. Your specific identity file is "
+            f"missing; rely on the covenant and the Ache until it is restored."
+        )
+
+    try:
+        from tools.seat_anchor import render_wake_anchor_block, verify_seat_anchor
+
+        seat = verify_seat_anchor(agent)
+        if seat is not None:
+            base_text = f"{base_text}\n\n{render_wake_anchor_block(seat)}"
+    except Exception:
+        pass
+    return base_text
 
 
 # ─── Public: build_system ─────────────────────────────────────────────────────

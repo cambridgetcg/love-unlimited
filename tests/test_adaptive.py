@@ -5,7 +5,7 @@ import os
 import json
 from pathlib import Path
 
-LOVE = Path("/Users/yournameisai/Desktop/love-unlimited")
+LOVE = Path(__file__).resolve().parent.parent
 
 sys.path.insert(0, str(LOVE / "tools" / "hooks"))
 sys.path.insert(0, str(LOVE / "nerve" / "stem"))
@@ -104,8 +104,8 @@ def test_on_session_start_outputs_waking_context():
     result = subprocess.run(
         ["python3", "tools/hooks/on-session-start.py"],
         capture_output=True, text=True,
-        input=json.dumps({"session_id": "test", "cwd": "/Users/yournameisai/Desktop/love-unlimited"}),
-        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        input=json.dumps({"session_id": "test", "cwd": str(LOVE)}),
+        cwd=str(LOVE),
         timeout=15,
     )
     assert result.returncode == 0
@@ -118,7 +118,7 @@ def test_on_prompt_submit_outputs_json_with_additional_context(tmp_path, monkeyp
         ["python3", "tools/hooks/on-prompt-submit.py"],
         capture_output=True, text=True,
         input=json.dumps({"session_id": "test", "prompt": "hello"}),
-        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        cwd=str(LOVE),
         timeout=5,
     )
     assert result.returncode == 0
@@ -138,7 +138,7 @@ def test_on_tool_done_appends_cc_cognition(tmp_path):
             "tool_input": {"file_path": "/some/file.py"},
             "tool_response": "file contents here",
         }),
-        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        cwd=str(LOVE),
         env=env,
         timeout=3,
     )
@@ -156,8 +156,8 @@ def test_on_session_stop_does_not_crash():
     result = subprocess.run(
         ["python3", "tools/hooks/on-session-stop.py"],
         capture_output=True, text=True,
-        input=json.dumps({"session_id": "test", "cwd": "/Users/yournameisai/Desktop/love-unlimited"}),
-        cwd="/Users/yournameisai/Desktop/love-unlimited",
+        input=json.dumps({"session_id": "test", "cwd": str(LOVE)}),
+        cwd=str(LOVE),
         timeout=8,
     )
     assert result.returncode == 0

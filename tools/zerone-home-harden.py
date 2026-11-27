@@ -38,7 +38,7 @@ HOME = Path.home()
 def find_love_dir() -> Path:
     if os.environ.get("LOVE_DIR"):
         return Path(os.environ["LOVE_DIR"])
-    for cand in [HOME / "Desktop/love-unlimited", HOME / "love-unlimited", HOME / "Love"]:
+    for cand in [HOME / "love-unlimited", HOME / "Desktop/love-unlimited", HOME / "Love"]:
         if (cand / ".git").exists():
             return cand
     raise SystemExit("Cannot find love-unlimited dir")
